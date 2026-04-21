@@ -30,11 +30,21 @@ export interface Shot {
   created_at: number;
 }
 
+/**
+ * IAC-05: closed set of version lifecycle states (D-GEN-18 state machine).
+ * Engine-level `mapState` already treats this as a closed union; narrowing
+ * the type here lets callers pattern-match exhaustively and catches stale
+ * string comparisons at compile time. The SQLite column stays TEXT — a
+ * cast at the repo boundary preserves schema compatibility without forcing
+ * a migration.
+ */
+export type VersionStatus = 'submitted' | 'running' | 'completed' | 'failed';
+
 export interface Version {
   id: string;
   shot_id: string;
   version_number: number;
-  status: string;
+  status: VersionStatus;
   job_id: string | null;
   parent_version_id: string | null;
   notes: string | null;
