@@ -10,6 +10,8 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "start:http": "tsx src/server.ts --http",
+    "inspect": "npx @modelcontextprotocol/inspector npx tsx src/server.ts",
+    "inspect:http": "npx @modelcontextprotocol/inspector",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
