@@ -94,11 +94,21 @@ export class ComfyUIClient {
           'X-API-Key': this.apiKey,
         },
         body: JSON.stringify(body),
+        // Do NOT follow redirects automatically. Node's fetch preserves
+        // custom headers (including X-API-Key) across cross-origin redirects.
+        // A single 302 from a compromised base URL would exfiltrate the key.
+        redirect: 'manual',
       });
     } catch (err) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
         `ComfyUI network error: ${(err as Error).message}`,
+      );
+    }
+    if (res.status >= 300 && res.status < 400) {
+      throw new TypedError(
+        'COMFYUI_API_ERROR',
+        `ComfyUI /api/prompt returned unexpected redirect ${res.status} (API key would leak if followed)`,
       );
     }
     if (res.status === 429) {
@@ -138,11 +148,20 @@ export class ComfyUIClient {
       res = await this.fetchImpl(url, {
         method: 'GET',
         headers: { 'X-API-Key': this.apiKey },
+        // See submit() — Node fetch forwards custom headers across redirects,
+        // so a 302 from the status endpoint would leak X-API-Key.
+        redirect: 'manual',
       });
     } catch (err) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
         `ComfyUI network error: ${(err as Error).message}`,
+      );
+    }
+    if (res.status >= 300 && res.status < 400) {
+      throw new TypedError(
+        'COMFYUI_API_ERROR',
+        `ComfyUI /api/job status returned unexpected redirect ${res.status} (API key would leak if followed)`,
       );
     }
     if (!res.ok) {

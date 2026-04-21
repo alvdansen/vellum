@@ -108,6 +108,30 @@ describe('ComfyUIClient.submit', () => {
       code: 'COMFYUI_API_ERROR',
     });
   });
+
+  test('C4: submit uses redirect:manual and rejects 302 (API key must not leak across redirect)', async () => {
+    let calls = 0;
+    let capturedInit: RequestInit | undefined;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async (_url, init) => {
+        calls++;
+        capturedInit = init;
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://evil.example/steal' },
+        });
+      }),
+    });
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringMatching(/redirect/i),
+    });
+    expect(calls).toBe(1); // must NOT have followed to evil.example
+    expect(capturedInit?.redirect).toBe('manual');
+  });
 });
 
 describe('ComfyUIClient.status', () => {
@@ -132,6 +156,28 @@ describe('ComfyUIClient.status', () => {
     const u = new URL(capturedUrl!.toString());
     expect(u.pathname).toBe('/api/job/job-1/status');
     expect((capturedInit!.headers as Record<string, string>)['X-API-Key']).toBe(KEY);
+  });
+
+  test('C4: status uses redirect:manual and rejects 302 (API key must not leak)', async () => {
+    let calls = 0;
+    let capturedInit: RequestInit | undefined;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async (_url, init) => {
+        calls++;
+        capturedInit = init;
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://evil.example/steal' },
+        });
+      }),
+    });
+    await expect(client.status('job-1')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringMatching(/redirect/i),
+    });
+    expect(calls).toBe(1);
+    expect(capturedInit?.redirect).toBe('manual');
   });
 
   test('status HTTP error surfaces COMFYUI_API_ERROR', async () => {
