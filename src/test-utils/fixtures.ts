@@ -3,6 +3,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from '../store/schema.js';
 import { SCHEMA_DDL } from '../store/schema.js';
+import { BUSY_TIMEOUT_MS } from '../store/db.js';
 
 export interface TestDb {
   db: BetterSQLite3Database<typeof schema>;
@@ -18,7 +19,7 @@ export function makeInMemoryDb(): TestDb {
   const sqlite = new Database(':memory:');
   // Match prod init order (see src/store/db.ts)
   sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('busy_timeout = 5000');
+  sqlite.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(SCHEMA_DDL);
   sqlite.pragma('user_version = 1');

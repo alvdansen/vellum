@@ -6,6 +6,15 @@ import { SCHEMA_DDL } from './schema.js';
 
 export const SCHEMA_VERSION = 1;
 
+/**
+ * MNT-05: single source for the SQLite busy_timeout value. Consumed by the
+ * production openDb() path AND the in-memory test fixture so both share the
+ * exact same contention ceiling. 5000ms was picked per CLAUDE.md (Architecture
+ * Rules — "SQLite WAL: Enable WAL mode + busy_timeout=5000 at database
+ * initialization").
+ */
+export const BUSY_TIMEOUT_MS = 5000;
+
 export interface OpenDbResult {
   db: BetterSQLite3Database<typeof schema>;
   sqlite: Database.Database;
@@ -22,7 +31,7 @@ export function openDb(path: string): OpenDbResult {
 
   // Pragmas FIRST, schema SECOND. Order is invariant (D-20, Pitfall #6).
   sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('busy_timeout = 5000');
+  sqlite.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   sqlite.pragma('foreign_keys = ON');
 
   const existingVersion = sqlite.pragma('user_version', { simple: true }) as number;
