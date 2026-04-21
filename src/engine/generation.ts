@@ -16,7 +16,19 @@ import type { Version, Breadcrumb } from '../types/hierarchy.js';
 import type { ComfyOutput, StatusResponse, StoredOutput } from '../comfyui/types.js';
 
 const GENERATION_TIMEOUT_MS = 600_000; // D-GEN-25: 10 minutes
-const DOWNLOAD_RETRY_DELAYS = [2_000, 4_000, 8_000]; // D-GEN-36: 3 attempts
+/**
+ * D-GEN-36: per-file download retry schedule.
+ *
+ * The download loop runs UP TO 3 ATTEMPTS with 2 SLEEPS between them:
+ *   attempt 1 → fail → sleep 2s → attempt 2 → fail → sleep 4s → attempt 3 → give up
+ *
+ * Historical note: an earlier `DOWNLOAD_RETRY_DELAYS = [2_000, 4_000, 8_000]`
+ * carried a third value (8s) that was never slept on — the loop exited before
+ * the final sleep ran. The dead value misled readers about the real cadence.
+ * Renamed to reflect the actual semantics (delays BETWEEN attempts, not per-attempt).
+ */
+const DOWNLOAD_BETWEEN_ATTEMPT_DELAYS = [2_000, 4_000];
+const DOWNLOAD_MAX_ATTEMPTS = DOWNLOAD_BETWEEN_ATTEMPT_DELAYS.length + 1;
 
 /**
  * C6: cap concurrent recovery pollers. ComfyUI Cloud concurrency tiers are
@@ -212,7 +224,7 @@ export class GenerationEngine {
 
       let attempt = 0;
       let lastErr: unknown = null;
-      while (attempt < DOWNLOAD_RETRY_DELAYS.length) {
+      while (attempt < DOWNLOAD_MAX_ATTEMPTS) {
         try {
           const dl = await this.client.downloadToPath(
             out.filename,
@@ -230,18 +242,19 @@ export class GenerationEngine {
           break;
         } catch (err) {
           lastErr = err;
-          const delay = DOWNLOAD_RETRY_DELAYS[attempt];
-          attempt++;
-          if (attempt < DOWNLOAD_RETRY_DELAYS.length) {
-            await sleep(delay);
+          // Sleep BETWEEN attempts only. After the last attempt there is no sleep —
+          // the loop exits and the error propagates to markFailed below.
+          if (attempt < DOWNLOAD_BETWEEN_ATTEMPT_DELAYS.length) {
+            await sleep(DOWNLOAD_BETWEEN_ATTEMPT_DELAYS[attempt]);
           }
+          attempt++;
         }
       }
       if (lastErr) {
         this.versions.markFailed(
           row.id,
           'DOWNLOAD_FAILED',
-          `Failed to download output ${out.filename} after ${DOWNLOAD_RETRY_DELAYS.length} attempts`,
+          `Failed to download output ${out.filename} after ${DOWNLOAD_MAX_ATTEMPTS} attempts`,
         );
         return; // subsequent outputs intentionally left for debug/audit per D-GEN-36
       }
