@@ -2,12 +2,23 @@
 /**
  * vfx-familiar entry point.
  *
- * Constructs a single McpServer, registers the 4 Phase 1 tools, and connects:
- *   - stdio transport ALWAYS (D-15)
+ * Dual-transport bootstrap:
+ *   - stdio transport ALWAYS, long-lived (D-15)
  *   - Streamable HTTP on 127.0.0.1:<port> when --http is passed (D-16, T-03-03)
  *
- * Both transports share the SAME McpServer instance, so the tool list is
- * identical by construction (Pitfall #7).
+ * Both transports expose the SAME 4 tools (workspace, project, sequence, shot)
+ * against the SAME process-wide engine (so SQLite writes from either path land
+ * in the same db). Tool identity is guaranteed by the shared `buildServer()`
+ * factory — it's the only place the 4 register* functions are called, and
+ * both transports route through it.
+ *
+ * Implementation note on MCP SDK 1.29 Protocol invariant:
+ *   The SDK's Protocol._transport enforces a one-transport-per-server rule
+ *   (see node_modules/@modelcontextprotocol/sdk/dist/esm/shared/protocol.js#L215).
+ *   We therefore create ONE long-lived McpServer for stdio and a FRESH
+ *   McpServer per HTTP request (the canonical stateless pattern from the SDK
+ *   examples at modelcontextprotocol/typescript-sdk). Both servers share the
+ *   same Engine / HierarchyRepo / db, so state is process-wide consistent.
  *
  * Logging: stderr-only (D-21). stdout is reserved for MCP JSON-RPC framing.
  * Environment: zero env vars consulted (TRNS-04).
@@ -42,6 +53,27 @@ async function readVersion(): Promise<string> {
   return pkg.version;
 }
 
+/**
+ * Construct a fresh McpServer with the 4 Phase 1 tools registered against the
+ * supplied engine. Single source of tool identity — both stdio and each HTTP
+ * request route through this factory, so transport parity is guaranteed by
+ * construction (Pitfall #7). Zero transport-specific branching inside.
+ */
+function buildServer(engine: Engine, version: string): McpServer {
+  const server = new McpServer(
+    { name: 'vfx-familiar', version },
+    {
+      instructions:
+        'VFX project hierarchy management. Use workspace/project/sequence/shot tools with action: create | list | get. Every response carries breadcrumb context from workspace to the affected entity.',
+    },
+  );
+  registerWorkspace(server, engine);
+  registerProject(server, engine);
+  registerSequence(server, engine);
+  registerShot(server, engine);
+  return server;
+}
+
 async function main(): Promise<void> {
   const args = parseCliFlags(process.argv.slice(2));
 
@@ -64,36 +96,27 @@ async function main(): Promise<void> {
 
   const repo = new HierarchyRepo(db);
   const engine = new Engine(repo);
+  const version = await readVersion();
 
-  // Single McpServer instance — both transports serve the same tools (D-15/D-16).
-  const server = new McpServer(
-    { name: 'vfx-familiar', version: await readVersion() },
-    {
-      instructions:
-        'VFX project hierarchy management. Use workspace/project/sequence/shot tools with action: create | list | get. Every response carries breadcrumb context from workspace to the affected entity.',
-    },
-  );
-
-  registerWorkspace(server, engine);
-  registerProject(server, engine);
-  registerSequence(server, engine);
-  registerShot(server, engine);
-
-  // Transport 1 — stdio, always on (D-15).
+  // Transport 1 — stdio, always on (D-15). One long-lived McpServer.
   const stdio = new StdioServerTransport();
-  await server.connect(stdio);
+  const stdioServer = buildServer(engine, version);
+  await stdioServer.connect(stdio);
   console.error('vfx-familiar: stdio transport connected');
 
   // Transport 2 — Streamable HTTP, opt-in via --http (D-16).
+  // Per the MCP SDK stateless pattern, a fresh McpServer + transport is spawned
+  // per request; all share the same engine/db for consistent state.
   if (args.http) {
     const port = args.port ?? 3000;
     const app = new Hono();
     app.post('/mcp', async (c) => {
       const { req, res } = toReqRes(c.req.raw);
+      const requestServer = buildServer(engine, version);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // stateless mode per STACK.md / mcp-hono-stateless
       });
-      await server.connect(transport);
+      await requestServer.connect(transport);
       await transport.handleRequest(req, res);
       return toFetchResponse(res);
     });
