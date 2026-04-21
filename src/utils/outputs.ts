@@ -97,6 +97,14 @@ export async function ensureDir(dirPath: string): Promise<void> {
 }
 
 /**
+ * Hard ceiling on the suffix-increment search in `resolveCollisionSuffix`.
+ * If a directory already contains `img.png`..`img_9999.png`, the next candidate
+ * cannot be assigned and we surface an error rather than search forever. In
+ * practice a single version directory holding this many collisions is pathological.
+ */
+export const MAX_COLLISION_SUFFIX = 10_000;
+
+/**
  * Return a filename that does not collide with existing files in dirPath.
  * If `img.png` exists, tries `img_1.png`, `img_2.png`, ... until a free slot.
  * Matches Phase 1 D-14 "UNIQUE → suffix increment" pattern.
@@ -115,7 +123,7 @@ export async function resolveCollisionSuffix(
   const dot = filename.lastIndexOf('.');
   const base = dot === -1 ? filename : filename.slice(0, dot);
   const ext = dot === -1 ? '' : filename.slice(dot);
-  for (let i = 1; i < 10_000; i++) {
+  for (let i = 1; i < MAX_COLLISION_SUFFIX; i++) {
     const candidate = `${base}_${i}${ext}`;
     if (!(await fileExists(path.join(dirPath, candidate)))) {
       console.error(`[outputs] collision: ${filename} -> ${candidate}`);
