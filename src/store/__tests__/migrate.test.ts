@@ -7,9 +7,10 @@ import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 
 /**
  * [BLOCKING] schema-push gate for plan 02-01 Task 2 (D-GEN-38).
- * Verifies the Drizzle migration 0001 applies against real SQLite DBs and
+ * Verifies Drizzle migrations apply against real SQLite DBs and
  * that the __drizzle_migrations ledger is idempotent across reboots.
  */
+const EXPECTED_MIGRATIONS = 2; // 0001_phase2_version_lifecycle, 0002_idx_versions_status
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
@@ -62,22 +63,33 @@ describe('Drizzle migration 0001 (D-GEN-38, [BLOCKING] schema push)', () => {
     sqlite.close();
   });
 
-  test('__drizzle_migrations has exactly 1 row after first openDb', () => {
+  test(`__drizzle_migrations has exactly ${EXPECTED_MIGRATIONS} rows after first openDb`, () => {
     const { sqlite } = openDb(dbPath);
     const row = sqlite
       .prepare(`SELECT COUNT(*) AS n FROM __drizzle_migrations`)
       .get() as { n: number };
-    expect(row.n).toBe(1);
+    expect(row.n).toBe(EXPECTED_MIGRATIONS);
     sqlite.close();
   });
 
-  test('second openDb is idempotent (still exactly 1 row in __drizzle_migrations)', () => {
+  test(`second openDb is idempotent (still exactly ${EXPECTED_MIGRATIONS} rows in __drizzle_migrations)`, () => {
     openDb(dbPath).sqlite.close();
     const { sqlite } = openDb(dbPath);
     const row = sqlite
       .prepare(`SELECT COUNT(*) AS n FROM __drizzle_migrations`)
       .get() as { n: number };
-    expect(row.n).toBe(1);
+    expect(row.n).toBe(EXPECTED_MIGRATIONS);
+    sqlite.close();
+  });
+
+  test('idx_versions_status exists (migration 0002)', () => {
+    const { sqlite } = openDb(dbPath);
+    const rows = sqlite
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='versions' AND name='idx_versions_status'`,
+      )
+      .all() as { name: string }[];
+    expect(rows.length).toBe(1);
     sqlite.close();
   });
 

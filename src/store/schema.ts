@@ -69,6 +69,10 @@ export const versions = sqliteTable('versions', {
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
   idxShot: index('idx_versions_shot').on(t.shot_id, t.version_number),
+  // Supports listPendingVersions() — called at every server boot by the recovery
+  // poller (D-GEN-28). Without it the query is a full table scan that grows O(n)
+  // in total version count as completed rows accumulate.
+  idxStatus: index('idx_versions_status').on(t.status),
 }));
 
 /**
@@ -129,4 +133,5 @@ CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_sequences_project ON sequences(project_id);
 CREATE INDEX IF NOT EXISTS idx_shots_sequence ON shots(sequence_id);
 CREATE INDEX IF NOT EXISTS idx_versions_shot ON versions(shot_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_versions_status ON versions(status);
 `;
