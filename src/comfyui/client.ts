@@ -437,9 +437,14 @@ export class ComfyUIClient {
     }
     const partial = `${destPath}.partial`;
     let bytes = 0;
-    const writer = createWriteStream(partial);
     let overflow = false;
     try {
+      // IP-03: createWriteStream CAN throw synchronously on EACCES / ENOSPC /
+      // ENOTDIR before any data is written. If it throws outside the try block
+      // and we've already computed `partial`, that name could be orphaned on
+      // disk in edge cases. Moving the constructor inside the try block funnels
+      // all failures through the catch, which unlinks partial unconditionally.
+      const writer = createWriteStream(partial);
       const readable = Readable.fromWeb(
         result.body as unknown as import('node:stream/web').ReadableStream,
       );

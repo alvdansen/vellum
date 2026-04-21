@@ -641,6 +641,45 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     await fsp.rm(tmp, { recursive: true, force: true });
   });
 
+  test('IP-03: non-writable destination path is caught and no .partial leaks', async () => {
+    const os = await import('node:os');
+    const pth = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), 'vfx-client-ip03-'));
+    // Make a path whose parent IS a file (not a directory) so createWriteStream
+    // throws synchronously with ENOTDIR/EEXIST before any bytes are written.
+    // This exercises the pre-pipe error path that the fix guards against.
+    const dataFile = pth.join(tmp, 'blocker');
+    await fsp.writeFile(dataFile, 'blocker');
+    const dest = pth.join(dataFile, 'nested', 'x.png'); // parent is a regular file
+    const bytes = new Uint8Array([1, 2, 3]);
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/x.png' },
+          });
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': 'image/png',
+            'content-length': String(bytes.byteLength),
+          },
+        });
+      }),
+    });
+    await expect(client.downloadToPath('x.png', {}, dest)).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'DOWNLOAD_FAILED',
+    });
+    // No partial file leaked
+    await expect(fsp.access(dest + '.partial')).rejects.toThrow();
+    await expect(fsp.access(dest)).rejects.toThrow();
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
   test('signed-URL fetch failure unlinks partial and throws DOWNLOAD_FAILED', async () => {
     const os = await import('node:os');
     const pth = await import('node:path');
