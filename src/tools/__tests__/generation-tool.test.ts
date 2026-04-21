@@ -42,12 +42,26 @@ async function buildStack() {
 
 function shapeVersion(result: { entity: Version; breadcrumb: Breadcrumb }) {
   const { entity, breadcrumb } = result;
+  // Mirror of generation-tool.shapeVersionEntity after IAC-01/02: outputs_json
+  // and error_message are destructured OUT; outputs is a typed array; error is
+  // the canonical alias.
+  const { error_message, outputs_json, ...rest } = entity;
+  let outputs: unknown[] = [];
+  if (outputs_json != null && outputs_json.length > 0) {
+    try {
+      const parsed = JSON.parse(outputs_json);
+      if (Array.isArray(parsed)) outputs = parsed;
+    } catch {
+      /* ignore — empty array on malformed */
+    }
+  }
   return {
     entity: {
-      ...entity,
+      ...rest,
       version_label: versionLabel(entity.version_number),
       progress: null,
-      error: entity.error_message ?? null,
+      error: error_message ?? null,
+      outputs,
     },
     breadcrumb: breadcrumb.entries,
     breadcrumb_text: breadcrumb.text,

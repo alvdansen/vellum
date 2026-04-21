@@ -5,6 +5,7 @@ import { TypedError } from '../engine/errors.js';
 import { toolOk, toolError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
+import type { StoredOutput } from '../comfyui/types.js';
 
 /**
  * D-GEN-04: submit input — action + shot_id + workflow_json + optional notes.
@@ -33,18 +34,52 @@ const GenerationInput = z.discriminatedUnion('action', [SubmitInput, StatusInput
 /**
  * Render the version entity for tool responses — adds `version_label` (D-GEN-17).
  * Surfaces progress/error as stable shape keys so the agent sees a predictable
- * payload even when the engine stored null (D-GEN-07). The engine's raw Version
- * row carries `error_message` as the persisted column name; we alias it to
- * `error` in the tool response for agent ergonomics.
+ * payload even when the engine stored null (D-GEN-07).
+ *
+ * IAC-01: parse `outputs_json` into a typed `outputs: StoredOutput[]` and drop
+ * the stringified column from the response. CLAUDE.md explicitly forbids raw
+ * JSON dumps to agents — the agent should see typed data, not a column name.
+ * Malformed JSON is logged and surfaced as an empty array so an agent never
+ * sees the tool crash on corrupt persistence.
+ *
+ * IAC-02: the canonical error alias is `error` (parsed from
+ * entity.error_message). `error_message` is destructured out of the spread so
+ * the response carries exactly one error field. Drift is no longer possible.
  */
 function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb }) {
   const { entity, breadcrumb } = result;
+  // IAC-02: destructure error_message and outputs_json OUT of the spread so
+  // they do not leak through into the response.
+  const { error_message, outputs_json, ...rest } = entity;
+
+  // IAC-01: parse outputs_json → typed array. Malformed JSON is logged to
+  // stderr (never stdout — D-21) and surfaces as an empty array.
+  let outputs: StoredOutput[] = [];
+  if (outputs_json != null && outputs_json.length > 0) {
+    try {
+      const parsed = JSON.parse(outputs_json);
+      if (Array.isArray(parsed)) {
+        outputs = parsed as StoredOutput[];
+      } else {
+        console.error(
+          `[generation-tool] outputs_json for version=${entity.id} is not an array; returning []`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[generation-tool] outputs_json parse failed for version=${entity.id}:`,
+        (err as Error).message,
+      );
+    }
+  }
+
   const shaped = {
-    ...entity,
+    ...rest,
     version_label: versionLabel(entity.version_number),
     // Phase 2 stable shape: progress is not persisted yet (D-GEN-07); null for now.
     progress: null as number | null,
-    error: entity.error_message ?? null,
+    error: error_message ?? null,
+    outputs,
   };
   return {
     entity: shaped,
@@ -73,7 +108,9 @@ export function registerGeneration(server: McpServer, engine: Engine) {
     {
       title: 'Generation',
       description:
-        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status.",
+        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status. " +
+        "State machine (D-GEN-18): submitted → running → completed | failed. " +
+        "Dual error model (IAC-03): submit and status return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found).",
       inputSchema: GenerationInput,
     },
     async (input) => {
