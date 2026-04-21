@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, asc } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { workspaces, projects, sequences, shots } from './schema.js';
@@ -74,9 +74,13 @@ export class HierarchyRepo {
     limit: number,
     offset: number,
   ): { items: Workspace[]; total: number } {
+    // RT-03: deterministic pagination ordering. created_at as primary sort (so
+    // newer rows naturally land on later pages); id as a stable tiebreaker for
+    // rows created in the same millisecond.
     const items = this.db
       .select()
       .from(workspaces)
+      .orderBy(asc(workspaces.created_at), asc(workspaces.id))
       .limit(limit)
       .offset(offset)
       .all() as Workspace[];
@@ -131,15 +135,22 @@ export class HierarchyRepo {
     limit: number,
     offset: number,
   ): { items: Project[]; total: number } {
+    // RT-03: deterministic pagination ordering (see listWorkspaces).
     const itemsQuery =
       workspaceId !== undefined
         ? this.db
             .select()
             .from(projects)
             .where(eq(projects.workspace_id, workspaceId))
+            .orderBy(asc(projects.created_at), asc(projects.id))
             .limit(limit)
             .offset(offset)
-        : this.db.select().from(projects).limit(limit).offset(offset);
+        : this.db
+            .select()
+            .from(projects)
+            .orderBy(asc(projects.created_at), asc(projects.id))
+            .limit(limit)
+            .offset(offset);
     const items = itemsQuery.all() as Project[];
 
     const totalQuery =
@@ -196,15 +207,22 @@ export class HierarchyRepo {
     limit: number,
     offset: number,
   ): { items: Sequence[]; total: number } {
+    // RT-03: deterministic pagination ordering.
     const itemsQuery =
       projectId !== undefined
         ? this.db
             .select()
             .from(sequences)
             .where(eq(sequences.project_id, projectId))
+            .orderBy(asc(sequences.created_at), asc(sequences.id))
             .limit(limit)
             .offset(offset)
-        : this.db.select().from(sequences).limit(limit).offset(offset);
+        : this.db
+            .select()
+            .from(sequences)
+            .orderBy(asc(sequences.created_at), asc(sequences.id))
+            .limit(limit)
+            .offset(offset);
     const items = itemsQuery.all() as Sequence[];
 
     const totalQuery =
@@ -263,15 +281,22 @@ export class HierarchyRepo {
     limit: number,
     offset: number,
   ): { items: Shot[]; total: number } {
+    // RT-03: deterministic pagination ordering.
     const itemsQuery =
       sequenceId !== undefined
         ? this.db
             .select()
             .from(shots)
             .where(eq(shots.sequence_id, sequenceId))
+            .orderBy(asc(shots.created_at), asc(shots.id))
             .limit(limit)
             .offset(offset)
-        : this.db.select().from(shots).limit(limit).offset(offset);
+        : this.db
+            .select()
+            .from(shots)
+            .orderBy(asc(shots.created_at), asc(shots.id))
+            .limit(limit)
+            .offset(offset);
     const items = itemsQuery.all() as Shot[];
 
     const totalQuery =

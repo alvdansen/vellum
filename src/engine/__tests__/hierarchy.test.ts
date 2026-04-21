@@ -203,4 +203,30 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     // 'ws_' (3 chars) + nanoid default (21 chars) = 24, so ≥ 21 is the floor.
     expect(a.entity.id.length).toBeGreaterThanOrEqual(21);
   });
+
+  test('RT-03: list pagination is deterministic across offsets', () => {
+    // Insert 5 workspaces. Their created_at values will be close (same ms on
+    // fast machines), exercising the id tiebreaker in ORDER BY.
+    const names = ['ws-a', 'ws-b', 'ws-c', 'ws-d', 'ws-e'];
+    for (const n of names) engine.createWorkspace(n);
+
+    const page1 = engine.listWorkspaces(2, 0);
+    const page2 = engine.listWorkspaces(2, 2);
+    const page3 = engine.listWorkspaces(2, 4);
+
+    expect(page1.total).toBe(5);
+    expect(page1.items).toHaveLength(2);
+    expect(page2.items).toHaveLength(2);
+    expect(page3.items).toHaveLength(1);
+
+    // No duplicates, no gaps.
+    const paged = [...page1.items, ...page2.items, ...page3.items].map((w) => w.id);
+    expect(new Set(paged).size).toBe(5);
+
+    // Re-paginate; order must be stable.
+    const again1 = engine.listWorkspaces(2, 0);
+    const again2 = engine.listWorkspaces(2, 2);
+    expect(again1.items.map((w) => w.id)).toEqual(page1.items.map((w) => w.id));
+    expect(again2.items.map((w) => w.id)).toEqual(page2.items.map((w) => w.id));
+  });
 });
