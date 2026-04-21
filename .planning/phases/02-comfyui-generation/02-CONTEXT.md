@@ -48,9 +48,9 @@ Deliver an async ComfyUI Cloud generation surface over the Phase 1 hierarchy. On
 
 ### Config & Secrets (resolves TRNS-04 tension for GEN-01)
 
-- **D-GEN-09:** ComfyUI credentials read from `.env` via `dotenv`. Expected variables: `COMFYUI_API_KEY` (required for `submit`), `COMFYUI_API_BASE` (optional, default `https://api.comfy.org`). `dotenv` loaded at `src/server.ts` entry **before** engine instantiation. `.env` file already present at repo root, gitignored, chmod 600.
+- **D-GEN-09:** ComfyUI credentials read from `.env` via `dotenv`. Expected variables: `COMFYUI_API_KEY` (required for `submit`), `COMFYUI_API_BASE` (optional, default `https://cloud.comfy.org`). `dotenv` loaded at `src/server.ts` entry **before** engine instantiation. `.env` file already present at repo root, gitignored, chmod 600.
 - **D-GEN-10:** Enforcement timing is **submit-time only** — preserves Phase 1 TRNS-04. Server still boots with zero config; `workspace/project/sequence/shot` tools work without credentials. `generation submit` checks for `COMFYUI_API_KEY` on first invocation per process; missing key returns `COMFYUI_CREDENTIALS_MISSING` with hint `"Set COMFYUI_API_KEY in .env at the repo root. See .env.example."`. Hierarchy-only demos and CI runs that never call generation still boot cleanly.
-- **D-GEN-11:** `COMFYUI_API_BASE` default is the exact string `https://api.comfy.org` (no trailing slash). Overridable via `.env` so the demo rig can point at staging or a local ComfyUI without code changes. Value logged at startup-time-of-first-submit as part of D-GEN-12.
+- **D-GEN-11:** `COMFYUI_API_BASE` default is the exact string `https://cloud.comfy.org` (no trailing slash). Overridable via `.env` so the demo rig can point at staging or a local ComfyUI without code changes. Value logged at startup-time-of-first-submit as part of D-GEN-12. *(Updated 2026-04-20 during plan-phase: research cross-referenced docs.comfy.org and confirmed `cloud.comfy.org`; prior value `api.comfy.org` in discuss-phase was incorrect.)*
 - **D-GEN-12:** Credential logging rule — **presence only**. On the first `submit` per process, stderr emits one line: `ComfyUI credentials loaded (key ****${last4}, base ${base})`. Never log the key value. Enforced by a grep check in `src/__tests__/stdio-hygiene.test.ts` (existing) extended to assert no `COMFYUI_API_KEY=` string appears in any log path.
 - **D-GEN-13:** No CLI flag added for the API key in Phase 2 — `.env` is the single source. Keeps Phase 1's 5-flag CLI contract (D-19) unchanged. An `.env.example` file is committed (without the actual key) so new contributors know what to set.
 - **D-GEN-14:** `.env` loading is **silent if `.env` is missing** — this is the zero-config boot path. Only the first `submit` call fails with `COMFYUI_CREDENTIALS_MISSING`.
@@ -71,7 +71,7 @@ Deliver an async ComfyUI Cloud generation surface over the Phase 1 hierarchy. On
 ### ComfyUI Client & API Integration (GEN-01, GEN-05, GEN-06, GEN-07)
 
 - **D-GEN-21:** ComfyUI client lives in `src/comfyui/client.ts` (zero MCP imports, zero DB imports — pure HTTP over `fetch`). Wraps four endpoints for Phase 2: `POST /api/prompt`, `GET /api/job/{prompt_id}/status`, `GET /api/view` (with 302 redirect follow via `fetch`'s native redirect mode `'follow'` validated against the configured `COMFYUI_API_BASE` + the approved host list). Auth header: `X-API-Key: ${COMFYUI_API_KEY}` on every request.
-- **D-GEN-22:** Redirect safety (Pitfall Integration Gotcha): `fetch` follows 302 redirects automatically, but the client validates the post-redirect URL resolves to one of: `api.comfy.org`, `storage.googleapis.com/comfy-*` (ComfyUI Cloud signed URL host pattern), or a host matching the `COMFYUI_API_BASE` origin. Unknown redirect target → `COMFYUI_API_ERROR` with message `"Unexpected redirect host: ${host}"`. Prevents SSRF.
+- **D-GEN-22:** Redirect safety (Pitfall Integration Gotcha): `fetch` follows 302 redirects automatically, but the client validates the post-redirect URL resolves to one of: `cloud.comfy.org`, `storage.googleapis.com/comfy-*` (ComfyUI Cloud signed URL host pattern — permissive default, widen after first live-smoke), or a host matching the `COMFYUI_API_BASE` origin. Unknown redirect target → `COMFYUI_API_ERROR` with message `"Unexpected redirect host: ${host}"`. Prevents SSRF. Allowlist overridable via `COMFYUI_ALLOWED_REDIRECT_HOSTS` env var (comma-separated) for demo-rig flexibility.
 - **D-GEN-23:** Workflow format validation lives in `src/comfyui/format.ts`. Detection heuristic (run before submit; order of checks):
   1. If payload has top-level keys `nodes` (array), `links` (array), `groups` (array), or `last_node_id` (number) → **UI format** → reject `INVALID_WORKFLOW_FORMAT` with hint `"Export the workflow with 'Dev Mode > Save (API Format)' enabled in ComfyUI. API format uses numeric string keys (\"1\", \"2\", ...) with class_type/inputs per node."`.
   2. If payload is a plain object whose keys are numeric strings (`/^\d+$/`) and each value has `class_type` (string) and `inputs` (object) → **API format** → accept.
@@ -251,7 +251,7 @@ Deliver an async ComfyUI Cloud generation surface over the Phase 1 hierarchy. On
 - **Tool name:** `generation` (lowercase, noun, snake_case, no prefix)
 - **Action values:** `"submit"`, `"status"` (lowercase strings, discriminated union)
 - **Env var names:** `COMFYUI_API_KEY`, `COMFYUI_API_BASE`
-- **Default base URL:** `https://api.comfy.org` (no trailing slash)
+- **Default base URL:** `https://cloud.comfy.org` (no trailing slash)
 - **Auth header:** `X-API-Key: ${COMFYUI_API_KEY}`
 - **Version label format:** `v` + zero-padded integer, min 3 digits (`v001`, `v002`, ..., `v999`, `v1000`)
 - **Version state machine:** `'submitted' | 'running' | 'completed' | 'failed'` (one-way; no rollback)
