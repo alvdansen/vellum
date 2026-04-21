@@ -118,6 +118,13 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
   /(^|\.)r2\.cloudflarestorage\.com$/,
 ];
 
+/**
+ * IS-04: cap on persisted ComfyUI error messages. Truncates anything longer
+ * than this before it crosses the client boundary so downstream storage
+ * (versions.error_message) never holds pathologically-large strings.
+ */
+export const MAX_ERROR_MESSAGE_CHARS = 1_000;
+
 export class ComfyUIClient {
   private allowed: RegExp[];
   /**
@@ -132,6 +139,31 @@ export class ComfyUIClient {
    */
   private allowedLiteralHosts: string[];
   private fetchImpl: typeof fetch;
+
+  /**
+   * IS-04: scrub the configured API key literal from any string before it
+   * leaves the client boundary, then truncate to MAX_ERROR_MESSAGE_CHARS.
+   *
+   * Rationale: a ComfyUI error response could (rarely) echo back request
+   * headers — including X-API-Key. That blob flows into
+   * TypedError.message, and then through markFailed into versions.error_message
+   * where an agent can read it back with a status call. Stripping the key
+   * at the client boundary is the narrowest fix that doesn't require plumbing
+   * the key into engine code.
+   */
+  private scrubAndTruncate(s: string): string {
+    let out = s;
+    // Defensive: only scrub if the key is a non-empty non-placeholder string.
+    if (this.apiKey && this.apiKey.length >= 4) {
+      // Replace every occurrence, including within bearer/apikey prefixes.
+      // String.replaceAll is available in Node 15+ (we're on Node 25).
+      out = out.replaceAll(this.apiKey, '[redacted]');
+    }
+    if (out.length > MAX_ERROR_MESSAGE_CHARS) {
+      out = out.slice(0, MAX_ERROR_MESSAGE_CHARS) + `...[truncated]`;
+    }
+    return out;
+  }
 
   constructor(
     private apiKey: string,
@@ -176,7 +208,7 @@ export class ComfyUIClient {
     } catch (err) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
-        `ComfyUI network error: ${(err as Error).message}`,
+        this.scrubAndTruncate(`ComfyUI network error: ${(err as Error).message}`),
       );
     }
     if (res.status >= 300 && res.status < 400) {
@@ -204,9 +236,13 @@ export class ComfyUIClient {
       }
       const nodeErrors = (parsed as { node_errors?: unknown } | null)?.node_errors;
       const nodeMessage = extractFirstNodeError(nodeErrors);
+      // IS-04: scrub the API key (in case ComfyUI echoed a header) and
+      // truncate before the message leaves the client boundary.
       throw new TypedError(
         'COMFYUI_API_ERROR',
-        nodeMessage ?? `ComfyUI request failed: ${res.status} ${res.statusText}`,
+        this.scrubAndTruncate(
+          nodeMessage ?? `ComfyUI request failed: ${res.status} ${res.statusText}`,
+        ),
       );
     }
     const json = (await res.json()) as SubmitResponse;
@@ -231,7 +267,7 @@ export class ComfyUIClient {
     } catch (err) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
-        `ComfyUI network error: ${(err as Error).message}`,
+        this.scrubAndTruncate(`ComfyUI network error: ${(err as Error).message}`),
       );
     }
     if (res.status >= 300 && res.status < 400) {
@@ -243,7 +279,9 @@ export class ComfyUIClient {
     if (!res.ok) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
-        `ComfyUI status request failed: ${res.status} ${res.statusText}`,
+        this.scrubAndTruncate(
+          `ComfyUI status request failed: ${res.status} ${res.statusText}`,
+        ),
       );
     }
     const raw = (await res.json()) as Record<string, unknown>;
@@ -251,8 +289,37 @@ export class ComfyUIClient {
     const status = (raw.status ?? 'pending') as StatusResponse['status'];
     const progress = typeof raw.progress === 'number' ? raw.progress : undefined;
     const outputs = Array.isArray(raw.outputs) ? (raw.outputs as ComfyOutput[]) : undefined;
-    const error = 'error' in raw ? raw.error : undefined;
+    // IS-04: scrub any echoed API key from the error blob before it leaves
+    // the client boundary. The engine persists this verbatim into
+    // versions.error_message, so scrubbing here prevents the key from
+    // reaching disk / agent responses. Applied to both string and object
+    // shapes by serialising, scrubbing, and re-parsing when possible.
+    const error =
+      'error' in raw ? this.scrubErrorValue(raw.error as unknown) : undefined;
     return { status, progress, outputs, error };
+  }
+
+  /**
+   * IS-04: scrub the API key from an arbitrary status.error value. Strings
+   * are scrub+truncated directly. Objects are serialised, scrubbed, re-parsed
+   * (silently falls back to a redacted marker if the object is not JSON-safe).
+   */
+  private scrubErrorValue(val: unknown): unknown {
+    if (val == null) return val;
+    if (typeof val === 'string') return this.scrubAndTruncate(val);
+    try {
+      const json = JSON.stringify(val);
+      const scrubbed = this.scrubAndTruncate(json);
+      // If the scrubbed JSON is still parseable, return the structured form;
+      // otherwise fall back to a truncated string marker.
+      try {
+        return JSON.parse(scrubbed);
+      } catch {
+        return scrubbed;
+      }
+    } catch {
+      return '[unserialisable error — redacted]';
+    }
   }
 
   /**

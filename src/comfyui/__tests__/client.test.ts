@@ -113,6 +113,74 @@ describe('ComfyUIClient.submit', () => {
     });
   });
 
+  test('IS-04: ComfyUI error containing API-key substring is scrubbed before throwing', async () => {
+    // Upstream echoes the X-API-Key header verbatim into its error body. The
+    // client must NOT let that string escape into the thrown TypedError.
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(400, {
+          error: 'validation failed',
+          node_errors: {
+            '3': {
+              errors: [{ type: 'x', message: `bad input (saw: ${KEY})` }],
+              dependent_outputs: [],
+              class_type: 'KSampler',
+            },
+          },
+        }),
+      ),
+    });
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+    });
+    // Re-run to capture the message and assert it does not contain the key.
+    try {
+      await client.submit({ '1': { class_type: 'A', inputs: {} } });
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain(KEY);
+      expect(msg).toContain('[redacted]');
+    }
+  });
+
+  test('IS-04: status error containing the API key is scrubbed before returning', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(200, {
+          status: 'failed',
+          error: `upstream echo: ${KEY} something`,
+        }),
+      ),
+    });
+    const s = await client.status('job-1');
+    expect(typeof s.error).toBe('string');
+    expect(s.error as string).not.toContain(KEY);
+    expect(s.error as string).toContain('[redacted]');
+  });
+
+  test('IS-04: long error messages are truncated to MAX_ERROR_MESSAGE_CHARS', async () => {
+    const huge = 'x'.repeat(5000);
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        new Response(JSON.stringify({ error: huge }), {
+          status: 500,
+          statusText: 'Internal',
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    });
+    try {
+      await client.submit({ '1': { class_type: 'A', inputs: {} } });
+    } catch (e) {
+      const msg = (e as Error).message;
+      // Should be bounded.
+      expect(msg.length).toBeLessThan(1500);
+    }
+  });
+
   test('IS-03: submit error-body read is capped at MAX_ERROR_BODY_BYTES', async () => {
     // Build an oversized body (2× the cap) and verify the client does not
     // swallow memory and still surfaces a typed error.
