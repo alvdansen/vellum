@@ -39,7 +39,7 @@ const serverTs = resolve(__dirname, '../server.ts');
 function bootAndKill(
   env: NodeJS.ProcessEnv,
   dbLabel: string,
-  opts: { killAfterMs?: number; signal?: NodeJS.Signals } = {},
+  opts: { killAfterMs?: number; signal?: NodeJS.Signals; keepStdinOpen?: boolean } = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null; signalName: NodeJS.Signals | null }> {
   return new Promise((resolvePromise, rejectPromise) => {
     const tmpDb = resolve(__dirname, `__stdio-${dbLabel}-${Date.now()}.db`);
@@ -51,12 +51,22 @@ function bootAndKill(
     });
     child.stdout.on('data', (c) => chunks.push(c));
     child.stderr.on('data', (c) => stderrChunks.push(c));
-    child.stdin.end();
+    // Close stdin by default. Some tests (SIGTERM graceful shutdown) keep
+    // stdin open so the MCP stdio transport does not exit on EOF before the
+    // signal arrives.
+    if (!opts.keepStdinOpen) {
+      child.stdin.end();
+    }
     const killMs = opts.killAfterMs ?? 1500;
     const killSig = opts.signal ?? 'SIGTERM';
     const killTimer = setTimeout(() => child.kill(killSig), killMs);
     child.on('exit', (code, signal) => {
       clearTimeout(killTimer);
+      try {
+        if (!child.stdin.destroyed) child.stdin.end();
+      } catch {
+        /* ignore */
+      }
       for (const suffix of ['', '-wal', '-shm']) {
         const p = tmpDb + suffix;
         if (existsSync(p)) {
@@ -164,4 +174,24 @@ describe('stdio hygiene', () => {
     expect(exitCode).not.toBe(0);
     expect(stderr).toMatch(/private|loopback|COMFYUI_API_BASE/i);
   }, 15_000);
+
+  it('IT-18: SIGTERM triggers graceful shutdown with exit 0 and a "shutting down" log line', async () => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      DOTENV_CONFIG_PATH: '/nonexistent-stdio-hygiene-sigterm',
+    };
+    // Keep stdin open so the MCP stdio transport does not exit on EOF. Send
+    // SIGTERM after 2s — enough time for tsx cold start + stdio connect +
+    // engine.start(). The graceful shutdown handler must call engine.stop()
+    // and process.exit(0); bootAndKill waits for `exit`.
+    const { stderr, exitCode } = await bootAndKill(env, 'sigterm', {
+      killAfterMs: 2000,
+      signal: 'SIGTERM',
+      keepStdinOpen: true,
+    });
+    expect(exitCode).toBe(0);
+    expect(stderr).toMatch(/SIGTERM received/);
+    expect(stderr).toMatch(/shutting down/);
+  }, 20_000);
 });
