@@ -115,13 +115,13 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     expect(() => engine.getShot('shot_nonexistent')).toThrowTypedError('SHOT_NOT_FOUND');
   });
 
-  test('list returns {items, total, limit, offset}; each item has breadcrumb entries + text', () => {
+  test('list returns {items, total_count, limit, offset}; each item has breadcrumb entries + text', () => {
     engine.createWorkspace('ws-a');
     engine.createWorkspace('ws-b');
     engine.createWorkspace('ws-c');
 
     const result = engine.listWorkspaces(20, 0);
-    expect(result.total).toBe(3);
+    expect(result.total_count).toBe(3);
     expect(result.limit).toBe(20);
     expect(result.offset).toBe(0);
     expect(result.items).toHaveLength(3);
@@ -139,8 +139,8 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     const page2 = engine.listWorkspaces(2, 2);
     expect(page1.items).toHaveLength(2);
     expect(page2.items).toHaveLength(2);
-    expect(page1.total).toBe(5);
-    expect(page2.total).toBe(5);
+    expect(page1.total_count).toBe(5);
+    expect(page2.total_count).toBe(5);
     expect(page2.offset).toBe(2);
   });
 
@@ -184,14 +184,14 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     engine.createProject(b.entity.id, 'p-b1');
 
     const filteredA = engine.listProjects(a.entity.id, 20, 0);
-    expect(filteredA.total).toBe(2);
+    expect(filteredA.total_count).toBe(2);
     expect(filteredA.items).toHaveLength(2);
     for (const item of filteredA.items) {
       expect(item.workspace_id).toBe(a.entity.id);
     }
 
     const all = engine.listProjects(undefined, 20, 0);
-    expect(all.total).toBe(3);
+    expect(all.total_count).toBe(3);
   });
 
   test('newId produces distinct 21+ char nanoid values with entity prefix', () => {
@@ -214,7 +214,7 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     const page2 = engine.listWorkspaces(2, 2);
     const page3 = engine.listWorkspaces(2, 4);
 
-    expect(page1.total).toBe(5);
+    expect(page1.total_count).toBe(5);
     expect(page1.items).toHaveLength(2);
     expect(page2.items).toHaveLength(2);
     expect(page3.items).toHaveLength(1);

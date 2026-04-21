@@ -107,7 +107,7 @@ describe('breadcrumb-always: create responses carry breadcrumb + breadcrumb_text
 });
 
 describe('breadcrumb-always: list envelope shape + breadcrumb on every item', () => {
-  it('workspace list envelope has {items,total,limit,offset} with defaults 20/0', () => {
+  it('workspace list envelope has {items,total_count,limit,offset} with defaults 20/0', () => {
     const { engine } = buildTestStack();
     engine.createWorkspace('ws-a');
     engine.createWorkspace('ws-b');
@@ -117,17 +117,17 @@ describe('breadcrumb-always: list envelope shape + breadcrumb on every item', ()
     const res = toolOk(shapeList(engine.listWorkspaces(20, 0)));
     const payload = res.structuredContent as {
       items: unknown[];
-      total: number;
+      total_count: number;
       limit: number;
       offset: number;
     };
 
     expect(payload).toHaveProperty('items');
-    expect(payload).toHaveProperty('total');
+    expect(payload).toHaveProperty('total_count');
     expect(payload).toHaveProperty('limit');
     expect(payload).toHaveProperty('offset');
     expect(payload.items).toHaveLength(3);
-    expect(payload.total).toBe(3);
+    expect(payload.total_count).toBe(3);
     expect(payload.limit).toBe(20);
     expect(payload.offset).toBe(0);
   });
@@ -170,11 +170,11 @@ describe('breadcrumb-always: list envelope shape + breadcrumb on every item', ()
         breadcrumb: { type: string; name: string }[];
         breadcrumb_text: string;
       }[];
-      total: number;
+      total_count: number;
     };
 
     expect(payload.items).toHaveLength(2);
-    expect(payload.total).toBe(2);
+    expect(payload.total_count).toBe(2);
     for (const item of payload.items) {
       expect(item.breadcrumb).toHaveLength(4);
       expect(item.breadcrumb.map((b) => b.type)).toEqual([
@@ -196,13 +196,13 @@ describe('breadcrumb-always: list envelope shape + breadcrumb on every item', ()
     const res = toolOk(shapeList(engine.listWorkspaces(2, 1)));
     const payload = res.structuredContent as {
       items: unknown[];
-      total: number;
+      total_count: number;
       limit: number;
       offset: number;
     };
 
     expect(payload.items).toHaveLength(2);
-    expect(payload.total).toBe(3);
+    expect(payload.total_count).toBe(3);
     expect(payload.limit).toBe(2);
     expect(payload.offset).toBe(1);
   });

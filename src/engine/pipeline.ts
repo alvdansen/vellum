@@ -19,7 +19,7 @@ const SHOT_REGEX = /^sh\d{3,}$/;
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
   items: WithBreadcrumb<T>[];
-  total: number;
+  total_count: number;
   limit: number;
   offset: number;
 };
@@ -82,10 +82,10 @@ export class Engine {
   }
 
   listWorkspaces(limit: number, offset: number): ListResult<Workspace> {
-    const { items, total } = this.repo.listWorkspaces(limit, offset);
+    const { items, total_count } = this.repo.listWorkspaces(limit, offset);
     return {
       items: items.map((ws) => ({ ...ws, ...this.breadcrumb.resolve('workspace', ws.id) })),
-      total,
+      total_count,
       limit,
       offset,
     };
@@ -120,10 +120,10 @@ export class Engine {
     limit: number,
     offset: number,
   ): ListResult<Project> {
-    const { items, total } = this.repo.listProjects(workspaceId, limit, offset);
+    const { items, total_count } = this.repo.listProjects(workspaceId, limit, offset);
     return {
       items: items.map((p) => ({ ...p, ...this.breadcrumb.resolve('project', p.id) })),
-      total,
+      total_count,
       limit,
       offset,
     };
@@ -158,10 +158,10 @@ export class Engine {
     limit: number,
     offset: number,
   ): ListResult<Sequence> {
-    const { items, total } = this.repo.listSequences(projectId, limit, offset);
+    const { items, total_count } = this.repo.listSequences(projectId, limit, offset);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('sequence', s.id) })),
-      total,
+      total_count,
       limit,
       offset,
     };
@@ -201,10 +201,10 @@ export class Engine {
     limit: number,
     offset: number,
   ): ListResult<Shot> {
-    const { items, total } = this.repo.listShots(sequenceId, limit, offset);
+    const { items, total_count } = this.repo.listShots(sequenceId, limit, offset);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('shot', s.id) })),
-      total,
+      total_count,
       limit,
       offset,
     };

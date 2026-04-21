@@ -73,7 +73,7 @@ export class HierarchyRepo {
   listWorkspaces(
     limit: number,
     offset: number,
-  ): { items: Workspace[]; total: number } {
+  ): { items: Workspace[]; total_count: number } {
     // RT-03: deterministic pagination ordering. created_at as primary sort (so
     // newer rows naturally land on later pages); id as a stable tiebreaker for
     // rows created in the same millisecond.
@@ -88,7 +88,7 @@ export class HierarchyRepo {
       .select({ n: sql<number>`count(*)` })
       .from(workspaces)
       .get();
-    return { items, total: Number(totalRow?.n ?? 0) };
+    return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
   // ================================================================
@@ -134,7 +134,7 @@ export class HierarchyRepo {
     workspaceId: string | undefined,
     limit: number,
     offset: number,
-  ): { items: Project[]; total: number } {
+  ): { items: Project[]; total_count: number } {
     // RT-03: deterministic pagination ordering (see listWorkspaces).
     const itemsQuery =
       workspaceId !== undefined
@@ -161,7 +161,7 @@ export class HierarchyRepo {
             .where(eq(projects.workspace_id, workspaceId))
         : this.db.select({ n: sql<number>`count(*)` }).from(projects);
     const totalRow = totalQuery.get();
-    return { items, total: Number(totalRow?.n ?? 0) };
+    return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
   // ================================================================
@@ -206,7 +206,7 @@ export class HierarchyRepo {
     projectId: string | undefined,
     limit: number,
     offset: number,
-  ): { items: Sequence[]; total: number } {
+  ): { items: Sequence[]; total_count: number } {
     // RT-03: deterministic pagination ordering.
     const itemsQuery =
       projectId !== undefined
@@ -233,7 +233,7 @@ export class HierarchyRepo {
             .where(eq(sequences.project_id, projectId))
         : this.db.select({ n: sql<number>`count(*)` }).from(sequences);
     const totalRow = totalQuery.get();
-    return { items, total: Number(totalRow?.n ?? 0) };
+    return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
   // ================================================================
@@ -280,7 +280,7 @@ export class HierarchyRepo {
     sequenceId: string | undefined,
     limit: number,
     offset: number,
-  ): { items: Shot[]; total: number } {
+  ): { items: Shot[]; total_count: number } {
     // RT-03: deterministic pagination ordering.
     const itemsQuery =
       sequenceId !== undefined
@@ -307,6 +307,6 @@ export class HierarchyRepo {
             .where(eq(shots.sequence_id, sequenceId))
         : this.db.select({ n: sql<number>`count(*)` }).from(shots);
     const totalRow = totalQuery.get();
-    return { items, total: Number(totalRow?.n ?? 0) };
+    return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 }

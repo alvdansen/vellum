@@ -1,6 +1,6 @@
 // Breadcrumb-injection shapers used by every tool. The Engine returns
 // `{entity, breadcrumb: {entries, text}}` for create/get and
-// `{items: (Entity & Breadcrumb)[], total, limit, offset}` for list.
+// `{items: (Entity & Breadcrumb)[], total_count, limit, offset}` for list.
 //
 // Tools must emit `breadcrumb` (array) + `breadcrumb_text` (string) at top level
 // of the structuredContent payload per D-22. These helpers are the single
@@ -48,7 +48,7 @@ export function shapeCreateOrGet<TEntity>(result: {
  */
 export function shapeList<TItem>(result: {
   items: (TItem & Breadcrumb)[];
-  total: number;
+  total_count: number;
   limit: number;
   offset: number;
 }) {
@@ -62,7 +62,7 @@ export function shapeList<TItem>(result: {
       };
       return { ...rest, breadcrumb: entries, breadcrumb_text: text };
     }),
-    total: result.total,
+    total_count: result.total_count,
     limit: result.limit,
     offset: result.offset,
   };
