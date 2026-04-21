@@ -331,6 +331,110 @@ describe('ComfyUIClient.download SSRF gate', () => {
       expect(res.url).toContain(h);
     }
   });
+
+  test('IS-01: regex-metachar admin typo in additionalAllowedHosts does NOT broaden the allowlist', async () => {
+    // `foo|.*` with naive-regex escaping would compile to /^foo|.*$/ and match
+    // every hostname because the alternation promotes `.*` to the top level.
+    // With literal string matching this is just a nonsense hostname that matches
+    // nothing, and the redirect must be rejected.
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      additionalAllowedHosts: ['foo|.*'],
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://evil.example.com/steal' },
+          });
+        return new Response('leaked', { status: 200 });
+      }),
+    });
+    await expect(client.download('x.bin')).rejects.toMatchObject({
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('Unexpected redirect host'),
+    });
+    expect(n).toBe(1); // never made the second hop
+  });
+
+  test('IS-01: additionalAllowedHosts exact + suffix match (not parent-domain, not other-domain)', async () => {
+    // Exact match succeeds
+    {
+      let n = 0;
+      const client = new ComfyUIClient(KEY, BASE, {
+        additionalAllowedHosts: ['tenant.example.com'],
+        fetchImpl: mockFetch(async () => {
+          if (++n === 1)
+            return new Response(null, {
+              status: 302,
+              headers: { location: 'https://tenant.example.com/blob' },
+            });
+          return new Response(new Uint8Array([1]), {
+            status: 200,
+            headers: { 'content-type': 'application/octet-stream' },
+          });
+        }),
+      });
+      const r = await client.download('ok.bin');
+      expect(r.url).toContain('tenant.example.com');
+    }
+    // Suffix match succeeds: sub.tenant.example.com
+    {
+      let n = 0;
+      const client = new ComfyUIClient(KEY, BASE, {
+        additionalAllowedHosts: ['tenant.example.com'],
+        fetchImpl: mockFetch(async () => {
+          if (++n === 1)
+            return new Response(null, {
+              status: 302,
+              headers: { location: 'https://sub.tenant.example.com/blob' },
+            });
+          return new Response(new Uint8Array([1]), {
+            status: 200,
+            headers: { 'content-type': 'application/octet-stream' },
+          });
+        }),
+      });
+      const r = await client.download('ok2.bin');
+      expect(r.url).toContain('sub.tenant.example.com');
+    }
+    // Parent-domain must NOT be allowed (tenant.example.com does not admit example.com)
+    {
+      let n = 0;
+      const client = new ComfyUIClient(KEY, BASE, {
+        additionalAllowedHosts: ['tenant.example.com'],
+        fetchImpl: mockFetch(async () => {
+          if (++n === 1)
+            return new Response(null, {
+              status: 302,
+              headers: { location: 'https://example.com/blob' },
+            });
+          return new Response('leaked', { status: 200 });
+        }),
+      });
+      await expect(client.download('bad.bin')).rejects.toMatchObject({
+        code: 'COMFYUI_API_ERROR',
+        message: expect.stringContaining('Unexpected redirect host'),
+      });
+    }
+    // Different domain must NOT be allowed
+    {
+      let n = 0;
+      const client = new ComfyUIClient(KEY, BASE, {
+        additionalAllowedHosts: ['tenant.example.com'],
+        fetchImpl: mockFetch(async () => {
+          if (++n === 1)
+            return new Response(null, {
+              status: 302,
+              headers: { location: 'https://evil.com/blob' },
+            });
+          return new Response('leaked', { status: 200 });
+        }),
+      });
+      await expect(client.download('bad2.bin')).rejects.toMatchObject({
+        code: 'COMFYUI_API_ERROR',
+      });
+    }
+  });
 });
 
 describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {

@@ -65,6 +65,17 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
 
 export class ComfyUIClient {
   private allowed: RegExp[];
+  /**
+   * IS-01: admin-supplied allowed hosts are matched by EXACT or SUFFIX
+   * string comparison, not regex. Using a regex over user input (even with
+   * `.replace(/\./g, '\\.')`) still allows metacharacters (`|`, `+`, `*`, `[`)
+   * through — an admin typo like `foo|.*` would broaden the allowlist to
+   * every host. String comparison closes that escape hatch entirely.
+   *
+   * Semantics match the default patterns (`/(^|\.)X$/`): host === allowed OR
+   * host.endsWith('.' + allowed). Case-insensitive (hostnames compared lowercase).
+   */
+  private allowedLiteralHosts: string[];
   private fetchImpl: typeof fetch;
 
   constructor(
@@ -73,17 +84,18 @@ export class ComfyUIClient {
     options: ComfyUIClientOptions = {},
   ) {
     this.allowed = [...DEFAULT_ALLOWED_HOST_PATTERNS];
-    // Also accept the configured base origin host verbatim.
+    this.allowedLiteralHosts = [];
+    // Also accept the configured base origin host verbatim — exact match only.
     try {
-      const baseHost = new URL(base).hostname;
-      this.allowed.push(new RegExp(`^${baseHost.replace(/\./g, '\\.')}$`));
+      const baseHost = new URL(base).hostname.toLowerCase();
+      this.allowedLiteralHosts.push(baseHost);
     } catch {
       /* ignore — upstream validates base URL */
     }
     for (const raw of options.additionalAllowedHosts ?? []) {
-      const trimmed = raw.trim();
+      const trimmed = raw.trim().toLowerCase();
       if (!trimmed) continue;
-      this.allowed.push(new RegExp(`^${trimmed.replace(/\./g, '\\.')}$`));
+      this.allowedLiteralHosts.push(trimmed);
     }
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
@@ -312,6 +324,10 @@ export class ComfyUIClient {
   }
 
   private isAllowedHost(host: string): boolean {
-    return this.allowed.some((re) => re.test(host));
+    if (this.allowed.some((re) => re.test(host))) return true;
+    const hostLower = host.toLowerCase();
+    return this.allowedLiteralHosts.some(
+      (h) => hostLower === h || hostLower.endsWith('.' + h),
+    );
   }
 }
