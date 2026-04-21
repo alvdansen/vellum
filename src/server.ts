@@ -227,9 +227,21 @@ async function main(): Promise<void> {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // stateless mode per STACK.md / mcp-hono-stateless
       });
-      await requestServer.connect(transport);
-      await transport.handleRequest(req, res);
-      return toFetchResponse(res);
+      // RT-06: per-request McpServer + transport are disposable; close both on
+      // client disconnect AND in the try/finally wrapper below so a thrown
+      // handleRequest (disconnect, bad framing) doesn't leak them to V8's GC.
+      res.on('close', () => {
+        void transport.close().catch(() => {});
+        void requestServer.close().catch(() => {});
+      });
+      try {
+        await requestServer.connect(transport);
+        await transport.handleRequest(req, res);
+        return toFetchResponse(res);
+      } finally {
+        await transport.close().catch(() => {});
+        await requestServer.close().catch(() => {});
+      }
     });
     // NOTE: do not log request bodies here — future phases will carry ComfyUI
     // keys in headers (T-03-04 reminder).
