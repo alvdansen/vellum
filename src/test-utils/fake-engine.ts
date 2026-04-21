@@ -4,7 +4,9 @@ import type {
   Project,
   Sequence,
   Shot,
+  Version,
   Breadcrumb,
+  BreadcrumbEntry,
   EntityType,
 } from '../types/hierarchy.js';
 
@@ -140,5 +142,108 @@ export class FakeEngine {
   ): { items: (Shot & Breadcrumb)[]; total: number; limit: number; offset: number } {
     this.calls.push({ method: 'listShots', args: [sequenceId, limit, offset] });
     return { items: [], total: 0, limit, offset };
+  }
+
+  // ================================================================
+  // PHASE 2 — GENERATION (Plans 02-02 and 02-03 consume these)
+  // ================================================================
+
+  /** Scenario knob for tool-layer tests: alter submit/status canned behavior. */
+  cannedVersionScenario: 'happy' | 'not-found' | 'credentials-missing' | 'ui-format' = 'happy';
+
+  submitGeneration(
+    shotId: string,
+    workflowJson: Record<string, unknown>,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    this.calls.push({ method: 'submitGeneration', args: [shotId, workflowJson, notes] });
+    if (this.cannedVersionScenario === 'credentials-missing') {
+      return Promise.reject(
+        new TypedError(
+          'COMFYUI_CREDENTIALS_MISSING',
+          'COMFYUI_API_KEY is not set',
+          'Set COMFYUI_API_KEY in .env at the repo root. See .env.example.',
+        ),
+      );
+    }
+    if (this.cannedVersionScenario === 'ui-format') {
+      return Promise.reject(
+        new TypedError(
+          'INVALID_WORKFLOW_FORMAT',
+          'Workflow is in ComfyUI UI format (contains nodes/links/groups)',
+          "Export the workflow with 'Dev Mode > Save (API Format)' enabled in ComfyUI.",
+        ),
+      );
+    }
+    const entity: Version = {
+      id: 'ver_fake',
+      shot_id: shotId,
+      version_number: 1,
+      status: 'submitted',
+      job_id: 'prompt_fake_123',
+      parent_version_id: null,
+      notes: notes ?? null,
+      created_at: 0,
+      completed_at: null,
+      error_code: null,
+      error_message: null,
+      outputs_json: null,
+    };
+    // 5-entry breadcrumb ending at 'version' leaf labelled 'v001'
+    const entries: BreadcrumbEntry[] = [
+      { type: 'workspace', id: 'ws_fake', name: 'ws' },
+      { type: 'project', id: 'proj_fake', name: 'proj' },
+      { type: 'sequence', id: 'seq_fake', name: 'sq010' },
+      { type: 'shot', id: shotId, name: 'sh010' },
+      { type: 'version', id: entity.id, name: 'v001' },
+    ];
+    return Promise.resolve({
+      entity,
+      breadcrumb: { entries, text: entries.map((e) => e.name).join(' > ') },
+    });
+  }
+
+  getGenerationStatus(
+    versionId: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    this.calls.push({ method: 'getGenerationStatus', args: [versionId] });
+    if (this.cannedVersionScenario === 'not-found') {
+      return Promise.reject(
+        new TypedError('VERSION_NOT_FOUND', `Version '${versionId}' not found`),
+      );
+    }
+    const entity: Version = {
+      id: versionId,
+      shot_id: 'shot_fake',
+      version_number: 1,
+      status: 'submitted',
+      job_id: 'prompt_fake_123',
+      parent_version_id: null,
+      notes: null,
+      created_at: 0,
+      completed_at: null,
+      error_code: null,
+      error_message: null,
+      outputs_json: null,
+    };
+    const entries: BreadcrumbEntry[] = [
+      { type: 'workspace', id: 'ws_fake', name: 'ws' },
+      { type: 'project', id: 'proj_fake', name: 'proj' },
+      { type: 'sequence', id: 'seq_fake', name: 'sq010' },
+      { type: 'shot', id: 'shot_fake', name: 'sh010' },
+      { type: 'version', id: versionId, name: 'v001' },
+    ];
+    return Promise.resolve({
+      entity,
+      breadcrumb: { entries, text: entries.map((e) => e.name).join(' > ') },
+    });
+  }
+
+  async start(): Promise<void> {
+    this.calls.push({ method: 'start', args: [] });
+  }
+
+  async stop(): Promise<void> {
+    this.calls.push({ method: 'stop', args: [] });
   }
 }
