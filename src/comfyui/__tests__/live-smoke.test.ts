@@ -6,11 +6,19 @@
  * project memory: feedback_dont_punt_on_tests.md — if the item is wire-level,
  * drive it with real calls before escalating).
  *
- * Gate strategy: `describe.skipIf(SKIP)` where `SKIP = !process.env.COMFYUI_API_KEY`.
- * Default `npx vitest run` (no env flag) leaves the describe block skipped, so
- * CI pipelines without credentials pass without hitting the real Cloud. When
- * the key is set, the full path runs: submit → poll → download → assert file
- * on disk with non-zero size.
+ * IT-19: double-opt-in gate. COMFYUI_API_KEY alone is no longer sufficient to
+ * enable the live smoke test — the developer must ALSO set RUN_LIVE_SMOKE=1.
+ * Without the extra flag, a routine `npx vitest run` with a loaded .env never
+ * burns credits against the real Cloud. This matches the "do not surprise the
+ * user with real-world side effects" rule from project memory.
+ *
+ * Gate strategy: `describe.skipIf(SKIP)` where
+ *   SKIP = !process.env.COMFYUI_API_KEY || process.env.RUN_LIVE_SMOKE !== '1'
+ *
+ * Default `npx vitest run` (no RUN_LIVE_SMOKE) leaves the describe block
+ * skipped even when the developer's .env defines COMFYUI_API_KEY. When BOTH
+ * are set, the full path runs: submit → poll → download → assert file on
+ * disk with non-zero size.
  *
  * Defensive probes (per RESEARCH Open Questions 1 + 2): on first run the test
  * logs the observed status-response shape AND the signed-URL redirect host to
@@ -41,7 +49,10 @@ import { Engine } from '../../engine/pipeline.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../client.js';
 import type { StoredOutput } from '../types.js';
 
-const SKIP = !process.env.COMFYUI_API_KEY;
+// IT-19: double-opt-in. Credit-burning tests require BOTH a real API key AND
+// an explicit RUN_LIVE_SMOKE=1 flag so a routine `npx vitest run` with a
+// loaded .env never hits the Cloud by accident.
+const SKIP = !process.env.COMFYUI_API_KEY || process.env.RUN_LIVE_SMOKE !== '1';
 
 /**
  * Minimal classical SD 1.5 workflow (API format). Text2image, 512×512, 10 steps
