@@ -680,7 +680,11 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     await fsp.rm(tmp, { recursive: true, force: true });
   });
 
-  test('signed-URL fetch failure unlinks partial and throws DOWNLOAD_FAILED', async () => {
+  test('IT-01: signed-URL 5xx before stream starts → COMFYUI_API_ERROR (not DOWNLOAD_FAILED), no partial file leaks', async () => {
+    // The signed-URL fetch returns 500 — `download()` itself throws
+    // COMFYUI_API_ERROR before `downloadToPath` reaches the pipeline, so the
+    // typed error code here is COMFYUI_API_ERROR (not DOWNLOAD_FAILED). The
+    // earlier title misled readers.
     const os = await import('node:os');
     const pth = await import('node:path');
     const fsp = await import('node:fs/promises');
@@ -695,17 +699,241 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
             status: 302,
             headers: { location: 'https://storage.googleapis.com/comfy-fake/x.png' },
           });
-        // signed-URL fetch returns 500 — download() itself throws COMFYUI_API_ERROR
-        // so downloadToPath's stream pipeline never starts. But the partial file
-        // is never created, so the assertion is no-partial-exists.
         return new Response('server error', { status: 500, statusText: 'Internal' });
       }),
     });
     await expect(client.downloadToPath('x.png', {}, dest)).rejects.toMatchObject({
       name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
     });
     await expect(fsp.access(dest)).rejects.toThrow();
     await expect(fsp.access(dest + '.partial')).rejects.toThrow();
     await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  test('IT-01b: stream mid-pipe error → DOWNLOAD_FAILED with partial cleanup', async () => {
+    // This time the pipe DOES start. The body emits a chunk, then errors mid
+    // stream (reader.cancel() → Readable.fromWeb emits an 'error'). streamToPath
+    // must unlink the partial and surface DOWNLOAD_FAILED.
+    const os = await import('node:os');
+    const pth = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), 'vfx-client-midpipe-'));
+    const dest = pth.join(tmp, 'midpipe.bin');
+
+    // Construct a ReadableStream that emits 1 chunk and then errors.
+    function boomStream(): ReadableStream<Uint8Array> {
+      let emitted = false;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!emitted) {
+            emitted = true;
+            controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+            // Error after the first enqueue so the pipeline has started.
+            controller.error(new Error('mid-pipe boom'));
+            return;
+          }
+        },
+      });
+    }
+
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/midpipe.bin' },
+          });
+        return new Response(boomStream(), {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        });
+      }),
+    });
+    await expect(client.downloadToPath('midpipe.bin', {}, dest)).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'DOWNLOAD_FAILED',
+    });
+    await expect(fsp.access(dest)).rejects.toThrow();
+    await expect(fsp.access(dest + '.partial')).rejects.toThrow();
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  test('IT-02: submit network error (fetch throws TypeError) → COMFYUI_API_ERROR', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        throw new TypeError('fetch failed: ECONNREFUSED');
+      }),
+    });
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('network error'),
+    });
+  });
+
+  test('IT-02b: status network error (fetch throws TypeError) → COMFYUI_API_ERROR', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        throw new TypeError('fetch failed: timeout');
+      }),
+    });
+    await expect(client.status('job-1')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('network error'),
+    });
+  });
+
+  test('IT-03: submit 200 without prompt_id → COMFYUI_API_ERROR', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => jsonResponse(200, { not_a_prompt_id: 'xyz' })),
+    });
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('missing prompt_id'),
+    });
+  });
+
+  test('IT-04: /api/view redirect with missing Location → COMFYUI_API_ERROR', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => new Response(null, { status: 302 })),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('no Location'),
+    });
+  });
+
+  test('IT-04b: /api/view redirect with invalid Location URL → COMFYUI_API_ERROR', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(
+        async () => new Response(null, { status: 302, headers: { location: 'not a url' } }),
+      ),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('Invalid redirect Location'),
+    });
+  });
+
+  test('IT-05: signed-URL 403 → COMFYUI_API_ERROR with signed-URL prefix', async () => {
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/x.png' },
+          });
+        return new Response('forbidden', { status: 403, statusText: 'Forbidden' });
+      }),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('Signed URL fetch failed'),
+    });
+  });
+
+  test('IT-05b: signed-URL 404 → COMFYUI_API_ERROR with signed-URL prefix', async () => {
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/x.png' },
+          });
+        return new Response('not found', { status: 404, statusText: 'Not Found' });
+      }),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining('Signed URL fetch failed'),
+    });
+  });
+
+  test('IT-06: download with missing content-length falls back to streamed byte count', async () => {
+    const os = await import('node:os');
+    const pth = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), 'vfx-client-noclen-'));
+    const dest = pth.join(tmp, 'noclen.bin');
+
+    const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/noclen.bin' },
+          });
+        // NO content-length header.
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        });
+      }),
+    });
+    const out = await client.downloadToPath('noclen.bin', {}, dest);
+    expect(out.sizeBytes).toBe(bytes.byteLength);
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  test.each([
+    ['http://127.0.0.1/metadata', '127.0.0.1'],
+    ['http://169.254.169.254/latest/meta-data/', '169.254.169.254'],
+    ['http://localhost/admin', 'localhost'],
+    ['http://10.0.0.1/steal', '10.0.0.1'],
+    ['http://[::1]/internal', '::1'],
+    ['https://cloud.comfy.org.evil.com/steal', 'cloud.comfy.org.evil.com'],
+    ['https://googleapiscom.evil.com/steal', 'googleapiscom.evil.com'],
+  ])('IT-07: SSRF hostile redirect target %s is rejected', async (target, expectedHost) => {
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, { status: 302, headers: { location: target } });
+        return new Response('leaked', { status: 200 });
+      }),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringContaining(expectedHost),
+    });
+    expect(n).toBe(1); // must NOT have made the second hop
+  });
+
+  test('IT-08: BASE-origin host is auto-included in the allowlist (tenant-specific self-hosted)', async () => {
+    // Tenant base like https://tenant.example.com — the configured origin
+    // host must be accepted on 302 without requiring additionalAllowedHosts.
+    const tenantBase = 'https://tenant.example.com';
+    let n = 0;
+    const client = new ComfyUIClient(KEY, tenantBase, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: `${tenantBase}/signed/file.png` },
+          });
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        });
+      }),
+    });
+    const out = await client.download('file.png');
+    expect(out.url).toContain('tenant.example.com');
   });
 });
