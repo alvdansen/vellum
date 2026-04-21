@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
+import { VersionRepo } from '../../store/version-repo.js';
 import { Engine } from '../../engine/pipeline.js';
 import { toolOk } from '../envelope.js';
 import { shapeCreateOrGet, shapeList } from '../shape.js';
@@ -12,7 +13,9 @@ import { shapeCreateOrGet, shapeList } from '../shape.js';
 function buildTestStack() {
   const { db } = makeInMemoryDb();
   const repo = new HierarchyRepo(db);
-  const engine = new Engine(repo);
+  // Phase 2 Engine constructor: (repo, versionRepo, client?). Breadcrumb tests
+  // only exercise Phase 1 tools, so `null` client is correct.
+  const engine = new Engine(repo, new VersionRepo(db), null);
   return { engine };
 }
 

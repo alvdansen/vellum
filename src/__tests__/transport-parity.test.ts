@@ -4,6 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { openDb } from '../store/db.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
+import { VersionRepo } from '../store/version-repo.js';
 import { Engine } from '../engine/pipeline.js';
 import {
   registerWorkspace,
@@ -35,7 +36,10 @@ function makeEngine(): Engine {
   // openDb returns { db, sqlite } — always destructure (see Plan 01 contract).
   const { db } = openDb(':memory:');
   const repo = new HierarchyRepo(db);
-  return new Engine(repo);
+  const versions = new VersionRepo(db);
+  // Phase 2 Engine constructor: (repo, versionRepo, client?). Transport-parity
+  // tests only exercise Phase 1 tools, so `null` client is correct.
+  return new Engine(repo, versions, null);
 }
 
 function makeServer(engine: Engine): McpServer {
