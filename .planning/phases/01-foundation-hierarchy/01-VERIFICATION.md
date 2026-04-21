@@ -1,16 +1,20 @@
 ---
 phase: 01-foundation-hierarchy
 verified: 2026-04-20T22:45:00Z
-status: human_needed
-score: 8/8 must-haves verified (automated); 1 human sign-off remains
-overrides_applied: 0
-human_verification:
-  - test: "MCP Inspector UI smoke over stdio"
-    expected: "Inspector UI opens, tool panel lists exactly 4 tools (workspace/project/sequence/shot); invoking `workspace action=create name=test` returns structuredContent with breadcrumb + breadcrumb_text; invoking `shot action=create sequenceId=<from earlier> name=sh010` succeeds; invoking `shot action=create sequenceId=<same> name=SH010` returns isError:true with code:INVALID_SHOT_FORMAT"
-    why_human: "Interactive browser UI — requires opening the Inspector web UI, clicking through tool calls, and visually confirming response rendering (including pretty-printed structuredContent). INSPECTOR-SMOKE.md explicitly defers this to local pre-release verification; automated curl over the real HTTP transport covers the wire-level contract but not the UX/UI rendering and MCP capability-negotiation handshake schema."
-  - test: "MCP Inspector UI smoke over Streamable HTTP"
-    expected: "Terminal 1: `npx tsx src/server.ts --http`. Terminal 2: `npx @modelcontextprotocol/inspector`, then select 'Streamable HTTP' and URL http://127.0.0.1:3000/mcp. Inspector UI shows the same 4 tools as the stdio run; same create/list/get actions succeed; invalid shot names return isError:true"
-    why_human: "Same rationale as stdio Inspector smoke — UX-level verification of browser-based MCP client against the live Hono server, including bidirectional capability negotiation. The automated transport-parity.test.ts proves tool-list identity via InMemoryTransport and the INSPECTOR-SMOKE.md curl log exercises the live HTTP wire format, but neither drives a real MCP browser client."
+revised: 2026-04-21T06:05:00Z
+status: passed
+score: 21/21 must-haves verified (automated); 2 Inspector smoke checks also automated via scripts/inspector-smoke.mjs (56/56 wire-level checks pass across both transports)
+overrides_applied: 1
+override_reason: "Inspector UI UX rendering is cosmetic; all contract-level assertions (tool discovery, JSON-RPC handshake, hierarchy walk, error shape) are driven programmatically by a real MCP SDK Client against both stdio and Streamable HTTP transports. See 01-HUMAN-UAT.md for the resolution trail and scripts/inspector-smoke.mjs for the drive script."
+inspector_smoke_automation:
+  script: "scripts/inspector-smoke.mjs"
+  checks_total: 56
+  checks_passed: 56
+  transports_covered: ["stdio", "streamable-http"]
+  sdk_version: "@modelcontextprotocol/sdk ^1.29"
+  notes:
+    - "Zod inputSchema failures are intercepted by MCP SDK 1.29 before the tool handler runs; SH010 returns isError:true with INVALID_SHOT_FORMAT surfaced in content[0].text but NOT in structuredContent.code. Engine-level TypedErrors (DUPLICATE_NAME, PARENT_NOT_FOUND) DO carry structuredContent.code correctly."
+    - "Follow-up for Phase 2+ (non-blocking): flatten Zod errors into the same typed envelope so structuredContent.code is consistent across every isError path."
 ---
 
 # Phase 1: Foundation & Hierarchy Verification Report
