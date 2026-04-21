@@ -84,9 +84,17 @@ Notes:
   --db accepts any filesystem path the process can write to.`);
 }
 
+/**
+ * RT-08: strict decimal-integer + TCP port-range parser. Rejects hex (`0x10`),
+ * scientific notation (`1e10`), leading zeros past a single `0` (`00042`), and
+ * ports outside [1, 65535] — all of which `Number()` previously accepted but
+ * which `serve()` / the OS would reject at bind time with a confusing error.
+ */
 function requireInt(s: string | undefined, flag: string): number {
+  if (!s) die(`${flag} requires a value`);
+  if (!/^[1-9]\d*$/.test(s)) die(`${flag} requires a positive decimal integer`);
   const n = Number(s);
-  if (!Number.isInteger(n) || n <= 0) die(`${flag} requires a positive integer`);
+  if (n < 1 || n > 65535) die(`${flag} must be in [1, 65535]`);
   return n;
 }
 

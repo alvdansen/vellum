@@ -234,10 +234,27 @@ async function main(): Promise<void> {
     // NOTE: do not log request bodies here — future phases will carry ComfyUI
     // keys in headers (T-03-04 reminder).
     // Bind 127.0.0.1 explicitly (T-03-03) — no remote reachability until auth lands.
-    serve({ fetch: app.fetch, port, hostname: '127.0.0.1' });
-    console.error(
-      `vfx-familiar: http transport listening on http://127.0.0.1:${port}/mcp`,
+    //
+    // RT-04: attach a listeningListener so the "listening on …" log only fires
+    // on successful bind, AND subscribe to the error event so EADDRINUSE /
+    // EACCES / ERR_SOCKET_BAD_PORT don't crash the stdio path with an
+    // unhandled error. The process exits 1 with an actionable message.
+    const httpServer = serve(
+      {
+        fetch: app.fetch,
+        port,
+        hostname: '127.0.0.1',
+      },
+      (info) => {
+        console.error(
+          `vfx-familiar: http transport listening on http://${info.address}:${info.port}/mcp`,
+        );
+      },
     );
+    httpServer.on('error', (err: Error) => {
+      console.error(`vfx-familiar: HTTP bind failed on port ${port}: ${err.message}`);
+      process.exit(1);
+    });
   }
 }
 
