@@ -1,8 +1,20 @@
 import { sqliteTable, text, integer, unique, index } from 'drizzle-orm/sqlite-core';
 
-// Phase 1 hierarchy tables: workspaces → projects → sequences → shots → versions.
-// IDs are nanoid-prefixed text, timestamps are epoch-ms integers.
-// Versions table is schema-only in Phase 1 (D-10) — no rows inserted until Phase 2 generation.
+// VFX Familiar hierarchy schema: workspaces → projects → sequences → shots → versions.
+// IDs are nanoid-prefixed text (`ws_`, `proj_`, `seq_`, `shot_`, `ver_`);
+// timestamps are epoch-ms integers.
+//
+// Phase 1 (landed): the 5 tables + the base columns declared below + the
+// Phase 1 indexes (`idx_*`). SCHEMA_DDL mirrors this for zero-dep first-run
+// bootstrap (openDb's user_version=0 path).
+//
+// Phase 2 (landed): three additive NULLABLE columns on `versions`
+// (error_code, error_message, outputs_json) and the `idx_versions_status`
+// index, both applied via the Drizzle migrator (0001, 0002). The SCHEMA_DDL
+// below intentionally does NOT declare the Phase 2 columns — openDb first
+// runs SCHEMA_DDL on a fresh DB, then Drizzle layers the additive ALTERs
+// on top. See `openDb()` for the full sequence and IM-04 in the Phase 2
+// planning for history.
 
 export const workspaces = sqliteTable('workspaces', {
   id: text('id').primaryKey(),

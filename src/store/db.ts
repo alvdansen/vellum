@@ -22,9 +22,23 @@ export interface OpenDbResult {
 
 /**
  * Open a SQLite database at `path`, enforcing the pragma-before-schema init
- * sequence (D-20, Pitfall #6, Pitfall #10). On first run (user_version=0),
- * installs SCHEMA_DDL and stamps user_version=SCHEMA_VERSION. On subsequent
- * opens, validates user_version matches SCHEMA_VERSION.
+ * sequence (D-20, Pitfall #6, Pitfall #10).
+ *
+ * Init sequence on a fresh DB:
+ *   1. WAL + busy_timeout + foreign_keys pragmas (invariant order).
+ *   2. If user_version === 0 → exec SCHEMA_DDL (Phase 1 base tables +
+ *      indexes) → stamp user_version = SCHEMA_VERSION.
+ *   3. Drizzle migrator (`migrate()`) runs the additive migrations under
+ *      `./drizzle/` (tracked by Drizzle's own `__drizzle_migrations` table).
+ *      Phase 2 added `versions.error_code/error_message/outputs_json` via
+ *      0001_phase2_version_lifecycle.sql and the recovery-poller index via
+ *      0002_idx_versions_status.sql.
+ *
+ * On subsequent opens, validates user_version matches SCHEMA_VERSION and
+ * only re-runs the Drizzle migrator (which is idempotent).
+ *
+ * DM-02: on user_version mismatch, closes the handle before throwing so
+ * the WAL lock releases.
  */
 export function openDb(path: string): OpenDbResult {
   const sqlite = new Database(path);

@@ -7,7 +7,11 @@
  *
  * Pure module:
  *  - No MCP SDK imports (D-33 — utils layer is pure)
- *  - No environment variables consulted (TRNS-04 — zero env vars)
+ *  - No environment variables consulted BY THE PARSER itself. (The wider
+ *    server boot path does read several — COMFYUI_API_KEY, COMFYUI_API_BASE,
+ *    COMFYUI_ALLOWED_REDIRECT_HOSTS, COMFYUI_MAX_CONCURRENT_POLLS,
+ *    HTTP_ALLOWED_ORIGINS — but those are consulted inside src/server.ts, not
+ *    here.)
  *  - All output goes to stderr (D-21 — stdout reserved for JSON-RPC on stdio)
  */
 
@@ -79,7 +83,10 @@ Flags:
   --version, -v       Print version and exit
 
 Notes:
-  No environment variables are consulted.
+  The CLI parser itself consults no environment variables, but the server
+  boot path reads COMFYUI_API_KEY, COMFYUI_API_BASE,
+  COMFYUI_ALLOWED_REDIRECT_HOSTS, COMFYUI_MAX_CONCURRENT_POLLS, and
+  HTTP_ALLOWED_ORIGINS when present. See .env.example for full documentation.
   All logs go to stderr; stdout is reserved for MCP JSON-RPC frames on stdio.
   --db accepts any filesystem path the process can write to.`);
 }
