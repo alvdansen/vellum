@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01: Foundation types + SQLite store + Engine facade
-- [ ] 01-02: TBD
+- [x] 01-02: MCP tool surface (workspace, project, sequence, shot)
 - [ ] 01-03: TBD
 
 ### Phase 2: ComfyUI Generation
@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Foundation & Hierarchy | 1/3 | In progress | - |
+| 1. Foundation & Hierarchy | 2/3 | In progress | - |
 | 2. ComfyUI Generation | 0/2 | Not started | - |
 | 3. Provenance & Versioning | 0/2 | Not started | - |
 | 4. Asset Management | 0/2 | Not started | - |

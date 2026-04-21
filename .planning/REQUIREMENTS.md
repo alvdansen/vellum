@@ -27,7 +27,8 @@ Requirements for initial release. Each maps to roadmap phases.
 **: User can create/list/get shots within a sequence
 - [x] **HIER-05
 **: Shots follow VFX naming convention (configurable template, default: zero-padded `v001`, underscore separators)
-- [ ] **HIER-06**: Hierarchy supports arbitrary depth navigation (breadcrumb context in responses)
+- [x] **HIER-06
+**: Hierarchy supports arbitrary depth navigation (breadcrumb context in responses)
 
 ### Generation
 
@@ -66,11 +67,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### MCP Tool Design
 
-- [ ] **TOOL-01**: Total MCP tool count stays at or below 12
-- [ ] **TOOL-02**: Tools use coarse-grained design with `action` parameters where appropriate
-- [ ] **TOOL-03**: All tool inputs validated via Zod schemas
-- [ ] **TOOL-04**: Tool responses include structured data (not raw JSON dumps)
-- [ ] **TOOL-05**: Error responses are human-readable with actionable guidance
+- [x] **TOOL-01
+**: Total MCP tool count stays at or below 12
+- [x] **TOOL-02
+**: Tools use coarse-grained design with `action` parameters where appropriate
+- [x] **TOOL-03
+**: All tool inputs validated via Zod schemas
+- [x] **TOOL-04
+**: Tool responses include structured data (not raw JSON dumps)
+- [x] **TOOL-05
+**: Error responses are human-readable with actionable guidance
 
 ## v2 Requirements
 

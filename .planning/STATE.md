@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-04-21T04:57:54.835Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-04-21T05:12:45.245Z"
 last_activity: 2026-04-21
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 01 (foundation-hierarchy) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-21
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 13min | 8 tasks | 18 files |
+| Phase 01 P02 | 9min | 4 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,11 @@ Recent decisions affecting current work:
 - [Plan 01-01] isUniqueViolation tolerant of SQLITE_CONSTRAINT_UNIQUE, _PRIMARYKEY, and UNIQUE-in-message fallback
 - [Plan 01-01] Shot regex ^sh\d{3,}$ enforced at Engine layer only; repo is regex-agnostic
 - [Plan 01-01] fetch-to-node@^2.1.0 and @hono/node-server@^2.0.0 replace STACK.md's stale ^1.x pins (same API)
+- [Plan 01-02] shape.ts shared helpers over per-tool duplication; keeps each tool ~60 lines and makes breadcrumb contract single-edit
+- [Plan 01-02] Zod-failure handler branch re-wraps as TypedError(INVALID_INPUT) with input.<path> — keeps Zod stack invisible to agent (D-32)
+- [Plan 01-02] shot-tool uses 'INVALID_SHOT_FORMAT' as Zod regex sentinel message; handler detects + re-maps to typed code with hint; engine enforces regex redundantly (T2 defence in depth)
+- [Plan 01-02] Integration tests use direct-mirror pattern per plan-allowed fallback (MCP SDK _registeredTools is private) plus smoke test for live registration
+- [Plan 01-02] toolOk typed as StructuredContent object (not unknown) to satisfy MCP SDK 1.29 CallToolResult
 
 ### Pending Todos
 
@@ -88,8 +94,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-21T04:57:45.965Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-04-21T05:12:45.240Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
 **Planned Phase:** 01 (foundation-hierarchy) — 3 plans — 2026-04-21T04:31:15.025Z
