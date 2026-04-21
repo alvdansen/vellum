@@ -294,6 +294,88 @@ describe('generation tool — status path', () => {
     expect(p.code).toBe('INVALID_INPUT');
     expect(p.message).toContain('input.version_id');
   });
+
+  it('IT-20: status on a completed row shapes entity with typed outputs array, non-null completed_at, version_label=v001', async () => {
+    // Drive a real submit → status roundtrip (fake client is set to happy path
+    // and returns one output). After status fires, the engine runs
+    // downloadAndPersist and marks the row completed. The tool response must:
+    //  - expose `outputs` as a typed StoredOutput[] (IAC-01), NOT a JSON string
+    //  - NOT expose `outputs_json` anywhere on entity
+    //  - have completed_at set (non-null)
+    //  - carry version_label === 'v001' for the first version
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    const versionId = (sub.structuredContent as { entity: { id: string } }).entity.id;
+    const res = await invokeStatus(stack, { action: 'status', version_id: versionId });
+    const sc = res.structuredContent as {
+      entity: {
+        id: string;
+        status: string;
+        version_label: string;
+        completed_at: number | null;
+        outputs: Array<{ filename: string; content_type: string }>;
+        outputs_json?: unknown;
+      };
+    };
+    expect(sc.entity.status).toBe('completed');
+    expect(sc.entity.version_label).toBe('v001');
+    expect(sc.entity.completed_at).not.toBeNull();
+    expect(typeof sc.entity.completed_at).toBe('number');
+    // IAC-01: outputs is a typed array now — not a JSON string.
+    expect(Array.isArray(sc.entity.outputs)).toBe(true);
+    expect(sc.entity.outputs).toHaveLength(1);
+    expect(sc.entity.outputs[0]).toMatchObject({
+      filename: 'out.png',
+      content_type: 'image/png',
+    });
+    // outputs_json must not appear on the response.
+    expect(sc.entity).not.toHaveProperty('outputs_json');
+  });
+
+  it('IT-21: status on a failed row shapes entity.error from error_message and preserves error_code', async () => {
+    // Drive a failed generation through the real engine. fake.scenario set to
+    // 'submit-error' causes submit to throw COMFYUI_API_ERROR — the engine's
+    // two-phase submit inserts a row then marks it failed with the code.
+    stack.fake.scenario = 'submit-error';
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    // submit returns isError (tool-surface failure) — the row still exists and
+    // is marked failed. Verify by fetching via status.
+    expect(sub.isError).toBe(true);
+    // Fetch the failed row directly by listing versions. Use an untyped probe
+    // since the tool did not return an id on error.
+    const allPending = stack.versions.listPendingVersions();
+    expect(allPending).toHaveLength(0); // all rows terminal
+    // Find the failed row via a raw query: use listPendingVersions negative,
+    // so fetch by stepping through submitted history. The cleanest path: reset
+    // fake, insert a new version, markFailed directly.
+    stack.fake.reset();
+    // Alternative direct path: create a version + markFailed it.
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.setJobId(row.id, 'job-failed-direct');
+    stack.versions.markFailed(row.id, 'DOWNLOAD_FAILED', 'network boom');
+    const res = await invokeStatus(stack, { action: 'status', version_id: row.id });
+    const sc = res.structuredContent as {
+      entity: {
+        status: string;
+        error_code: string | null;
+        error: string | null;
+        error_message?: unknown;
+      };
+    };
+    expect(sc.entity.status).toBe('failed');
+    expect(sc.entity.error_code).toBe('DOWNLOAD_FAILED');
+    // IAC-02: `error` is the canonical alias derived from error_message.
+    expect(sc.entity.error).toBe('network boom');
+    // error_message is no longer a response field.
+    expect(sc.entity).not.toHaveProperty('error_message');
+  });
 });
 
 describe('generation tool — registration smoke', () => {
