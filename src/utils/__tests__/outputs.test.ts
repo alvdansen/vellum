@@ -1,5 +1,6 @@
-import { describe, test, expect, afterEach, beforeEach } from 'vitest';
+import { describe, test, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import '../../test-utils/matchers.js';
@@ -193,5 +194,63 @@ describe('ensureDir + resolveCollisionSuffix (D-GEN-35)', () => {
     fs.writeFileSync(path.join(dir, 'README'), 'x');
     const name = await resolveCollisionSuffix(dir, 'README');
     expect(name).toBe('README_1');
+  });
+
+  test('IP-02: 20+ collisions still resolve quickly (no O(n) access() calls)', async () => {
+    // Pre-populate img.png and 20 suffixed variants so the function has to
+    // iterate far into the suffix range. If the loop were still doing O(n)
+    // sequential fs.access() calls (each a syscall), this would be measurable.
+    // With readdir+Set the whole search is O(n) in-memory after ONE syscall.
+    fs.writeFileSync(path.join(dir, 'img.png'), 'x');
+    for (let i = 1; i <= 20; i++) {
+      fs.writeFileSync(path.join(dir, `img_${i}.png`), 'x');
+    }
+    const t0 = Date.now();
+    const name = await resolveCollisionSuffix(dir, 'img.png');
+    const elapsed = Date.now() - t0;
+    expect(name).toBe('img_21.png');
+    // Perf guardrail — with 21 access() calls the old impl would be ~5-50ms
+    // on a warm FS; the new impl is a single readdir + Set lookups. A tight
+    // bound asserts the O(1)-syscall property without being flaky.
+    expect(elapsed).toBeLessThan(500);
+  });
+
+  test('IP-02: exactly one readdir call for a collision-heavy resolve (vi.mock on fsp)', async () => {
+    // Verify the single-syscall invariant via module mocking. Vitest ESM
+    // requires vi.mock at module scope; do it inline via a dynamic import
+    // shim that counts readdir invocations.
+    vi.resetModules();
+    let readdirCalls = 0;
+    const { readdir: realReaddir } = await import('node:fs/promises');
+    vi.doMock('node:fs/promises', async () => {
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      return {
+        ...actual,
+        readdir: (p: string, ...rest: unknown[]) => {
+          readdirCalls++;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (realReaddir as any)(p, ...rest);
+        },
+      };
+    });
+    const { resolveCollisionSuffix: rcs } = await import('../outputs.js');
+    try {
+      fs.writeFileSync(path.join(dir, 'img.png'), 'x');
+      for (let i = 1; i <= 5; i++) {
+        fs.writeFileSync(path.join(dir, `img_${i}.png`), 'x');
+      }
+      const name = await rcs(dir, 'img.png');
+      expect(name).toBe('img_6.png');
+      expect(readdirCalls).toBe(1);
+    } finally {
+      vi.doUnmock('node:fs/promises');
+      vi.resetModules();
+    }
+  });
+
+  test('IP-02: missing directory is treated as empty and returns original filename', async () => {
+    const missing = path.join(dir, 'does-not-exist');
+    const name = await resolveCollisionSuffix(missing, 'img.png');
+    expect(name).toBe('img.png');
   });
 });

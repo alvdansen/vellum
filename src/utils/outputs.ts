@@ -1,5 +1,4 @@
-import { mkdir, access } from 'node:fs/promises';
-import { constants as fsConstants } from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import path from 'node:path/posix';
 import { TypedError } from '../engine/errors.js';
 
@@ -93,7 +92,7 @@ export function buildOutputPath(args: BuildOutputPathArgs): string {
 
 /** Create directory recursively — no-throw on EEXIST. */
 export async function ensureDir(dirPath: string): Promise<void> {
-  await mkdir(dirPath, { recursive: true });
+  await fsp.mkdir(dirPath, { recursive: true });
 }
 
 /**
@@ -108,24 +107,35 @@ export const MAX_COLLISION_SUFFIX = 10_000;
  * Return a filename that does not collide with existing files in dirPath.
  * If `img.png` exists, tries `img_1.png`, `img_2.png`, ... until a free slot.
  * Matches Phase 1 D-14 "UNIQUE → suffix increment" pattern.
+ *
+ * IP-02: single readdir() + in-memory Set lookup (O(1) per candidate) instead
+ * of sequential access() calls (O(n) syscalls). Preserves semantics — returns
+ * the first unused suffix up to MAX_COLLISION_SUFFIX. If the directory is
+ * missing (ENOENT), treats it as empty and returns `filename` unchanged.
  */
 export async function resolveCollisionSuffix(
   dirPath: string,
   filename: string,
 ): Promise<string> {
-  const fileExists = async (p: string): Promise<boolean> =>
-    access(p, fsConstants.F_OK).then(
-      () => true,
-      () => false,
-    );
-  if (!(await fileExists(path.join(dirPath, filename)))) return filename;
+  let entries: Set<string>;
+  try {
+    const names = await fsp.readdir(dirPath);
+    entries = new Set(names);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      return filename;
+    }
+    throw err;
+  }
+  if (!entries.has(filename)) return filename;
 
   const dot = filename.lastIndexOf('.');
   const base = dot === -1 ? filename : filename.slice(0, dot);
   const ext = dot === -1 ? '' : filename.slice(dot);
   for (let i = 1; i < MAX_COLLISION_SUFFIX; i++) {
     const candidate = `${base}_${i}${ext}`;
-    if (!(await fileExists(path.join(dirPath, candidate)))) {
+    if (!entries.has(candidate)) {
       console.error(`[outputs] collision: ${filename} -> ${candidate}`);
       return candidate;
     }
