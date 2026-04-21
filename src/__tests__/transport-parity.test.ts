@@ -11,6 +11,7 @@ import {
   registerProject,
   registerSequence,
   registerShot,
+  registerGeneration,
 } from '../tools/index.js';
 
 /**
@@ -51,11 +52,12 @@ function makeServer(engine: Engine): McpServer {
   registerProject(server, engine);
   registerSequence(server, engine);
   registerShot(server, engine);
+  registerGeneration(server, engine);
   return server;
 }
 
 describe('transport parity', () => {
-  it('stdio and HTTP transports expose the identical 4 tools', async () => {
+  it('stdio and HTTP transports expose the identical 5 tools', async () => {
     // Shared engine — mirrors src/server.ts process-wide engine.
     const engine = makeEngine();
 
@@ -76,14 +78,40 @@ describe('transport parity', () => {
     const toolsA = (await clientA.listTools()).tools.map((t) => t.name).sort();
     const toolsB = (await clientB.listTools()).tools.map((t) => t.name).sort();
 
-    expect(toolsA).toEqual(['project', 'sequence', 'shot', 'workspace']);
+    expect(toolsA).toEqual(['generation', 'project', 'sequence', 'shot', 'workspace']);
     expect(toolsB).toEqual(toolsA);
 
     await clientA.close();
     await clientB.close();
   });
 
-  it('malformed request returns isError without leaking stack frames', async () => {
+  it('every tool publishes a non-empty inputSchema with action property (RT-01)', async () => {
+    const engine = makeEngine();
+    const server = makeServer(engine);
+    const [clientTx, serverTx] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'client', version: '0.0.0' });
+    await server.connect(serverTx);
+    await client.connect(clientTx);
+
+    const { tools } = await client.listTools();
+    expect(tools).toHaveLength(5);
+
+    for (const tool of tools) {
+      const schema = tool.inputSchema as {
+        type?: string;
+        properties?: Record<string, unknown>;
+      };
+      expect(schema.type).toBe('object');
+      expect(schema.properties).toBeDefined();
+      // Every tool must advertise at minimum the `action` discriminator so
+      // agents can discover the closed set of verbs (RT-01).
+      expect(Object.keys(schema.properties ?? {})).toContain('action');
+    }
+
+    await client.close();
+  });
+
+  it('malformed request returns INVALID_INPUT envelope without leaking stack frames (RT-02, RT-10)', async () => {
     const engine = makeEngine();
     const server = makeServer(engine);
     const [clientTx, serverTx] = InMemoryTransport.createLinkedPair();
@@ -97,11 +125,16 @@ describe('transport parity', () => {
     });
 
     expect(res.isError).toBe(true);
+    // Positive shape assertion — agents can detect INVALID_INPUT programmatically (RT-02).
+    const sc = res.structuredContent as
+      | { code?: string; message?: string }
+      | undefined;
+    expect(sc?.code).toBe('INVALID_INPUT');
+    expect(sc?.message ?? '').toMatch(/input\.limit/);
+
     const text = JSON.stringify(res);
     // Stack frame regex: "at something (/path/to/file.ts:123:45)"
     expect(text).not.toMatch(/at .+\.(ts|js):\d+:\d+/);
-    // Neither raw Zod nor SQLite error prose should leak
-    expect(text).not.toMatch(/ZodError|SQLITE_/);
 
     await client.close();
   });

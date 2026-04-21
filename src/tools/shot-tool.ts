@@ -3,31 +3,43 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
 import { toolOk, toolError } from './envelope.js';
-import { shapeCreateOrGet, shapeList } from './shape.js';
+import {
+  shapeCreateOrGet,
+  shapeList,
+  MAX_NAME_LENGTH,
+  MAX_ID_LENGTH,
+  MAX_PAGE_SIZE,
+  DEFAULT_PAGE_SIZE,
+} from './shape.js';
 
-// Zod v4 discriminated-union inputs per D-05, D-24.
-// Create requires sequenceId (HIER-04) and applies the shot regex at the Zod
-// boundary for early rejection. The engine ALSO enforces the regex (D-07)
-// so defence-in-depth holds even if input bypasses Zod.
+// Zod v4 discriminated-union inputs per D-05, D-24. Kept for handler-side
+// re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape
+// (RT-01). Create requires sequenceId (HIER-04) and applies the shot regex at
+// the Zod boundary for early rejection. The engine ALSO enforces the regex
+// (D-07) so defence-in-depth holds even if input bypasses Zod.
 const CreateInput = z.object({
   action: z.literal('create'),
-  sequenceId: z.string().min(1),
+  sequenceId: z.string().min(1).max(MAX_ID_LENGTH),
   // Message set to the error code so the handler's catch block can detect this
   // specific failure and emit INVALID_SHOT_FORMAT with the proper hint.
-  name: z.string().regex(/^sh\d{3,}$/, 'INVALID_SHOT_FORMAT'),
+  name: z.string().max(MAX_NAME_LENGTH).regex(/^sh\d{3,}$/, 'INVALID_SHOT_FORMAT'),
 });
 const ListInput = z.object({
   action: z.literal('list'),
-  sequenceId: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(100).default(20),
+  sequenceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
 });
 const GetInput = z.object({
   action: z.literal('get'),
-  id: z.string().min(1),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
 });
 
-const ShotInput = z.discriminatedUnion('action', [CreateInput, ListInput, GetInput]);
+const ShotInputSchema = z.discriminatedUnion('action', [
+  CreateInput,
+  ListInput,
+  GetInput,
+]);
 
 /**
  * Register the `shot` MCP tool (D-01, D-02, HIER-04, HIER-05, D-07).
@@ -36,6 +48,10 @@ const ShotInput = z.discriminatedUnion('action', [CreateInput, ListInput, GetInp
  * injected via shapeCreateOrGet/shapeList, TypedError mapped via toolError.
  * Shot names are gated at BOTH the Zod boundary AND inside engine.createShot
  * so any bypass of the tool layer still fails closed.
+ *
+ * RT-01/RT-02: raw ZodRawShape exposed to MCP, discriminated union
+ * re-validated inside the handler so tools/list carries real properties AND
+ * the handler's ZodError catch branch is reachable.
  */
 export function registerShot(server: McpServer, engine: Engine) {
   server.registerTool(
@@ -44,10 +60,23 @@ export function registerShot(server: McpServer, engine: Engine) {
       title: 'Shot',
       description:
         "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get.",
-      inputSchema: ShotInput,
+      // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
+      // `tools/list` publishes real JSON-schema properties. Every field is
+      // `.optional()` at this layer so the SDK's pre-handler validation never
+      // short-circuits — the handler's `ShotInputSchema.parse()` is the
+      // single source of truth for shape enforcement (RT-02).
+      inputSchema: {
+        action: z.enum(['create', 'list', 'get']),
+        sequenceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        name: z.string().min(1).max(MAX_NAME_LENGTH).optional(),
+        id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        limit: z.number().int().optional(),
+        offset: z.number().int().optional(),
+      },
     },
-    async (input) => {
+    async (rawInput) => {
       try {
+        const input = ShotInputSchema.parse(rawInput);
         switch (input.action) {
           case 'create':
             return toolOk(
@@ -59,6 +88,13 @@ export function registerShot(server: McpServer, engine: Engine) {
             );
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getShot(input.id)));
+          default: {
+            const _exhaustive: never = input;
+            throw new TypedError(
+              'INVALID_INPUT',
+              `Unhandled shot action: ${String(_exhaustive)}`,
+            );
+          }
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
@@ -76,10 +112,7 @@ export function registerShot(server: McpServer, engine: Engine) {
             );
           }
           return toolError(
-            new TypedError(
-              'INVALID_INPUT',
-              `Invalid input at 'input.${path}' -- ${first.message}`,
-            ),
+            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
           );
         }
         return toolError(err);

@@ -6,6 +6,7 @@ import { toolOk, toolError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
 import type { StoredOutput } from '../comfyui/types.js';
+import { MAX_ID_LENGTH, MAX_NOTES_LENGTH } from './shape.js';
 
 /**
  * D-GEN-04: submit input — action + shot_id + workflow_json + optional notes.
@@ -15,9 +16,9 @@ import type { StoredOutput } from '../comfyui/types.js';
  */
 const SubmitInput = z.object({
   action: z.literal('submit'),
-  shot_id: z.string().min(1),
+  shot_id: z.string().min(1).max(MAX_ID_LENGTH),
   workflow_json: z.record(z.string(), z.unknown()),
-  notes: z.string().optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 
 /**
@@ -26,10 +27,10 @@ const SubmitInput = z.object({
  */
 const StatusInput = z.object({
   action: z.literal('status'),
-  version_id: z.string().min(1),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
 });
 
-const GenerationInput = z.discriminatedUnion('action', [SubmitInput, StatusInput]);
+const GenerationInputSchema = z.discriminatedUnion('action', [SubmitInput, StatusInput]);
 
 /**
  * Render the version entity for tool responses — adds `version_label` (D-GEN-17).
@@ -94,6 +95,10 @@ function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb })
  * Thin Zod-validated delegate (D-33). Actions: submit, status. Breadcrumb
  * injected on every response (D-22 Phase 1 invariant, extended to version leaf).
  *
+ * RT-01/RT-02: raw ZodRawShape exposed to MCP, discriminated union
+ * re-validated inside the handler so tools/list carries real properties AND
+ * the handler's ZodError catch branch is reachable.
+ *
  * Error model:
  *  - ZodError → INVALID_INPUT with `input.<path>` in message (defence-in-depth
  *    with the engine's own format validation).
@@ -111,10 +116,22 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status. " +
         "State machine (D-GEN-18): submitted → running → completed | failed. " +
         "Dual error model (IAC-03): submit and status return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found).",
-      inputSchema: GenerationInput,
+      // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
+      // `tools/list` publishes real JSON-schema properties. Every field is
+      // `.optional()` at this layer so the SDK's pre-handler validation never
+      // short-circuits — the handler's `GenerationInputSchema.parse()` is the
+      // single source of truth for shape enforcement (RT-02).
+      inputSchema: {
+        action: z.enum(['submit', 'status']),
+        shot_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        workflow_json: z.record(z.string(), z.unknown()).optional(),
+        notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+        version_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+      },
     },
-    async (input) => {
+    async (rawInput) => {
       try {
+        const input = GenerationInputSchema.parse(rawInput);
         switch (input.action) {
           case 'submit':
             return toolOk(
@@ -130,16 +147,20 @@ export function registerGeneration(server: McpServer, engine: Engine) {
             return toolOk(
               shapeVersionEntity(await engine.getGenerationStatus(input.version_id)),
             );
+          default: {
+            const _exhaustive: never = input;
+            throw new TypedError(
+              'INVALID_INPUT',
+              `Unhandled generation action: ${String(_exhaustive)}`,
+            );
+          }
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
           const first = err.issues[0];
           const path = first.path.join('.');
           return toolError(
-            new TypedError(
-              'INVALID_INPUT',
-              `Invalid input at 'input.${path}' -- ${first.message}`,
-            ),
+            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
           );
         }
         return toolError(err);

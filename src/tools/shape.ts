@@ -8,6 +8,15 @@
 
 import type { Breadcrumb, BreadcrumbEntry } from '../types/hierarchy.js';
 
+// Shared tool-input bounds (SEC-01, API-05, RT-01). Every tool's raw ZodRawShape
+// references these so the published JSON schema carries the correct maxima and
+// so handler-side re-validation catches bypasses uniformly.
+export const MAX_NAME_LENGTH = 200;
+export const MAX_ID_LENGTH = 64;
+export const MAX_NOTES_LENGTH = 4000;
+export const MAX_PAGE_SIZE = 100;
+export const DEFAULT_PAGE_SIZE = 20;
+
 /**
  * Shape a create/get engine result into the tool response payload shape.
  *
