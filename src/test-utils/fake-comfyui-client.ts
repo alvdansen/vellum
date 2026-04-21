@@ -76,6 +76,12 @@ export class FakeComfyUIClient {
   private statusCalls = 0;
   private downloadCalls = 0;
 
+  /** C6 test support: track concurrent in-flight status() calls for poller-cap assertions. */
+  inFlightStatus = 0;
+  maxInFlightStatus = 0;
+  /** Artificial delay (ms) inserted into status() to create observable concurrency windows. */
+  statusDelayMs = 0;
+
   async submit(workflowJson: Record<string, unknown>): Promise<SubmitResponse> {
     this.calls.push({ method: 'submit', args: [workflowJson] });
     if (this.scenario === 'rate-limited') {
@@ -94,20 +100,31 @@ export class FakeComfyUIClient {
   async status(jobId: string): Promise<StatusResponse> {
     this.calls.push({ method: 'status', args: [jobId] });
     this.statusCalls++;
-    if (this.scenario === 'failed-workflow') {
-      return {
-        status: 'failed',
-        error: { node_errors: this.cannedNodeErrors },
-      } as StatusResponse;
+    this.inFlightStatus++;
+    if (this.inFlightStatus > this.maxInFlightStatus) {
+      this.maxInFlightStatus = this.inFlightStatus;
     }
-    if (this.scenario === 'slow-running' && this.statusCalls <= this.slowRunningPolls) {
-      return {
-        status: 'in_progress',
-        progress: this.statusCalls / (this.slowRunningPolls + 1),
-      };
+    try {
+      if (this.statusDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.statusDelayMs));
+      }
+      if (this.scenario === 'failed-workflow') {
+        return {
+          status: 'failed',
+          error: { node_errors: this.cannedNodeErrors },
+        } as StatusResponse;
+      }
+      if (this.scenario === 'slow-running' && this.statusCalls <= this.slowRunningPolls) {
+        return {
+          status: 'in_progress',
+          progress: this.statusCalls / (this.slowRunningPolls + 1),
+        };
+      }
+      // happy / slow-running-after-N / download-* scenarios complete here
+      return { status: 'completed', outputs: this.cannedOutputs };
+    } finally {
+      this.inFlightStatus--;
     }
-    // happy / slow-running-after-N / download-* scenarios complete here
-    return { status: 'completed', outputs: this.cannedOutputs };
   }
 
   async download(

@@ -47,6 +47,7 @@ export class Engine {
     private versionRepo: VersionRepo,
     private client: ComfyUIClient | null = null,
     outputRoot: string = 'outputs',
+    options: { maxConcurrentPollers?: number } = {},
   ) {
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     this.generation = new GenerationEngine(
@@ -55,6 +56,7 @@ export class Engine {
       client,
       this.breadcrumb,
       outputRoot,
+      { maxConcurrentPollers: options.maxConcurrentPollers },
     );
   }
 

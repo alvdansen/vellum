@@ -19,6 +19,19 @@ const GENERATION_TIMEOUT_MS = 600_000; // D-GEN-25: 10 minutes
 const DOWNLOAD_RETRY_DELAYS = [2_000, 4_000, 8_000]; // D-GEN-36: 3 attempts
 
 /**
+ * C6: cap concurrent recovery pollers. ComfyUI Cloud concurrency tiers are
+ * Free=1, Creator=3, Pro=5. A boot after crash with N pending rows must NOT
+ * fan out N parallel /api/job/{id}/status calls — that would thrash the 429
+ * rate-limit path and make recovery itself the thundering herd.
+ *
+ * Default matches the Creator tier. Override via COMFYUI_MAX_CONCURRENT_POLLS
+ * env var at server wiring time (server.ts passes this into the Engine).
+ */
+const DEFAULT_MAX_CONCURRENT_POLLERS = 3;
+/** Bounded jitter (ms) applied to each poller's initial sleep to de-sync boot volleys. */
+const POLLER_BOOT_JITTER_MAX_MS = 800;
+
+/**
  * GenerationEngine — owns the version row lifecycle (D-GEN-15..D-GEN-20), the
  * ComfyUI handshake (D-GEN-21..D-GEN-27), download orchestration (D-GEN-32..37),
  * and the on-start recovery poller (D-GEN-28..D-GEN-31). Composed into Engine
@@ -35,6 +48,7 @@ const DOWNLOAD_RETRY_DELAYS = [2_000, 4_000, 8_000]; // D-GEN-36: 3 attempts
  */
 export class GenerationEngine {
   private pollers = new Map<string, AbortController>();
+  private readonly maxConcurrentPollers: number;
 
   constructor(
     private hierarchy: HierarchyRepo,
@@ -42,7 +56,12 @@ export class GenerationEngine {
     private client: ComfyUIClient | null,
     private breadcrumb: BreadcrumbResolver,
     private outputRoot: string = 'outputs',
-  ) {}
+    options: { maxConcurrentPollers?: number } = {},
+  ) {
+    const cap = options.maxConcurrentPollers ?? DEFAULT_MAX_CONCURRENT_POLLERS;
+    // Clamp to a sane range: at least 1, at most 20 (Pro tier × 4 buffer).
+    this.maxConcurrentPollers = Math.max(1, Math.min(20, cap));
+  }
 
   /**
    * Two-phase submit (Pattern 2): shot-exists + format validation → insert row →
@@ -234,16 +253,36 @@ export class GenerationEngine {
    * On-start recovery poller (D-GEN-28, D-GEN-29). For every pending row,
    * spawns an independent async driver that uses createBackoffIterator delays.
    * One AbortController per row, stored in `pollers` for stop() teardown.
+   *
+   * C6: concurrency is capped at `maxConcurrentPollers`. Extra rows wait in a
+   * queue and are launched as earlier pollers reach a terminal state. This
+   * prevents thundering-herd behaviour on a post-crash boot with many pending
+   * rows (which would instantly hit ComfyUI's 429 rate-limit path).
    */
   async start(): Promise<void> {
     const pending = this.versions.listPendingVersions();
-    for (const row of pending) {
+    const queue = [...pending];
+    let inFlight = 0;
+
+    const launch = (row: Version): void => {
+      inFlight++;
       const controller = new AbortController();
       this.pollers.set(row.id, controller);
-      // Fire-and-forget; the poller logs to stderr on unexpected errors.
       void this.drivePoller(row.id, controller.signal).finally(() => {
         this.pollers.delete(row.id);
+        inFlight--;
+        // Drain the queue as slots free up.
+        while (inFlight < this.maxConcurrentPollers && queue.length > 0) {
+          const next = queue.shift()!;
+          launch(next);
+        }
       });
+    };
+
+    // Prime up to `maxConcurrentPollers` slots; the rest drain on completion.
+    while (inFlight < this.maxConcurrentPollers && queue.length > 0) {
+      const row = queue.shift()!;
+      launch(row);
     }
   }
 
@@ -260,9 +299,14 @@ export class GenerationEngine {
    */
   private async drivePoller(rowId: string, signal: AbortSignal): Promise<void> {
     const delays = createBackoffIterator();
+    // C6: bounded jitter on the first iteration de-syncs N parallel pollers so
+    // they do not all fire within the same millisecond window at boot.
+    const bootJitter = Math.floor(Math.random() * POLLER_BOOT_JITTER_MAX_MS);
+    let firstIteration = true;
     while (!signal.aborted) {
       const next = await delays.next();
-      const delayMs = next.value ?? 30_000;
+      const delayMs = (next.value ?? 30_000) + (firstIteration ? bootJitter : 0);
+      firstIteration = false;
       try {
         await sleep(delayMs, signal);
       } catch (err) {

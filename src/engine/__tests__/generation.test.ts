@@ -346,6 +346,61 @@ describe('GenerationEngine recovery poller (start / stop)', () => {
     expect(ctx.fake.calls.length).toBe(before);
     await ctx.engine.stop();
   });
+
+  test('C6: start() caps in-flight pollers at maxConcurrentPollers (default 3)', async () => {
+    // Build a dedicated engine with cap=3 and a slow status() so we can
+    // observe concurrency. Seed 10 pending rows. Real timers — no fake-timer
+    // trickery — since we want honest setTimeout-driven concurrency measurement.
+    const { db } = makeInMemoryDb();
+    const hierarchy = new HierarchyRepo(db);
+    const versions = new VersionRepo(db);
+    const fake = new FakeComfyUIClient();
+    const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
+    const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-c6-${nanoid(6)}-`));
+    const engine = new GenerationEngine(
+      hierarchy,
+      versions,
+      fake as unknown as ComfyUIClient,
+      breadcrumb,
+      tempRoot,
+      { maxConcurrentPollers: 3 },
+    );
+    try {
+      const ws = hierarchy.createWorkspace('c6_ws');
+      const proj = hierarchy.createProject(ws.id, 'c6_p');
+      const seq = hierarchy.createSequence(proj.id, 'sq010');
+      const shot = hierarchy.createShot(seq.id, 'sh010');
+      fake.scenario = 'happy';
+      fake.statusDelayMs = 150; // 150ms overlap window per poll
+      for (let i = 0; i < 10; i++) {
+        const r = versions.insertVersion(shot.id);
+        versions.setJobId(r.id, `job-${i}`);
+      }
+      expect(versions.listPendingVersions()).toHaveLength(10);
+
+      await engine.start();
+
+      // Poll for drain on real wall clock — each poll has a 2s backoff sleep
+      // plus 150ms status delay; 10 rows at cap=3 serialized ≈ 4 waves.
+      const deadline = Date.now() + 30_000;
+      while (versions.listPendingVersions().length > 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      expect(versions.listPendingVersions()).toHaveLength(0);
+
+      // The key assertion: never more than 3 concurrent status() calls.
+      // (Cap is 3, and 10 >> 3, so we'd expect many more without the cap.)
+      expect(fake.maxInFlightStatus).toBeLessThanOrEqual(3);
+      expect(fake.maxInFlightStatus).toBeGreaterThan(0);
+      // Sanity: all 10 rows completed (each emits 1 status call on happy).
+      expect(
+        fake.calls.filter((c) => c.method === 'status').length,
+      ).toBeGreaterThanOrEqual(10);
+    } finally {
+      await engine.stop();
+      await fsp.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }, 35_000);
 });
 
 describe('GenerationEngine on-demand status bypasses backoff', () => {

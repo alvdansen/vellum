@@ -152,7 +152,15 @@ async function main(): Promise<void> {
     );
   }
 
-  const engine = new Engine(repo, versionRepo, client);
+  // C6: concurrency cap for the on-start recovery poller. Env override allows
+  // Pro tier users to raise the ceiling. Default (3) matches the Creator tier.
+  const maxConcurrentPollersRaw = process.env.COMFYUI_MAX_CONCURRENT_POLLS;
+  const maxConcurrentPollers = maxConcurrentPollersRaw
+    ? Number.parseInt(maxConcurrentPollersRaw, 10)
+    : undefined;
+  const engine = new Engine(repo, versionRepo, client, 'outputs', {
+    maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
+  });
   const version = await readVersion();
 
   // Recovery poller (D-GEN-29) — runs once at boot, drains any pending rows
