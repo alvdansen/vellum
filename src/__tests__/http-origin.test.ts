@@ -21,6 +21,20 @@ function buildApp(allowedOrigins: string[]) {
   const { db } = makeInMemoryDb();
   const engine = new Engine(new HierarchyRepo(db), new VersionRepo(db), null);
   const app = new Hono();
+  // RT-07 / API-07 mirror
+  app.on(['GET', 'DELETE', 'PUT', 'PATCH'], '/mcp', (c) =>
+    c.json(
+      {
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: `Method ${c.req.method} not allowed on /mcp — use POST for JSON-RPC.`,
+        },
+        id: null,
+      },
+      405,
+    ),
+  );
   app.post('/mcp', async (c) => {
     const origin = c.req.header('origin');
     if (origin && !allowedOrigins.includes(origin)) {
@@ -116,4 +130,26 @@ describe('HTTP transport Origin allowlist (SEC-03)', () => {
     );
     expect(res.status).not.toBe(403);
   });
+});
+
+describe('HTTP wrong-verb handling (RT-07, API-07)', () => {
+  it.each(['GET', 'DELETE', 'PUT', 'PATCH'] as const)(
+    '%s /mcp returns JSON-RPC-shaped 405',
+    async (method) => {
+      const app = buildApp([]);
+      const res = await app.fetch(
+        new Request('http://localhost/mcp', { method }),
+      );
+      expect(res.status).toBe(405);
+      const body = (await res.json()) as {
+        jsonrpc?: string;
+        error?: { code?: number; message?: string };
+        id?: null;
+      };
+      expect(body.jsonrpc).toBe('2.0');
+      expect(body.error?.code).toBe(-32000);
+      expect(body.error?.message ?? '').toMatch(method);
+      expect(body.id).toBeNull();
+    },
+  );
 });

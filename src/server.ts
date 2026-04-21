@@ -217,6 +217,22 @@ async function main(): Promise<void> {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    // RT-07 / API-07: wrong-verb requests to /mcp get a JSON-RPC-shaped 405
+    // instead of Hono's text/plain 404 default. Agents can parse the envelope
+    // even on misuse.
+    app.on(['GET', 'DELETE', 'PUT', 'PATCH'], '/mcp', (c) =>
+      c.json(
+        {
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: `Method ${c.req.method} not allowed on /mcp — use POST for JSON-RPC.`,
+          },
+          id: null,
+        },
+        405,
+      ),
+    );
     app.post('/mcp', async (c) => {
       const origin = c.req.header('origin');
       if (origin && !httpAllowedOrigins.includes(origin)) {
