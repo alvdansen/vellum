@@ -1,5 +1,9 @@
 import { describe, test, expect } from 'vitest';
-import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../client.js';
+import {
+  ComfyUIClient,
+  DEFAULT_COMFYUI_API_BASE,
+  MAX_ERROR_BODY_BYTES,
+} from '../client.js';
 import '../../test-utils/matchers.js';
 
 /**
@@ -107,6 +111,29 @@ describe('ComfyUIClient.submit', () => {
       name: 'TypedError',
       code: 'COMFYUI_API_ERROR',
     });
+  });
+
+  test('IS-03: submit error-body read is capped at MAX_ERROR_BODY_BYTES', async () => {
+    // Build an oversized body (2× the cap) and verify the client does not
+    // swallow memory and still surfaces a typed error.
+    const oversize = 'x'.repeat(MAX_ERROR_BODY_BYTES * 2);
+    let readCount = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        readCount++;
+        return new Response(oversize, {
+          status: 400,
+          statusText: 'Bad Request',
+          headers: { 'content-type': 'text/plain' },
+        });
+      }),
+    });
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      code: 'COMFYUI_API_ERROR',
+    });
+    expect(readCount).toBe(1);
   });
 
   test('C4: submit uses redirect:manual and rejects 302 (API key must not leak across redirect)', async () => {
@@ -470,6 +497,78 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const onDisk = await fsp.readFile(dest);
     expect(onDisk.byteLength).toBe(bytes.byteLength);
     // Partial file should be gone
+    await expect(fsp.access(dest + '.partial')).rejects.toThrow();
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  test('IS-03: downloadToPath rejects when content-length exceeds maxBytes (pre-flight)', async () => {
+    const os = await import('node:os');
+    const pth = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), 'vfx-client-maxbytes-'));
+    const dest = pth.join(tmp, 'big.png');
+
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/big.png' },
+          });
+        // Advertise 1 MB — cap will be set to 100 bytes.
+        return new Response(new Uint8Array(0), {
+          status: 200,
+          headers: {
+            'content-type': 'application/octet-stream',
+            'content-length': String(1 * 1024 * 1024),
+          },
+        });
+      }),
+    });
+    await expect(
+      client.downloadToPath('big.png', {}, dest, { maxBytes: 100 }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'DOWNLOAD_FAILED',
+      message: expect.stringContaining('exceeds max'),
+    });
+    // No partial file should remain
+    await expect(fsp.access(dest + '.partial')).rejects.toThrow();
+    await expect(fsp.access(dest)).rejects.toThrow();
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  test('IS-03: downloadToPath aborts mid-stream when actual bytes exceed maxBytes', async () => {
+    const os = await import('node:os');
+    const pth = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), 'vfx-client-mid-'));
+    const dest = pth.join(tmp, 'midstream.bin');
+
+    // No content-length advertised; body sends 1024 bytes but maxBytes=100.
+    const body = new Uint8Array(1024).fill(0xaa);
+    let n = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        if (++n === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/comfy-fake/midstream.bin' },
+          });
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        });
+      }),
+    });
+    await expect(
+      client.downloadToPath('midstream.bin', {}, dest, { maxBytes: 100 }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'DOWNLOAD_FAILED',
+    });
+    await expect(fsp.access(dest)).rejects.toThrow();
     await expect(fsp.access(dest + '.partial')).rejects.toThrow();
     await fsp.rm(tmp, { recursive: true, force: true });
   });

@@ -34,6 +34,61 @@ import type {
  */
 export const DEFAULT_COMFYUI_API_BASE = 'https://cloud.comfy.org';
 
+/**
+ * IS-03: hard cap on error-body reads (submit 4xx/5xx) so a misbehaving or
+ * hostile ComfyUI response cannot blow out memory while the client tries to
+ * extract a node_errors JSON blob. 64 KiB is generous for a realistic error
+ * payload and tight enough to block DoS.
+ */
+export const MAX_ERROR_BODY_BYTES = 64_000;
+
+/**
+ * IS-03: default cap on per-file downloads. 500 MiB is larger than any
+ * plausible image or single-frame video from ComfyUI but small enough that
+ * a runaway signed-URL does not fill disk. Callers (engine / tests) can
+ * override via `maxBytes` on `downloadToPath`.
+ */
+export const DEFAULT_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Read a response body as text but stop after `limit` bytes. Prevents a
+ * hostile response from exhausting memory via `res.text()` (which reads the
+ * whole body). On overflow, returns what we have so far plus a truncation
+ * marker — sufficient for logging / extractFirstNodeError.
+ */
+async function readTextWithLimit(res: Response, limit: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let out = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        // Decode just enough to stay under the cap, then bail.
+        const over = total - limit;
+        const keep = value.slice(0, Math.max(0, value.byteLength - over));
+        out += decoder.decode(keep, { stream: false });
+        out += `\n...[truncated at ${limit} bytes]`;
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return out;
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+    out += decoder.decode();
+  } catch {
+    /* ignore read errors — return whatever we have */
+  }
+  return out;
+}
+
 export interface DownloadResult {
   body: ReadableStream<Uint8Array>;
   contentType: string;
@@ -138,12 +193,14 @@ export class ComfyUIClient {
       );
     }
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      // IS-03: cap body read at MAX_ERROR_BODY_BYTES — a hostile or
+      // misbehaving upstream cannot exhaust memory via a multi-GB error body.
+      const text = await readTextWithLimit(res, MAX_ERROR_BODY_BYTES);
       let parsed: unknown = null;
       try {
         parsed = text ? JSON.parse(text) : null;
       } catch {
-        /* ignore */
+        /* ignore — malformed or truncated JSON falls through to generic message */
       }
       const nodeErrors = (parsed as { node_errors?: unknown } | null)?.node_errors;
       const nodeMessage = extractFirstNodeError(nodeErrors);
@@ -281,27 +338,56 @@ export class ComfyUIClient {
    * Wrapper over `download` that streams to disk atomically: writes to
    * `{destPath}.partial`, then `rename()` on success. On failure unlinks the
    * partial and throws `TypedError('DOWNLOAD_FAILED', ...)`. (Pattern 5.)
+   *
+   * IS-03: `maxBytes` caps the write length. If the stream exceeds the cap
+   * mid-pipe, the pipeline is aborted, the partial file is unlinked, and a
+   * typed error is thrown. Prevents a hostile allowlisted host from filling
+   * disk via an unbounded signed-URL.
    */
   async downloadToPath(
     filename: string,
     opts: { subfolder?: string; type?: string },
     destPath: string,
+    options: { maxBytes?: number } = {},
   ): Promise<{
     path: string;
     url: string;
     contentType: string;
     sizeBytes: number;
   }> {
+    const maxBytes = options.maxBytes ?? DEFAULT_DOWNLOAD_MAX_BYTES;
     const result = await this.download(filename, opts);
+    // Pre-flight: if the server advertised a content-length larger than the
+    // cap, bail before opening a write stream.
+    if (
+      Number.isFinite(result.contentLength) &&
+      result.contentLength > maxBytes
+    ) {
+      throw new TypedError(
+        'DOWNLOAD_FAILED',
+        `Remote file '${filename}' size ${result.contentLength} exceeds max ${maxBytes} bytes`,
+      );
+    }
     const partial = `${destPath}.partial`;
     let bytes = 0;
     const writer = createWriteStream(partial);
+    let overflow = false;
     try {
       const readable = Readable.fromWeb(
         result.body as unknown as import('node:stream/web').ReadableStream,
       );
       readable.on('data', (chunk: Buffer) => {
         bytes += chunk.byteLength;
+        if (bytes > maxBytes && !overflow) {
+          overflow = true;
+          // Destroying the readable aborts the pipeline with an error that
+          // propagates to the catch below (and unlinks the partial).
+          readable.destroy(
+            new Error(
+              `Download '${filename}' exceeded maxBytes=${maxBytes} (saw ${bytes})`,
+            ),
+          );
+        }
       });
       await pipeline(readable, writer);
       await rename(partial, destPath);
