@@ -1,0 +1,46 @@
+{
+  "name": "vfx-familiar",
+  "version": "0.1.0",
+  "description": "Open-source MCP server layering VFX production structure over ComfyUI Cloud",
+  "type": "module",
+  "main": "src/server.ts",
+  "bin": {
+    "vfx-familiar": "src/server.ts"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "start:http": "tsx src/server.ts --http",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "vfx",
+    "comfyui",
+    "pipeline"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "fetch-to-node": "^2.1.0",
+    "hono": "^4.12.14",
+    "nanoid": "^5.1.9",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "^0.21.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  }
+}
