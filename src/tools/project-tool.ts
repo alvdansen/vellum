@@ -60,9 +60,9 @@ export function registerProject(server: McpServer, engine: Engine) {
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
         action: z.enum(['create', 'list', 'get']),
-        workspaceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
-        name: z.string().min(1).max(MAX_NAME_LENGTH).optional(),
-        id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        workspaceId: z.string().optional(),
+        name: z.string().optional(),
+        id: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
       },

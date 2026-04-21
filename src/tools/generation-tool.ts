@@ -123,10 +123,10 @@ export function registerGeneration(server: McpServer, engine: Engine) {
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
         action: z.enum(['submit', 'status']),
-        shot_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        shot_id: z.string().optional(),
         workflow_json: z.record(z.string(), z.unknown()).optional(),
-        notes: z.string().max(MAX_NOTES_LENGTH).optional(),
-        version_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        notes: z.string().optional(),
+        version_id: z.string().optional(),
       },
     },
     async (rawInput) => {
