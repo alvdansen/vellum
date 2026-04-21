@@ -4,17 +4,15 @@ import type { ComfyUIClient } from '../comfyui/client.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
 import { TypedError } from './errors.js';
-import type {
-  Workspace,
-  Project,
-  Sequence,
-  Shot,
-  Version,
-  Breadcrumb,
+import {
+  SHOT_NAME_REGEX,
+  type Workspace,
+  type Project,
+  type Sequence,
+  type Shot,
+  type Version,
+  type Breadcrumb,
 } from '../types/hierarchy.js';
-
-/** Shot naming regex, locked by D-07. Lowercase `sh` prefix, at least 3 digits. */
-const SHOT_REGEX = /^sh\d{3,}$/;
 
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
@@ -173,7 +171,7 @@ export class Engine {
 
   createShot(sequenceId: string, name: string): { entity: Shot; breadcrumb: Breadcrumb } {
     // Regex FIRST, before any DB work. Engine is the single authority on shot naming.
-    if (!SHOT_REGEX.test(name)) {
+    if (!SHOT_NAME_REGEX.test(name)) {
       throw new TypedError(
         'INVALID_SHOT_FORMAT',
         `Shot name '${name}' does not match expected format`,

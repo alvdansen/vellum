@@ -1,6 +1,15 @@
 // Pure type definitions for VFX Familiar hierarchy entities.
 // ZERO imports — this file is the canonical type source consumed by engine, store, and tools.
 
+/**
+ * MNT-04: single source of truth for the VFX shot naming convention (D-07).
+ * Lowercase `sh` prefix + at least 3 digits (e.g. `sh010`, `sh0200`). The engine
+ * enforces the regex before any DB work (pipeline.ts); the shot tool's Zod
+ * schema enforces it at the tool boundary for early rejection. Keeping both
+ * call sites (defence-in-depth) with ONE source avoids drift.
+ */
+export const SHOT_NAME_REGEX = /^sh\d{3,}$/;
+
 export interface Workspace {
   id: string;
   name: string;

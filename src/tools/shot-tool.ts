@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
+import { SHOT_NAME_REGEX } from '../types/hierarchy.js';
 import { toolOk, toolError } from './envelope.js';
 import {
   shapeCreateOrGet,
@@ -28,7 +29,7 @@ const CreateInput = z.object({
     .string()
     .trim()
     .max(MAX_NAME_LENGTH)
-    .regex(/^sh\d{3,}$/, 'INVALID_SHOT_FORMAT'),
+    .regex(SHOT_NAME_REGEX, 'INVALID_SHOT_FORMAT'),
 });
 const ListInput = z.object({
   action: z.literal('list'),
