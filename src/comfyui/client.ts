@@ -27,6 +27,13 @@ import type {
  * extractFirstNodeError (D-GEN-27).
  */
 
+/**
+ * Canonical ComfyUI Cloud base URL. Exported so server wiring and test
+ * fixtures agree on one literal (no more scattered copies of the same host).
+ * Per D-GEN-21; override with COMFYUI_API_BASE for self-hosted tenants.
+ */
+export const DEFAULT_COMFYUI_API_BASE = 'https://cloud.comfy.org';
+
 export interface DownloadResult {
   body: ReadableStream<Uint8Array>;
   contentType: string;

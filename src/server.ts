@@ -61,7 +61,7 @@ import { parseCliFlags, printHelp } from './utils/cli.js';
 import { openDb } from './store/db.js';
 import { HierarchyRepo } from './store/hierarchy-repo.js';
 import { VersionRepo } from './store/version-repo.js';
-import { ComfyUIClient } from './comfyui/client.js';
+import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
 import { Engine } from './engine/pipeline.js';
 import {
   registerWorkspace,
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   // D-GEN-14). Absent key ⇒ hierarchy tools work; `generation submit` surfaces
   // COMFYUI_CREDENTIALS_MISSING on first call.
   const apiKey = process.env.COMFYUI_API_KEY;
-  const apiBase = process.env.COMFYUI_API_BASE ?? 'https://cloud.comfy.org';
+  const apiBase = process.env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE;
   const additionalAllowedHosts = (process.env.COMFYUI_ALLOWED_REDIRECT_HOSTS ?? '')
     .split(',')
     .map((s) => s.trim())

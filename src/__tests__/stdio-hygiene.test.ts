@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { unlinkSync, existsSync } from 'node:fs';
+import { DEFAULT_COMFYUI_API_BASE } from '../comfyui/client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverTs = resolve(__dirname, '../server.ts');
@@ -127,9 +128,10 @@ describe('stdio hygiene', () => {
       DOTENV_CONFIG_PATH: '/nonexistent-stdio-hygiene-with-key',
     };
     const { stderr } = await bootAndKill(env, 'with-key');
-    // Exact D-GEN-12 format: `ComfyUI credentials loaded (key ****7890, base https://cloud.comfy.org)`.
+    // Exact D-GEN-12 format: `ComfyUI credentials loaded (key ****7890, base <DEFAULT_COMFYUI_API_BASE>)`.
+    const escapedBase = DEFAULT_COMFYUI_API_BASE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     expect(stderr).toMatch(
-      /ComfyUI credentials loaded \(key \*\*\*\*7890, base https:\/\/cloud\.comfy\.org\)/,
+      new RegExp(`ComfyUI credentials loaded \\(key \\*\\*\\*\\*7890, base ${escapedBase}\\)`),
     );
   }, 15_000);
 });

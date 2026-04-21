@@ -38,7 +38,7 @@ import { openDb } from '../../store/db.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
 import { Engine } from '../../engine/pipeline.js';
-import { ComfyUIClient } from '../client.js';
+import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../client.js';
 import type { StoredOutput } from '../types.js';
 
 const SKIP = !process.env.COMFYUI_API_KEY;
@@ -113,7 +113,7 @@ afterEach(async () => {
 describe.skipIf(SKIP)('live ComfyUI Cloud smoke (D-GEN-42.7)', () => {
   test('submit → poll → download → output file on disk', async () => {
     const apiKey = process.env.COMFYUI_API_KEY!;
-    const apiBase = process.env.COMFYUI_API_BASE ?? 'https://cloud.comfy.org';
+    const apiBase = process.env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE;
     const checkpoint =
       process.env.COMFYUI_SMOKE_CHECKPOINT ?? 'v1-5-pruned-emaonly.safetensors';
 

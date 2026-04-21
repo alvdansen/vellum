@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { ComfyUIClient } from '../client.js';
+import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../client.js';
 import '../../test-utils/matchers.js';
 
 /**
@@ -31,7 +31,7 @@ function jsonResponse(
   });
 }
 
-const BASE = 'https://cloud.comfy.org';
+const BASE = DEFAULT_COMFYUI_API_BASE;
 const KEY = 'sk-test-fake';
 
 describe('ComfyUIClient.submit', () => {
