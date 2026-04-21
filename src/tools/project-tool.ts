@@ -18,7 +18,13 @@ import {
 const CreateInput = z.object({
   action: z.literal('create'),
   workspaceId: z.string().min(1).max(MAX_ID_LENGTH),
-  name: z.string().min(1).max(MAX_NAME_LENGTH),
+  name: z
+    .string()
+    .min(1)
+    .max(MAX_NAME_LENGTH)
+    .refine((s) => !s.includes(' > '), {
+      message: 'name cannot contain " > " (breadcrumb separator)',
+    }),
 });
 const ListInput = z.object({
   action: z.literal('list'),

@@ -142,6 +142,44 @@ describe('input bounds (SEC-01, API-05)', () => {
     await client.close();
   });
 
+  it('RT-05: workspace name containing " > " rejected with INVALID_INPUT', async () => {
+    const { client } = await spinUp();
+    const res = await client.callTool({
+      name: 'workspace',
+      arguments: { action: 'create', name: 'foo > bar' },
+    });
+    expect(res.isError).toBe(true);
+    const sc = res.structuredContent as { code?: string; message?: string };
+    expect(sc.code).toBe('INVALID_INPUT');
+    expect(sc.message ?? '').toMatch(/input\.name/);
+    await client.close();
+  });
+
+  it('RT-05: project name containing " > " rejected with INVALID_INPUT', async () => {
+    const { client, repo } = await spinUp();
+    const ws = repo.createWorkspace('ws-sep');
+    const res = await client.callTool({
+      name: 'project',
+      arguments: { action: 'create', workspaceId: ws.id, name: 'a > b' },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code?: string }).code).toBe('INVALID_INPUT');
+    await client.close();
+  });
+
+  it('RT-05: sequence name containing " > " rejected with INVALID_INPUT', async () => {
+    const { client, repo } = await spinUp();
+    const ws = repo.createWorkspace('ws-sep-seq');
+    const proj = repo.createProject(ws.id, 'proj-sep');
+    const res = await client.callTool({
+      name: 'sequence',
+      arguments: { action: 'create', projectId: proj.id, name: 'a > b' },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code?: string }).code).toBe('INVALID_INPUT');
+    await client.close();
+  });
+
   it('SEC-02: workflow_json with > 2000 nodes rejected with INVALID_INPUT', async () => {
     const { client, repo } = await spinUp();
     const ws = repo.createWorkspace('ws-nodes');

@@ -18,7 +18,13 @@ import {
 // publishes a non-empty JSON schema in tools/list (RT-01).
 const CreateInput = z.object({
   action: z.literal('create'),
-  name: z.string().min(1).max(MAX_NAME_LENGTH),
+  name: z
+    .string()
+    .min(1)
+    .max(MAX_NAME_LENGTH)
+    .refine((s) => !s.includes(' > '), {
+      message: 'name cannot contain " > " (breadcrumb separator)',
+    }),
 });
 const ListInput = z.object({
   action: z.literal('list'),
