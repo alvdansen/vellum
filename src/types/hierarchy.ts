@@ -40,9 +40,13 @@ export interface Version {
   notes: string | null;
   created_at: number;
   completed_at: number | null;
+  // Phase 2 additions — D-GEN-19 (all nullable):
+  error_code: string | null;
+  error_message: string | null;
+  outputs_json: string | null;
 }
 
-export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot';
+export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot' | 'version';
 
 export interface BreadcrumbEntry {
   type: EntityType;
