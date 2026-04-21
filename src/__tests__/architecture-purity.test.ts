@@ -2,13 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 
 /**
- * Asserts D-33 / D-34: engine, store, utils, and types layers have zero
- * imports from @modelcontextprotocol/sdk. Tools may import it (they are
- * the only MCP-aware layer). server.ts may import it (it wires transports).
- * Everything else must be pure.
+ * Asserts D-33 / D-34 / D-GEN-21: engine, store, utils, types, AND comfyui
+ * layers have zero imports from @modelcontextprotocol/sdk. Tools may import
+ * it (they are the only MCP-aware layer). server.ts may import it (it wires
+ * transports). Everything else must be pure.
+ *
+ * Phase 2 extension: src/comfyui/** is the HTTP-client boundary — it must
+ * also have zero better-sqlite3 and zero drizzle-orm imports (D-GEN-21).
+ * The HTTP client is a pure fetch wrapper, no DB awareness.
  *
  * Regression anchor for Pattern S1 (tool-engine purity). Future phases
- * that add engine/store/utils/types files inherit these invariants.
+ * that add engine/store/utils/types/comfyui files inherit these invariants.
  */
 function grepCount(pattern: string, ...paths: string[]): number {
   try {
@@ -39,5 +43,19 @@ describe('architecture purity', () => {
 
   it('src/types/ has zero imports from @modelcontextprotocol/sdk', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/types/')).toBe(0);
+  });
+
+  // Phase 2 additions — src/comfyui/** is the HTTP boundary (D-GEN-21).
+  // Zero MCP SDK imports, zero DB imports. Pure fetch wrapper.
+  it('src/comfyui/ has zero imports from @modelcontextprotocol/sdk (D-GEN-21)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/comfyui/')).toBe(0);
+  });
+
+  it('src/comfyui/ has zero imports from better-sqlite3 (D-GEN-21)', () => {
+    expect(grepCount('better-sqlite3', 'src/comfyui/')).toBe(0);
+  });
+
+  it('src/comfyui/ has zero imports from drizzle-orm (D-GEN-21)', () => {
+    expect(grepCount('drizzle-orm', 'src/comfyui/')).toBe(0);
   });
 });
