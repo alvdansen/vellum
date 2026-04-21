@@ -13,12 +13,12 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 ### Validated
 
 - [x] Project hierarchy: workspace → project → sequence → shot → version — *Validated in Phase 1: foundation-hierarchy (hierarchy + breadcrumbs live end-to-end over stdio + Streamable HTTP; 76 unit tests + 56 live-client smoke checks green)*
+- [x] MCP server wraps ComfyUI Cloud API as structured tools (submit, status) with async non-blocking generation and exponential-backoff polling — *Validated in Phase 2: comfyui-generation (GEN-01..GEN-07, 188 tests + 1 gated live-smoke; tool budget 5/12; src/comfyui/** architecture-purity enforced)*
+- [x] Automatic versioning on every generation (never overwrites) — *Validated in Phase 2 via VersionRepo MAX(version_number)+1 insert + append-only markCompleted guard*
 
 ### Active
 
-- [ ] MCP server wraps ComfyUI Cloud API as structured tools (queue workflow, get output, list models)
-- [ ] Full provenance capture: workflow JSON, parameters, seed, model checksums, timestamp, artist, machine
-- [ ] Automatic versioning on every generation (never overwrites)
+- [ ] Full provenance capture: workflow JSON, parameters, seed, model checksums, timestamp, artist, machine — *Phase 2 captures workflow_json, prompt_json, job_id, status, outputs; PROV-* details land in Phase 3*
 - [ ] Asset tagging and arbitrary metadata attachment
 - [ ] Asset query/filter by tags, metadata, project hierarchy, date range
 - [ ] Diff between versions ("what changed between v002 and v003?")
@@ -99,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 after Phase 1 completion (foundation-hierarchy)*
+*Last updated: 2026-04-21 after Phase 2 completion (comfyui-generation)*
