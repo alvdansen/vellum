@@ -53,6 +53,9 @@ function makeServer(engine: Engine): McpServer {
   registerSequence(server, engine);
   registerShot(server, engine);
   registerGeneration(server, engine);
+  // Mirror src/server.ts buildServer — override the SDK default
+  // (tools.listChanged: true) that registerTool forces on.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
   return server;
 }
 
@@ -83,6 +86,24 @@ describe('transport parity', () => {
 
     await clientA.close();
     await clientB.close();
+  });
+
+  it('server advertises capabilities.tools.listChanged: false (RT-09, API-06)', async () => {
+    const engine = makeEngine();
+    const server = makeServer(engine);
+    const [clientTx, serverTx] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'client', version: '0.0.0' });
+    await server.connect(serverTx);
+    await client.connect(clientTx);
+
+    // The SDK Client exposes the remote server capabilities via getServerCapabilities()
+    const caps = client.getServerCapabilities() as
+      | { tools?: { listChanged?: boolean } }
+      | undefined;
+    expect(caps?.tools).toBeDefined();
+    expect(caps?.tools?.listChanged).toBe(false);
+
+    await client.close();
   });
 
   it('every tool publishes a non-empty inputSchema with action property (RT-01)', async () => {

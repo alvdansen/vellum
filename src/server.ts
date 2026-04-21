@@ -103,6 +103,12 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerSequence(server, engine);
   registerShot(server, engine);
   registerGeneration(server, engine);
+  // RT-09 / API-06: SDK's registerTool unconditionally merges
+  // `capabilities.tools.listChanged: true` into the server's capability set,
+  // but we never emit `notifications/tools/list_changed`. Override back to
+  // false AFTER all tools registered (must precede transport connect — the
+  // SDK throws otherwise). Subscribed clients will not wait forever.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
   return server;
 }
 
