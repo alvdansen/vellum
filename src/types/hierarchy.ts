@@ -1,0 +1,56 @@
+// Pure type definitions for VFX Familiar hierarchy entities.
+// ZERO imports — this file is the canonical type source consumed by engine, store, and tools.
+
+export interface Workspace {
+  id: string;
+  name: string;
+  naming_template: string | null;
+  created_at: number;
+}
+
+export interface Project {
+  id: string;
+  workspace_id: string;
+  name: string;
+  naming_template: string | null;
+  created_at: number;
+}
+
+export interface Sequence {
+  id: string;
+  project_id: string;
+  name: string;
+  created_at: number;
+}
+
+export interface Shot {
+  id: string;
+  sequence_id: string;
+  name: string;
+  created_at: number;
+}
+
+export interface Version {
+  id: string;
+  shot_id: string;
+  version_number: number;
+  status: string;
+  job_id: string | null;
+  parent_version_id: string | null;
+  notes: string | null;
+  created_at: number;
+  completed_at: number | null;
+}
+
+export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot';
+
+export interface BreadcrumbEntry {
+  type: EntityType;
+  id: string;
+  name: string;
+}
+
+export interface Breadcrumb {
+  entries: BreadcrumbEntry[];
+  text: string;
+}
