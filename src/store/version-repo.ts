@@ -127,9 +127,20 @@ export class VersionRepo {
     `);
   }
 
-  /** Non-terminal transition (submitted → running). Terminals use markFailed/markCompleted. */
+  /**
+   * Non-terminal transition (submitted → running). Terminals use markFailed/markCompleted.
+   *
+   * Guarded by `status = 'submitted' AND completed_at IS NULL` to prevent a TOCTOU race:
+   * if the recovery poller has already driven the row to `completed`, a concurrent tool-path
+   * caller holding a stale `submitted` snapshot must NOT regress the row back to `running`.
+   * The guard makes the update a no-op in that race, preserving D-GEN-20 immutability.
+   */
   transition(id: string, next: 'running'): void {
-    this.db.update(versions).set({ status: next }).where(eq(versions.id, id)).run();
+    this.db.run(sql`
+      UPDATE versions
+      SET status = ${next}
+      WHERE id = ${id} AND status = 'submitted' AND completed_at IS NULL
+    `);
   }
 
   getVersion(id: string): Version | null {

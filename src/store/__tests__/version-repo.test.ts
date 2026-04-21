@@ -133,6 +133,33 @@ describe('VersionRepo — allocation, state transitions, immutability', () => {
     expect(got.completed_at).toBeNull();
   });
 
+  test('C2: transition is a no-op once the row has reached a terminal state (completed)', () => {
+    // Race guard: recovery poller + tool-path caller race. Poller drives row to
+    // completed. Tool path, holding a stale 'submitted' snapshot, sees a 'running'
+    // remote status and calls transition(). Without the WHERE guard, the row
+    // regresses: status='running' but completed_at/outputs_json already populated.
+    const v = repo.insertVersion(shotId);
+    repo.markCompleted(v.id, '[{"filename":"a.png"}]');
+    const afterComplete = repo.getVersion(v.id)!;
+    const completedAt = afterComplete.completed_at!;
+    repo.transition(v.id, 'running');
+    const afterTransition = repo.getVersion(v.id)!;
+    expect(afterTransition.status).toBe('completed');
+    expect(afterTransition.completed_at).toBe(completedAt);
+    expect(afterTransition.outputs_json).toBe('[{"filename":"a.png"}]');
+  });
+
+  test('C2: transition is a no-op once the row has reached a terminal state (failed)', () => {
+    const v = repo.insertVersion(shotId);
+    repo.markFailed(v.id, 'DOWNLOAD_FAILED', 'net');
+    const before = repo.getVersion(v.id)!;
+    repo.transition(v.id, 'running');
+    const after = repo.getVersion(v.id)!;
+    expect(after.status).toBe('failed');
+    expect(after.error_code).toBe('DOWNLOAD_FAILED');
+    expect(after.completed_at).toBe(before.completed_at);
+  });
+
   test('listPendingVersions returns only submitted|running rows', () => {
     const a = repo.insertVersion(shotId);
     const b = repo.insertVersion(shotId);
