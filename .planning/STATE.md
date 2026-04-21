@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 execution in progress
-last_updated: "2026-04-21T16:35:00.000Z"
-last_activity: 2026-04-21 -- Phase 02 (comfyui-generation) execution: Wave 1 complete
+last_updated: "2026-04-21T16:50:00.000Z"
+last_activity: 2026-04-21 -- Phase 02 (comfyui-generation) execution: Wave 2 complete
 progress:
   total_phases: 5
   completed_phases: 1
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 02 (comfyui-generation) — EXECUTING
-Plan: 1 of 3 complete (02-01 done; 02-02 next)
-Status: Executing Phase 02 — Wave 2 starting
-Last activity: 2026-04-21 -- Phase 02 Wave 1 complete (02-01 foundation landed, 138/138 tests)
+Plan: 2 of 3 complete (02-01, 02-02 done; 02-03 next)
+Status: Executing Phase 02 — Wave 3 starting
+Last activity: 2026-04-21 -- Phase 02 Wave 2 complete (ComfyUI client + engine state machine, 169/169 tests)
 
 Progress: [██████████] 100%
 
