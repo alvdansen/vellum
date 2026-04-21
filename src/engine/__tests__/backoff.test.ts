@@ -42,4 +42,19 @@ describe('sleep', () => {
     c.abort();
     await expect(sleep(1000, c.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
+
+  test('IT-09: mid-sleep abort rejects with AbortError', async () => {
+    // Start a long sleep with a signal, advance partway, then abort — the
+    // promise must reject immediately with AbortError (not wait for the
+    // remaining delay to elapse).
+    const c = new AbortController();
+    const p = sleep(10_000, c.signal);
+    // Advance timers 1s — sleep is still pending.
+    vi.advanceTimersByTime(1_000);
+    // Attach the rejection expectation BEFORE aborting so we do not race
+    // the microtask queue.
+    const rejection = expect(p).rejects.toMatchObject({ name: 'AbortError' });
+    c.abort();
+    await rejection;
+  });
 });
