@@ -1069,27 +1069,25 @@ If no gaps: (not applicable — Phase 2 adds all generation tests from scratch).
 
 **Nothing else is assumed beyond the CONTEXT.md locked set.** Every claim outside the Assumptions Log is either [CITED] to an official source or [VERIFIED] via tool output (package versions, file presence).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Cloud `/api/job/{prompt_id}/status` completion shape**
+1. **Cloud `/api/job/{prompt_id}/status` completion shape** — **RESOLVED via live-smoke probe (Plan 02-03 Task 4).**
    - What we know: Docs state response body is `{status: "pending|in_progress|completed|failed|cancelled"}`.
    - What's unclear: On `completed`, does the response embed the outputs list, or is `GET /api/history_v2/{prompt_id}` required?
-   - Recommendation: In Phase 2 client, first try to read outputs off the status response; on missing, fall back to `/api/history_v2/{prompt_id}`. Write the try-first code defensively; the live-smoke test is the authoritative validation.
+   - Resolution: Phase 2 client implements try-first on the status response, falling back to `/api/history_v2/{prompt_id}` when outputs are missing. Live-smoke logs the actual shape to stderr on first run so the fallback can be removed or kept per empirical truth.
 
-2. **Signed URL host for `/api/view` 302 target**
+2. **Signed URL host for `/api/view` 302 target** — **RESOLVED via live-smoke probe (Plan 02-03 Task 4) + env override (`COMFYUI_ALLOWED_REDIRECT_HOSTS`).**
    - What we know: Docs state 302 redirect + signed URL, no auth header needed on redirect.
    - What's unclear: Host name (`googleapis.com`? `amazonaws.com`? A ComfyUI-owned domain?).
-   - Recommendation: Permissive regex allowlist at launch + env override + log warning on unknown-host rejection so user can widen. Live-smoke will confirm actual host.
+   - Resolution: Permissive regex allowlist at launch (`googleapis.com`, `amazonaws.com`, `r2.cloudflarestorage.com`, `cloud.comfy.org`) + env override. Live-smoke logs the observed host on first success so the allowlist can be tightened in a follow-up phase.
 
-3. **Node.js 25 vs CI's Node.js 20**
+3. **Node.js 25 vs CI's Node.js 20** — **N/A (non-blocking, informational).**
    - What we know: User's local machine is Node 25 (per CLAUDE.md memory). `package.json` declares `"engines": {"node": ">=20"}`. Native `fetch` + `Readable.fromWeb` + `AbortController` are stable in both.
-   - What's unclear: Any Node 25 deprecations that affect Node 20 CI. None expected.
-   - Recommendation: CI should run against Node 20 to catch future drift.
+   - Resolution: No action required in Phase 2. CI should run against Node 20 to catch future drift — tracked as an infrastructure follow-up.
 
-4. **Does D-GEN-11 default `https://api.comfy.org` intentionally reflect a staging environment?**
-   - What we know: Official base is `https://cloud.comfy.org`.
-   - What's unclear: Whether user meant a specific staging alias.
-   - Recommendation: Flag in PLAN phase; execute with `https://cloud.comfy.org` as the code default and `.env.example` value; note the discrepancy in PLAN's "decisions verified" section.
+4. **Does D-GEN-11 default `https://api.comfy.org` intentionally reflect a staging environment?** — **RESOLVED: user confirmed `cloud.comfy.org` during plan-phase (2026-04-20).**
+   - What we know: Official base is `https://cloud.comfy.org` (docs.comfy.org).
+   - Resolution: CONTEXT.md D-GEN-09, D-GEN-11, D-GEN-22, and §"Specific Values" were updated on 2026-04-20 to `cloud.comfy.org`. All three Phase 2 plans use `cloud.comfy.org` as the code default and `.env.example` value. User override via `.env` is still honored at runtime.
 
 ## Sources
 
