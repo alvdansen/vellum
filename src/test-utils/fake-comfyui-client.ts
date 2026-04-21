@@ -36,7 +36,9 @@ export type FakeScenario =
   | 'slow-running'
   | 'failed-workflow'
   | 'download-flaky'
-  | 'download-hopeless';
+  | 'download-hopeless'
+  | 'cancelled-status'
+  | 'unknown-status';
 
 export interface FakeDownloadResult {
   body: ReadableStream<Uint8Array>;
@@ -110,6 +112,14 @@ export class FakeComfyUIClient {
           status: 'failed',
           error: { node_errors: this.cannedNodeErrors },
         } as StatusResponse;
+      }
+      if (this.scenario === 'cancelled-status') {
+        return { status: 'cancelled' } as StatusResponse;
+      }
+      if (this.scenario === 'unknown-status') {
+        // Return a status string outside the canonical enum — the engine's
+        // mapState must fall through to 'pending' (no transition fired).
+        return { status: 'mystery_state' } as unknown as StatusResponse;
       }
       if (this.scenario === 'slow-running' && this.statusCalls <= this.slowRunningPolls) {
         return {

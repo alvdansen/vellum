@@ -9,6 +9,7 @@ import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
 import { BreadcrumbResolver } from '../breadcrumb.js';
 import { GenerationEngine } from '../generation.js';
+import { TypedError } from '../errors.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import type { ComfyUIClient } from '../../comfyui/client.js';
 
@@ -283,6 +284,158 @@ describe('GenerationEngine.getGenerationStatus', () => {
       'out1.png',
       'out2.png',
     ]);
+  });
+
+  test('IT-10: ComfyUI cancelled status maps to failed', async () => {
+    ctx.fake.scenario = 'cancelled-status';
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row.id, 'job-cancelled');
+    const res = await ctx.engine.getGenerationStatus(row.id);
+    expect(res.entity.status).toBe('failed');
+    expect(res.entity.error_code).toBe('COMFYUI_API_ERROR');
+    expect(res.entity.error_message).toContain('ComfyUI reported failed');
+  });
+
+  test('IT-10b: unknown ComfyUI status falls through to pending (no transition)', async () => {
+    ctx.fake.scenario = 'unknown-status';
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row.id, 'job-mystery');
+    const res = await ctx.engine.getGenerationStatus(row.id);
+    // Engine does not transition on unknown status — row stays at submitted.
+    expect(res.entity.status).toBe('submitted');
+    expect(res.entity.error_code).toBeNull();
+  });
+
+  test('IT-11: row with null job_id transitions to failed on status check', async () => {
+    // Simulate the edge case where setJobId never ran (submit itself failed
+    // before updating job_id). The row exists at 'submitted' with job_id=null.
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    expect(row.job_id).toBeNull();
+    const res = await ctx.engine.getGenerationStatus(row.id);
+    expect(res.entity.status).toBe('failed');
+    expect(res.entity.error_code).toBe('COMFYUI_API_ERROR');
+    expect(res.entity.error_message).toContain('no job_id');
+    // No status call was made since job_id was missing
+    expect(ctx.fake.calls.filter((c) => c.method === 'status')).toHaveLength(0);
+  });
+
+  test('IT-13: malicious filename from ComfyUI is rejected — sanitizer throws before any disk write', async () => {
+    // ComfyUI returns a filename that attempts path traversal. buildOutputPath
+    // fires sanitizeRelativeSegment which throws INVALID_INPUT before any disk
+    // write occurs. The engine does NOT catch this — the caller observes the
+    // TypedError directly, and crucially, no file is written outside tempRoot.
+    ctx.fake.cannedOutputs = [
+      { filename: '../../../etc/passwd', subfolder: '', type: 'output' },
+    ];
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row.id, 'job-malicious');
+    await expect(ctx.engine.getGenerationStatus(row.id)).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'INVALID_INPUT',
+      message: expect.stringContaining('Unsafe path segment'),
+    });
+    // Nothing was written inside tempRoot, and obviously nothing outside.
+    const entries = await fsp.readdir(ctx.tempRoot).catch(() => [] as string[]);
+    // Only the hierarchy dirs (projectName/...) may exist; no escape route.
+    for (const name of entries) {
+      expect(name).not.toContain('..');
+      expect(name).not.toBe('etc');
+    }
+  });
+
+  test('IT-14: duplicate filename from back-to-back generations gets suffixed', async () => {
+    ctx.fake.cannedOutputs = [{ filename: 'out.png', subfolder: '', type: 'output' }];
+    // Submit + complete two generations for the same shot (two separate version_numbers).
+    const row1 = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row1.id, 'job-dup-1');
+    await ctx.engine.getGenerationStatus(row1.id);
+    const r1 = ctx.versions.getVersion(row1.id)!;
+    expect(r1.status).toBe('completed');
+
+    // Force the second version to share the same version directory by
+    // manually placing a blocker in the version dir the engine will compute.
+    // Easier: simulate duplicate by creating a second version on the same
+    // shot with the same filename and same version_label — the engine uses
+    // version_number so v002 will land in a different dir. Test collision
+    // inside ONE version by issuing a second download with the same name.
+    //
+    // A clean demonstration: two outputs with the same filename in a single
+    // generation — resolveCollisionSuffix handles the collision.
+    ctx.fake.cannedOutputs = [
+      { filename: 'out.png', subfolder: '', type: 'output' },
+      { filename: 'out.png', subfolder: 'subdir', type: 'output' },
+    ];
+    const row2 = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row2.id, 'job-dup-2');
+    const res2 = await ctx.engine.getGenerationStatus(row2.id);
+    expect(res2.entity.status).toBe('completed');
+    const outs2 = JSON.parse(res2.entity.outputs_json!);
+    expect(outs2).toHaveLength(2);
+    // Second output must have been renamed with a suffix to avoid collision.
+    expect(outs2[0].filename).toBe('out.png');
+    expect(outs2[1].filename).toBe('out_1.png');
+  });
+
+  test('IT-15: completed with zero outputs marks row completed with outputs_json = []', async () => {
+    ctx.fake.scenario = 'happy';
+    ctx.fake.cannedOutputs = []; // ComfyUI returned completed but no outputs
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(row.id, 'job-zero');
+    const res = await ctx.engine.getGenerationStatus(row.id);
+    expect(res.entity.status).toBe('completed');
+    expect(res.entity.completed_at).not.toBeNull();
+    expect(res.entity.outputs_json).toBe('[]');
+  });
+
+  test('IT-16: CONCURRENT_SUBMIT_CONFLICT propagates unchanged through engine', async () => {
+    // Force the repo to throw a synthetic CONCURRENT_SUBMIT_CONFLICT on insert.
+    // The engine must surface this TypedError unchanged — no wrapping, no
+    // swallowing — so the caller sees the exact error code repo emits.
+    vi.spyOn(ctx.versions, 'insertVersion').mockImplementation((shotId: string) => {
+      throw new TypedError(
+        'CONCURRENT_SUBMIT_CONFLICT',
+        `Concurrent submit for shot '${shotId}'`,
+      );
+    });
+    try {
+      await expect(
+        ctx.engine.submitGeneration(ctx.shotId, API_WORKFLOW),
+      ).rejects.toMatchObject({
+        name: 'TypedError',
+        code: 'CONCURRENT_SUBMIT_CONFLICT',
+      });
+      // Engine should NOT have called submit on the client — insert failed first.
+      expect(ctx.fake.calls.filter((c) => c.method === 'submit')).toHaveLength(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
+describe('GenerationEngine recovery poller — IT-12 running-state resume', () => {
+  test('IT-12: recovery poller picks up rows already in running state at boot', async () => {
+    // Seed a row in the 'running' state (not 'submitted'). The recovery poller
+    // must still drain it — listPendingVersions returns both submitted AND
+    // running.
+    ctx.fake.scenario = 'happy';
+    const r = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.setJobId(r.id, 'job-running-resume');
+    ctx.versions.transition(r.id, 'running');
+    const fresh = ctx.versions.getVersion(r.id)!;
+    expect(fresh.status).toBe('running');
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await ctx.engine.start();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    const deadline = Date.now() + 2_000;
+    while (ctx.versions.listPendingVersions().length > 0 && Date.now() < deadline) {
+      await vi.advanceTimersByTimeAsync(2_500);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    const final = ctx.versions.getVersion(r.id)!;
+    expect(final.status).toBe('completed');
   });
 });
 
