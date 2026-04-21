@@ -2,6 +2,7 @@ import { describe, test, expect, afterEach, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import Database from 'better-sqlite3';
 import { openDb } from '../db.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 
@@ -102,6 +103,109 @@ describe('Drizzle migration 0001 (D-GEN-38, [BLOCKING] schema push)', () => {
     expect(names).toEqual(
       expect.arrayContaining(['error_code', 'error_message', 'outputs_json']),
     );
+    sqlite.close();
+  });
+
+  test('IDM-02: Phase-1-only DB upgrades cleanly when openDb runs the migrator on top', () => {
+    // Simulate an "existing Phase 1 DB" by seeding ONLY the Phase 1 bootstrap
+    // schema (no Phase 2 columns, no Phase 2 index, no __drizzle_migrations).
+    // Then close, reopen via openDb(), and assert the migrator added the
+    // Phase 2 columns + index without disturbing the existing data.
+    const PHASE_1_ONLY_DDL = `
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        naming_template TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+        name TEXT NOT NULL,
+        naming_template TEXT,
+        created_at INTEGER NOT NULL,
+        UNIQUE(workspace_id, name)
+      );
+      CREATE TABLE IF NOT EXISTS sequences (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(project_id, name)
+      );
+      CREATE TABLE IF NOT EXISTS shots (
+        id TEXT PRIMARY KEY,
+        sequence_id TEXT NOT NULL REFERENCES sequences(id),
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(sequence_id, name)
+      );
+      CREATE TABLE IF NOT EXISTS versions (
+        id TEXT PRIMARY KEY,
+        shot_id TEXT NOT NULL REFERENCES shots(id),
+        version_number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'submitted',
+        job_id TEXT,
+        parent_version_id TEXT REFERENCES versions(id),
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        UNIQUE(shot_id, version_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_sequences_project ON sequences(project_id);
+      CREATE INDEX IF NOT EXISTS idx_shots_sequence ON shots(sequence_id);
+      CREATE INDEX IF NOT EXISTS idx_versions_shot ON versions(shot_id, version_number);
+    `;
+    // Seed a raw better-sqlite3 connection (no migrator!) so we get a truly
+    // Phase-1-only state, then close.
+    {
+      const raw = new Database(dbPath);
+      raw.pragma('journal_mode = WAL');
+      raw.pragma('foreign_keys = ON');
+      raw.exec(PHASE_1_ONLY_DDL);
+      raw.pragma('user_version = 1'); // matches Phase 1 bootstrap
+      // Seed a row to verify it survives the upgrade.
+      raw.prepare(`INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)`).run(
+        'ws_pre',
+        'pre-migration',
+        Date.now(),
+      );
+      raw.close();
+    }
+
+    // Reopen via openDb — the migrator should now run and add Phase 2 bits.
+    const { sqlite } = openDb(dbPath);
+
+    // Phase 2 columns present on versions?
+    const cols = sqlite
+      .prepare(`SELECT name FROM pragma_table_info('versions')`)
+      .all() as { name: string }[];
+    const colNames = cols.map((c) => c.name);
+    for (const c of ['error_code', 'error_message', 'outputs_json']) {
+      expect(colNames).toContain(c);
+    }
+
+    // idx_versions_status present?
+    const idx = sqlite
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='versions' AND name='idx_versions_status'`,
+      )
+      .all();
+    expect(idx).toHaveLength(1);
+
+    // __drizzle_migrations present with all expected rows applied?
+    const mig = sqlite
+      .prepare(`SELECT COUNT(*) AS n FROM __drizzle_migrations`)
+      .get() as { n: number };
+    expect(mig.n).toBe(EXPECTED_MIGRATIONS);
+
+    // Pre-existing data preserved?
+    const preserved = sqlite
+      .prepare(`SELECT name FROM workspaces WHERE id = ?`)
+      .get('ws_pre') as { name: string } | undefined;
+    expect(preserved?.name).toBe('pre-migration');
+
     sqlite.close();
   });
 
