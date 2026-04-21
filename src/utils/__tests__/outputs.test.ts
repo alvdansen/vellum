@@ -59,52 +59,88 @@ describe('buildOutputPath (D-GEN-33)', () => {
 });
 
 describe('sanitizeRelativeSegment (T-02-01-01 path-traversal guard)', () => {
+  const SAFE = {
+    projectName: 'p',
+    sequenceName: 's',
+    shotName: 'sh010',
+    versionLabel: 'v001',
+    filename: 'img.png',
+  } as const;
+
   test('rejects ".." anywhere in the filename', () => {
-    expect(() =>
-      buildOutputPath({
-        projectName: 'p',
-        sequenceName: 's',
-        shotName: 'sh010',
-        versionLabel: 'v001',
-        filename: '../etc/passwd',
-      }),
-    ).toThrowTypedError('COMFYUI_API_ERROR');
+    expect(() => buildOutputPath({ ...SAFE, filename: '../etc/passwd' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
   });
 
   test('rejects forward slash in filename', () => {
-    expect(() =>
-      buildOutputPath({
-        projectName: 'p',
-        sequenceName: 's',
-        shotName: 'sh010',
-        versionLabel: 'v001',
-        filename: 'evil/sub/file.png',
-      }),
-    ).toThrowTypedError('COMFYUI_API_ERROR');
+    expect(() => buildOutputPath({ ...SAFE, filename: 'evil/sub/file.png' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
   });
 
   test('rejects backslash in filename', () => {
-    expect(() =>
-      buildOutputPath({
-        projectName: 'p',
-        sequenceName: 's',
-        shotName: 'sh010',
-        versionLabel: 'v001',
-        filename: 'evil\\path.png',
-      }),
-    ).toThrowTypedError('COMFYUI_API_ERROR');
+    expect(() => buildOutputPath({ ...SAFE, filename: 'evil\\path.png' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
   });
 
   test('rejects NUL byte in filename', () => {
-    expect(() =>
-      buildOutputPath({
-        projectName: 'p',
-        sequenceName: 's',
-        shotName: 'sh010',
-        versionLabel: 'v001',
-        filename: 'evil\0byte.png',
-      }),
-    ).toThrowTypedError('COMFYUI_API_ERROR');
+    expect(() => buildOutputPath({ ...SAFE, filename: 'evil\0byte.png' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  // C1: every segment — not just filename — must be sanitized.
+  // Agent-supplied project/sequence/shot names must not escape the outputs root.
+  test('C1: rejects ".." in projectName', () => {
+    expect(() => buildOutputPath({ ...SAFE, projectName: '..' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+    expect(() => buildOutputPath({ ...SAFE, projectName: '../escape' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('C1: rejects slash in sequenceName', () => {
+    expect(() => buildOutputPath({ ...SAFE, sequenceName: 'a/b' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('C1: rejects backslash in shotName', () => {
+    expect(() => buildOutputPath({ ...SAFE, shotName: 'sh\\010' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('C1: rejects NUL in any segment', () => {
+    expect(() => buildOutputPath({ ...SAFE, projectName: 'p\0' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('C1: rejects empty or whitespace-only segment', () => {
+    expect(() => buildOutputPath({ ...SAFE, projectName: '' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+    expect(() => buildOutputPath({ ...SAFE, sequenceName: '   ' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('C1: rejects literal "." or ".." segment', () => {
+    expect(() => buildOutputPath({ ...SAFE, shotName: '.' })).toThrowTypedError('INVALID_INPUT');
+    expect(() => buildOutputPath({ ...SAFE, versionLabel: '..' })).toThrowTypedError(
+      'INVALID_INPUT',
+    );
+  });
+
+  test('sanitizeRelativeSegment accepts normal names with dots and spaces', () => {
+    expect(sanitizeRelativeSegment('My Project')).toBe('My Project');
+    expect(sanitizeRelativeSegment('v001')).toBe('v001');
+    expect(sanitizeRelativeSegment('img.png')).toBe('img.png');
+    expect(sanitizeRelativeSegment('file.tar.gz')).toBe('file.tar.gz');
   });
 });
 

@@ -18,13 +18,36 @@ export function versionLabel(n: number): string {
 }
 
 /**
- * Reject filenames that could escape the output version directory. Called
- * inside buildOutputPath on the `filename` arg only. Project/sequence/shot
- * names are trusted per Phase 1 D-14 (demo-scope constraint).
+ * Reject any path segment (project/sequence/shot name, versionLabel, or
+ * ComfyUI-returned filename) that could escape the output version directory.
  *
- * Threat: ComfyUI returns `../etc/passwd` as a filename → path-traversal (T-02-01-01).
+ * C1: before this fix, only `filename` was sanitized — project/sequence/shot
+ * names flowed unchecked into path.join. An agent-created project named `..`
+ * or `../../tmp` would cause generation outputs to land outside the outputs
+ * root. Phase 2 is the first phase to turn these names into disk paths, so
+ * the trust boundary is now load-bearing and must be enforced here.
+ *
+ * Threats caught:
+ *   - ComfyUI returns `../etc/passwd` as a filename (T-02-01-01)
+ *   - Agent creates a project named `..` or `../secret`
+ *   - Names containing `/`, `\\`, NUL (Windows absolute-path, null-byte tricks)
+ *   - Empty or whitespace-only names (would collapse the path)
  */
 export function sanitizeRelativeSegment(name: string): string {
+  if (name.length === 0 || name.trim().length === 0) {
+    throw new TypedError(
+      'INVALID_INPUT',
+      `Unsafe path segment: empty or whitespace-only`,
+      'Path segments must be non-empty and contain at least one non-whitespace character.',
+    );
+  }
+  if (name === '.' || name === '..') {
+    throw new TypedError(
+      'INVALID_INPUT',
+      `Unsafe path segment: ${name}`,
+      'Path segments cannot be "." or "..".',
+    );
+  }
   if (
     name.includes('..') ||
     name.includes('/') ||
@@ -32,9 +55,9 @@ export function sanitizeRelativeSegment(name: string): string {
     name.includes('\0')
   ) {
     throw new TypedError(
-      'COMFYUI_API_ERROR',
-      `Unsafe filename returned from ComfyUI: ${name}`,
-      'Filenames must be basename-only (no "..", "/", or "\\").',
+      'INVALID_INPUT',
+      `Unsafe path segment: ${name}`,
+      'Path segments must not contain "..", "/", "\\", or NUL.',
     );
   }
   return name;
@@ -52,21 +75,20 @@ export interface BuildOutputPathArgs {
 /**
  * Build a POSIX-style relative output path per D-GEN-33:
  *   {root}/{projectName}/{sequenceName}/{shotName}/{versionLabel}/{filename}
- * root defaults to 'outputs'. Names are used verbatim (D-GEN-33; Phase 2 assumes
- * fs-safe names per demo-scope constraint). The filename segment is the only
- * untrusted input (from ComfyUI) and must pass sanitizeRelativeSegment.
+ *
+ * C1: every segment is sanitized (not just filename). projectName, sequenceName,
+ * and shotName are user/agent-supplied; versionLabel is engine-generated but we
+ * belt-and-suspenders check it anyway. Defense in depth: tool-layer Zod validates
+ * inputs, but the trust boundary for disk writes lives here.
  */
 export function buildOutputPath(args: BuildOutputPathArgs): string {
   const root = args.root ?? 'outputs';
+  const project = sanitizeRelativeSegment(args.projectName);
+  const sequence = sanitizeRelativeSegment(args.sequenceName);
+  const shot = sanitizeRelativeSegment(args.shotName);
+  const version = sanitizeRelativeSegment(args.versionLabel);
   const fname = sanitizeRelativeSegment(args.filename);
-  return path.join(
-    root,
-    args.projectName,
-    args.sequenceName,
-    args.shotName,
-    args.versionLabel,
-    fname,
-  );
+  return path.join(root, project, sequence, shot, version, fname);
 }
 
 /** Create directory recursively — no-throw on EEXIST. */
