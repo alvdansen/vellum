@@ -39,7 +39,8 @@ const serverTs = resolve(__dirname, '../server.ts');
 function bootAndKill(
   env: NodeJS.ProcessEnv,
   dbLabel: string,
-): Promise<{ stdout: string; stderr: string }> {
+  opts: { killAfterMs?: number; signal?: NodeJS.Signals } = {},
+): Promise<{ stdout: string; stderr: string; exitCode: number | null; signalName: NodeJS.Signals | null }> {
   return new Promise((resolvePromise, rejectPromise) => {
     const tmpDb = resolve(__dirname, `__stdio-${dbLabel}-${Date.now()}.db`);
     const chunks: Buffer[] = [];
@@ -51,8 +52,11 @@ function bootAndKill(
     child.stdout.on('data', (c) => chunks.push(c));
     child.stderr.on('data', (c) => stderrChunks.push(c));
     child.stdin.end();
-    setTimeout(() => child.kill('SIGTERM'), 1500);
-    child.on('exit', () => {
+    const killMs = opts.killAfterMs ?? 1500;
+    const killSig = opts.signal ?? 'SIGTERM';
+    const killTimer = setTimeout(() => child.kill(killSig), killMs);
+    child.on('exit', (code, signal) => {
+      clearTimeout(killTimer);
       for (const suffix of ['', '-wal', '-shm']) {
         const p = tmpDb + suffix;
         if (existsSync(p)) {
@@ -66,6 +70,8 @@ function bootAndKill(
       resolvePromise({
         stdout: Buffer.concat(chunks).toString('utf8'),
         stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        exitCode: code,
+        signalName: signal,
       });
     });
     child.on('error', rejectPromise);
@@ -133,5 +139,29 @@ describe('stdio hygiene', () => {
     expect(stderr).toMatch(
       new RegExp(`ComfyUI credentials loaded \\(key \\*\\*\\*\\*7890, base ${escapedBase}\\)`),
     );
+  }, 15_000);
+
+  it('IS-02: bad COMFYUI_API_BASE (http://) causes non-zero exit at boot', async () => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      DOTENV_CONFIG_PATH: '/nonexistent-stdio-hygiene-bad-base',
+      COMFYUI_API_BASE: 'http://cloud.comfy.org', // cleartext — must be rejected
+    };
+    const { stderr, exitCode } = await bootAndKill(env, 'bad-base-http');
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/cleartext|https|COMFYUI_API_BASE/i);
+  }, 15_000);
+
+  it('IS-02: bad COMFYUI_API_BASE (loopback host) causes non-zero exit at boot', async () => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      DOTENV_CONFIG_PATH: '/nonexistent-stdio-hygiene-bad-base-loopback',
+      COMFYUI_API_BASE: 'https://127.0.0.1:8188', // private — must be rejected
+    };
+    const { stderr, exitCode } = await bootAndKill(env, 'bad-base-loopback');
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/private|loopback|COMFYUI_API_BASE/i);
   }, 15_000);
 });

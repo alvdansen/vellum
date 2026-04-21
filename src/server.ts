@@ -62,6 +62,7 @@ import { openDb } from './store/db.js';
 import { HierarchyRepo } from './store/hierarchy-repo.js';
 import { VersionRepo } from './store/version-repo.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
+import { validateBaseUrlFromEnv } from './utils/validate-base-url.js';
 import { Engine } from './engine/pipeline.js';
 import {
   registerWorkspace,
@@ -133,6 +134,11 @@ async function main(): Promise<void> {
   // COMFYUI_CREDENTIALS_MISSING on first call.
   const apiKey = process.env.COMFYUI_API_KEY;
   const apiBase = process.env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE;
+  // IS-02: fail-fast on misconfigured base URL. Validates protocol, blocks
+  // loopback / RFC1918 / link-local targets unless explicit env overrides are
+  // set. Runs even when COMFYUI_API_KEY is absent so surprise misconfigs
+  // surface immediately instead of on the first submit call.
+  validateBaseUrlFromEnv(apiBase);
   const additionalAllowedHosts = (process.env.COMFYUI_ALLOWED_REDIRECT_HOSTS ?? '')
     .split(',')
     .map((s) => s.trim())
