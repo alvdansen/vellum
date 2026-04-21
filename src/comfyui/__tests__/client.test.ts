@@ -251,6 +251,40 @@ describe('ComfyUIClient.download SSRF gate', () => {
     });
   });
 
+  test('C3: signed-URL second hop rejects a further redirect (SSRF bypass blocked)', async () => {
+    // Allowlisted host responds 302 → internal metadata endpoint.
+    // Without redirect:manual on the second fetch, Node fetch would silently
+    // follow this, defeating the first-hop SSRF allowlist.
+    let n = 0;
+    let secondInit: RequestInit | undefined;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async (_url, init) => {
+        n++;
+        if (n === 1) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://storage.googleapis.com/bucket/signed' },
+          });
+        }
+        if (n === 2) {
+          secondInit = init;
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'http://169.254.169.254/latest/meta-data/' },
+          });
+        }
+        return new Response('leaked', { status: 200 });
+      }),
+    });
+    await expect(client.download('x.png')).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_API_ERROR',
+      message: expect.stringMatching(/redirect|SSRF/i),
+    });
+    expect(n).toBe(2); // must NOT have made a third hop to 169.254.x
+    expect(secondInit?.redirect).toBe('manual');
+  });
+
   test('additionalAllowedHosts accepts extra comma-separated hosts', async () => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {

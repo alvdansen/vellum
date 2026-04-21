@@ -226,7 +226,23 @@ export class ComfyUIClient {
     }
     // Signed URLs do NOT need auth headers (ComfyUI Cloud docs).
     // Explicitly pass no headers so the original request's X-API-Key does not leak.
-    const second = await this.fetchImpl(target, { method: 'GET' });
+    //
+    // C3: close SSRF bypass on this second hop. Without redirect:'manual',
+    // Node's fetch silently follows up to 20 further redirects. An attacker
+    // who can influence an allowlisted host's response (misconfigured bucket,
+    // compromised tenant, typo'd URL) could chain 302 → http://169.254.169.254
+    // and exfiltrate cloud-metadata content — defeating the first-hop allowlist.
+    // Signed URLs are direct-fetch resources; they should not redirect further.
+    const second = await this.fetchImpl(target, {
+      method: 'GET',
+      redirect: 'manual',
+    });
+    if (second.status >= 300 && second.status < 400) {
+      throw new TypedError(
+        'COMFYUI_API_ERROR',
+        `Signed-URL fetch returned unexpected redirect ${second.status} (SSRF bypass blocked)`,
+      );
+    }
     if (!second.ok || !second.body) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
