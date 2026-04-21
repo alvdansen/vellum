@@ -1,5 +1,8 @@
 import { TypedError } from '../engine/errors.js';
 
+/** Structured content payload shape expected by MCP's CallToolResult. */
+type StructuredContent = { [key: string]: unknown };
+
 /**
  * Wrap a successful engine result into the MCP dual-form response (D-25).
  *
@@ -7,7 +10,7 @@ import { TypedError } from '../engine/errors.js';
  * Clients that understand `structuredContent` use it directly; older clients fall
  * back to the text content block.
  */
-export function toolOk(structured: unknown) {
+export function toolOk(structured: StructuredContent) {
   return {
     structuredContent: structured,
     content: [{ type: 'text' as const, text: JSON.stringify(structured) }],
