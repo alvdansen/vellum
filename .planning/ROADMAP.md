@@ -47,11 +47,12 @@ Plans:
   3. Completed generation automatically creates a new version under the shot (never overwrites previous versions)
   4. Submitting UI-format JSON (instead of API format) returns a clear rejection error explaining the difference
   5. Internal polling uses exponential backoff -- no quota burn visible in request logs
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Foundation (migration, schema, helpers, VersionRepo, fakes) [BLOCKING schema push]
+- [ ] 02-02-PLAN.md — ComfyUI client + engine generation (state machine, recovery poller, SSRF gate)
+- [ ] 02-03-PLAN.md — Generation MCP tool + server wiring + cross-cutting tests + live-smoke
 
 ### Phase 3: Provenance & Versioning
 **Goal**: Every generated version has complete, immutable provenance that an agent can diff, reproduce exactly, or iterate from with modifications
