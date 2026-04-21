@@ -30,9 +30,12 @@ export function openDb(path: string): OpenDbResult {
     sqlite.exec(SCHEMA_DDL);
     sqlite.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (existingVersion !== SCHEMA_VERSION) {
-    throw new Error(
-      `DB at ${path} is version ${existingVersion}, server expects ${SCHEMA_VERSION}`,
-    );
+    // DM-02: close the fd + release the WAL lock before throwing. Leaving
+    // the handle open on a mismatch leaks both into the process's open-file
+    // table and blocks subsequent openDb attempts on the same path until GC.
+    const msg = `DB at ${path} is version ${existingVersion}, server expects ${SCHEMA_VERSION}`;
+    sqlite.close();
+    throw new Error(msg);
   }
 
   const db = drizzle(sqlite, { schema });
