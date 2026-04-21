@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './schema.js';
 import { SCHEMA_DDL } from './schema.js';
 
@@ -35,5 +36,13 @@ export function openDb(path: string): OpenDbResult {
   }
 
   const db = drizzle(sqlite, { schema });
+
+  // Phase 2 addition (D-GEN-38): drizzle-kit-generated migrations layer on top.
+  // Idempotent — Drizzle's own __drizzle_migrations table tracks applied files.
+  // Synchronous call; no await. Coexists with Phase 1 user_version=1 pragma
+  // (separate mechanisms — pragma is Phase 1 bootstrap, drizzle migrator owns
+  // additive changes from 0001 onward).
+  migrate(db, { migrationsFolder: './drizzle' });
+
   return { db, sqlite };
 }

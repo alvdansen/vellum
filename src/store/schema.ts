@@ -60,6 +60,12 @@ export const versions = sqliteTable('versions', {
   notes: text('notes'),
   created_at: integer('created_at').notNull(),
   completed_at: integer('completed_at'),
+  // Phase 2 additions — D-GEN-19 (all nullable). Added via drizzle migration
+  // 0001_phase2_version_lifecycle on existing DBs; present at CREATE TABLE
+  // time on fresh DBs via SCHEMA_DDL (Phase 1 bootstrap).
+  error_code: text('error_code'),
+  error_message: text('error_message'),
+  outputs_json: text('outputs_json'),
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
   idxShot: index('idx_versions_shot').on(t.shot_id, t.version_number),
