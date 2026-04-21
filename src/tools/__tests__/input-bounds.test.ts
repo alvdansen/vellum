@@ -141,4 +141,29 @@ describe('input bounds (SEC-01, API-05)', () => {
     expect(sc.message ?? '').toMatch(/input\.notes/);
     await client.close();
   });
+
+  it('SEC-02: workflow_json with > 2000 nodes rejected with INVALID_INPUT', async () => {
+    const { client, repo } = await spinUp();
+    const ws = repo.createWorkspace('ws-nodes');
+    const proj = repo.createProject(ws.id, 'p-nodes');
+    const seq = repo.createSequence(proj.id, 'sq010');
+    const shot = repo.createShot(seq.id, 'sh010');
+    const tooManyNodes: Record<string, unknown> = {};
+    for (let i = 0; i < 2001; i++) {
+      tooManyNodes[String(i)] = { class_type: 'K', inputs: {} };
+    }
+    const res = await client.callTool({
+      name: 'generation',
+      arguments: {
+        action: 'submit',
+        shot_id: shot.id,
+        workflow_json: tooManyNodes,
+      },
+    });
+    expect(res.isError).toBe(true);
+    const sc = res.structuredContent as { code?: string; message?: string };
+    expect(sc.code).toBe('INVALID_INPUT');
+    expect(sc.message ?? '').toMatch(/workflow_json|nodes/);
+    await client.close();
+  });
 });

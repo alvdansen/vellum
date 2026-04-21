@@ -6,7 +6,11 @@ import { toolOk, toolError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
 import type { StoredOutput } from '../comfyui/types.js';
-import { MAX_ID_LENGTH, MAX_NOTES_LENGTH } from './shape.js';
+import {
+  MAX_ID_LENGTH,
+  MAX_NOTES_LENGTH,
+  MAX_WORKFLOW_NODES,
+} from './shape.js';
 
 /**
  * D-GEN-04: submit input — action + shot_id + workflow_json + optional notes.
@@ -17,7 +21,14 @@ import { MAX_ID_LENGTH, MAX_NOTES_LENGTH } from './shape.js';
 const SubmitInput = z.object({
   action: z.literal('submit'),
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
-  workflow_json: z.record(z.string(), z.unknown()),
+  // SEC-02: cap node count at the tool boundary. Byte-size cap is enforced
+  // in validateWorkflowFormat (engine-layer) so future REST adapters inherit
+  // the same guard.
+  workflow_json: z
+    .record(z.string(), z.unknown())
+    .refine((obj) => Object.keys(obj).length <= MAX_WORKFLOW_NODES, {
+      message: `workflow_json exceeds max ${MAX_WORKFLOW_NODES} nodes`,
+    }),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 

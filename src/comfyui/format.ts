@@ -2,6 +2,14 @@ import { TypedError } from '../engine/errors.js';
 import type { NodeError } from './types.js';
 
 /**
+ * SEC-02: byte-size cap for workflow_json (serialized). Real workflows are
+ * <500KB; 5MB leaves headroom for legitimate edge cases while blocking OOM.
+ * Matches src/tools/shape.ts MAX_WORKFLOW_BYTES — duplicated here to keep
+ * comfyui/format.ts free of tool-layer imports (D-33 purity).
+ */
+const MAX_WORKFLOW_BYTES = 5_000_000;
+
+/**
  * Pure format validators for ComfyUI workflow JSON (D-GEN-23, D-GEN-27).
  * No I/O, no network, no DB. Imports only TypedError from engine/errors.
  *
@@ -56,6 +64,11 @@ export function isApiFormat(payload: unknown): boolean {
  * Gate called at submit-time (engine layer). Throws TypedError('INVALID_WORKFLOW_FORMAT')
  * with a format-specific hint. UI-format check runs first so the common "wrong export"
  * case gets the actionable Dev Mode hint instead of a generic one.
+ *
+ * SEC-02: also enforces a byte-size ceiling. Runs once via JSON.stringify; for
+ * legitimate workflows (<500KB) this is a negligible fraction of the eventual
+ * POST-to-ComfyUI cost. For adversarial multi-MB payloads it caps memory
+ * pressure before the network roundtrip.
  */
 export function validateWorkflowFormat(payload: unknown): void {
   if (isUiFormat(payload)) {
@@ -71,6 +84,17 @@ export function validateWorkflowFormat(payload: unknown): void {
       'INVALID_WORKFLOW_FORMAT',
       'Workflow does not match the ComfyUI API format',
       "Expected an object keyed by numeric strings, each value with 'class_type' (string) and 'inputs' (object).",
+    );
+  }
+  // SEC-02 byte-size guard. Happens AFTER format checks so an obviously-wrong
+  // shape gets the more helpful hint; a well-shaped but oversized payload gets
+  // the size-specific message.
+  const serialized = JSON.stringify(payload);
+  if (serialized.length > MAX_WORKFLOW_BYTES) {
+    throw new TypedError(
+      'INVALID_INPUT',
+      `workflow_json exceeds ${MAX_WORKFLOW_BYTES} bytes serialized`,
+      `Trim the workflow or split into smaller submits.`,
     );
   }
 }

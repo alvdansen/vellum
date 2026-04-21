@@ -17,6 +17,12 @@ export const MAX_NOTES_LENGTH = 4000;
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 
+// SEC-02: bounds for `generation.submit` workflow_json. Real workflows are
+// typically <500KB; these caps guard against OOM while leaving headroom for
+// legitimate edge cases (heavy embedded base64 refs, etc.).
+export const MAX_WORKFLOW_NODES = 2000;
+export const MAX_WORKFLOW_BYTES = 5_000_000;
+
 /**
  * Shape a create/get engine result into the tool response payload shape.
  *
