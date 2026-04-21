@@ -84,20 +84,20 @@ describe('openDb — pragma-first init sequence', () => {
     sqlite.close();
   });
 
-  test('indexes present after first run', () => {
+  test('non-UNIQUE indexes present after first run (DM-03: redundant FK indexes dropped)', () => {
     const { sqlite } = openDb(dbPath);
     const rows = sqlite
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'`)
       .all() as { name: string }[];
     const idxNames = rows.map((r) => r.name);
-    for (const expected of [
-      'idx_projects_workspace',
-      'idx_sequences_project',
-      'idx_shots_sequence',
-      'idx_versions_shot',
-    ]) {
-      expect(idxNames).toContain(expected);
-    }
+    // Only idx_versions_status remains — the FK-leading-column indexes were
+    // redundant with SQLite's UNIQUE autoindexes per DM-03.
+    expect(idxNames).toContain('idx_versions_status');
+    // On a fresh install the dropped indexes must NOT be created.
+    expect(idxNames).not.toContain('idx_projects_workspace');
+    expect(idxNames).not.toContain('idx_sequences_project');
+    expect(idxNames).not.toContain('idx_shots_sequence');
+    expect(idxNames).not.toContain('idx_versions_shot');
     sqlite.close();
   });
 

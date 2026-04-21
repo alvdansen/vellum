@@ -23,6 +23,12 @@ export const workspaces = sqliteTable('workspaces', {
   created_at: integer('created_at').notNull(),
 });
 
+// DM-03: `idx_{projects,sequences,shots,versions}_{fk}` indexes were redundant
+// with the implicit UNIQUE autoindexes whose leading column matches the FK
+// (confirmed via `EXPLAIN QUERY PLAN`). Dropped from the Drizzle schema to
+// stop write-amplifying every insert. Existing DBs retain the indexes
+// (migration 0001/0002 created them) — those are harmless leftovers and will
+// be cleaned up whenever we re-baseline the schema.
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   workspace_id: text('workspace_id')
@@ -33,7 +39,6 @@ export const projects = sqliteTable('projects', {
   created_at: integer('created_at').notNull(),
 }, (t) => ({
   uniqueNamePerWorkspace: unique().on(t.workspace_id, t.name),
-  idxWorkspace: index('idx_projects_workspace').on(t.workspace_id),
 }));
 
 export const sequences = sqliteTable('sequences', {
@@ -45,7 +50,6 @@ export const sequences = sqliteTable('sequences', {
   created_at: integer('created_at').notNull(),
 }, (t) => ({
   uniqueNamePerProject: unique().on(t.project_id, t.name),
-  idxProject: index('idx_sequences_project').on(t.project_id),
 }));
 
 export const shots = sqliteTable('shots', {
@@ -57,7 +61,6 @@ export const shots = sqliteTable('shots', {
   created_at: integer('created_at').notNull(),
 }, (t) => ({
   uniqueNamePerSequence: unique().on(t.sequence_id, t.name),
-  idxSequence: index('idx_shots_sequence').on(t.sequence_id),
 }));
 
 export const versions = sqliteTable('versions', {
@@ -82,10 +85,10 @@ export const versions = sqliteTable('versions', {
   outputs_json: text('outputs_json'),
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
-  idxShot: index('idx_versions_shot').on(t.shot_id, t.version_number),
   // Supports listPendingVersions() — called at every server boot by the recovery
   // poller (D-GEN-28). Without it the query is a full table scan that grows O(n)
-  // in total version count as completed rows accumulate.
+  // in total version count as completed rows accumulate. Non-UNIQUE, so this
+  // one is kept.
   idxStatus: index('idx_versions_status').on(t.status),
 }));
 
@@ -157,9 +160,10 @@ CREATE TABLE IF NOT EXISTS versions (
   UNIQUE(shot_id, version_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_sequences_project ON sequences(project_id);
-CREATE INDEX IF NOT EXISTS idx_shots_sequence ON shots(sequence_id);
-CREATE INDEX IF NOT EXISTS idx_versions_shot ON versions(shot_id, version_number);
+-- DM-03: idx_projects_workspace / idx_sequences_project / idx_shots_sequence /
+-- idx_versions_shot were redundant with the UNIQUE autoindexes whose leading
+-- column matched the FK (EXPLAIN QUERY PLAN confirmed they were never picked).
+-- Dropped from this fresh-install DDL; existing DBs retain them harmlessly
+-- until the next schema re-baseline.
 CREATE INDEX IF NOT EXISTS idx_versions_status ON versions(status);
 `;
