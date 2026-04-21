@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 
 /**
- * Asserts D-04 / TOOL-01: the 12-tool budget. Phase 1 uses exactly 4.
+ * Asserts D-04 / TOOL-01 / D-GEN-03: the 12-tool budget. Phase 2 uses exactly 5
+ * (workspace, project, sequence, shot, generation).
+ *
  * Counts tool-registration call-sites across src/tools/ only — that is the
  * single layer allowed to import the MCP SDK (D-33, enforced independently
  * by architecture-purity.test.ts). Any future call-site outside src/tools/
@@ -32,7 +34,10 @@ describe('tool budget', () => {
     expect(registerToolCount()).toBeLessThanOrEqual(12);
   });
 
-  it('Phase 1 registers exactly 4 tools (D-04)', () => {
-    expect(registerToolCount()).toBe(4);
+  it('Phase 2 registers exactly 5 tools (D-GEN-03)', () => {
+    // Phase 1: workspace, project, sequence, shot (4).
+    // Phase 2 adds: generation (5). Any tool added beyond 5 must come with an
+    // explicit bump here so Pitfall #1 (tool explosion) stays visible.
+    expect(registerToolCount()).toBe(5);
   });
 });
