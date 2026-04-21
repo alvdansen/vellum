@@ -106,6 +106,26 @@ describe('VersionRepo — allocation, state transitions, immutability', () => {
     expect(afterFail.completed_at).toBe(completedAt1); // unchanged
   });
 
+  test('IT-17: completed_at immutability: markCompleted after markFailed is a no-op (reverse direction)', () => {
+    const v = repo.insertVersion(shotId);
+    repo.markFailed(v.id, 'COMFYUI_API_ERROR', 'first-fail');
+    const afterFail = repo.getVersion(v.id)!;
+    expect(afterFail.status).toBe('failed');
+    expect(afterFail.error_code).toBe('COMFYUI_API_ERROR');
+    expect(afterFail.error_message).toBe('first-fail');
+    const completedAt1 = afterFail.completed_at!;
+
+    // A belated success (e.g., a racing poller) must NOT regress the row:
+    // WHERE completed_at IS NULL on markCompleted makes it a no-op.
+    repo.markCompleted(v.id, '[{"filename":"late.png"}]');
+    const afterOk = repo.getVersion(v.id)!;
+    expect(afterOk.status).toBe('failed'); // unchanged
+    expect(afterOk.error_code).toBe('COMFYUI_API_ERROR'); // unchanged
+    expect(afterOk.error_message).toBe('first-fail'); // unchanged
+    expect(afterOk.outputs_json).toBeNull(); // unchanged
+    expect(afterOk.completed_at).toBe(completedAt1); // unchanged
+  });
+
   test('markFailed sets status, error_code, error_message, completed_at', () => {
     const v = repo.insertVersion(shotId);
     repo.markFailed(v.id, 'COMFYUI_API_ERROR', 'boom');
