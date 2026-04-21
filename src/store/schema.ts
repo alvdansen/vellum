@@ -60,9 +60,11 @@ export const versions = sqliteTable('versions', {
   notes: text('notes'),
   created_at: integer('created_at').notNull(),
   completed_at: integer('completed_at'),
-  // Phase 2 additions — D-GEN-19 (all nullable). Added via drizzle migration
-  // 0001_phase2_version_lifecycle on existing DBs; present at CREATE TABLE
-  // time on fresh DBs via SCHEMA_DDL (Phase 1 bootstrap).
+  // Phase 2 additions — D-GEN-19 (all nullable). Added by the drizzle migrator
+  // via 0001_phase2_version_lifecycle.sql on every DB (fresh or existing); the
+  // Phase 1 SCHEMA_DDL below intentionally does NOT declare these columns, so
+  // on a brand-new DB the sequence is: SCHEMA_DDL creates base tables → then
+  // migrate() ALTER-adds the Phase 2 columns. See IM-04 for history.
   error_code: text('error_code'),
   error_message: text('error_message'),
   outputs_json: text('outputs_json'),
@@ -77,7 +79,21 @@ export const versions = sqliteTable('versions', {
 
 /**
  * Raw DDL string used by openDb() first-run path and the in-memory test fixture.
- * Kept in sync VERBATIM with the Drizzle table definitions above.
+ *
+ * IMPORTANT — intentional Phase 1 / Phase 2 split (do not "re-sync"): this DDL
+ * mirrors the Phase 1 bootstrap schema (workspaces/projects/sequences/shots/
+ * versions base columns + Phase 1 indexes). The Phase 2 NULLABLE columns on
+ * `versions` (error_code, error_message, outputs_json) are NOT declared here —
+ * they are added on every DB (fresh or existing) by the drizzle migrator via
+ * 0001_phase2_version_lifecycle.sql. The idx_versions_status index is duplicated
+ * here as a belt-and-suspenders guard (also emitted by migration 0002) because
+ * the `IF NOT EXISTS` clause makes the duplicate a no-op.
+ *
+ * Boot sequence on a fresh DB: (1) openDb() sees user_version=0 → execs this
+ * SCHEMA_DDL → stamps user_version=1; (2) migrate() then applies the Phase 2
+ * migrations (0001, 0002) additively. On an existing Phase 1 DB only step (2)
+ * runs. This split keeps Phase 1's zero-dep bootstrap intact while letting
+ * Phase 2+ migrations be additive, idempotent, and rollback-friendly.
  *
  * NOTE: versions.parent_version_id cannot use `REFERENCES versions(id)` inline at
  * CREATE TABLE time because the self-reference would require the rowid to exist;
