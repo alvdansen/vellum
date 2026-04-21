@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import '../../test-utils/matchers.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
+import { VersionRepo } from '../../store/version-repo.js';
 import { Engine } from '../pipeline.js';
 
 describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
@@ -9,7 +10,9 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
 
   beforeEach(() => {
     const { db } = makeInMemoryDb();
-    engine = new Engine(new HierarchyRepo(db));
+    // Phase 2 Engine constructor: (repo, versionRepo, client?). Phase 1 tests
+    // never exercise generation, so `null` client is the canonical shape here.
+    engine = new Engine(new HierarchyRepo(db), new VersionRepo(db), null);
   });
 
   test('create full hierarchy returns breadcrumb walking 4 levels', () => {

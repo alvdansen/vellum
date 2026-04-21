@@ -34,6 +34,7 @@ import { readFile } from 'node:fs/promises';
 import { parseCliFlags, printHelp } from './utils/cli.js';
 import { openDb } from './store/db.js';
 import { HierarchyRepo } from './store/hierarchy-repo.js';
+import { VersionRepo } from './store/version-repo.js';
 import { Engine } from './engine/pipeline.js';
 import {
   registerWorkspace,
@@ -95,7 +96,12 @@ async function main(): Promise<void> {
   console.error(`vfx-familiar: db=${dbPath}`);
 
   const repo = new HierarchyRepo(db);
-  const engine = new Engine(repo);
+  // Phase 2: Engine composes GenerationEngine internally. The ComfyUI client
+  // is wired in Plan 02-03 (tool + server wiring); until then, passing null
+  // preserves the Phase 1 "boot without credentials" contract (D-GEN-10,
+  // TRNS-04). submitGeneration throws COMFYUI_CREDENTIALS_MISSING at call time.
+  const versionRepo = new VersionRepo(db);
+  const engine = new Engine(repo, versionRepo, null);
   const version = await readVersion();
 
   // Transport 1 — stdio, always on (D-15). One long-lived McpServer.

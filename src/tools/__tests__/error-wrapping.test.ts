@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
+import { VersionRepo } from '../../store/version-repo.js';
 import { Engine } from '../../engine/pipeline.js';
 import { TypedError } from '../../engine/errors.js';
 import { toolOk, toolError } from '../envelope.js';
@@ -34,7 +35,9 @@ type ToolResponse = {
 function buildTestStack() {
   const { db } = makeInMemoryDb();
   const repo = new HierarchyRepo(db);
-  const engine = new Engine(repo);
+  // Phase 2 Engine constructor: (repo, versionRepo, client?). Error-wrapping
+  // tests only exercise Phase 1 tools, so `null` client is correct.
+  const engine = new Engine(repo, new VersionRepo(db), null);
   return { repo, engine };
 }
 

@@ -1,11 +1,15 @@
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
+import type { VersionRepo } from '../store/version-repo.js';
+import type { ComfyUIClient } from '../comfyui/client.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
+import { GenerationEngine } from './generation.js';
 import { TypedError } from './errors.js';
 import type {
   Workspace,
   Project,
   Sequence,
   Shot,
+  Version,
   Breadcrumb,
 } from '../types/hierarchy.js';
 
@@ -21,22 +25,37 @@ type ListResult<T> = {
 };
 
 /**
- * Engine facade for VFX Familiar hierarchy operations. Consumes a HierarchyRepo
- * and constructs its own BreadcrumbResolver at instantiation time.
+ * Engine facade — Phase 1 hierarchy ops + Phase 2 generation ops.
  *
- * Returns `{ entity, breadcrumb }` for create/get; `{ items, total, limit, offset }`
- * for list (each item already merges its entity fields with its own breadcrumb).
+ * Phase 2 constructor takes the extra repos (VersionRepo) and an optional
+ * ComfyUIClient. Missing client is handled at the call site (submitGeneration
+ * throws COMFYUI_CREDENTIALS_MISSING). The BreadcrumbResolver now takes both
+ * repos to support the 'version' leaf (D-GEN-05).
  *
  * Invariants:
  *  - Zero MCP SDK imports (D-33).
  *  - Shot regex is enforced here before delegating to the repo (D-07, D-33).
- *  - Missing entities surface as typed {WORKSPACE,PROJECT,SEQUENCE,SHOT}_NOT_FOUND.
+ *  - Missing entities surface as typed {WORKSPACE,PROJECT,SEQUENCE,SHOT,VERSION}_NOT_FOUND.
+ *  - Phase 2 generation ops are delegated to a composed GenerationEngine instance.
  */
 export class Engine {
   private breadcrumb: BreadcrumbResolver;
+  private generation: GenerationEngine;
 
-  constructor(private repo: HierarchyRepo) {
-    this.breadcrumb = new BreadcrumbResolver(repo);
+  constructor(
+    private repo: HierarchyRepo,
+    private versionRepo: VersionRepo,
+    private client: ComfyUIClient | null = null,
+    outputRoot: string = 'outputs',
+  ) {
+    this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
+    this.generation = new GenerationEngine(
+      repo,
+      versionRepo,
+      client,
+      this.breadcrumb,
+      outputRoot,
+    );
   }
 
   // ================================================================
@@ -187,5 +206,31 @@ export class Engine {
       limit,
       offset,
     };
+  }
+
+  // ================================================================
+  // PHASE 2 — GENERATION (delegates to composed GenerationEngine)
+  // ================================================================
+
+  async submitGeneration(
+    shotId: string,
+    workflowJson: Record<string, unknown>,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    return this.generation.submitGeneration(shotId, workflowJson, notes);
+  }
+
+  async getGenerationStatus(
+    versionId: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    return this.generation.getGenerationStatus(versionId);
+  }
+
+  async start(): Promise<void> {
+    return this.generation.start();
+  }
+
+  async stop(): Promise<void> {
+    return this.generation.stop();
   }
 }

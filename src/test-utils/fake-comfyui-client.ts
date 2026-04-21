@@ -1,3 +1,7 @@
+import { pipeline } from 'node:stream/promises';
+import { createWriteStream } from 'node:fs';
+import { rename, unlink } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { TypedError } from '../engine/errors.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
 
@@ -137,6 +141,58 @@ export class FakeComfyUIClient {
       contentType: 'image/png',
       contentLength: bytes.byteLength,
       url: `https://storage.googleapis.com/comfy-fake/${filename}`,
+    };
+  }
+
+  /**
+   * Mirror of the real ComfyUIClient.downloadToPath — temp-then-rename atomic
+   * write. Delegates to `download()` for scenario-driven failures (hopeless,
+   * flaky) so test counters work uniformly across the 2-method surface.
+   *
+   * Added in Plan 02-02 Task 2 (Rule 2 auto-add): the GenerationEngine's
+   * downloadAndPersist calls `client.downloadToPath(filename, opts, destPath)`
+   * directly; without this method the fake breaks the engine contract.
+   */
+  async downloadToPath(
+    filename: string,
+    opts: { subfolder?: string; type?: string },
+    destPath: string,
+  ): Promise<{
+    path: string;
+    url: string;
+    contentType: string;
+    sizeBytes: number;
+  }> {
+    // download() handles scenario-driven failures. downloadToPath delegates,
+    // consumes the body, and writes to disk atomically.
+    const result = await this.download(filename, opts);
+    const partial = `${destPath}.partial`;
+    let bytes = 0;
+    const writer = createWriteStream(partial);
+    try {
+      const readable = Readable.fromWeb(
+        result.body as unknown as import('node:stream/web').ReadableStream,
+      );
+      readable.on('data', (chunk: Buffer) => {
+        bytes += chunk.byteLength;
+      });
+      await pipeline(readable, writer);
+      await rename(partial, destPath);
+    } catch (err) {
+      await unlink(partial).catch(() => undefined);
+      throw new TypedError(
+        'DOWNLOAD_FAILED',
+        `Fake failed to stream '${filename}' to disk: ${(err as Error).message}`,
+      );
+    }
+    return {
+      path: destPath,
+      url: result.url,
+      contentType: result.contentType,
+      sizeBytes:
+        Number.isFinite(result.contentLength) && result.contentLength > 0
+          ? result.contentLength
+          : bytes,
     };
   }
 
