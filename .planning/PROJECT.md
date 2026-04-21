@@ -12,12 +12,11 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Project hierarchy: workspace → project → sequence → shot → version — *Validated in Phase 1: foundation-hierarchy (hierarchy + breadcrumbs live end-to-end over stdio + Streamable HTTP; 76 unit tests + 56 live-client smoke checks green)*
 
 ### Active
 
 - [ ] MCP server wraps ComfyUI Cloud API as structured tools (queue workflow, get output, list models)
-- [ ] Project hierarchy: workspace → project → sequence → shot → version
 - [ ] Full provenance capture: workflow JSON, parameters, seed, model checksums, timestamp, artist, machine
 - [ ] Automatic versioning on every generation (never overwrites)
 - [ ] Asset tagging and arbitrary metadata attachment
@@ -100,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after initialization*
+*Last updated: 2026-04-21 after Phase 1 completion (foundation-hierarchy)*
