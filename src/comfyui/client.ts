@@ -1,9 +1,6 @@
-import { pipeline } from 'node:stream/promises';
-import { createWriteStream } from 'node:fs';
-import { rename, unlink } from 'node:fs/promises';
-import { Readable } from 'node:stream';
 import { TypedError } from '../engine/errors.js';
 import { extractFirstNodeError } from './format.js';
+import { streamToPath } from '../utils/stream-to-path.js';
 import type {
   SubmitRequest,
   SubmitResponse,
@@ -435,36 +432,13 @@ export class ComfyUIClient {
         `Remote file '${filename}' size ${result.contentLength} exceeds max ${maxBytes} bytes`,
       );
     }
-    const partial = `${destPath}.partial`;
     let bytes = 0;
-    let overflow = false;
     try {
-      // IP-03: createWriteStream CAN throw synchronously on EACCES / ENOSPC /
-      // ENOTDIR before any data is written. If it throws outside the try block
-      // and we've already computed `partial`, that name could be orphaned on
-      // disk in edge cases. Moving the constructor inside the try block funnels
-      // all failures through the catch, which unlinks partial unconditionally.
-      const writer = createWriteStream(partial);
-      const readable = Readable.fromWeb(
-        result.body as unknown as import('node:stream/web').ReadableStream,
-      );
-      readable.on('data', (chunk: Buffer) => {
-        bytes += chunk.byteLength;
-        if (bytes > maxBytes && !overflow) {
-          overflow = true;
-          // Destroying the readable aborts the pipeline with an error that
-          // propagates to the catch below (and unlinks the partial).
-          readable.destroy(
-            new Error(
-              `Download '${filename}' exceeded maxBytes=${maxBytes} (saw ${bytes})`,
-            ),
-          );
-        }
-      });
-      await pipeline(readable, writer);
-      await rename(partial, destPath);
+      ({ bytes } = await streamToPath(result.body, destPath, {
+        maxBytes,
+        filenameForError: filename,
+      }));
     } catch (err) {
-      await unlink(partial).catch(() => undefined);
       throw new TypedError(
         'DOWNLOAD_FAILED',
         `Failed to stream '${filename}' to disk: ${(err as Error).message}`,

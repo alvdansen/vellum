@@ -1,8 +1,5 @@
-import { pipeline } from 'node:stream/promises';
-import { createWriteStream } from 'node:fs';
-import { rename, unlink } from 'node:fs/promises';
-import { Readable } from 'node:stream';
 import { TypedError } from '../engine/errors.js';
+import { streamToPath } from '../utils/stream-to-path.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
 
 /**
@@ -180,23 +177,14 @@ export class FakeComfyUIClient {
     contentType: string;
     sizeBytes: number;
   }> {
-    // download() handles scenario-driven failures. downloadToPath delegates,
-    // consumes the body, and writes to disk atomically.
+    // download() handles scenario-driven failures. downloadToPath delegates
+    // to the shared streamToPath helper (IM-02) so the atomic-write invariant
+    // lives in exactly one place.
     const result = await this.download(filename, opts);
-    const partial = `${destPath}.partial`;
     let bytes = 0;
-    const writer = createWriteStream(partial);
     try {
-      const readable = Readable.fromWeb(
-        result.body as unknown as import('node:stream/web').ReadableStream,
-      );
-      readable.on('data', (chunk: Buffer) => {
-        bytes += chunk.byteLength;
-      });
-      await pipeline(readable, writer);
-      await rename(partial, destPath);
+      ({ bytes } = await streamToPath(result.body, destPath, { filenameForError: filename }));
     } catch (err) {
-      await unlink(partial).catch(() => undefined);
       throw new TypedError(
         'DOWNLOAD_FAILED',
         `Fake failed to stream '${filename}' to disk: ${(err as Error).message}`,
