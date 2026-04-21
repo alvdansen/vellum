@@ -12,15 +12,21 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **TRNS-01**: MCP server exposes tools via stdio transport for Claude Desktop/CLI
 - [ ] **TRNS-02**: MCP server exposes tools via Streamable HTTP transport for web agents
 - [ ] **TRNS-03**: Both transports run in a single process
-- [ ] **TRNS-04**: Server starts with zero configuration (sensible defaults, SQLite auto-created)
+- [x] **TRNS-04
+**: Server starts with zero configuration (sensible defaults, SQLite auto-created)
 
 ### Hierarchy
 
-- [ ] **HIER-01**: User can create/list/get workspaces
-- [ ] **HIER-02**: User can create/list/get projects within a workspace
-- [ ] **HIER-03**: User can create/list/get sequences within a project
-- [ ] **HIER-04**: User can create/list/get shots within a sequence
-- [ ] **HIER-05**: Shots follow VFX naming convention (configurable template, default: zero-padded `v001`, underscore separators)
+- [x] **HIER-01
+**: User can create/list/get workspaces
+- [x] **HIER-02
+**: User can create/list/get projects within a workspace
+- [x] **HIER-03
+**: User can create/list/get sequences within a project
+- [x] **HIER-04
+**: User can create/list/get shots within a sequence
+- [x] **HIER-05
+**: Shots follow VFX naming convention (configurable template, default: zero-padded `v001`, underscore separators)
 - [ ] **HIER-06**: Hierarchy supports arbitrary depth navigation (breadcrumb context in responses)
 
 ### Generation

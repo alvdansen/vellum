@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-04-21T04:31:15.030Z"
-last_activity: 2026-04-20 -- Roadmap created, 38 v1 requirements mapped across 5 phases
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-04-21T04:57:54.835Z"
+last_activity: 2026-04-21
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 1: Foundation & Hierarchy
+**Current focus:** Phase 01 — foundation-hierarchy
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation & Hierarchy)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-04-20 -- Roadmap created, 38 v1 requirements mapped across 5 phases
+Phase: 01 (foundation-hierarchy) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-21
 
-Progress: [..........] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [..........] 0%
 - Trend: --
 
 *Updated after each plan completion*
+| Phase 01 P01 | 13min | 8 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,10 @@ Recent decisions affecting current work:
 - [Roadmap]: 5 v1 phases derived from 7 requirement categories; TOOL requirements folded into Phase 1 (tools are the transport surface, not a separate deliverable)
 - [Roadmap]: v2 requirements (routing, adapter, advanced ops) tracked as Future, not executed in current roadmap
 - [Research]: ComfyUI Cloud API is "experimental" -- validate endpoints against live API before Phase 2 client work
+- [Plan 01-01] Adopted prefixed nanoid IDs (ws_, proj_, seq_, shot_) for log readability
+- [Plan 01-01] isUniqueViolation tolerant of SQLITE_CONSTRAINT_UNIQUE, _PRIMARYKEY, and UNIQUE-in-message fallback
+- [Plan 01-01] Shot regex ^sh\d{3,}$ enforced at Engine layer only; repo is regex-agnostic
+- [Plan 01-01] fetch-to-node@^2.1.0 and @hono/node-server@^2.0.0 replace STACK.md's stale ^1.x pins (same API)
 
 ### Pending Todos
 
@@ -83,8 +88,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 1 context gathered
-Resume file: --resume-file
+Last session: 2026-04-21T04:57:45.965Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
 
 **Planned Phase:** 01 (foundation-hierarchy) — 3 plans — 2026-04-21T04:31:15.025Z

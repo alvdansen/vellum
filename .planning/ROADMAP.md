@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 Plans:
-- [ ] 01-01: TBD
+- [x] 01-01: Foundation types + SQLite store + Engine facade
 - [ ] 01-02: TBD
 - [ ] 01-03: TBD
 
@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Foundation & Hierarchy | 0/3 | Not started | - |
+| 1. Foundation & Hierarchy | 1/3 | In progress | - |
 | 2. ComfyUI Generation | 0/2 | Not started | - |
 | 3. Provenance & Versioning | 0/2 | Not started | - |
 | 4. Asset Management | 0/2 | Not started | - |
