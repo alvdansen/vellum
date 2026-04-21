@@ -203,7 +203,25 @@ async function main(): Promise<void> {
   if (args.http) {
     const port = args.port ?? 3000;
     const app = new Hono();
+    // SEC-03: Origin-header allowlist for DNS-rebinding / CSRF mitigation.
+    // Non-browser MCP clients (Claude Desktop, Cursor, CLI) do not send
+    // Origin — they are always allowed. Browser tabs always send Origin, so
+    // any unfamiliar value is rejected with a 403 + actionable hint.
+    const httpAllowedOrigins = (process.env.HTTP_ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     app.post('/mcp', async (c) => {
+      const origin = c.req.header('origin');
+      if (origin && !httpAllowedOrigins.includes(origin)) {
+        return c.json(
+          {
+            error: 'Forbidden origin',
+            hint: 'Add origin to HTTP_ALLOWED_ORIGINS env var (comma-separated) to allow browser access',
+          },
+          403,
+        );
+      }
       const { req, res } = toReqRes(c.req.raw);
       const requestServer = buildServer(engine, version);
       const transport = new StreamableHTTPServerTransport({
