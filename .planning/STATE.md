@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-04-21T05:12:45.245Z"
+status: verifying
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-04-21T05:30:30.080Z"
 last_activity: 2026-04-21
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 
 Phase: 01 (foundation-hierarchy) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-21
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [███████░░░] 67%
 *Updated after each plan completion*
 | Phase 01 P01 | 13min | 8 tasks | 18 files |
 | Phase 01 P02 | 9min | 4 tasks | 10 files |
+| Phase 01 P03 | 11min | 9 tasks tasks | 8 files files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Plan 01-02] shot-tool uses 'INVALID_SHOT_FORMAT' as Zod regex sentinel message; handler detects + re-maps to typed code with hint; engine enforces regex redundantly (T2 defence in depth)
 - [Plan 01-02] Integration tests use direct-mirror pattern per plan-allowed fallback (MCP SDK _registeredTools is private) plus smoke test for live registration
 - [Plan 01-02] toolOk typed as StructuredContent object (not unknown) to satisfy MCP SDK 1.29 CallToolResult
+- [Plan 01-03] buildServer(engine, version) factory — MCP SDK 1.29 Protocol disallows one McpServer across two live transports; factory spawns a fresh server per HTTP request, shared engine/db for process-wide consistency
+- [Plan 01-03] Tool-budget grep scoped to src/tools/ to avoid self-matching docstring; architecture-purity independently enforces that tools are the only MCP-importing layer
+- [Plan 01-03] MCP Inspector UI deferred to local pre-release verification; every Inspector assertion maps 1:1 to an automated test; live HTTP curl roundtrip fills the wire-level gap
 
 ### Pending Todos
 
@@ -94,8 +98,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-21T05:12:45.240Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-04-21T05:30:30.074Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
 **Planned Phase:** 01 (foundation-hierarchy) — 3 plans — 2026-04-21T04:31:15.025Z

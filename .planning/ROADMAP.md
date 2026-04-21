@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01: Foundation types + SQLite store + Engine facade
 - [x] 01-02: MCP tool surface (workspace, project, sequence, shot)
-- [ ] 01-03: TBD
+- [x] 01-03: Dual-transport MCP server bootstrap + cross-cutting invariant tests
 
 ### Phase 2: ComfyUI Generation
 **Goal**: An agent can submit ComfyUI workflows for generation within a shot context and track them through completion or failure, with completed jobs automatically creating new versions

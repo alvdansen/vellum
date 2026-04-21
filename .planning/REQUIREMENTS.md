@@ -9,9 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Transport & Server
 
-- [ ] **TRNS-01**: MCP server exposes tools via stdio transport for Claude Desktop/CLI
-- [ ] **TRNS-02**: MCP server exposes tools via Streamable HTTP transport for web agents
-- [ ] **TRNS-03**: Both transports run in a single process
+- [x] **TRNS-01
+**: MCP server exposes tools via stdio transport for Claude Desktop/CLI
+- [x] **TRNS-02
+**: MCP server exposes tools via Streamable HTTP transport for web agents
+- [x] **TRNS-03
+**: Both transports run in a single process
 - [x] **TRNS-04
 **: Server starts with zero configuration (sensible defaults, SQLite auto-created)
 
