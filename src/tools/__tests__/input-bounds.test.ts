@@ -180,6 +180,28 @@ describe('input bounds (SEC-01, API-05)', () => {
     await client.close();
   });
 
+  it('DM-01: "  My Workspace  " is trimmed before persistence', async () => {
+    const { client } = await spinUp();
+    const res = await client.callTool({
+      name: 'workspace',
+      arguments: { action: 'create', name: '  My Workspace  ' },
+    });
+    expect(res.isError).toBeFalsy();
+    const payload = res.structuredContent as {
+      entity?: { name?: string };
+    };
+    expect(payload.entity?.name).toBe('My Workspace');
+
+    // Follow-up: inserting the same trimmed name must trigger the UNIQUE guard.
+    const dup = await client.callTool({
+      name: 'workspace',
+      arguments: { action: 'create', name: 'My Workspace' },
+    });
+    expect(dup.isError).toBe(true);
+    expect((dup.structuredContent as { code?: string }).code).toBe('DUPLICATE_NAME');
+    await client.close();
+  });
+
   it('SEC-02: workflow_json with > 2000 nodes rejected with INVALID_INPUT', async () => {
     const { client, repo } = await spinUp();
     const ws = repo.createWorkspace('ws-nodes');

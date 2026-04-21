@@ -20,9 +20,15 @@ import {
 const CreateInput = z.object({
   action: z.literal('create'),
   sequenceId: z.string().min(1).max(MAX_ID_LENGTH),
+  // DM-01: .trim() normalizes leading/trailing whitespace. The regex enforces
+  // the exact format AFTER trim so `"  sh010  "` is accepted as `"sh010"`.
   // Message set to the error code so the handler's catch block can detect this
   // specific failure and emit INVALID_SHOT_FORMAT with the proper hint.
-  name: z.string().max(MAX_NAME_LENGTH).regex(/^sh\d{3,}$/, 'INVALID_SHOT_FORMAT'),
+  name: z
+    .string()
+    .trim()
+    .max(MAX_NAME_LENGTH)
+    .regex(/^sh\d{3,}$/, 'INVALID_SHOT_FORMAT'),
 });
 const ListInput = z.object({
   action: z.literal('list'),

@@ -18,8 +18,10 @@ import {
 const CreateInput = z.object({
   action: z.literal('create'),
   workspaceId: z.string().min(1).max(MAX_ID_LENGTH),
+  // DM-01: .trim() normalizes leading/trailing whitespace.
   name: z
     .string()
+    .trim()
     .min(1)
     .max(MAX_NAME_LENGTH)
     .refine((s) => !s.includes(' > '), {

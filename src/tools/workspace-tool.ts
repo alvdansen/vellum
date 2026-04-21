@@ -18,8 +18,12 @@ import {
 // publishes a non-empty JSON schema in tools/list (RT-01).
 const CreateInput = z.object({
   action: z.literal('create'),
+  // DM-01: .trim() normalizes leading/trailing whitespace so `"  foo  "` and
+  // `"foo"` collapse to the same UNIQUE key. Case-insensitive collapse is
+  // intentionally deferred (SQLite COLLATE NOCASE requires a table rebuild).
   name: z
     .string()
+    .trim()
     .min(1)
     .max(MAX_NAME_LENGTH)
     .refine((s) => !s.includes(' > '), {
