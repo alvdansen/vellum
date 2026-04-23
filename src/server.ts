@@ -7,11 +7,11 @@ import 'dotenv/config';
  *   - stdio transport ALWAYS, long-lived (D-15)
  *   - Streamable HTTP on 127.0.0.1:<port> when --http is passed (D-16, T-03-03)
  *
- * Both transports expose the SAME 5 tools (workspace, project, sequence, shot,
- * generation) against the SAME process-wide engine (so SQLite writes from either
- * path land in the same db). Tool identity is guaranteed by the shared
- * `buildServer()` factory — it's the only place the 5 register* functions are
- * called, and both transports route through it.
+ * Both transports expose the SAME 6 tools (workspace, project, sequence, shot,
+ * generation, version) against the SAME process-wide engine (so SQLite writes
+ * from either path land in the same db). Tool identity is guaranteed by the
+ * shared `buildServer()` factory — it's the only place the 6 register*
+ * functions are called, and both transports route through it.
  *
  * Implementation note on MCP SDK 1.29 Protocol invariant:
  *   The SDK's Protocol._transport enforces a one-transport-per-server rule
@@ -71,6 +71,7 @@ import {
   registerSequence,
   registerShot,
   registerGeneration,
+  registerVersion,
 } from './tools/index.js';
 
 /**
@@ -85,18 +86,24 @@ async function readVersion(): Promise<string> {
 }
 
 /**
- * Construct a fresh McpServer with the 5 Phase 1 + Phase 2 tools registered
- * against the supplied engine. Single source of tool identity — both stdio and
- * each HTTP request route through this factory, so transport parity is
- * guaranteed by construction (Pitfall #7). Zero transport-specific branching
- * inside.
+ * Construct a fresh McpServer with the 6 Phase 1 + Phase 2 + Phase 3 tools
+ * registered against the supplied engine. Single source of tool identity —
+ * both stdio and each HTTP request route through this factory, so transport
+ * parity is guaranteed by construction (Pitfall #7). Zero transport-specific
+ * branching inside.
  */
 function buildServer(engine: Engine, version: string): McpServer {
   const server = new McpServer(
     { name: 'vfx-familiar', version },
     {
       instructions:
-        'VFX project hierarchy management + ComfyUI generation. Hierarchy tools: workspace/project/sequence/shot with action: create | list | get. Generation tool: generation with action: submit | status. Every response carries a breadcrumb from workspace to the affected entity.',
+        'VFX project hierarchy management + ComfyUI generation + provenance/versioning. ' +
+        'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get. ' +
+        'Generation tool: generation with action: submit | status | reproduce | iterate. ' +
+        "reproduce re-runs a completed version's prompt verbatim (byte-identical) and returns reproduction_warnings[]. " +
+        'iterate applies node-scoped overrides { "<nodeId>": { inputs?, class_type? } } and/or a seed shortcut to a source version, re-validates, and submits. ' +
+        'Version tool: version with action: get | list | diff | provenance. ' +
+        'Every response carries a breadcrumb from workspace to the affected entity.',
     },
   );
   registerWorkspace(server, engine);
@@ -104,6 +111,7 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerSequence(server, engine);
   registerShot(server, engine);
   registerGeneration(server, engine);
+  registerVersion(server, engine);
   // RT-09 / API-06: SDK's registerTool unconditionally merges
   // `capabilities.tools.listChanged: true` into the server's capability set,
   // but we never emit `notifications/tools/list_changed`. Override back to

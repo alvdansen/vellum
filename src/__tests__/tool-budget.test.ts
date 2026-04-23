@@ -1,18 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
- * Asserts D-04 / TOOL-01 / D-GEN-03: the 12-tool budget. Phase 2 uses exactly 5
- * (workspace, project, sequence, shot, generation).
+ * Asserts D-04 / TOOL-01 / D-GEN-03 / D-PROV-07: the 12-tool budget.
+ * Phase 3 uses exactly 6: workspace, project, sequence, shot, generation, version.
  *
  * Counts tool-registration call-sites across src/tools/ only — that is the
  * single layer allowed to import the MCP SDK (D-33, enforced independently
  * by architecture-purity.test.ts). Any future call-site outside src/tools/
  * breaks the purity invariant and should fail the architecture test first.
  *
- * Future phases adding tools will bump the "exactly" assertion — if the phase
- * is unexpectedly over budget, Pitfall #1 (tool explosion) is the warning.
- * The <=12 ceiling is immutable for the v1 milestone.
+ * Future phases adding tools will bump the "exactly" assertion. The <=12
+ * ceiling is immutable for the v1 milestone.
  */
 function registerToolCount(): number {
   try {
@@ -29,15 +30,54 @@ function registerToolCount(): number {
   }
 }
 
+/**
+ * Walk src/tools/*.ts (skipping __tests__) and pull the tool-name literal
+ * immediately following each `server.registerTool(` call. The SDK's call
+ * signature spreads the name to a separate line in all tool files, so a
+ * single-line grep can't match — readFile + multi-line regex is the
+ * simplest portable solution (avoids GNU-only `-Pzo`).
+ */
+function registeredToolNames(): string[] {
+  const names: string[] = [];
+  const toolsDir = 'src/tools';
+  for (const entry of readdirSync(toolsDir)) {
+    const full = join(toolsDir, entry);
+    if (!statSync(full).isFile()) continue;
+    if (!entry.endsWith('.ts')) continue;
+    const content = readFileSync(full, 'utf8');
+    // Match `server.registerTool(` followed by whitespace/newlines then
+    // a single-quoted lowercase name. `s` flag lets `.` span newlines.
+    const pattern = /server\.registerTool\(\s*'([a-z_-]+)'/gs;
+    for (const m of content.matchAll(pattern)) {
+      names.push(m[1]);
+    }
+  }
+  return names.sort();
+}
+
 describe('tool budget', () => {
   it('stays under the 12-tool cap (Pitfall #1)', () => {
     expect(registerToolCount()).toBeLessThanOrEqual(12);
   });
 
-  it('Phase 2 registers exactly 5 tools (D-GEN-03)', () => {
+  it('Phase 3 registers exactly 6 tools (D-PROV-07)', () => {
     // Phase 1: workspace, project, sequence, shot (4).
-    // Phase 2 adds: generation (5). Any tool added beyond 5 must come with an
-    // explicit bump here so Pitfall #1 (tool explosion) stays visible.
-    expect(registerToolCount()).toBe(5);
+    // Phase 2 adds: generation (5).
+    // Phase 3 adds: version (6).
+    // Any tool added beyond 6 must come with an explicit bump here so
+    // Pitfall #1 (tool explosion) stays visible.
+    expect(registerToolCount()).toBe(6);
+  });
+
+  it('registered tool name set is exactly [workspace, project, sequence, shot, generation, version]', () => {
+    const names = registeredToolNames();
+    expect(names).toHaveLength(6);
+    expect(names).toEqual(
+      ['generation', 'project', 'sequence', 'shot', 'version', 'workspace'],
+    );
+    // Sorted alphabetically — stable snapshot. The original declaration
+    // order in src/server.ts is workspace, project, sequence, shot,
+    // generation, version; this test sorts so ordering changes don't
+    // cause spurious failures.
   });
 });
