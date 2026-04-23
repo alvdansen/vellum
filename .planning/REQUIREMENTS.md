@@ -115,6 +115,18 @@ Deferred to future release. Tracked but not in current roadmap.
 - **ADV-03**: Hierarchy export in standard VFX formats
 - **ADV-04**: Lineage graph visualization in web UI
 
+### Provenance Verification (C2PA)
+
+Target for v1.1 milestone. Thesis: v1.0 captures private provenance; v1.1 makes it signed, portable, and regulator-verifiable. Driven by EU AI Act Article 50 (effective Aug 2026), California SB 942 (effective Jan 2026 — already in effect at planting), and the industry gap analysis captured in SEED-001 (Matt Collie, "C2PA Content Provenance for VFX", 2026).
+
+- **PROV-V-01**: Emit a signed C2PA manifest embedded in supported ComfyUI output formats (PNG, JPEG, MP4, WebP) at download time
+- **PROV-V-02**: Explicit AI disclosure — `c2pa.created` action assertion with ComfyUI as the generator tool, surfaced in machine-readable form for regulatory scanning
+- **PROV-V-03**: Model fingerprinting — SHA-256 hash for every checkpoint/LoRA/VAE referenced in the prompt blob (closes the `extractModels()` `model_hash: null` gap at `src/engine/provenance.ts:69`)
+- **PROV-V-04**: Ingredient graph — emit `parentOf` (reproduce/iterate lineage), `componentOf` (prompt-referenced control images, reference images, input images from non-loader nodes), and `inputTo` (prompt text + params) assertions
+- **PROV-V-05**: Sidecar `.c2pa` manifest emission for output formats not on C2PA's native-embed list (OpenEXR et al.), per the spec's sidecar mechanism
+- **PROV-V-06**: Redaction action — strip sensitive prompt/metadata values while writing a `c2pa.redacted` assertion that preserves the fact-of-redaction for auditability
+- **PROV-V-07**: MCP `version.export_manifest` / `version.verify_manifest` actions — extend the existing `version` tool (stays under the 12-tool cap) for outbound signing + inbound verification with gap detection
+
 ## Out of Scope
 
 | Feature | Reason |
