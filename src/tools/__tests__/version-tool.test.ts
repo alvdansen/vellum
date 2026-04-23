@@ -42,6 +42,7 @@ async function buildStack() {
   const fake = new FakeComfyUIClient();
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-ver-tool-${nanoid(6)}-`));
   const engine = new Engine(
+    db,
     hierarchy,
     versions,
     provenanceRepo,

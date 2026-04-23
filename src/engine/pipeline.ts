@@ -1,10 +1,16 @@
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { Database as SqliteClient } from 'better-sqlite3';
+import type * as schema from '../store/schema.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
+import { TagRepo } from '../store/tag-repo.js';
+import { MetadataRepo } from '../store/metadata-repo.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
 import { ProvenanceWriter } from './provenance.js';
+import { AssetsEngine } from './assets.js';
 import { diffVersions as pureDiffVersions } from './diff.js';
 import { TypedError } from './errors.js';
 import {
@@ -24,6 +30,23 @@ import type {
   ModelRef,
   IterateOverride,
 } from '../types/provenance.js';
+import type {
+  AssetsQueryFilter,
+  VersionWithAssets,
+  ScopeFilter,
+  MetadataKV,
+} from '../types/assets.js';
+
+/**
+ * Widened Db type — drizzle() factory returns `BetterSQLite3Database<T> & { $client: Database }`,
+ * but the class declaration itself omits `$client`. Plan 04-02 established the
+ * widening convention at the repo boundary (tag-repo.ts, metadata-repo.ts); this
+ * file mirrors it. The constructor signature accepts the narrower public-class
+ * type (`BaseDb`) and casts once to the widened `Db` for internal use — callers
+ * (server.ts, test harnesses) do not need to know about the widening.
+ */
+type BaseDb = BetterSQLite3Database<typeof schema>;
+type Db = BaseDb & { $client: SqliteClient };
 
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
@@ -34,24 +57,31 @@ type ListResult<T> = {
 };
 
 /**
- * Engine facade — Phase 1 hierarchy ops + Phase 2 generation ops.
+ * Engine facade — Phase 1 hierarchy + Phase 2 generation + Phase 3 provenance
+ * + Phase 4 assets.
  *
- * Phase 2 constructor takes the extra repos (VersionRepo) and an optional
- * ComfyUIClient. Missing client is handled at the call site (submitGeneration
- * throws COMFYUI_CREDENTIALS_MISSING). The BreadcrumbResolver now takes both
- * repos to support the 'version' leaf (D-GEN-05).
+ * Phase 4 constructor change (D-ASST-27): `db` is now the FIRST constructor
+ * argument so TagRepo / MetadataRepo / AssetsEngine can be wired inside without
+ * requiring callers to construct them. All `new Engine(...)` call sites get
+ * `db` prepended — server.ts + every test harness that builds an Engine.
  *
- * Invariants:
- *  - Zero MCP SDK imports (D-33).
+ * Invariants (D-33 + D-ASST-26):
+ *  - Zero MCP SDK imports (architecture-purity test asserts this).
  *  - Shot regex is enforced here before delegating to the repo (D-07, D-33).
  *  - Missing entities surface as typed {WORKSPACE,PROJECT,SEQUENCE,SHOT,VERSION}_NOT_FOUND.
- *  - Phase 2 generation ops are delegated to a composed GenerationEngine instance.
+ *  - Phase 2 generation ops delegate to a composed GenerationEngine.
+ *  - Phase 4 asset ops delegate to a composed AssetsEngine.
+ *  - getVersion ALWAYS hydrates with tags+metadata (D-ASST-19); listVersionsForShot
+ *    hydrates opt-in (D-ASST-20).
  */
 export class Engine {
+  private db: Db;
   private breadcrumb: BreadcrumbResolver;
   private generation: GenerationEngine;
+  private assets: AssetsEngine;
 
   constructor(
+    db: BaseDb,
     private repo: HierarchyRepo,
     private versionRepo: VersionRepo,
     private provenanceRepo: ProvenanceRepo,
@@ -59,6 +89,9 @@ export class Engine {
     outputRoot: string = 'outputs',
     options: { maxConcurrentPollers?: number } = {},
   ) {
+    // Widen once at the boundary — drizzle factory returns the intersection
+    // at runtime, but the class-level type omits $client. Plan 04-02 pattern.
+    this.db = db as Db;
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     this.generation = new GenerationEngine(
@@ -70,6 +103,17 @@ export class Engine {
       this.breadcrumb,
       outputRoot,
       { maxConcurrentPollers: options.maxConcurrentPollers },
+    );
+    // Phase 4 asset wiring — repos constructed internally so callers don't
+    // shoulder the layering. Engine owns asset-repo construction (D-ASST-27).
+    const tagRepo = new TagRepo(this.db, versionRepo);
+    const metadataRepo = new MetadataRepo(this.db, versionRepo);
+    this.assets = new AssetsEngine(
+      this.db,
+      tagRepo,
+      metadataRepo,
+      versionRepo,
+      this.breadcrumb,
     );
   }
 
@@ -253,8 +297,12 @@ export class Engine {
   // PHASE 3 — VERSION READS + PROVENANCE + DIFF
   // ================================================================
 
-  /** D-PROV-08: cheap version metadata (no provenance blobs). */
-  getVersion(versionId: string): { entity: Version; breadcrumb: Breadcrumb } {
+  /**
+   * D-PROV-08 + D-ASST-19: always-hydrated version entity. Plan 04-03 extended
+   * this to return VersionWithAssets (tags + metadata inline). Plan 04-05 updates
+   * the tool layer (version-tool.ts) to surface tags + metadata in the response.
+   */
+  getVersion(versionId: string): { entity: VersionWithAssets; breadcrumb: Breadcrumb } {
     const entity = this.versionRepo.getVersion(versionId);
     if (!entity) {
       throw new TypedError(
@@ -263,25 +311,43 @@ export class Engine {
         `List versions with { tool: 'version', action: 'list', shot_id: <shot> }`,
       );
     }
-    return { entity, breadcrumb: this.breadcrumb.resolve('version', entity.id) };
+    const withAssets = this.assets.hydrateVersionWithAssets(entity);
+    return { entity: withAssets, breadcrumb: this.breadcrumb.resolve('version', entity.id) };
   }
 
-  /** D-PROV-09: paginated version list for a shot, version_number DESC. */
+  /**
+   * D-PROV-09 + D-ASST-20: paginated version list for a shot, version_number DESC.
+   * Opt-in hydration via include_tags / include_metadata flags (default omit
+   * keeps payload cheap for list-heavy reads). When neither flag is set, items
+   * are plain Version (Phase 3 parity). Otherwise each item gains the requested
+   * array(s) — tags only, metadata only, or both.
+   */
   listVersionsForShot(
     shotId: string,
     limit: number,
     offset: number,
-  ): ListResult<Version> {
+    options: { include_tags?: boolean; include_metadata?: boolean } = {},
+  ): ListResult<VersionWithAssets | Version> {
     const { items, total_count } = this.versionRepo.listByShot(shotId, limit, offset);
-    return {
-      items: items.map((v) => ({
-        ...v,
-        ...this.breadcrumb.resolve('version', v.id),
-      })),
-      total_count,
-      limit,
-      offset,
-    };
+    const hydrated = items.map((v) => {
+      let withAssets: Version | VersionWithAssets = v;
+      if (options.include_tags || options.include_metadata) {
+        const full = this.assets.hydrateVersionWithAssets(v);
+        if (options.include_tags && options.include_metadata) {
+          withAssets = full;
+        } else if (options.include_tags) {
+          // tags only
+          const { metadata: _m, ...rest } = full;
+          withAssets = rest as Version & { tags: string[] };
+        } else {
+          // metadata only
+          const { tags: _t, ...rest } = full;
+          withAssets = rest as Version & { metadata: MetadataKV[] };
+        }
+      }
+      return { ...withAssets, ...this.breadcrumb.resolve('version', v.id) };
+    });
+    return { items: hydrated, total_count, limit, offset };
   }
 
   /** D-PROV-10: full chronological event history. Empty events[] for pre-Phase-3 rows. */
@@ -388,5 +454,46 @@ export class Engine {
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     return this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
+  }
+
+  // ================================================================
+  // PHASE 4 — ASSETS (delegates to composed AssetsEngine)
+  // ================================================================
+
+  /** D-ASST-03 + D-ASST-11: idempotent tag add + regex/cap validation. */
+  addTag(versionId: string, tag: string) {
+    return this.assets.addTag(versionId, tag);
+  }
+
+  /** D-ASST-03: idempotent tag remove. */
+  removeTag(versionId: string, tag: string) {
+    return this.assets.removeTag(versionId, tag);
+  }
+
+  /** D-ASST-03 + D-ASST-08 + D-ASST-11: upsert metadata + regex/cap validation. */
+  setMetadata(versionId: string, key: string, value: string) {
+    return this.assets.setMetadata(versionId, key, value);
+  }
+
+  /** D-ASST-03: idempotent metadata remove. */
+  removeMetadata(versionId: string, key: string) {
+    return this.assets.removeMetadata(versionId, key);
+  }
+
+  /** D-ASST-12..18 + D-ASST-22: AND-only filter + pagination + always-hydrated items. */
+  queryAssets(filter: AssetsQueryFilter) {
+    return this.assets.queryAssets(filter);
+  }
+
+  /** D-ASST-06: scope-aware tag aggregation. */
+  listTags(scope: ScopeFilter & { limit: number | undefined; offset: number | undefined }) {
+    return this.assets.listTags(scope);
+  }
+
+  /** D-ASST-06: scope-aware metadata-key aggregation. */
+  listMetadataKeys(
+    scope: ScopeFilter & { limit: number | undefined; offset: number | undefined },
+  ) {
+    return this.assets.listMetadataKeys(scope);
   }
 }

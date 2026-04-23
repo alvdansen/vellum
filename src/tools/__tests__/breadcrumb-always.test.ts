@@ -16,7 +16,7 @@ function buildTestStack() {
   const repo = new HierarchyRepo(db);
   // Phase 3 Engine constructor: (repo, versionRepo, provenanceRepo, client?).
   // Breadcrumb tests only exercise Phase 1 tools, so `null` client is correct.
-  const engine = new Engine(repo, new VersionRepo(db), new ProvenanceRepo(db), null);
+  const engine = new Engine(db, repo, new VersionRepo(db), new ProvenanceRepo(db), null);
   return { engine };
 }
 

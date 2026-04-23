@@ -311,14 +311,37 @@ describe('AssetsEngine', () => {
     });
 
     it('INV-ASST-10 ordering — created_at DESC, id DESC (stable tiebreaker)', () => {
-      const { v, assets, shot } = buildStack();
-      // Insert three versions; they will naturally have increasing created_at.
+      const { db, v, assets, shot } = buildStack();
+      // Insert three versions then force explicit created_at to guarantee
+      // a DESC-by-created_at ordering (inserts within the same millisecond
+      // would otherwise collide and fall back to the id-DESC tiebreaker,
+      // which the planner locked as stable but nanoid ordering is not
+      // insertion-ordered). Setting distinct timestamps isolates the
+      // created_at-DESC assertion.
       const v1 = v.insertVersion(shot.id);
       const v2 = v.insertVersion(shot.id);
       const v3 = v.insertVersion(shot.id);
+      // Make timestamps strictly increasing in insert order.
+      const update = (db as unknown as { $client: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).$client.prepare(
+        'UPDATE versions SET created_at = ? WHERE id = ?',
+      );
+      update.run(1000, v1.id);
+      update.run(2000, v2.id);
+      update.run(3000, v3.id);
       const r = assets.queryAssets({ shot_id: shot.id, limit: 20, offset: 0 });
-      // Latest created_at first (typically v3, v2, v1); if timestamps collide, id DESC tiebreaks.
+      // created_at DESC dominates: v3 (3000), v2 (2000), v1 (1000).
       expect(r.items.map((i) => i.id)).toEqual([v3.id, v2.id, v1.id]);
+
+      // Now force a tie on created_at to exercise the id-DESC tiebreaker
+      // explicitly (D-ASST-16 stable ordering).
+      update.run(5000, v1.id);
+      update.run(5000, v2.id);
+      update.run(5000, v3.id);
+      const tied = assets.queryAssets({ shot_id: shot.id, limit: 20, offset: 0 });
+      // Ids sorted DESC lexicographically tiebreak; the exact order depends
+      // on the nanoid values but must match SQLite's sort of those same ids.
+      const sortedByIdDesc = [v1.id, v2.id, v3.id].sort().reverse();
+      expect(tied.items.map((i) => i.id)).toEqual(sortedByIdDesc);
     });
 
     it('INV-ASST-11 date range inclusive on date_from and date_to', () => {

@@ -14,7 +14,7 @@ describe('hierarchy engine — CRUD, errors, breadcrumbs', () => {
     // Phase 3 Engine constructor: (repo, versionRepo, provenanceRepo, client?).
     // Phase 1 tests never exercise generation, so `null` client is the canonical
     // shape here.
-    engine = new Engine(new HierarchyRepo(db), new VersionRepo(db), new ProvenanceRepo(db), null);
+    engine = new Engine(db, new HierarchyRepo(db), new VersionRepo(db), new ProvenanceRepo(db), null);
   });
 
   test('create full hierarchy returns breadcrumb walking 4 levels', () => {

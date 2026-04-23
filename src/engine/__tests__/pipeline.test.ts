@@ -44,6 +44,7 @@ async function setup(): Promise<Ctx> {
   const fake = new FakeComfyUIClient();
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-pipe-${nanoid(6)}-`));
   const engine = new Engine(
+    db,
     hierarchy,
     versions,
     provenanceRepo,

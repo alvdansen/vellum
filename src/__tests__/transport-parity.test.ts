@@ -42,7 +42,7 @@ function makeEngine(): Engine {
   const provenance = new ProvenanceRepo(db);
   // Phase 3 Engine constructor: (repo, versionRepo, provenanceRepo, client?).
   // Transport-parity tests only exercise Phase 1 tools, so `null` client is correct.
-  return new Engine(repo, versions, provenance, null);
+  return new Engine(db, repo, versions, provenance, null);
 }
 
 function makeServer(engine: Engine): McpServer {

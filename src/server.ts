@@ -180,7 +180,7 @@ async function main(): Promise<void> {
   const maxConcurrentPollers = maxConcurrentPollersRaw
     ? Number.parseInt(maxConcurrentPollersRaw, 10)
     : undefined;
-  const engine = new Engine(repo, versionRepo, provenanceRepo, client, 'outputs', {
+  const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, 'outputs', {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
   });
   const version = await readVersion();

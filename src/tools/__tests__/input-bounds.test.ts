@@ -24,7 +24,7 @@ async function spinUp() {
   const repo = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
   const provenance = new ProvenanceRepo(db);
-  const engine = new Engine(repo, versions, provenance, null);
+  const engine = new Engine(db, repo, versions, provenance, null);
   const server = new McpServer(
     { name: 'bounds-test', version: '0.0.0' },
     { instructions: 'test' },

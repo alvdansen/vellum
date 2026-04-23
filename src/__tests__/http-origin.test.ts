@@ -20,7 +20,7 @@ import {
 
 function buildApp(allowedOrigins: string[]) {
   const { db } = makeInMemoryDb();
-  const engine = new Engine(new HierarchyRepo(db), new VersionRepo(db), new ProvenanceRepo(db), null);
+  const engine = new Engine(db, new HierarchyRepo(db), new VersionRepo(db), new ProvenanceRepo(db), null);
   const app = new Hono();
   // RT-07 / API-07 mirror
   app.on(['GET', 'DELETE', 'PUT', 'PATCH'], '/mcp', (c) =>

@@ -36,7 +36,7 @@ async function buildStack() {
   const fake = new FakeComfyUIClient();
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-tool-${nanoid(6)}-`));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const engine = new Engine(repo, versions, provenanceRepo, fake as unknown as any, tempRoot);
+  const engine = new Engine(db, repo, versions, provenanceRepo, fake as unknown as any, tempRoot);
   const ws = repo.createWorkspace('ws1');
   const proj = repo.createProject(ws.id, 'p1');
   const seq = repo.createSequence(proj.id, 'sq010');
@@ -323,7 +323,7 @@ describe('generation tool — submit error paths', () => {
     const tempRoot = await fsp.mkdtemp(
       pth.join(os.tmpdir(), `vfx-gen-tool-nokey-${nanoid(6)}-`),
     );
-    const engine = new Engine(repo, vRepo, pRepo, null, tempRoot);
+    const engine = new Engine(db, repo, vRepo, pRepo, null, tempRoot);
     const ws = repo.createWorkspace('ws');
     const proj = repo.createProject(ws.id, 'p');
     const seq = repo.createSequence(proj.id, 'sq010');

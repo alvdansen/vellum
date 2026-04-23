@@ -41,7 +41,7 @@ describe('shot naming regex (^sh\\d{3,}$)', () => {
     const { db } = makeInMemoryDb();
     const repo = new HierarchyRepo(db);
     // Phase 3 Engine constructor: (repo, versionRepo, provenanceRepo, client?).
-    engine = new Engine(repo, new VersionRepo(db), new ProvenanceRepo(db), null);
+    engine = new Engine(db, repo, new VersionRepo(db), new ProvenanceRepo(db), null);
 
     // Seed a workspace → project → sequence so createShot has a valid parent.
     const ws = engine.createWorkspace('demo-ws');

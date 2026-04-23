@@ -135,7 +135,7 @@ describe.skipIf(SKIP)('live ComfyUI Cloud smoke (D-GEN-42.7)', () => {
     const versions = new VersionRepo(db);
     const provenance = new ProvenanceRepo(db);
     const client = new ComfyUIClient(apiKey, apiBase);
-    const engine = new Engine(repo, versions, provenance, client, tempOutputRoot);
+    const engine = new Engine(db, repo, versions, provenance, client, tempOutputRoot);
 
     try {
       // Seed minimal hierarchy up to a shot.
@@ -218,6 +218,7 @@ describe.skipIf(SKIP)('live ComfyUI Cloud smoke (D-GEN-42.7)', () => {
       const provenanceRepo = new ProvenanceRepo(db);
       const client = new ComfyUIClient(apiKey, apiBase);
       const engine = new Engine(
+        db,
         repo,
         versions,
         provenanceRepo,
