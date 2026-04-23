@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test + Dashboard Freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # better-sqlite3 requires a native compile; keep postinstall on so
+        # prebuild-install can fetch the platform binary.
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run root test suite
+        run: npm test
+
+      - name: Run dashboard test suite
+        run: npm run test:dashboard
+
+      # WEBUI-05 freshness gate: packages/dashboard/dist/ is committed to the
+      # repo so the server can serve it at runtime without a build step at
+      # install. If a PR changes dashboard source (packages/dashboard/src/**,
+      # vite config, theme.css, etc.) without rebuilding, this step fails —
+      # `git diff --exit-code` returns 1 when the working tree differs from
+      # HEAD after running the build. Mitigates supply-chain threat T-5-07
+      # (dist drifting out of sync with source on a trusted-PR branch).
+      - name: Check dashboard dist is up to date
+        run: |
+          npm run build:dashboard
+          git diff --exit-code packages/dashboard/dist
