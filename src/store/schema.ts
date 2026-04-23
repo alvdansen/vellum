@@ -83,6 +83,9 @@ export const versions = sqliteTable('versions', {
   error_code: text('error_code'),
   error_message: text('error_message'),
   outputs_json: text('outputs_json'),
+  // Phase 3 additions — D-PROV-33 (nullable). Added by the drizzle migrator
+  // via 0003_phase3_provenance.sql; NULL marks originals from generation.submit.
+  lineage_type: text('lineage_type'),
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
   // Supports listPendingVersions() — called at every server boot by the recovery
@@ -90,6 +93,35 @@ export const versions = sqliteTable('versions', {
   // in total version count as completed rows accumulate. Non-UNIQUE, so this
   // one is kept.
   idxStatus: index('idx_versions_status').on(t.status),
+}));
+
+/**
+ * Phase 3 — D-PROV-01, D-PROV-02: append-only provenance events. One row per
+ * (version, event) where event_type is 'submitted' | 'completed' | 'failed'.
+ * Structurally append-only: the repo (src/store/provenance-repo.ts) has ZERO
+ * UPDATE/DELETE methods; architecture-purity test enforces this. Added by the
+ * drizzle migrator via 0003_phase3_provenance.sql; SCHEMA_DDL below intentionally
+ * does NOT declare this table — matches the Phase 2 additive split.
+ */
+export const provenance = sqliteTable('provenance', {
+  id: text('id').primaryKey(),
+  version_id: text('version_id')
+    .notNull()
+    .references(() => versions.id),
+  event_type: text('event_type').notNull(),
+  workflow_json: text('workflow_json'),
+  prompt_json: text('prompt_json'),
+  seed: integer('seed'),
+  models_json: text('models_json'),
+  outputs_json: text('outputs_json'),
+  error_code: text('error_code'),
+  error_message: text('error_message'),
+  timestamp: integer('timestamp').notNull(),
+}, (t) => ({
+  // D-PROV-35: two-column index supports both "all events for version in order"
+  // (version.provenance canonical query) and "latest completed event" lookups
+  // on a single index scan.
+  idxVersionTime: index('idx_provenance_version_time').on(t.version_id, t.timestamp),
 }));
 
 /**
