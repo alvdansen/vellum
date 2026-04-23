@@ -86,7 +86,7 @@ Plans:
 Plans:
 - [x] 04-01-PLAN.md — Schema migration 0004 + sqliteTable declarations + shape.ts bounds + types/assets.ts + id/error extensions [BLOCKING schema push covered in Plan 04]
 - [x] 04-02-PLAN.md — TagRepo + MetadataRepo (idempotent insert/upsert, scope aggregation, json_group_array hydration)
-- [ ] 04-03-PLAN.md — AssetsEngine (7 actions + hydrateVersionWithAssets) + Engine facade constructor extended with db
+- [x] 04-03-PLAN.md — AssetsEngine (7 actions + hydrateVersionWithAssets) + Engine facade constructor extended with db
 - [ ] 04-04-PLAN.md — asset MCP tool (7-action discriminated union) + wire-up + cross-cutting tests + [BLOCKING] schema-push verification
 - [ ] 04-05-PLAN.md — version-tool extension (inline tags/metadata on get, include flags on list) + 7 fixture helpers
 

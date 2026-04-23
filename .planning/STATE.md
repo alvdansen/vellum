@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-04-23T05:46:54.693Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-04-23T06:05:05.487Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 14
-  completed_plans: 11
-  percent: 79
+  completed_plans: 12
+  percent: 86
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 04 (asset-management) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-04-23
 
-Progress: [████████░░] 79%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [████████░░] 79%
 | Phase 03 P03 | 12min | 5 tasks tasks | 8 files files |
 | Phase 04 P01 | 10min | 3 tasks | 9 files |
 | Phase 04 P02 | 10min | 3 tasks tasks | 4 files files |
+| Phase 04 P03 | 11min | 2 tasks tasks | 15 files files |
 
 ## Accumulated Context
 
@@ -108,6 +109,11 @@ Recent decisions affecting current work:
 - [Plan 04-02] insertTag uses INSERT-then-fallback-SELECT (ON CONFLICT DO NOTHING RETURNING + follow-up SELECT when RETURNING empty); upsertMetadata uses single INSERT ON CONFLICT DO UPDATE RETURNING (no fallback — DO UPDATE always emits a row). Semantic asymmetry between idempotent-insert and upsert patterns
 - [Plan 04-02] buildScopeFragment duplicated verbatim between tag-repo.ts and metadata-repo.ts per RESEARCH alternatives-rejected guidance — repo files stay independent, 30 lines each, zero cross-repo coupling
 - [Plan 04-02] Pre-check parent pattern via constructor-injected VersionRepo — both TagRepo and MetadataRepo surface VERSION_NOT_FOUND as typed error before INSERT; never let SQLITE_CONSTRAINT_FOREIGNKEY leak (Pitfall #3)
+- [Plan 04-03] Engine constructor's Db parameter uses BaseDb (narrow public) + this.db = db as Db (widened internal) — mirrors Plan 04-02 widening at the repo boundary; all 14 callers inherit clean behavior without type-level knowledge of the widening
+- [Plan 04-03] server.ts Engine call site updated in Task 2 alongside 13 test harnesses (Rule 3 blocking fix for tsc-green acceptance criterion); Plan 04-04 still owns server.ts asset-tool wiring (registerAsset import + call)
+- [Plan 04-03] INV-ASST-10 ordering test uses raw-SQL UPDATE to set distinct created_at timestamps (1000/2000/3000) then asserts primary DESC ordering; a second subcase forces all-equal timestamps and asserts the id-DESC tiebreaker via sort().reverse() — cleanly separates primary-sort and tiebreaker contracts of D-ASST-16
+- [Plan 04-03] setMetadata cap check is upsert-aware: reads listMetadataForVersion to detect existing-key upserts (bypass cap) vs new-key inserts (cap enforced). Small indexed-read cost for correct upsert semantics when version is at MAX_METADATA_PER_VERSION=100
+- [Plan 04-03] Architecture-purity test uses substring grep; JSDoc citing 'MCP SDK imports' (not the sentinel '@modelcontextprotocol/sdk' string) avoids false positives — same convention Phase 3 had to adopt
 
 ### Pending Todos
 
@@ -128,8 +134,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T05:46:54.688Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-04-23T06:05:05.482Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
 
 **Planned Phase:** 4 (Asset Management) — 5 plans — 2026-04-23T05:16:28.785Z
