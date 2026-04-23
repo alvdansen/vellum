@@ -1,4 +1,4 @@
-import { describe, test, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, test, expect, afterEach, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -303,5 +303,105 @@ describe('Drizzle migration 0001 (D-GEN-38, [BLOCKING] schema push)', () => {
       ),
     ).not.toThrow();
     sqlite.close();
+  });
+});
+
+describe('phase 4 migration 0004', () => {
+  it('creates tags table with expected columns, PK, and indexes', () => {
+    const { sqlite } = makeInMemoryDb();
+    const cols = sqlite
+      .prepare(`PRAGMA table_info(tags)`)
+      .all() as Array<{ name: string; type: string; notnull: number; pk: number }>;
+    expect(cols.map((c) => c.name).sort()).toEqual([
+      'created_at',
+      'id',
+      'tag',
+      'version_id',
+    ]);
+    const byName = Object.fromEntries(cols.map((c) => [c.name, c]));
+    // SQLite's PRAGMA table_info normalizes type names to upper-case (TEXT/INTEGER)
+    // regardless of how the DDL spells them — so compare case-insensitively.
+    expect(byName.id.type.toUpperCase()).toBe('TEXT');
+    expect(byName.id.pk).toBe(1);
+    expect(byName.version_id.type.toUpperCase()).toBe('TEXT');
+    expect(byName.version_id.notnull).toBe(1);
+    expect(byName.tag.type.toUpperCase()).toBe('TEXT');
+    expect(byName.tag.notnull).toBe(1);
+    expect(byName.created_at.type.toUpperCase()).toBe('INTEGER');
+    expect(byName.created_at.notnull).toBe(1);
+  });
+
+  it('creates metadata table with expected columns, PK, and indexes', () => {
+    const { sqlite } = makeInMemoryDb();
+    const cols = sqlite
+      .prepare(`PRAGMA table_info(metadata)`)
+      .all() as Array<{ name: string; type: string; notnull: number; pk: number }>;
+    expect(cols.map((c) => c.name).sort()).toEqual([
+      'created_at',
+      'id',
+      'key',
+      'value',
+      'version_id',
+    ]);
+    const byName = Object.fromEntries(cols.map((c) => [c.name, c]));
+    expect(byName.id.pk).toBe(1);
+    expect(byName.value.type.toUpperCase()).toBe('TEXT');
+    expect(byName.value.notnull).toBe(1);
+  });
+
+  it('idx_tags_tag and idx_metadata_key_value are present as explicit indexes', () => {
+    const { sqlite } = makeInMemoryDb();
+    const idxRows = sqlite
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('tags','metadata')`,
+      )
+      .all() as Array<{ name: string }>;
+    const names = idxRows.map((r) => r.name);
+    expect(names).toContain('idx_tags_tag');
+    expect(names).toContain('idx_metadata_key_value');
+  });
+
+  it('UNIQUE(version_id, tag) and UNIQUE(version_id, key) autoindexes exist', () => {
+    const { sqlite } = makeInMemoryDb();
+    // UNIQUE constraints create either `<table>_<cols>_unique` (drizzle-kit style)
+    // or `sqlite_autoindex_<table>_N` (raw DDL style) depending on how the SQL
+    // was authored. Accept either shape; we just assert at least one such index
+    // exists on each table that enforces the composite uniqueness.
+    const rows = sqlite
+      .prepare(
+        `SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND tbl_name IN ('tags','metadata')`,
+      )
+      .all() as Array<{ name: string; tbl_name: string; sql: string | null }>;
+    const tagUnique = rows.some(
+      (r) =>
+        r.tbl_name === 'tags' &&
+        (r.name === 'tags_version_id_tag_unique' ||
+          r.name.startsWith('sqlite_autoindex_tags')),
+    );
+    const metaUnique = rows.some(
+      (r) =>
+        r.tbl_name === 'metadata' &&
+        (r.name === 'metadata_version_id_key_unique' ||
+          r.name.startsWith('sqlite_autoindex_metadata')),
+    );
+    expect(tagUnique).toBe(true);
+    expect(metaUnique).toBe(true);
+  });
+
+  it('tags.version_id and metadata.version_id FK → versions(id)', () => {
+    const { sqlite } = makeInMemoryDb();
+    const tagFks = sqlite
+      .prepare(`PRAGMA foreign_key_list(tags)`)
+      .all() as Array<{ table: string; from: string; to: string }>;
+    expect(tagFks).toHaveLength(1);
+    expect(tagFks[0].table).toBe('versions');
+    expect(tagFks[0].from).toBe('version_id');
+    expect(tagFks[0].to).toBe('id');
+
+    const metaFks = sqlite
+      .prepare(`PRAGMA foreign_key_list(metadata)`)
+      .all() as Array<{ table: string; from: string; to: string }>;
+    expect(metaFks).toHaveLength(1);
+    expect(metaFks[0].table).toBe('versions');
   });
 });
