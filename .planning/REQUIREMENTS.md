@@ -60,11 +60,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Assets & Query
 
-- [ ] **ASST-01**: Agent can add/remove tags on any version
-- [ ] **ASST-02**: Agent can attach arbitrary key-value metadata to versions
-- [ ] **ASST-03**: Agent can search/filter versions by tags, metadata, hierarchy, date range
-- [ ] **ASST-04**: Search results are paginated (default 20, with total count)
-- [ ] **ASST-05**: Query responses include hierarchy breadcrumb (workspace > project > sequence > shot)
+- [x] **ASST-01
+**: Agent can add/remove tags on any version
+- [x] **ASST-02
+**: Agent can attach arbitrary key-value metadata to versions
+- [x] **ASST-03
+**: Agent can search/filter versions by tags, metadata, hierarchy, date range
+- [x] **ASST-04
+**: Search results are paginated (default 20, with total count)
+- [x] **ASST-05
+**: Query responses include hierarchy breadcrumb (workspace > project > sequence > shot)
 
 ### Web UI
 

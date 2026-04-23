@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-04-23T03:24:41.921Z"
+status: executing
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-04-23T05:32:22.110Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_plans: 14
+  completed_plans: 10
+  percent: 71
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 03 — provenance-versioning
+**Current focus:** Phase 04 — asset-management
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to plan
+Phase: 04 (asset-management) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-04-23
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%
 | Phase 03 P01 | 11min | 9 tasks | 22 files |
 | Phase 03 P02 | 17min | 3 tasks | 18 files |
 | Phase 03 P03 | 12min | 5 tasks tasks | 8 files files |
+| Phase 04 P01 | 10min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,10 @@ Recent decisions affecting current work:
 - [Plan 03-03] Tool-budget test rewritten to use readFile + multi-line regex /server\.registerTool\(\s*'([a-z_-]+)'/gs — single-line grep was passing vacuously because SDK call signature spreads name literal across lines; portable across BSD/GNU grep
 - [Plan 03-03] Tool budget at exactly 6 of 12 (D-PROV-07) — workspace/project/sequence/shot/generation/version; assertion checks count AND name-set (alphabetically sorted for stable snapshot); zero asset/collection/search leakage
 - [Plan 03-03 UAT] Approved on 462 unit tests + 15/15 protocol-level MCP SDK gates via verify-phase3-uat.mts (untracked driver at repo root); live-smoke endpoint drift (api.comfy.org 404, cloud.comfy.org 401) diagnosed as pre-existing infrastructure issue — not Plan 3 defect
+- [Plan 04-01] drizzle-kit generate accepted verbatim; IDM-03 rollback header prepended to match Phase 3 precedent (drizzle-kit default ordering: metadata before tags, explicit INDEX before UNIQUE autoindex — structurally identical to planned shape)
+- [Plan 04-01] EXPECTED_MIGRATIONS bumped 3 to 4 (Rule 3 blocking fix — existing Phase 2/3 migration-count assertions) bundled with Task 1 commit; a separate test fix commit would have left Task 1 verification red
+- [Plan 04-01] drizzle-kit roundtrip parity confirmed: schema.ts --> generate --> 0004.sql --> generate says 'No schema changes, nothing to migrate' — zero structural delta between Drizzle ORM declarations and hand-prefixed SQL migration
+- [Plan 04-01] src/types/hierarchy.ts UNCHANGED per D-ASST-21/D-ASST-22 — Phase 4 hydration uses VersionWithAssets extension type in src/types/assets.ts, not Version mutation
 
 ### Pending Todos
 
@@ -118,8 +123,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 4 context gathered
-Resume file: --resume-file
+Last session: 2026-04-23T05:32:22.104Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
 
-**Planned Phase:** 03 (provenance-versioning) — 3 plans — 2026-04-23T01:26:14.248Z
+**Planned Phase:** 4 (Asset Management) — 5 plans — 2026-04-23T05:16:28.785Z
