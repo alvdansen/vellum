@@ -81,11 +81,14 @@ Plans:
   3. Agent can search/filter versions by any combination of tags, metadata keys, hierarchy level, and date range
   4. Search results are paginated with a default page size of 20 and include total count for UI rendering
   5. Every query response includes the full hierarchy breadcrumb (workspace > project > sequence > shot) for context
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — Schema migration 0004 + sqliteTable declarations + shape.ts bounds + types/assets.ts + id/error extensions [BLOCKING schema push covered in Plan 04]
+- [ ] 04-02-PLAN.md — TagRepo + MetadataRepo (idempotent insert/upsert, scope aggregation, json_group_array hydration)
+- [ ] 04-03-PLAN.md — AssetsEngine (7 actions + hydrateVersionWithAssets) + Engine facade constructor extended with db
+- [ ] 04-04-PLAN.md — asset MCP tool (7-action discriminated union) + wire-up + cross-cutting tests + [BLOCKING] schema-push verification
+- [ ] 04-05-PLAN.md — version-tool extension (inline tags/metadata on get, include flags on list) + 7 fixture helpers
 
 ### Phase 5: Web Dashboard
 **Goal**: A non-technical viewer (or the demo audience) can open a browser and see the project hierarchy, version history with provenance details, and live generation progress -- no CLI required
@@ -122,5 +125,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation & Hierarchy | 3/3 | Complete | 2026-04-20 |
 | 2. ComfyUI Generation | 3/3 | Complete | 2026-04-21 |
 | 3. Provenance & Versioning | 3/3 | Awaiting verification | - |
-| 4. Asset Management | 0/2 | Not started | - |
+| 4. Asset Management | 0/5 | Planned | - |
 | 5. Web Dashboard | 0/2 | Not started | - |

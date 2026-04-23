@@ -2,8 +2,8 @@
 phase: 4
 slug: asset-management
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-04-22
 ---
 
@@ -40,7 +40,21 @@ created: 2026-04-22
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| *(filled by planner)* | | | | | | | | | |
+| 04-01-T1 | 01 | 1 | ASST-01, ASST-02 | T-04-01-01, T-04-01-02 | Additive migration safety; SCHEMA_DDL unchanged | unit | `npx vitest run src/store/__tests__/migrate.test.ts` | ⬜ pending | ⬜ pending |
+| 04-01-T2 | 01 | 1 | ASST-01, ASST-02, ASST-03 | T-04-01-05 | IdPrefix + ErrorCode + shape constants + assets types — pure declarations | typecheck | `npx tsc --noEmit` | ⬜ pending | ⬜ pending |
+| 04-01-T3 | 01 | 1 | ASST-01, ASST-02 | T-04-01-04 | migrate.test.ts assertions: tables + indexes present on fresh DB | unit | `npx vitest run src/store/__tests__/migrate.test.ts` | ⬜ pending | ⬜ pending |
+| 04-02-T1 | 02 | 2 | ASST-01, ASST-03 | T-04-02-02 | tag-repo tests RED (INV-ASST-01, INV-ASST-02) | unit | `npx vitest run src/store/__tests__/tag-repo.test.ts` | ⬜ pending | ⬜ pending |
+| 04-02-T2 | 02 | 2 | ASST-01, ASST-03 | T-04-02-01, T-04-02-02 | TagRepo GREEN — idempotent insert, scope aggregation, json_group_array | unit | `npx vitest run src/store/__tests__/tag-repo.test.ts` | ⬜ pending | ⬜ pending |
+| 04-02-T3 | 02 | 2 | ASST-02, ASST-03 | T-04-02-01, T-04-02-02 | MetadataRepo RED+GREEN — INV-ASST-03 upsert + INV-ASST-04 idempotent delete | unit | `npx vitest run src/store/__tests__/metadata-repo.test.ts` | ⬜ pending | ⬜ pending |
+| 04-03-T1 | 03 | 3 | ASST-01, ASST-02, ASST-03, ASST-04, ASST-05 | T-04-03-01, T-04-03-02, T-04-03-03 | AssetsEngine tests RED — 25+ cases covering INV-ASST-05..14, 17-19, 23-24 | unit | `npx vitest run src/engine/__tests__/assets.test.ts` | ⬜ pending | ⬜ pending |
+| 04-03-T2 | 03 | 3 | ASST-01, ASST-02, ASST-03, ASST-04, ASST-05 | T-04-03-01, T-04-03-02, T-04-03-03, T-04-03-04, T-04-03-07, T-04-03-08 | AssetsEngine GREEN — Pattern 3 filter SQL + Pattern 5 transaction + Pattern 4 hydration; Engine facade constructor extended | unit | `npx vitest run src/engine/__tests__/assets.test.ts src/engine/__tests__/pipeline.test.ts src/engine/__tests__/generation.test.ts` | ⬜ pending | ⬜ pending |
+| 04-04-T1 | 04 | 4 | ASST-01, ASST-02, ASST-03, ASST-04, ASST-05 | T-04-04-01, T-04-04-02 | asset-tool tests RED — 20+ integration cases covering all 7 actions | integration | `npx vitest run src/tools/__tests__/asset-tool.test.ts` | ⬜ pending | ⬜ pending |
+| 04-04-T2 | 04 | 4 | ASST-01, ASST-02, ASST-03, ASST-04, ASST-05 | T-04-04-01, T-04-04-02, T-04-04-03, T-04-04-05 | asset-tool GREEN — 7-action discriminated union delegates to engine; server.ts wiring | integration | `npx vitest run src/tools/__tests__/asset-tool.test.ts` | ⬜ pending | ⬜ pending |
+| 04-04-T3 | 04 | 4 | ASST-01 | T-04-04-04, T-04-04-05, T-04-04-06 | Cross-cutting: tool-budget 6→7; architecture-purity for 3 files; stdio-hygiene SQL-leak | unit | `npx vitest run src/__tests__/` | ⬜ pending | ⬜ pending |
+| 04-04-T4 | 04 | 4 | ASST-01, ASST-02 | T-04-04-07 | [BLOCKING] schema-push verification: migration applies, drizzle-kit zero delta, Inspector shows 7 tools | manual-blocking | `npm test` + `npx drizzle-kit generate --name phase4_sync_check` + MCP Inspector | ⬜ pending | ⬜ pending |
+| 04-05-T1 | 05 | 4 | ASST-01, ASST-02 | (none — fixture code) | 7 test fixture helpers for Phase 4 seeding (RESEARCH §Test Fixtures Needed) | typecheck | `npx tsc --noEmit` | ⬜ pending | ⬜ pending |
+| 04-05-T2 | 05 | 4 | ASST-01, ASST-02, ASST-05 | T-04-05-03 | version-tool extended: get always hydrates; list gets include flags | typecheck | `npx tsc --noEmit` | ⬜ pending | ⬜ pending |
+| 04-05-T3 | 05 | 4 | ASST-01, ASST-02, ASST-05 | T-04-05-03, T-04-05-04 | version-tool.test.ts assertions: INV-ASST-15, 16, 17, 22, 23, 25 | integration | `npx vitest run src/tools/__tests__/version-tool.test.ts` | ⬜ pending | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
