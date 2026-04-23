@@ -5,6 +5,7 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-04-23
+revised: 2026-04-23
 ---
 
 # Phase 5 — UI Design Contract
@@ -66,14 +67,14 @@ Exceptions:
 
 ## Typography
 
-Exactly 4 role-sizes and 2 weights (prescriptive ceiling):
+Exactly 4 role-sizes and 2 weights (prescriptive ceiling — no exceptions):
 
-| Role | Size | Weight | Line Height | Family |
-|------|------|--------|-------------|--------|
-| Body | 14px | 400 (regular) | 1.5 | Inter |
-| Label | 12px | 500 (medium) | 1.4 | Inter (uppercase tracking 0.05em for section labels) |
-| Heading | 18px | 600 (semibold) | 1.25 | Inter Tight |
-| Display | 24px | 600 (semibold) | 1.2 | Inter Tight |
+| Role | Size | Weight | Line Height | Family | Treatment |
+|------|------|--------|-------------|--------|-----------|
+| Body | 14px | 400 (regular) | 1.5 | Inter | default |
+| Label | 12px | 400 (regular) | 1.4 | Inter | `text-transform: uppercase; letter-spacing: 0.05em` for section labels — weight NOT used for role differentiation |
+| Heading | 18px | 600 (semibold) | 1.25 | Inter Tight | default |
+| Display | 24px | 600 (semibold) | 1.2 | Inter Tight | default |
 
 **Numeric formatting (mandatory on every numeric surface per D-WEBUI-20):**
 ```css
@@ -85,7 +86,21 @@ Exactly 4 role-sizes and 2 weights (prescriptive ceiling):
 
 Applied to: `v###` version labels, timestamps (relative + absolute), elapsed-time counters, metadata/tag count badges, `Active generations (N)` header, `total_count` in paginated queries.
 
-**Weights rule:** Only 400 and 600 in the primary contract. 500 (medium) is a single documented exception for uppercase section labels — do not introduce additional weights.
+**Label role CSS contract:**
+```css
+.label-uppercase {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-fg-muted);
+}
+```
+
+The Label role is differentiated from Body by **uppercase + letter-spacing + muted color**, NOT by font-weight. This keeps the contract at exactly 2 weights (400 regular + 600 semibold).
+
+**Weights rule:** Exactly 2 weights — 400 regular (for Body and Label) and 600 semibold (for Heading and Display). No other weights permitted anywhere in the dashboard — no 300, no 500, no 700. If a component ever appears to need additional weight differentiation, use size, color, uppercase, or letter-spacing instead.
 
 **Fallback stack:**
 ```css
@@ -94,7 +109,7 @@ Applied to: `v###` version labels, timestamps (relative + absolute), elapsed-tim
 --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;  /* JSON blocks */
 ```
 
-Fonts load via CSS `@import` in `theme.css` from `@fontsource/inter` + `@fontsource/inter-tight` packages inside `packages/dashboard/` (NOT CDN — offline-capable demo, predictable load).
+Fonts load via CSS `@import` in `theme.css` from `@fontsource/inter` + `@fontsource/inter-tight` packages inside `packages/dashboard/` (NOT CDN — offline-capable demo, predictable load). `@fontsource` packages must be imported with the `400` and `600` weight files only — do not import `500` weight assets (they would be dead weight in the bundle).
 
 ---
 
@@ -152,7 +167,7 @@ Light theme inverts the dominant/secondary relationship and adjusts accents for 
 
 The `#B39DDB` ComfyUI-purple accent is RESERVED for exactly these elements:
 
-1. **Primary action buttons** — `Reproduce` button in version drawer header, `Compare with v###` diff button
+1. **Primary action buttons** — `Reproduce Version` button in version drawer header, `Compare Version` diff button
 2. **Active sidebar selection** — left-border stripe + text color on currently-selected tree node
 3. **Active drawer tab** — underline + text color on currently-active tab (Summary/Workflow/Prompt/Models/Raw)
 4. **Links** — `parent_version_id` links in lineage badges, breadcrumb segment hover state
@@ -201,6 +216,30 @@ Accent is NEVER used for: hover states on non-primary elements, general text emp
   --color-destructive: #D73535;
 }
 ```
+
+---
+
+## Visual Hierarchy & Layout
+
+Every view in the dashboard has one designated primary focal point. Secondary and tertiary elements are explicitly subordinate to it — sized, colored, and positioned to support (not compete with) the anchor.
+
+### Primary visual anchors per view
+
+| View | Primary anchor | Secondary | Tertiary (persistent) |
+|------|---------------|-----------|-----------------------|
+| **Shot detail view** | The version-card thumbnail grid in the main pane draws the eye first. Cards are the largest interactive objects on screen, set against the dominant `#202020` canvas with `#353535` surfaces, arranged in a 3-column grid at optimal viewport. | The tree sidebar (left, 280px) and the Active Generations Panel (sidebar bottom) are secondary persistent fixtures — always visible but visually quieter (smaller type, muted foreground on secondary surface). | Breadcrumb at top of main pane; status pills inside cards (small, colored dots). |
+| **Home view (root `/`)** | The home hero (tagline + body copy) draws the eye first on empty-state; on populated installs, the `Recent Versions` grid is the anchor. Hero uses Display 24px/600 in accent color. | Active Generations summary panel (top of home pane); Workspaces quick-jump cards (middle section). | Tree sidebar (left); Active Generations panel in sidebar bottom (same as shot view). |
+| **Version detail drawer** | The active tab's primary content — JSON block (Workflow/Prompt/Raw), Summary metadata table, or Models list — fills the drawer body. The two primary action buttons (`Reproduce Version`, `Compare Version`) sit in the drawer header in accent color. | Tab strip across the top of the drawer (Summary/Workflow/Prompt/Models/Raw). | Close `×` button top-right; sidebar and main pane remain visible but dimmed by the 40% backdrop overlay. |
+| **Diff drawer (2nd-level)** | The two-column structured diff (from `engine.diffVersions`) fills the drawer body — side-by-side params, models, seeds, workflow, metadata. Add/remove rows use status-running `#FFA931` for additions and destructive `#FF4444` for removals (small colored markers, not saturated backgrounds). | Diff summary header at the top of the drawer (one-line count of changes per section). | Version drawer behind (dimmed), sidebar and main pane further dimmed. |
+| **Workspace / Project / Sequence detail views** | The immediate-children grid or list (projects under workspace, sequences under project, shots under sequence) is the primary anchor — each child is a clickable card with breadcrumb + count badges. | Breadcrumb at top of main pane. | Tree sidebar (left); Active Generations panel (sidebar bottom). |
+
+### Hierarchy enforcement rules
+
+- **One primary anchor per view.** Never two competing focal points at the same visual weight.
+- **Size proportions:** primary anchor elements are at least 1.5x larger (in width, height, or overall presence) than secondary supporting elements.
+- **Color proportions honor 60/30/10.** The accent color appears on the primary anchor's action affordance (buttons, links) and nowhere else in the view.
+- **Persistent fixtures stay quiet.** Sidebar and Active Generations Panel use secondary surface `#353535` with muted foreground `#999` for body text — they do not compete with detail-pane content.
+- **Breadcrumbs are navigation, not anchors.** Keep them at Body 14px/400 on muted foreground; they orient without drawing focus away from the anchor.
 
 ---
 
@@ -260,17 +299,21 @@ Hand-rolled primitives in `packages/dashboard/src/components/`. Executor impleme
 
 All copy strings locked. Executor references these verbatim; no copy invented at implementation time.
 
+**CTA rule:** Every primary and secondary CTA is a verb + noun pair. Single-word verbs are only permitted when the button sits inline with contextual metadata in the same row (e.g., a `Copy` button directly adjacent to a JSON block which is itself the implicit noun).
+
 ### Primary interactive elements
 
-| Element | Copy |
-|---------|------|
-| Primary CTA (drawer) | `Reproduce` |
-| Secondary CTA (drawer) | `Compare with v###` (e.g., `Compare with v002`) |
-| Copy-to-clipboard button | `Copy` → `Copied` (1.5s reset) |
-| Tab labels (drawer) | `Summary` / `Workflow` / `Prompt` / `Models` / `Raw` |
-| Theme toggle | Light mode shows `Dark` icon (moon); dark mode shows `Light` icon (sun). No text label. Aria-label: `Switch to {dark\|light} theme` |
-| Sidebar header | `VFX Familiar` (brand wordmark; Inter Tight 18px/600) |
-| Active generations header | `Active generations ({N})` — N is live count |
+| Element | Copy | Rationale |
+|---------|------|-----------|
+| Primary CTA (drawer header) | `Reproduce Version` | Verb + noun; button stands alone at top of drawer, needs explicit object. |
+| Secondary CTA (drawer header) | `Compare Version` | Verb + noun; dropdown button that opens a sibling-version picker. After selection, the picker row shows `Compare with v002` as an inline confirmation. |
+| Diff trigger (inside picker dropdown) | `Compare with v###` (e.g., `Compare with v002`) | Inline row — version id already present in the same row; verb-first form is acceptable because context is adjacent. |
+| Copy-to-clipboard button | `Copy` → `Copied` (1.5s reset) | Inline with the JSON block it targets; the block is the noun. |
+| Tab labels (drawer) | `Summary` / `Workflow` / `Prompt` / `Models` / `Raw` | Nouns (tab labels are section headers, not CTAs). |
+| Theme toggle | Light mode shows `Dark` icon (moon); dark mode shows `Light` icon (sun). No text label. Aria-label: `Switch to {dark\|light} theme` | Icon-only with full verb+noun in aria-label. |
+| Sidebar header | `VFX Familiar` (brand wordmark; Inter Tight 18px/600) | Brand mark, not a CTA. |
+| Active generations header | `Active generations ({N})` — N is live count | Section header, not a CTA. |
+| Cancel / close drawer button | `×` icon only. Aria-label: `Close drawer` | Icon-only with verb+noun in aria-label. |
 
 ### Empty states
 
@@ -299,14 +342,14 @@ All error copy includes: problem description + actionable next step. Error codes
 | Error code | Heading | Body |
 |-----------|---------|------|
 | `VERSION_NOT_FOUND` | `Version not found` | `This version may have been removed or never existed. {hint or "Return to the shot's version list."}` |
-| `OUTPUT_UNAVAILABLE` | `Preview unavailable` | `The output file is missing from disk. Provenance is still viewable. Run Reproduce to regenerate.` |
+| `OUTPUT_UNAVAILABLE` | `Preview unavailable` | `The output file is missing from disk. Provenance is still viewable. Run Reproduce Version to regenerate.` |
 | `PROVENANCE_UNAVAILABLE` | `Cannot reproduce this version` | `Provenance data was not captured (likely a failed generation). Use Iterate from a later version instead.` |
 | `COMFYUI_CREDENTIALS_MISSING` | `ComfyUI credentials required` | `Set COMFYUI_API_KEY in your .env file, then restart the server.` |
 | `INVALID_INPUT` | `Request was invalid` | `{field-specific hint from the typed error, e.g. "limit must be between 1 and 100."}` |
 | `INVALID_SCOPE` | `Query scope is invalid` | `Filter by exactly one of workspace_id, project_id, sequence_id, or shot_id — not multiple.` |
 | Network error (fetch fail) | `Dashboard lost connection` | `The server may be restarting. Refresh this page in a moment.` |
 | SSE disconnect | `Live updates paused` | `Reconnecting…` — muted banner at the top; auto-hides on reconnect |
-| 500 unknown | `Something went wrong` | `{error.message if present} — Check the server logs for details.` |
+| 500 unknown (HTTP status) | `Something went wrong` | `{error.message if present} — Check the server logs for details.` |
 
 ### Toast copy (bottom-right, auto-dismiss 5s per D-WEBUI-22)
 
@@ -318,9 +361,11 @@ All error copy includes: problem description + actionable next step. Error codes
 | `POST /api/versions/:id/reproduce` → error | error (red) | `Reproduce failed — {typed error message}` |
 | JSON block copy | success (green, 1.5s) | `Copied to clipboard` |
 
+Toast copy uses the bare verb "Reproduce" (no noun) intentionally — the toast is a system-status message, not a CTA; it references the action that was just taken, and the version number is already in the same line.
+
 ### Destructive actions in Phase 5
 
-**None.** Per D-WEBUI-25, the dashboard exposes only `Reproduce` and `Compare` (diff). No delete, no remove-tag, no remove-metadata from the UI in Phase 5. Agents drive destructive operations through MCP.
+**None.** Per D-WEBUI-25, the dashboard exposes only `Reproduce Version` and `Compare Version` (diff). No delete, no remove-tag, no remove-metadata from the UI in Phase 5. Agents drive destructive operations through MCP.
 
 No confirmation dialogs required in Phase 5 scope.
 
@@ -366,7 +411,7 @@ Per D-WEBUI-24:
 - **Open:** click any `VersionCard`. Drawer slides in from right (200ms ease-out translate-X from +560px to 0).
 - **Tabs:** Summary (default active), Workflow, Prompt, Models, Raw. Tab bar fixed at top; content below scrolls independently.
 - **Close:** `×` button top-right corner, `Escape` key, click on backdrop (backdrop is a semi-transparent overlay at 40% opacity `#000`).
-- **Diff drawer (second drawer):** opens on top of the primary drawer at 720px width. `Compare with v###` button opens a dropdown; selecting a sibling version opens the diff drawer. `Escape` closes only the top drawer.
+- **Diff drawer (second drawer):** opens on top of the primary drawer at 720px width. `Compare Version` button opens a dropdown; selecting a sibling version opens the diff drawer. `Escape` closes only the top drawer.
 
 ### Keyboard baseline (minimum)
 
@@ -411,14 +456,14 @@ Non-registry deps (standard npm packages) — provenance per CONTEXT.md D-WEBUI-
 | `@preact/preset-vite` | Preact JSX + HMR | Standard Vite + Preact pairing |
 | `tailwindcss@^4` | Styling | Locked by D-WEBUI-11 |
 | `@tailwindcss/vite` | Tailwind v4 Vite plugin | Standard Tailwind v4 pairing |
-| `@fontsource/inter` | Inter font (offline-capable) | Locked by D-WEBUI-20 (not CDN) |
-| `@fontsource/inter-tight` | Inter Tight font | Locked by D-WEBUI-20 (not CDN) |
+| `@fontsource/inter` | Inter font (offline-capable; import weights 400 + 600 only) | Locked by D-WEBUI-20 (not CDN) |
+| `@fontsource/inter-tight` | Inter Tight font (import weight 600 only) | Locked by D-WEBUI-20 (not CDN) |
 | `lucide-preact` | Icon library (^0.555.0) | Researcher pick: Preact-native, tree-shakable, community-maintained fork of Feather Icons; avoids phosphor-icons (no official Preact support) and hand-drawn SVGs (time cost) |
 | `vitest` | Component test runner | Locked by D-WEBUI-35 |
 | `@testing-library/preact` | Component test utilities | Locked by D-WEBUI-35 |
 | `jsdom` | Test DOM environment | Standard Vitest pairing |
 
-**Bundle size posture:** Informal target < 200KB gzipped for the main bundle per CONTEXT.md Deferred Ideas. No formal budget enforcement in Phase 5. All deps above are tree-shakable; Lucide only ships icons actually imported.
+**Bundle size posture:** Informal target < 200KB gzipped for the main bundle per CONTEXT.md Deferred Ideas. No formal budget enforcement in Phase 5. All deps above are tree-shakable; Lucide only ships icons actually imported. `@fontsource` imports explicitly restrict to weights 400 + 600 to honor the 2-weight typography ceiling and avoid shipping dead 500-weight assets.
 
 **JSON syntax highlighter (`JsonBlock` component):** Researcher defers to planner per CONTEXT.md "Claude's Discretion". Three viable options at bundle-size ascending order:
 1. Hand-rolled mini-tokenizer (~150 lines, zero dep, string/number/boolean/null coloring only) — **RECOMMENDED** for demo scope.
@@ -492,11 +537,13 @@ Executor implementation map:
 | Responsive breakpoints (1024 / 1440) | CONTEXT.md D-WEBUI-17 |
 | Motion specs (restrained, 150-200ms, no springs) | CONTEXT.md D-WEBUI-21 |
 | Component inventory (18 components) | Researcher — derived from CONTEXT.md view/behavior decisions |
-| Copywriting — CTA labels (`Reproduce`, `Compare with v###`) | CONTEXT.md D-WEBUI-25 + Specifics |
+| Copywriting — CTA labels (`Reproduce Version`, `Compare Version`) | CONTEXT.md D-WEBUI-25 + Specifics (revised 2026-04-23 to add explicit nouns per checker feedback) |
 | Copywriting — tab labels | CONTEXT.md D-WEBUI-24 |
 | Copywriting — empty states | Researcher — written for VFX-production context per REQUIREMENTS.md WEBUI-01..05 |
 | Copywriting — error states | Researcher — error codes pulled from CONTEXT.md `<canonical_refs>` typed-error vocabulary + new `OUTPUT_UNAVAILABLE` from D-WEBUI-34 |
 | Copywriting — toast copy | CONTEXT.md D-WEBUI-22 (template) + researcher specifics |
+| Typography — 2-weight ceiling (400 + 600) | Researcher — revised 2026-04-23 after checker flagged 3-weight count. Label role now uses uppercase + letter-spacing for differentiation, not weight. |
+| Visual Hierarchy & Layout section | Researcher — added 2026-04-23 per checker Dimension 2 feedback to declare primary focal point per view. |
 | Registry safety (none — Preact target) | Design system detection: no `components.json`, Preact framework |
 | Bundle size target (< 200KB gzipped) | CONTEXT.md Deferred Ideas |
 | JSON syntax highlighter | Researcher deferred to planner per CONTEXT.md "Claude's Discretion"; 3-option matrix with recommendation |
@@ -508,5 +555,46 @@ Executor implementation map:
 
 ---
 
+## Revision Log
+
+### 2026-04-23 — checker-requested revision
+
+**Dimension 4 (Typography) — BLOCKING fix applied:**
+- Collapsed 3 font weights (400, 500, 600) to exactly 2 (400, 600).
+- Label role changed from weight 500 → 400; differentiation now via `text-transform: uppercase` + `letter-spacing: 0.05em` + muted foreground color.
+- Rewrote "Weights rule" prose — removed the "500 exception" framing; now states exactly 2 weights with no exceptions.
+- Added explicit Label role CSS contract snippet.
+- Noted `@fontsource` import discipline in the dependency table (import 400 + 600 weight files only; do not ship 500 weight as dead bundle weight).
+
+**Dimension 1 (Copywriting) — recommended fix applied:**
+- Primary CTA copy changed from `Reproduce` → `Reproduce Version` (verb + noun) in version drawer header.
+- Secondary CTA copy changed from `Compare with v###` → `Compare Version` (verb + noun) at the dropdown button level; the `Compare with v###` form is retained for the inline dropdown row where context is adjacent.
+- Added explicit CTA rule at the top of the Copywriting Contract: every primary/secondary CTA is verb + noun; single-word verbs only permitted with adjacent metadata context (`Copy` button next to JSON block).
+- Audited every CTA in the document:
+  - Tab labels (Summary/Workflow/Prompt/Models/Raw) — nouns, not CTAs; unchanged.
+  - Theme toggle — icon-only with full verb+noun in aria-label; rationale added.
+  - Close drawer — `×` icon-only with aria-label `Close drawer` (verb + noun); rationale added.
+  - Copy button — inline with JSON block; rationale added.
+  - Error + empty state copy — all contain actionable next steps with verbs and nouns; unchanged.
+  - Toast copy — explanatory note added: toasts are system status messages not CTAs; bare `Reproduce` remains acceptable because the version number is adjacent.
+  - Error body for `OUTPUT_UNAVAILABLE` updated to reference `Reproduce Version` by full name.
+
+**Dimension 2 (Visuals) — recommended fix applied:**
+- Added a new top-level section `Visual Hierarchy & Layout` after the Color section.
+- Declared primary visual anchor for each view: shot detail (version-card thumbnail grid), home view (hero tagline on empty / recent versions grid when populated), version drawer (active tab content), diff drawer (two-column structured diff), workspace/project/sequence detail (immediate-children grid).
+- For each view, also declared secondary and tertiary (persistent) elements so the 60/30/10 hierarchy is unambiguous.
+- Added 5 hierarchy-enforcement rules: one anchor per view, 1.5x size proportions, color proportions, quiet persistent fixtures, breadcrumbs as navigation.
+
+**Not changed:**
+- Color palette (locked by CONTEXT.md)
+- Spacing scale (locked; 8-point grid)
+- Component inventory (18 components — unchanged)
+- Motion contract (locked by D-WEBUI-21)
+- All other copy strings (only the two CTAs + one error body updated)
+- No new dependencies introduced.
+
+---
+
 *Phase: 05-web-dashboard*
 *UI-SPEC drafted: 2026-04-23 by gsd-ui-researcher*
+*UI-SPEC revised: 2026-04-23 by gsd-ui-researcher (checker feedback pass)*
