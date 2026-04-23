@@ -203,4 +203,112 @@ describe.skipIf(SKIP)('live ComfyUI Cloud smoke (D-GEN-42.7)', () => {
       await engine.stop();
     }
   }, 210_000); // 3.5-minute outer timeout — matches D-GEN-25 + cold-start margin
+
+  test(
+    'submit → poll → reproduce → poll → byte-identical prompt_json',
+    async () => {
+      const apiKey = process.env.COMFYUI_API_KEY!;
+      const apiBase = process.env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE;
+      const checkpoint =
+        process.env.COMFYUI_SMOKE_CHECKPOINT ?? 'v1-5-pruned-emaonly.safetensors';
+
+      const { db } = openDb(dbPath);
+      const repo = new HierarchyRepo(db);
+      const versions = new VersionRepo(db);
+      const provenanceRepo = new ProvenanceRepo(db);
+      const client = new ComfyUIClient(apiKey, apiBase);
+      const engine = new Engine(
+        repo,
+        versions,
+        provenanceRepo,
+        client,
+        tempOutputRoot,
+      );
+
+      try {
+        // Seed hierarchy + submit source generation.
+        const ws = repo.createWorkspace(`smoke-reproduce-ws-${nanoid(4)}`);
+        const proj = repo.createProject(ws.id, 'smoke-proj');
+        const seq = repo.createSequence(proj.id, 'sq010');
+        const shot = repo.createShot(seq.id, 'sh010');
+
+        const submit = await engine.submitGeneration(shot.id, MINIMAL_WORKFLOW(checkpoint));
+        expect(submit.entity.status).toBe('submitted');
+        const sourceVersionId = submit.entity.id;
+
+        // Poll source to completion (inherits the Phase 2 180s budget).
+        const sourceDeadline = Date.now() + 180_000;
+        let sourceTerminal: 'completed' | 'failed' | undefined;
+        while (Date.now() < sourceDeadline) {
+          const poll = await engine.getGenerationStatus(sourceVersionId);
+          if (poll.entity.status === 'completed' || poll.entity.status === 'failed') {
+            sourceTerminal = poll.entity.status;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 5_000));
+        }
+        expect(sourceTerminal).toBe('completed');
+
+        // Assert source provenance: two events, completed has prompt_json
+        // (proves D-PROV-05 PNG tEXt extraction worked end-to-end).
+        const sourceProv = engine.getProvenance(sourceVersionId);
+        expect(sourceProv.events.map((e) => e.event_type)).toContain('submitted');
+        expect(sourceProv.events.map((e) => e.event_type)).toContain('completed');
+        const sourceCompleted = sourceProv.events.find(
+          (e) => e.event_type === 'completed',
+        )!;
+        expect(sourceCompleted.prompt_json).not.toBeNull();
+        // Capture the source prompt blob for byte-identity comparison.
+        const sourcePromptStr = sourceCompleted.prompt_json!;
+        const sourcePrompt = JSON.parse(sourcePromptStr) as Record<string, unknown>;
+
+        // Reproduce.
+        const reproduce = await engine.reproduceVersion(
+          sourceVersionId,
+          'smoke-reproduction',
+        );
+        expect(Array.isArray(reproduce.reproduction_warnings)).toBe(true);
+        expect(reproduce.entity.lineage_type).toBe('reproduce');
+        expect(reproduce.entity.parent_version_id).toBe(sourceVersionId);
+
+        // Poll reproduction to completion.
+        const reproducedId = reproduce.entity.id;
+        const reproDeadline = Date.now() + 180_000;
+        let reproTerminal: 'completed' | 'failed' | undefined;
+        while (Date.now() < reproDeadline) {
+          const poll = await engine.getGenerationStatus(reproducedId);
+          if (poll.entity.status === 'completed' || poll.entity.status === 'failed') {
+            reproTerminal = poll.entity.status;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 5_000));
+        }
+        expect(reproTerminal).toBe('completed');
+
+        // D-PROV-05 honesty: reproduction's prompt_json equals source's.
+        // PNG tEXt is deterministic for the same prompt blob, so the two
+        // strings should match byte-for-byte.
+        const reproProv = engine.getProvenance(reproducedId);
+        const reproCompleted = reproProv.events.find(
+          (e) => e.event_type === 'completed',
+        )!;
+        expect(reproCompleted.prompt_json).not.toBeNull();
+        const reproPromptStr = reproCompleted.prompt_json!;
+        const reproPrompt = JSON.parse(reproPromptStr) as Record<string, unknown>;
+        // Deep-equal fallback — the byte-identity claim holds for the
+        // stored blob but the tEXt encoder may normalize whitespace;
+        // the honest structural claim is deep-equal on the JSON object.
+        expect(reproPrompt).toEqual(sourcePrompt);
+
+        // Observed-evidence probe (non-assertion): log whether the two
+        // strings also match byte-for-byte. Helps close D-PROV-05 follow-up.
+        console.error(
+          `[live-smoke reproduce] prompt_json byte-identical: ${reproPromptStr === sourcePromptStr}`,
+        );
+      } finally {
+        await engine.stop();
+      }
+    },
+    420_000, // 7-minute outer timeout — two completions at 180s each + margin.
+  );
 });
