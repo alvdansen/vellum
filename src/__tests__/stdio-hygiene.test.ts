@@ -175,6 +175,34 @@ describe('stdio hygiene', () => {
     expect(stderr).toMatch(/private|loopback|COMFYUI_API_BASE/i);
   }, 15_000);
 
+  it('Phase 4 tool registration does not leak SQL to stdout or stderr on boot (D-ASST-26, T-04-04-04)', async () => {
+    // Boot the server with Phase 4's asset tool registered; verify the
+    // additional tables (tags, metadata) + their indexes do NOT cause any
+    // SQL DDL/DML to echo into stdout or stderr. Guards against an
+    // accidentally-chatty migration logger or repo-level debug trace in
+    // src/engine/assets.ts, src/store/tag-repo.ts, src/store/metadata-repo.ts.
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      DOTENV_CONFIG_PATH: '/nonexistent-stdio-hygiene-phase4-boot',
+    };
+    const { stdout, stderr } = await bootAndKill(env, 'phase4-boot');
+    // stdout must be empty on boot — stdio transport reserves it for JSON-RPC
+    // frames. No client requests are sent in this test, so any byte is a leak.
+    expect(stdout).toBe('');
+    // stderr may carry credentials + DB path logs but MUST NOT carry raw SQL
+    // statements from the Phase 4 migration or repo layers.
+    expect(stderr).not.toContain('INSERT INTO tags');
+    expect(stderr).not.toContain('INSERT INTO metadata');
+    expect(stderr).not.toContain('CREATE TABLE `tags`');
+    expect(stderr).not.toContain('CREATE TABLE `metadata`');
+    // Defence-in-depth: raw unquoted identifiers (`tags` / `metadata`) also
+    // shouldn't appear in log lines as a DDL giveaway. The credential-presence
+    // log and boot-marker logs are noun-free.
+    expect(stderr).not.toContain('idx_tags_tag');
+    expect(stderr).not.toContain('idx_metadata_key_value');
+  }, 15_000);
+
   it('IT-18: SIGTERM triggers graceful shutdown with exit 0 and a "shutting down" log line', async () => {
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,

@@ -58,4 +58,22 @@ describe('architecture purity', () => {
   it('src/comfyui/ has zero imports from drizzle-orm (D-GEN-21)', () => {
     expect(grepCount('drizzle-orm', 'src/comfyui/')).toBe(0);
   });
+
+  // Phase 4 additions — file-level assertions for the new engine + repo files
+  // (D-ASST-26). The directory-level src/engine/ and src/store/ assertions
+  // already cover these transitively, but file-level assertions fire in
+  // isolation if someone adds an MCP import to one specific file — cheaper
+  // to debug than the directory-wide fail.
+
+  it('src/engine/assets.ts has zero imports from @modelcontextprotocol/sdk (D-ASST-26)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/assets.ts')).toBe(0);
+  });
+
+  it('src/store/tag-repo.ts has zero imports from @modelcontextprotocol/sdk (D-ASST-26)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/store/tag-repo.ts')).toBe(0);
+  });
+
+  it('src/store/metadata-repo.ts has zero imports from @modelcontextprotocol/sdk (D-ASST-26)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/store/metadata-repo.ts')).toBe(0);
+  });
 });

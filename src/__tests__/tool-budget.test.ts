@@ -4,8 +4,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Asserts D-04 / TOOL-01 / D-GEN-03 / D-PROV-07: the 12-tool budget.
- * Phase 3 uses exactly 6: workspace, project, sequence, shot, generation, version.
+ * Asserts D-04 / TOOL-01 / D-GEN-03 / D-PROV-07 / D-ASST-01: the 12-tool budget.
+ * Phase 4 uses exactly 7: workspace, project, sequence, shot, generation,
+ * version, asset.
  *
  * Counts tool-registration call-sites across src/tools/ only — that is the
  * single layer allowed to import the MCP SDK (D-33, enforced independently
@@ -60,24 +61,25 @@ describe('tool budget', () => {
     expect(registerToolCount()).toBeLessThanOrEqual(12);
   });
 
-  it('Phase 3 registers exactly 6 tools (D-PROV-07)', () => {
+  it('Phase 4 registers exactly 7 tools (D-ASST-01)', () => {
     // Phase 1: workspace, project, sequence, shot (4).
     // Phase 2 adds: generation (5).
     // Phase 3 adds: version (6).
-    // Any tool added beyond 6 must come with an explicit bump here so
+    // Phase 4 adds: asset (7).
+    // Any tool added beyond 7 must come with an explicit bump here so
     // Pitfall #1 (tool explosion) stays visible.
-    expect(registerToolCount()).toBe(6);
+    expect(registerToolCount()).toBe(7);
   });
 
-  it('registered tool name set is exactly [workspace, project, sequence, shot, generation, version]', () => {
+  it('registered tool name set is exactly [asset, generation, project, sequence, shot, version, workspace]', () => {
     const names = registeredToolNames();
-    expect(names).toHaveLength(6);
+    expect(names).toHaveLength(7);
     expect(names).toEqual(
-      ['generation', 'project', 'sequence', 'shot', 'version', 'workspace'],
+      ['asset', 'generation', 'project', 'sequence', 'shot', 'version', 'workspace'],
     );
     // Sorted alphabetically — stable snapshot. The original declaration
     // order in src/server.ts is workspace, project, sequence, shot,
-    // generation, version; this test sorts so ordering changes don't
+    // generation, version, asset; this test sorts so ordering changes don't
     // cause spurious failures.
   });
 });
