@@ -39,7 +39,11 @@ describe('zero-config startup', () => {
         },
       });
       child.stdin.end();
-      setTimeout(() => child.kill('SIGTERM'), 1500);
+      // Phase 5 (Plan 05-01): npm workspaces hoist expanded node_modules,
+      // which pushed `tsx` cold-start past the prior 1500ms window under
+      // parallel vitest load. Boot completes well under 3000ms in practice;
+      // this is purely a timing margin, not a functional change.
+      setTimeout(() => child.kill('SIGTERM'), 3000);
       child.on('exit', () => resolvePromise());
     });
 
@@ -71,7 +75,7 @@ describe('zero-config startup', () => {
     } finally {
       db.close();
     }
-  }, 10_000);
+  }, 15_000);
 
   afterAll(() => {
     for (const p of [tmpDb, `${tmpDb}-wal`, `${tmpDb}-shm`]) {

@@ -30,7 +30,9 @@ export type ErrorCode =
   | 'METADATA_INVALID'
   | 'TAG_LIMIT_EXCEEDED'
   | 'METADATA_LIMIT_EXCEEDED'
-  | 'INVALID_SCOPE';
+  | 'INVALID_SCOPE'
+  // Phase 5 — web dashboard (D-WEBUI-34)
+  | 'OUTPUT_UNAVAILABLE';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.

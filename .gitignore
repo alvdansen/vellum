@@ -8,3 +8,7 @@ coverage/
 .DS_Store
 .env
 .env.local
+# Phase 5 (D-WEBUI-26): runtime ComfyUI output downloads — never committed
+outputs/
+# Phase 5: dashboard workspace node_modules (defensive — workspaces hoist to root, but cover both)
+packages/dashboard/node_modules/

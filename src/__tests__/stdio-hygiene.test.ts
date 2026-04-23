@@ -57,7 +57,11 @@ function bootAndKill(
     if (!opts.keepStdinOpen) {
       child.stdin.end();
     }
-    const killMs = opts.killAfterMs ?? 1500;
+    // Phase 5 (Plan 05-01): npm workspaces hoist expanded node_modules, which
+    // pushed `tsx` cold-start past the prior 1500ms window under parallel vitest
+    // load. Default 3000ms is purely a timing margin — boots still complete in
+    // ~1.5-2s on healthy runs; caller may still override via opts.killAfterMs.
+    const killMs = opts.killAfterMs ?? 3000;
     const killSig = opts.signal ?? 'SIGTERM';
     const killTimer = setTimeout(() => child.kill(killSig), killMs);
     child.on('exit', (code, signal) => {

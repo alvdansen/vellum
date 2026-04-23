@@ -7,6 +7,9 @@
   "bin": {
     "vfx-familiar": "src/server.ts"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "start": "tsx src/server.ts",
     "start:http": "tsx src/server.ts --http",
@@ -15,7 +18,10 @@
     "smoke": "node scripts/inspector-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:dashboard": "npm run build --workspace=packages/dashboard",
+    "dev:dashboard": "npm run dev --workspace=packages/dashboard",
+    "test:dashboard": "npm run test --workspace=packages/dashboard"
   },
   "engines": {
     "node": ">=20"
