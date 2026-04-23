@@ -53,6 +53,11 @@ export class FakeEngine {
     tagList: { items: [], total_count: 0, limit: 20, offset: 0 } as { items: { name: string; count: number }[]; total_count: number; limit: number; offset: number },
     metadataKeys: { items: [], total_count: 0, limit: 20, offset: 0 } as { items: { name: string; count: number }[]; total_count: number; limit: number; offset: number },
     reproduceResult: null as { entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] } | null,
+    dashboardHome: {
+      active_versions: [] as Version[],
+      recent_versions: [] as Version[],
+      workspaces: [] as Workspace[],
+    },
   };
 
   // ============== Hierarchy reads ==============
@@ -242,6 +247,16 @@ export class FakeEngine {
     };
   }
 
+  // ============== Dashboard aggregate (D-WEBUI-01) ==============
+  getDashboardHome(): {
+    active_versions: Version[];
+    recent_versions: Version[];
+    workspaces: Workspace[];
+  } {
+    this.calls.push({ method: 'getDashboardHome', args: [] });
+    return this.cans.dashboardHome;
+  }
+
   reset(): void {
     this.calls.length = 0;
     this.events.removeAllListeners();
@@ -261,6 +276,7 @@ export class FakeEngine {
     this.cans.tagList = { items: [], total_count: 0, limit: 20, offset: 0 };
     this.cans.metadataKeys = { items: [], total_count: 0, limit: 20, offset: 0 };
     this.cans.reproduceResult = null;
+    this.cans.dashboardHome = { active_versions: [], recent_versions: [], workspaces: [] };
   }
 }
 

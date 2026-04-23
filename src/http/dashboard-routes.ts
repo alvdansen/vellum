@@ -1,0 +1,288 @@
+// Phase 5 Plan 04: Hono sub-router exposing all 18 dashboard REST routes
+// (D-WEBUI-01 + D-WEBUI-05). Thin delegation layer over the Engine facade —
+// every route either
+//   (a) parses Hono context (params/query/body),
+//   (b) calls an Engine method, and
+//   (c) returns the Engine result as JSON,
+// or throws a TypedError that `typedErrorHandler` converts to a structured
+// 4xx/5xx response (D-WEBUI-32).
+//
+// Architecture purity (D-WEBUI-28 + D-WEBUI-31): this file has ZERO imports
+// from `@modelcontextprotocol/sdk`, `better-sqlite3`, or `drizzle-orm`. All
+// data moves through the Engine interface.
+//
+// One exception: GET /api/versions/:id/output — streams a binary file from
+// disk via `fs.createReadStream`. This is the single FS-boundary route in the
+// dashboard surface (D-WEBUI-33). Path is constructed as
+// `outputs/<versionId>/<filename>`; the filename is pulled from the version's
+// `outputs_json` field, then `path.basename()` is applied + validated so a
+// malicious ComfyUI response cannot trigger path traversal (T-5-04).
+
+import { Hono } from 'hono';
+import { createReadStream, existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import * as path from 'node:path';
+import type { Engine } from '../engine/pipeline.js';
+import { TypedError } from '../engine/errors.js';
+
+/**
+ * Extension → Content-Type map (D-WEBUI-33). Unknown extensions fall through
+ * to `application/octet-stream` so browsers download rather than render.
+ */
+const MIME_MAP: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+};
+
+/**
+ * Minimal Engine surface this router depends on. We do NOT import the full
+ * `Engine` class directly — a structural subset keeps the unit tests free
+ * from having to instantiate a real Engine + DB. FakeEngine satisfies this
+ * surface at test time.
+ *
+ * The real `Engine` class (src/engine/pipeline.ts) is structurally compatible
+ * with this interface; server.ts passes a real Engine at mount time and
+ * TypeScript picks up the widened parameter type without a cast.
+ */
+export type EngineForDashboard = Pick<
+  Engine,
+  | 'listWorkspaces'
+  | 'getWorkspace'
+  | 'listProjects'
+  | 'getProject'
+  | 'listSequences'
+  | 'getSequence'
+  | 'listShots'
+  | 'getShot'
+  | 'listVersionsForShot'
+  | 'getVersion'
+  | 'getProvenance'
+  | 'diffVersions'
+  | 'reproduceVersion'
+  | 'queryAssets'
+  | 'listTags'
+  | 'listMetadataKeys'
+  | 'getDashboardHome'
+>;
+
+/**
+ * Creates a Hono sub-router with all 18 dashboard REST routes wired to the
+ * supplied Engine. The caller is responsible for mounting `typedErrorHandler`
+ * via `app.onError(typedErrorHandler)` either on this router or on the parent
+ * app — Plan 05-06 mounts at the server level so both REST + SSE inherit.
+ *
+ * Pagination defaults: limit=20, offset=0 (matches the MCP tool layer).
+ */
+export function createDashboardRouter(engine: EngineForDashboard): Hono {
+  const app = new Hono();
+
+  // Helper: parse a numeric query param with a default. Returns the default
+  // when the param is absent OR parses to NaN — callers don't have to branch.
+  const qNum = (raw: string | undefined, fallback: number): number => {
+    if (raw === undefined) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  // --- Workspaces ---
+  app.get('/api/workspaces', (c) => {
+    const limit = qNum(c.req.query('limit'), 20);
+    const offset = qNum(c.req.query('offset'), 0);
+    return c.json(engine.listWorkspaces(limit, offset));
+  });
+
+  app.get('/api/workspaces/:id', (c) => {
+    return c.json(engine.getWorkspace(c.req.param('id')));
+  });
+
+  app.get('/api/workspaces/:id/projects', (c) => {
+    const limit = qNum(c.req.query('limit'), 20);
+    const offset = qNum(c.req.query('offset'), 0);
+    return c.json(engine.listProjects(c.req.param('id'), limit, offset));
+  });
+
+  // --- Projects ---
+  app.get('/api/projects/:id', (c) => {
+    return c.json(engine.getProject(c.req.param('id')));
+  });
+
+  app.get('/api/projects/:id/sequences', (c) => {
+    const limit = qNum(c.req.query('limit'), 20);
+    const offset = qNum(c.req.query('offset'), 0);
+    return c.json(engine.listSequences(c.req.param('id'), limit, offset));
+  });
+
+  // --- Sequences ---
+  app.get('/api/sequences/:id', (c) => {
+    return c.json(engine.getSequence(c.req.param('id')));
+  });
+
+  app.get('/api/sequences/:id/shots', (c) => {
+    const limit = qNum(c.req.query('limit'), 20);
+    const offset = qNum(c.req.query('offset'), 0);
+    return c.json(engine.listShots(c.req.param('id'), limit, offset));
+  });
+
+  // --- Shots ---
+  app.get('/api/shots/:id', (c) => {
+    return c.json(engine.getShot(c.req.param('id')));
+  });
+
+  app.get('/api/shots/:id/versions', (c) => {
+    const limit = qNum(c.req.query('limit'), 20);
+    const offset = qNum(c.req.query('offset'), 0);
+    const include_tags = c.req.query('include_tags') === 'true';
+    const include_metadata = c.req.query('include_metadata') === 'true';
+    return c.json(
+      engine.listVersionsForShot(c.req.param('id'), limit, offset, {
+        include_tags,
+        include_metadata,
+      }),
+    );
+  });
+
+  // --- Versions ---
+  app.get('/api/versions/:id', (c) => {
+    return c.json(engine.getVersion(c.req.param('id')));
+  });
+
+  app.get('/api/versions/:id/provenance', (c) => {
+    return c.json(engine.getProvenance(c.req.param('id')));
+  });
+
+  app.get('/api/versions/:id/diff', (c) => {
+    const against = c.req.query('against');
+    if (!against) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        "Missing required query parameter 'against'",
+        'Call GET /api/versions/:id/diff?against=<other_version_id>',
+      );
+    }
+    return c.json(engine.diffVersions(c.req.param('id'), against));
+  });
+
+  // --- Output streaming ---
+  // D-WEBUI-26 + D-WEBUI-33: not an Engine method — streams from disk at
+  // `outputs/<versionId>/<filename>`. The filename is stored in the version's
+  // `outputs_json` field as `[{filename, path, url, content_type, size_bytes}]`
+  // (Plan 02 writes this via GenerationEngine.downloadAndPersist +
+  // Engine.getGenerationStatus.downloadOutput).
+  //
+  // T-5-04 mitigation: after extracting the stored filename, apply
+  // `path.basename()` + explicit `..` / separator checks before constructing
+  // the fs path. Even a malicious ComfyUI response that sets filename to
+  // `../../etc/passwd` is neutralised (basename strips to `passwd`; then
+  // existsSync() returns false for the missing file → 404).
+  app.get('/api/versions/:id/output', (c) => {
+    const versionId = c.req.param('id');
+    const version = engine.getVersion(versionId); // throws VERSION_NOT_FOUND → 404
+
+    const raw = version.entity.outputs_json;
+    let parsed: Array<{ filename?: string }> = [];
+    if (raw) {
+      try {
+        const maybe = JSON.parse(raw);
+        parsed = Array.isArray(maybe) ? (maybe as Array<{ filename?: string }>) : [];
+      } catch {
+        parsed = [];
+      }
+    }
+    if (parsed.length === 0 || !parsed[0]?.filename) {
+      throw new TypedError(
+        'OUTPUT_UNAVAILABLE',
+        `No outputs recorded for version '${versionId}'`,
+        'The output file may not have been downloaded. Use Reproduce Version to regenerate.',
+      );
+    }
+
+    const storedFilename = parsed[0].filename;
+    // T-5-04: reject filenames containing path separators or traversal
+    // sequences BEFORE basename normalization — defence-in-depth. basename
+    // would strip `../../etc/passwd` to `passwd` (then fail existsSync), but
+    // flagging the attack pattern explicitly surfaces it in logs.
+    if (
+      storedFilename.includes('..') ||
+      storedFilename.includes('/') ||
+      storedFilename.includes('\\')
+    ) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Invalid output filename '${storedFilename}' — contains path separator or traversal sequence`,
+        'This is a bug or tampering attempt. Check the version record.',
+      );
+    }
+    const filename = path.basename(storedFilename);
+
+    const ext = path.extname(filename).toLowerCase();
+    const contentType = MIME_MAP[ext] ?? 'application/octet-stream';
+
+    const filePath = path.join('outputs', versionId, filename);
+    if (!existsSync(filePath)) {
+      throw new TypedError(
+        'OUTPUT_UNAVAILABLE',
+        `Output file missing from disk: ${filename}`,
+        'The output file is missing. Provenance is still viewable. Use Reproduce Version to regenerate.',
+      );
+    }
+
+    const nodeStream = createReadStream(filePath);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+
+    return c.body(webStream, 200, {
+      'Content-Type': contentType,
+      // Output files are content-addressed by version_id — safe to cache
+      // aggressively. Plan 05-06 server wiring inherits this header.
+      'Cache-Control': 'public, max-age=3600, immutable',
+    });
+  });
+
+  // --- Reproduce ---
+  // POST /api/versions/:id/reproduce — returns 201 + version envelope.
+  // Body is optional `{ notes?: string }`. Tolerates empty body (no body
+  // headers, no JSON body) by defaulting to an empty object.
+  app.post('/api/versions/:id/reproduce', async (c) => {
+    const versionId = c.req.param('id');
+    let notes: string | undefined;
+    try {
+      const body = (await c.req.json()) as { notes?: string } | null;
+      notes = body?.notes;
+    } catch {
+      // Empty body / malformed JSON → treat as no notes.
+      notes = undefined;
+    }
+    const result = await engine.reproduceVersion(versionId, notes);
+    return c.json(result, 201);
+  });
+
+  // --- Assets ---
+  // POST /api/assets/query — body mirrors `asset.query` MCP input.
+  app.post('/api/assets/query', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(engine.queryAssets(body));
+  });
+
+  // POST /api/assets/list_tags — body mirrors `asset.list_tags` MCP input.
+  app.post('/api/assets/list_tags', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(engine.listTags(body));
+  });
+
+  // POST /api/assets/list_metadata_keys — body mirrors `asset.list_metadata_keys`.
+  app.post('/api/assets/list_metadata_keys', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(engine.listMetadataKeys(body));
+  });
+
+  // --- Dashboard home (D-WEBUI-01) ---
+  app.get('/api/dashboard/home', (c) => {
+    return c.json(engine.getDashboardHome());
+  });
+
+  return app;
+}

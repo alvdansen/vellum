@@ -14,41 +14,40 @@
 // This file exercises ALL 18 routes + 3+ TypedError propagation cases, matching
 // the plan's <behavior> block.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
+import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { FakeEngine } from '../../test-utils/fake-engine.js';
 import { createDashboardRouter } from '../dashboard-routes.js';
 import { typedErrorHandler } from '../error-middleware.js';
 import { TypedError } from '../../engine/errors.js';
 
-// --- FS mock for GET /api/versions/:id/output ---
-// Allows us to test the streaming route without creating real files.
-let mockExistsValue = true;
-const mockStream = {
-  on: vi.fn(),
-  pipe: vi.fn(),
-  // minimal Readable interface for Readable.toWeb
-  [Symbol.asyncIterator]() {
-    return { next: async () => ({ done: true, value: undefined }) };
-  },
-  readable: true,
-  readableEnded: false,
-  destroy: vi.fn(),
-  close: vi.fn(),
-};
+// --- FS fixtures for GET /api/versions/:id/output ---
+// The output route reads from `outputs/<versionId>/<filename>`. Tests create a
+// real tmp file in the repo-relative `outputs/` tree (gitignored) so
+// fs.createReadStream works end-to-end. Afterwards, remove the test versionId
+// subdir without touching any real output files.
+const TEST_VERSION_IDS = new Set<string>();
 
-vi.mock('node:fs', async () => {
-  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
-  return {
-    ...actual,
-    existsSync: (p: string) => {
-      // override from test via mockExistsValue
-      void p;
-      return mockExistsValue;
-    },
-    createReadStream: () => mockStream,
-  };
-});
+function writeTestOutput(versionId: string, filename: string, content = Buffer.from([0x89, 0x50, 0x4E, 0x47])): string {
+  const dir = join('outputs', versionId);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, filename);
+  writeFileSync(p, content);
+  TEST_VERSION_IDS.add(versionId);
+  return p;
+}
+
+function cleanupTestOutputs(): void {
+  for (const id of TEST_VERSION_IDS) {
+    const dir = join('outputs', id);
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  TEST_VERSION_IDS.clear();
+}
 
 // Utility: build a Hono app with the router mounted + error handler wired.
 function buildApp(engine: FakeEngine): Hono {
@@ -65,7 +64,10 @@ describe('createDashboardRouter', () => {
   beforeEach(() => {
     engine = new FakeEngine();
     engine.reset();
-    mockExistsValue = true;
+  });
+
+  afterEach(() => {
+    cleanupTestOutputs();
   });
 
   // ================================================================
@@ -359,7 +361,7 @@ describe('createDashboardRouter', () => {
     });
 
     it('returns OUTPUT_UNAVAILABLE (404) when file is missing from disk', async () => {
-      mockExistsValue = false;
+      // Do NOT call writeTestOutput — the fs path will not exist on disk.
       engine.cans.versions.set('ver_missing_file', {
         entity: {
           id: 'ver_missing_file',
@@ -420,9 +422,12 @@ describe('createDashboardRouter', () => {
     });
 
     it('streams file with image/png Content-Type for .png output', async () => {
-      engine.cans.versions.set('ver_png', {
+      // Write a real tiny file to outputs/ver_png_stream/out.png so the route
+      // can successfully fs.createReadStream it. afterEach cleans it up.
+      writeTestOutput('ver_png_stream', 'out.png');
+      engine.cans.versions.set('ver_png_stream', {
         entity: {
-          id: 'ver_png',
+          id: 'ver_png_stream',
           shot_id: 'shot_1',
           version_number: 1,
           status: 'completed',
@@ -441,9 +446,37 @@ describe('createDashboardRouter', () => {
         breadcrumb: { entries: [], text: '' },
       });
       const app = buildApp(engine);
-      const res = await app.request('/api/versions/ver_png/output');
+      const res = await app.request('/api/versions/ver_png_stream/output');
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('image/png');
+    });
+
+    it('maps .jpg extension to image/jpeg', async () => {
+      writeTestOutput('ver_jpg_stream', 'out.jpg');
+      engine.cans.versions.set('ver_jpg_stream', {
+        entity: {
+          id: 'ver_jpg_stream',
+          shot_id: 'shot_1',
+          version_number: 1,
+          status: 'completed',
+          job_id: null,
+          parent_version_id: null,
+          notes: null,
+          created_at: 0,
+          completed_at: null,
+          error_code: null,
+          error_message: null,
+          outputs_json: JSON.stringify([{ filename: 'out.jpg' }]),
+          lineage_type: null,
+          tags: [],
+          metadata: [],
+        },
+        breadcrumb: { entries: [], text: '' },
+      });
+      const app = buildApp(engine);
+      const res = await app.request('/api/versions/ver_jpg_stream/output');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/jpeg');
     });
   });
 

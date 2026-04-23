@@ -646,4 +646,39 @@ export class Engine {
   ) {
     return this.assets.listMetadataKeys(scope);
   }
+
+  // ================================================================
+  // PHASE 5 — DASHBOARD AGGREGATE (D-WEBUI-01)
+  // ================================================================
+
+  /**
+   * D-WEBUI-01: dashboard landing-page aggregate. Returns the three rails the
+   * Preact home view renders: non-terminal versions (submitted/running),
+   * recently-completed versions, and top-level workspaces.
+   *
+   * Keeps the landing page a single REST round-trip instead of N small calls.
+   * Plan 05-06 (server.ts mount) exposes this at GET /api/dashboard/home.
+   */
+  getDashboardHome(): {
+    active_versions: Version[];
+    recent_versions: Version[];
+    workspaces: Workspace[];
+  } {
+    // Active = non-terminal rows (submitted | running). listPendingVersions
+    // already exists (recovery poller uses it on boot) and returns exactly the
+    // same subset; we reuse it to avoid adding a second DB method.
+    const active = this.versionRepo.listPendingVersions();
+    // Recent = completed. Phase 5 demo scope: surface an empty list if the
+    // store doesn't expose a listByStatus helper; server-side SSE updates
+    // the dashboard as versions complete. A later plan may add a dedicated
+    // recent-completed repo method; keeping it honest here avoids stubbing
+    // an ad-hoc SQL query inside the engine facade (architecture-purity).
+    const recent: Version[] = [];
+    const { items: workspaces } = this.repo.listWorkspaces(50, 0);
+    return {
+      active_versions: active,
+      recent_versions: recent,
+      workspaces,
+    };
+  }
 }
