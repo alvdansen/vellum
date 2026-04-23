@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01 — provenance foundations landed
-last_updated: "2026-04-23T01:45:09.337Z"
+stopped_at: Completed 03-02 — provenance wired into submit/terminal lifecycle; reproduce/iterate + Engine facade methods landed
+last_updated: "2026-04-23T02:07:27.542Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 03 (provenance-versioning) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-23
 
-Progress: [████████░░] 78%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████████░░] 78%
 | Phase 01 P02 | 9min | 4 tasks | 10 files |
 | Phase 01 P03 | 11min | 9 tasks tasks | 8 files files |
 | Phase 03 P01 | 11min | 9 tasks | 22 files |
+| Phase 03 P02 | 17min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,11 @@ Recent decisions affecting current work:
 - [Plan 03-01] ProvenanceRepo is structurally append-only — 4 public methods (insertEvent, getEventsForVersion, getLatestCompletedEvent, getSubmitEvent); structural prototype assertion in tests enforces T-03-01
 - [Plan 03-01] Prototype-pollution tests use JSON.parse input because object-literal {__proto__: ...} syntax sets prototype (not own-property); real attack vector is MCP tool JSON input so tests mirror that path
 - [Plan 03-01] VersionRepo.insertVersion seeds lineage_type: null on direct submits (Rule 3 blocking fix for exhaustive object check); Plan 2 extends with optional lineage arg for reproduce/iterate
+- [Plan 03-02] Lineage (parent_version_id + lineage_type) written at INSERT time via extended insertVersion 3rd param — no setLineage method, no follow-up UPDATE (LANDMINE #8: closes the read-during-transaction null-lineage race)
+- [Plan 03-02] fetchResolvedPrompt takes a file path (pure fs.readFile + PNG tEXt extract, zero HTTP); swap-ready for future /api/history HTTP variant with same signature (LANDMINE #3)
+- [Plan 03-02] submitInternal is private shared helper for submit/reproduce/iterate; preserves submitGeneration public signature (LANDMINE #1) while three methods share the two-phase submit + provenance-write body
+- [Plan 03-02] reproduce throws PROVENANCE_UNAVAILABLE on null prompt_json; iterate-from-failed uses workflow_json (D-PROV-24 asymmetry — reproduce is verbatim-replay contract, iterate is authored-intent-plus-patch contract)
+- [Plan 03-02] reproduction_warnings[] always non-empty in Phase 3 — model hashes always null (checksums deferred), so every reproduce emits per-model 'not checksummed' warnings or the generic 'no model metadata' notice (T-03-02-03 spoofing mitigation, D-PROV-28)
 
 ### Pending Todos
 
@@ -104,8 +110,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T01:45:09.331Z
-Stopped at: Completed 03-01 — provenance foundations landed
+Last session: 2026-04-23T02:07:27.537Z
+Stopped at: Completed 03-02 — provenance wired into submit/terminal lifecycle; reproduce/iterate + Engine facade methods landed
 Resume file: None
 
 **Planned Phase:** 03 (provenance-versioning) — 3 plans — 2026-04-23T01:26:14.248Z
