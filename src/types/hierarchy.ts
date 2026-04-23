@@ -63,6 +63,8 @@ export interface Version {
   error_code: string | null;
   error_message: string | null;
   outputs_json: string | null;
+  // Phase 3 additions — D-PROV-33 (nullable).
+  lineage_type: 'reproduce' | 'iterate' | null;
 }
 
 export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot' | 'version';

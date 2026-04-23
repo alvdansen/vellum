@@ -87,6 +87,10 @@ export class VersionRepo {
         error_code: null,
         error_message: null,
         outputs_json: null,
+        // Phase 3 addition — D-PROV-33: NULL marks originals from generation.submit.
+        // Plan 2 sets this at INSERT time for reproduce/iterate via the repo's
+        // extended insertVersion signature.
+        lineage_type: null,
       };
       tx.insert(versions).values(row).run();
       return row;

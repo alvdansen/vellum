@@ -19,7 +19,12 @@ export type ErrorCode =
   | 'COMFYUI_RATE_LIMITED'
   | 'GENERATION_TIMEOUT'
   | 'DOWNLOAD_FAILED'
-  | 'CONCURRENT_SUBMIT_CONFLICT';
+  | 'CONCURRENT_SUBMIT_CONFLICT'
+  // Phase 3 — provenance & versioning (D-PROV-36)
+  | 'PROVENANCE_UNAVAILABLE'
+  | 'REPRODUCE_BLOCKED'
+  | 'ITERATE_INVALID_PATCH'
+  | 'VERSION_NOT_COMPLETED';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
