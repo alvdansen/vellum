@@ -11,7 +11,7 @@ import { makeInMemoryDb } from '../../test-utils/fixtures.js';
  * Verifies Drizzle migrations apply against real SQLite DBs and
  * that the __drizzle_migrations ledger is idempotent across reboots.
  */
-const EXPECTED_MIGRATIONS = 2; // 0001_phase2_version_lifecycle, 0002_idx_versions_status
+const EXPECTED_MIGRATIONS = 3; // +0003_phase3_provenance (Phase 3 — provenance table + lineage_type column + idx_provenance_version_time)
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
@@ -91,6 +91,61 @@ describe('Drizzle migration 0001 (D-GEN-38, [BLOCKING] schema push)', () => {
       )
       .all() as { name: string }[];
     expect(rows.length).toBe(1);
+    sqlite.close();
+  });
+
+  test('provenance table created by migration 0003', () => {
+    const { sqlite } = openDb(dbPath);
+    const row = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='provenance'")
+      .get();
+    expect(row).toBeDefined();
+    sqlite.close();
+  });
+
+  test('provenance table has all D-PROV-02 columns', () => {
+    const { sqlite } = openDb(dbPath);
+    const rows = sqlite
+      .prepare(`SELECT name FROM pragma_table_info('provenance')`)
+      .all() as { name: string }[];
+    const names = new Set(rows.map((r) => r.name));
+    for (const c of [
+      'id',
+      'version_id',
+      'event_type',
+      'workflow_json',
+      'prompt_json',
+      'seed',
+      'models_json',
+      'outputs_json',
+      'error_code',
+      'error_message',
+      'timestamp',
+    ]) {
+      expect(names.has(c), `column ${c} missing from provenance`).toBe(true);
+    }
+    sqlite.close();
+  });
+
+  test('versions.lineage_type column added by migration 0003', () => {
+    const { sqlite } = openDb(dbPath);
+    const rows = sqlite
+      .prepare(`SELECT name, type FROM pragma_table_info('versions')`)
+      .all() as { name: string; type: string }[];
+    const lineage = rows.find((r) => r.name === 'lineage_type');
+    expect(lineage).toBeDefined();
+    expect(lineage!.type.toLowerCase()).toBe('text');
+    sqlite.close();
+  });
+
+  test('idx_provenance_version_time index created by migration 0003', () => {
+    const { sqlite } = openDb(dbPath);
+    const row = sqlite
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_provenance_version_time'",
+      )
+      .get();
+    expect(row).toBeDefined();
     sqlite.close();
   });
 
