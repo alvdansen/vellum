@@ -5,9 +5,9 @@
 // handlers via onSseEvent; the module holds a singleton EventSource +
 // per-type listener sets so start / stop is idempotent.
 //
-// Architecture-purity invariant (D-WEBUI-31): zero imports from
-// ../../../src/**. The EngineEventMap consumed here is the dashboard-local
-// duplicate at ../types/events.ts.
+// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// server-tree relative-import traversals. The EngineEventMap consumed here
+// is the dashboard-local duplicate at ../types/events.ts.
 //
 // Plan 05-08 Task 1 (GREEN). Consumers (Plan 05-10 ActiveGenerationsPanel,
 // etc.) call startSse() once at app init, register via onSseEvent('type', fn),

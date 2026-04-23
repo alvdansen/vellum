@@ -1,12 +1,13 @@
 // packages/dashboard/src/lib/api.ts
 //
-// Typed fetch wrappers for the 18 dashboard REST routes served by
-// src/http/dashboard-routes.ts (Plan 05-04). Same-origin (empty BASE) —
-// the static handler and the API live on the same Node process in prod,
+// Typed fetch wrappers for the 18 dashboard REST routes served by the
+// server-side dashboard-routes module (Plan 05-04). Same-origin (empty BASE)
+// — the static handler and the API live on the same Node process in prod,
 // and Vite proxies /api -> http://127.0.0.1:3000 in dev (D-WEBUI-13).
 //
-// Architecture-purity invariant (D-WEBUI-31): zero imports from ../../../src/**.
-// Only imports: the dashboard-local type barrel under ../types/*.
+// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// server-tree relative-import traversals. Only imports: the dashboard-local
+// type barrel under ../types/*.
 
 import type {
   Workspace,

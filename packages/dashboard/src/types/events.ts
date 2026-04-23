@@ -2,9 +2,9 @@
 //
 // Dashboard-local copy of the engine event map (D-WEBUI-31, architecture purity).
 // Duplicated in pure TypeScript so no file under packages/dashboard/src/** imports
-// from the server tree (../../src/**). Must stay in sync with src/engine/events.ts
-// in spirit (the set of event names is frozen by D-WEBUI-06); the field shape here
-// is the contract the dashboard renders against.
+// from the server tree. Must stay in sync with the server-side EngineEventMap
+// in spirit (the set of event names is frozen by D-WEBUI-06); the field shape
+// here is the contract the dashboard renders against.
 //
 // T-5-02 mitigation: MetadataChangedPayload deliberately has NO `value` field.
 // Metadata values may contain sensitive data; the SSE stream carries only the key
@@ -12,7 +12,7 @@
 // version via GET /api/versions/:id.
 //
 // Plan 05-08 (types/events.ts). Follow-up (component plans) consume these types
-// from '../types/events.js' ONLY — never from '../../../src/engine/events.js'.
+// from '../types/events.js' ONLY — never via a server-tree traversal import.
 
 /** version.status_changed — a version moved between queued/running/complete/failed. */
 export interface VersionStatusChangedPayload {
