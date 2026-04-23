@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Phase 5 (WEBUI-05): dashboard dist/ is a committed build artifact — server serves it at runtime, no build step required at install
+!packages/dashboard/dist/
+!packages/dashboard/dist/**
 coverage/
 *.db
 *.db-wal
