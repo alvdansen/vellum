@@ -161,6 +161,87 @@ describe('Engine events module purity (D-WEBUI-31)', () => {
   });
 });
 
+// ================================================================
+// Phase 5 Plan 13 — SSE wire-shape adapter is the only serialization
+// path (CR-01 regression guard). Asserts:
+//   1. src/http/sse.ts exports toDashboardPayload.
+//   2. Every JSON.stringify call in sse.ts either (a) passes a
+//      toDashboardPayload(...) return value, or (b) is the string
+//      literal ": ping" keep-alive (which isn't a stringify call at all).
+//   3. `JSON.stringify(payload)` with a raw `payload` identifier is
+//      never reintroduced.
+// ================================================================
+
+describe('SSE wire-shape adapter is the only serialization path (CR-01)', () => {
+  const ssePath = path.resolve('src/http/sse.ts');
+  const sseContent = readFileSync(ssePath, 'utf-8');
+
+  it('src/http/sse.ts exports toDashboardPayload', () => {
+    expect(sseContent).toMatch(/export\s+function\s+toDashboardPayload\b/);
+  });
+
+  it('src/http/sse.ts invokes toDashboardPayload at the writeSSE call site', () => {
+    // The listener must call the adapter before JSON.stringify. We look
+    // for the textual co-occurrence inside the same write expression.
+    // `\s*` covers any whitespace (including newlines) between the opening
+    // paren and the adapter call.
+    expect(sseContent).toMatch(/JSON\.stringify\(\s*toDashboardPayload\(/);
+  });
+
+  it('src/http/sse.ts never calls JSON.stringify(payload) with a raw payload identifier (CR-01 reintroduction guard)', () => {
+    // Match JSON.stringify followed by `(` + whitespace + `payload` + `)`.
+    // Allows `JSON.stringify(toDashboardPayload(...))` (adapter call) and
+    // `JSON.stringify({...})` (object literal). Fails only the raw-
+    // forwarding shape that was the CR-01 bug.
+    //
+    // We strip comments before matching so the prose reference to the
+    // forbidden pattern in this file's own docstring does not trip this
+    // guard. Line-comments (//) are stripped; the sse.ts file uses // for
+    // all commentary.
+    const stripped = sseContent
+      .split('\n')
+      .map((line) => {
+        const idx = line.indexOf('//');
+        return idx >= 0 ? line.slice(0, idx) : line;
+      })
+      .join('\n');
+    const violations = stripped.match(/JSON\.stringify\(\s*payload\s*\)/g);
+    expect(violations, 'raw JSON.stringify(payload) reintroduced — use toDashboardPayload').toBeNull();
+  });
+
+  it('src/http/sse.ts header docstring documents the boundary contract', () => {
+    // Weak but useful signal — future refactors that delete the header
+    // should surface a review signal. Match is case-insensitive on a
+    // short unique phrase.
+    expect(sseContent.toLowerCase()).toContain('wire-shape');
+  });
+
+  // ------------------------------------------------------------------
+  // Live-smoke re-verification (gsd-verifier / manual). After Plan 05-13
+  // lands, the behavioral spot-check from .planning/phases/05-web-dashboard/
+  // 05-VERIFICATION.md §Behavioral Spot-Checks must now produce a
+  // camelCase SSE frame instead of the snake_case frame captured at
+  // verification time:
+  //
+  //   Terminal 1:
+  //     npx tsx src/server.ts --http --port 3099 --db /tmp/vfx-verify.db
+  //   Terminal 2 (listener):
+  //     curl -N http://127.0.0.1:3099/api/events
+  //   Terminal 3 (trigger):
+  //     curl -X POST http://127.0.0.1:3099/mcp \
+  //       -H 'Content-Type: application/json' \
+  //       -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+  //            "params":{"name":"workspace","arguments":{"action":"create","name":"smoke-ws"}}}'
+  //
+  // Expected frame on Terminal 2:
+  //   event: hierarchy.created
+  //   data: {"entityType":"workspace","entityId":"ws_...","parentId":null}
+  //
+  // Expected keys present:       entityType, entityId   (camelCase)
+  // Expected keys absent:        entity_type, entity_id (snake_case)
+  // ------------------------------------------------------------------
+});
+
 describe('Dashboard source boundary (D-WEBUI-31)', () => {
   // packages/dashboard/src/** must not reach into server source
   // via relative imports. Communication is HTTP-only (fetch + SSE).
