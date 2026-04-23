@@ -7,10 +7,10 @@ import 'dotenv/config';
  *   - stdio transport ALWAYS, long-lived (D-15)
  *   - Streamable HTTP on 127.0.0.1:<port> when --http is passed (D-16, T-03-03)
  *
- * Both transports expose the SAME 6 tools (workspace, project, sequence, shot,
- * generation, version) against the SAME process-wide engine (so SQLite writes
- * from either path land in the same db). Tool identity is guaranteed by the
- * shared `buildServer()` factory — it's the only place the 6 register*
+ * Both transports expose the SAME 7 tools (workspace, project, sequence, shot,
+ * generation, version, asset) against the SAME process-wide engine (so SQLite
+ * writes from either path land in the same db). Tool identity is guaranteed by
+ * the shared `buildServer()` factory — it's the only place the 7 register*
  * functions are called, and both transports route through it.
  *
  * Implementation note on MCP SDK 1.29 Protocol invariant:
@@ -72,6 +72,7 @@ import {
   registerShot,
   registerGeneration,
   registerVersion,
+  registerAsset,
 } from './tools/index.js';
 
 /**
@@ -86,8 +87,8 @@ async function readVersion(): Promise<string> {
 }
 
 /**
- * Construct a fresh McpServer with the 6 Phase 1 + Phase 2 + Phase 3 tools
- * registered against the supplied engine. Single source of tool identity —
+ * Construct a fresh McpServer with the 7 Phase 1 + Phase 2 + Phase 3 + Phase 4
+ * tools registered against the supplied engine. Single source of tool identity —
  * both stdio and each HTTP request route through this factory, so transport
  * parity is guaranteed by construction (Pitfall #7). Zero transport-specific
  * branching inside.
@@ -97,12 +98,16 @@ function buildServer(engine: Engine, version: string): McpServer {
     { name: 'vfx-familiar', version },
     {
       instructions:
-        'VFX project hierarchy management + ComfyUI generation + provenance/versioning. ' +
+        'VFX project hierarchy management + ComfyUI generation + provenance/versioning + asset management. ' +
         'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get. ' +
         'Generation tool: generation with action: submit | status | reproduce | iterate. ' +
         "reproduce re-runs a completed version's prompt verbatim (byte-identical) and returns reproduction_warnings[]. " +
         'iterate applies node-scoped overrides { "<nodeId>": { inputs?, class_type? } } and/or a seed shortcut to a source version, re-validates, and submits. ' +
         'Version tool: version with action: get | list | diff | provenance. ' +
+        'Asset tool: asset with action: add_tag | remove_tag | set_metadata | remove_metadata | query | list_tags | list_metadata_keys. ' +
+        'add_tag/remove_tag/set_metadata/remove_metadata return the refreshed version with inline tags + metadata. ' +
+        'query filters AND-only across tags/metadata/scope/date/status with paginated results. ' +
+        'list_tags/list_metadata_keys aggregate names with counts for discovery. ' +
         'Every response carries a breadcrumb from workspace to the affected entity.',
     },
   );
@@ -112,6 +117,7 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerShot(server, engine);
   registerGeneration(server, engine);
   registerVersion(server, engine);
+  registerAsset(server, engine);
   // RT-09 / API-06: SDK's registerTool unconditionally merges
   // `capabilities.tools.listChanged: true` into the server's capability set,
   // but we never emit `notifications/tools/list_changed`. Override back to
