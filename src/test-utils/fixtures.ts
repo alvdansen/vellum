@@ -316,3 +316,59 @@ export function versionsAtCap(
   }
   return ver.id;
 }
+
+// =============== Phase 5 (D-WEBUI-37) ===============
+
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ProvenanceRepo } from '../store/provenance-repo.js';
+import { Engine } from '../engine/pipeline.js';
+import { FakeComfyUIClient } from './fake-comfyui-client.js';
+import type { ComfyUIClient } from '../comfyui/client.js';
+
+/**
+ * Phase 5 (D-WEBUI-37): build a real Engine wired against an in-memory DB AND
+ * a fresh tmp directory for outputs/. Used by output-downloader tests (Plan 02)
+ * and end-to-end SSE/route integration tests where a true downloader hook
+ * exercise on disk is needed.
+ *
+ * Returns a tear-down helper that removes the tmp dir; tests should call it in
+ * an `afterEach`/`afterAll` to keep the tmp filesystem clean.
+ */
+export function buildStackWithOutputs(): {
+  engine: Engine;
+  outputsDir: string;
+  client: FakeComfyUIClient;
+  sqlite: import('better-sqlite3').Database;
+  cleanup: () => void;
+} {
+  const { db, sqlite } = makeInMemoryDb();
+  const outputsDir = mkdtempSync(join(tmpdir(), 'vfx-test-outputs-'));
+  const hierarchyRepo = new HierarchyRepo(db);
+  const versionRepo = new VersionRepo(db);
+  const provenanceRepo = new ProvenanceRepo(db);
+  const client = new FakeComfyUIClient();
+  const engine = new Engine(
+    db,
+    hierarchyRepo,
+    versionRepo,
+    provenanceRepo,
+    client as unknown as ComfyUIClient,
+    outputsDir,
+    { maxConcurrentPollers: 1 },
+  );
+  return {
+    engine,
+    outputsDir,
+    client,
+    sqlite,
+    cleanup: (): void => {
+      try {
+        rmSync(outputsDir, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
+    },
+  };
+}
