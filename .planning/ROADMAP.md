@@ -100,12 +100,22 @@ Plans:
   3. Active generations show live progress updates via SSE without manual refresh
   4. Dashboard is served as a pre-built static bundle from the same Hono server process -- no separate dev server
   5. Viewer can see the dashboard immediately after server start with no build step required
-**Plans**: TBD
+**Plans**: 12 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Monorepo scaffold + dashboard config + Wave 0 test infra + OUTPUT_UNAVAILABLE error code
+- [ ] 05-02-PLAN.md — EngineEmitter + output-downloader + pipeline event wiring
+- [ ] 05-03-PLAN.md — HTTP error middleware (typedErrorHandler + statusForCode)
+- [ ] 05-04-PLAN.md — 18 REST dashboard routes + src/http/index.ts barrel
+- [ ] 05-05-PLAN.md — SSE handler (createSseHandler: 5 event types, keep-alive, origin check, cleanup)
+- [ ] 05-06-PLAN.md — Static asset handler + server.ts mount order (SSE → API → static)
+- [ ] 05-07-PLAN.md — Architecture purity tests (HTTP layer + dashboard boundary + tool budget)
+- [ ] 05-08-PLAN.md — Dashboard data layer (api.ts fetch wrappers + events.ts SSE client + signals)
+- [ ] 05-09-PLAN.md — Design system (theme.css Tailwind v4 + 7 primitive components)
+- [ ] 05-10-PLAN.md — Views (HomeView, VersionDrawer, DiffDrawer, ActiveGenerationsPanel) + App + Vite build
+- [ ] 05-11-PLAN.md — Cross-cutting dashboard tests (theme persistence + SSE→signal integration)
+- [ ] 05-12-PLAN.md — Build dist, commit, CI freshness gate, live smoke script
 
 ## Future (v2)
 
@@ -126,4 +136,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. ComfyUI Generation | 3/3 | Complete | 2026-04-21 |
 | 3. Provenance & Versioning | 3/3 | Awaiting verification | - |
 | 4. Asset Management | 0/5 | Planned | - |
-| 5. Web Dashboard | 0/2 | Not started | - |
+| 5. Web Dashboard | 0/12 | Planned | - |
