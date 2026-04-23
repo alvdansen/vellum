@@ -23,6 +23,16 @@ export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_WORKFLOW_NODES = 2000;
 export const MAX_WORKFLOW_BYTES = 5_000_000;
 
+// Phase 4 — asset management (D-ASST-11). TAG_REGEX accepts letters, digits,
+// underscore, dash, dot, colon (colon enables `status:approved` namespacing
+// by convention per Area 2 Q1 sub-decision in CONTEXT.md).
+export const MAX_TAG_LENGTH = 64;
+export const MAX_METADATA_KEY_LENGTH = 64;
+export const MAX_METADATA_VALUE_LENGTH = 2000;
+export const MAX_TAGS_PER_VERSION = 50;
+export const MAX_METADATA_PER_VERSION = 100;
+export const TAG_REGEX = /^[A-Za-z0-9_\-.:]+$/;
+
 /**
  * Shape a create/get engine result into the tool response payload shape.
  *

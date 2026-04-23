@@ -24,7 +24,13 @@ export type ErrorCode =
   | 'PROVENANCE_UNAVAILABLE'
   | 'REPRODUCE_BLOCKED'
   | 'ITERATE_INVALID_PATCH'
-  | 'VERSION_NOT_COMPLETED';
+  | 'VERSION_NOT_COMPLETED'
+  // Phase 4 — asset management (D-ASST-23)
+  | 'TAG_INVALID'
+  | 'METADATA_INVALID'
+  | 'TAG_LIMIT_EXCEEDED'
+  | 'METADATA_LIMIT_EXCEEDED'
+  | 'INVALID_SCOPE';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
