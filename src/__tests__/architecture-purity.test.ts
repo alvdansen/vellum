@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * Asserts D-33 / D-34 / D-GEN-21: engine, store, utils, types, AND comfyui
@@ -75,5 +77,113 @@ describe('architecture purity', () => {
 
   it('src/store/metadata-repo.ts has zero imports from @modelcontextprotocol/sdk (D-ASST-26)', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/store/metadata-repo.ts')).toBe(0);
+  });
+});
+
+// ================================================================
+// Phase 5 additions (D-WEBUI-31) — HTTP layer, engine events, and
+// dashboard source boundary. The HTTP layer (src/http/**) mediates
+// between browsers and the engine facade; it must remain MCP-free
+// and SQLite-free. The engine event-emitter (src/engine/events.ts)
+// publishes structured payloads; it must not leak MCP SDK types.
+// The dashboard (packages/dashboard/src/**) is a separately-built
+// Preact SPA that communicates with the server only over HTTP —
+// any direct import from server source is a boundary violation.
+// ================================================================
+
+// Helper: recursively enumerate .ts files (not .test.ts, not .d.ts).
+// Used by the Phase 5 file-content assertions below — file-level
+// iteration catches additions in new subdirectories without any
+// test edits. The plan expects this to also gracefully handle a
+// missing dashboard src directory (Plans 08-10 create it); an
+// empty-array return is intentional and yields vacuously-green
+// assertions until the dashboard source exists.
+function collectSourceFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(full));
+    } else if (
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.test.ts') &&
+      !entry.name.endsWith('.d.ts')
+    ) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+describe('HTTP layer architecture purity (D-WEBUI-31)', () => {
+  const httpDir = path.resolve('src/http');
+  const httpSourceFiles = collectSourceFiles(httpDir);
+
+  it('src/http/* has zero imports from @modelcontextprotocol/sdk', () => {
+    const violations: string[] = [];
+    for (const file of httpSourceFiles) {
+      const content = readFileSync(file, 'utf-8');
+      if (content.includes('@modelcontextprotocol/sdk')) {
+        violations.push(path.relative('src', file));
+      }
+    }
+    expect(
+      violations,
+      `MCP import found in: ${violations.join(', ')}`,
+    ).toHaveLength(0);
+  });
+
+  it('src/http/* has zero imports from better-sqlite3 / drizzle-orm', () => {
+    const violations: string[] = [];
+    for (const file of httpSourceFiles) {
+      const content = readFileSync(file, 'utf-8');
+      if (content.includes('better-sqlite3') || content.includes('drizzle-orm')) {
+        violations.push(path.relative('src', file));
+      }
+    }
+    expect(
+      violations,
+      `SQLite import found in: ${violations.join(', ')}`,
+    ).toHaveLength(0);
+  });
+});
+
+describe('Engine events module purity (D-WEBUI-31)', () => {
+  it('src/engine/events.ts has zero imports from @modelcontextprotocol/sdk', () => {
+    const file = path.resolve('src/engine/events.ts');
+    const content = readFileSync(file, 'utf-8');
+    expect(
+      content.includes('@modelcontextprotocol/sdk'),
+      'events.ts must not import MCP SDK',
+    ).toBe(false);
+  });
+});
+
+describe('Dashboard source boundary (D-WEBUI-31)', () => {
+  // packages/dashboard/src/** must not reach into server source
+  // via relative imports. Communication is HTTP-only (fetch + SSE).
+  // Currently vacuously green — dashboard src is scaffolded in a
+  // later plan. The test activates automatically once .ts files
+  // land in packages/dashboard/src/.
+  const dashboardSrcDir = path.resolve('packages/dashboard/src');
+  const dashboardFiles = collectSourceFiles(dashboardSrcDir);
+
+  it('packages/dashboard/src/** has zero imports from server (../../src/)', () => {
+    const violations: string[] = [];
+    for (const file of dashboardFiles) {
+      const content = readFileSync(file, 'utf-8');
+      // Any relative path escaping the dashboard package and landing
+      // in server source is a boundary violation. Guards against both
+      // direct (../../src) and nested (../../../src) traversals.
+      if (content.includes('../../src') || content.includes('../../../src')) {
+        violations.push(path.relative(dashboardSrcDir, file));
+      }
+    }
+    expect(
+      violations,
+      `Dashboard imports from server: ${violations.join(', ')}`,
+    ).toHaveLength(0);
   });
 });
