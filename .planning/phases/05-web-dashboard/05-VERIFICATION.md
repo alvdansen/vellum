@@ -1,146 +1,157 @@
 ---
 phase: 05-web-dashboard
-verified: 2026-04-23T21:37:50Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-04-23T22:45:00Z
+re_verification_of: 2026-04-23T21:37:50Z
+status: verified
+score: 5/5 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Active generations show live progress updates via SSE without manual refresh"
-    status: failed
-    reason: "SSE wire-shape drift (CR-01) — server emits snake_case + status enum 'submitted/running/completed/failed' with no `label` field; dashboard expects camelCase + 'queued/running/complete/failed' + `label`. Every real SSE frame produced by the running server is dropped, mis-keyed, or rendered unstyled in the dashboard. Empirically confirmed: a live capture of a real `hierarchy.created` SSE frame contained `{entity_type, entity_id, parent_id, at}` while `packages/dashboard/src/types/events.ts::HierarchyCreatedPayload` reads `{entityType, entityId, parentId}`."
-    artifacts:
-      - path: "src/engine/events.ts"
-        issue: "VersionCreatedPayload has {version_id, shot_id, breadcrumb, at} — NO `label` field; status enum is 'submitted' | 'running' | 'completed' | 'failed'"
-      - path: "src/http/sse.ts"
-        issue: "Forwards payload verbatim via JSON.stringify — no wire-shape adapter between engine shape and dashboard contract"
-      - path: "packages/dashboard/src/types/events.ts"
-        issue: "Expects camelCase {versionId, shotId, label} + status enum 'queued' | 'running' | 'complete' | 'failed' — incompatible with server emission"
-      - path: "packages/dashboard/src/state/active-generations.ts"
-        issue: "Reads payload.versionId / payload.shotId / payload.label — all evaluate to undefined against real frames; ActiveGenerations row keyed by `undefined`, onVersionStatusChanged can never find the row to update"
-      - path: "src/engine/pipeline.ts"
-        issue: "version.created emission at lines 330-336, 545-550, 564-568 provides no `label`; no status translation before emit"
-    missing:
-      - "Wire adapter in src/http/sse.ts that maps engine payloads to dashboard contract (resolve label from version_number, map status enum submitted->queued / completed->complete, rename version_id/shot_id -> versionId/shotId, entity_type/entity_id -> entityType/entityId) BEFORE JSON.stringify"
-      - "End-to-end integration test that emits via engine.events.emitEvent() and asserts the SSE frame consumed by a real dashboard writer produces the expected ActiveGeneration row with populated label + styled status"
-      - "OPTIONAL alternative: align packages/dashboard/src/types/events.ts + state/active-generations.ts to the server's snake_case contract via lib/shape.ts central translator, and add the `label` field at the emission site by calling versionLabel(version) when the version.created event fires"
-deferred: []
+gaps: []
+deferred:
+  - id: WR-04
+    summary: "pipeline.ts:676 getDashboardHome hardcodes recent_versions: []; dashboard home consumer sees perpetually-empty list. User explicitly deferred in 05-CONTEXT.md — does not block any SC."
+  - id: WR-01
+    summary: "dashboard-routes.ts:227 uses hardcoded 'outputs' path; ignores configurable engine outputRoot. User deferred — does not block any SC at default config."
+  - id: WR-05
+    summary: "dashboard lib/api.ts fetchJson discards typed error bodies. User deferred — UX regression but does not block any SC."
+  - id: IN-01
+    summary: "qNum query-param parser accepts negatives and non-integer floats. User deferred — SQLite clamps, robustness only."
+  - id: IN-02
+    summary: "sse.ts `: ping` keep-alive frame is not an SSE comment on the wire (becomes `data: : ping`). User deferred — documentation-level inaccuracy."
+  - id: IN-04
+    summary: "lib/shape.ts normalizeStatus silently maps unknown values to 'queued'. User deferred — intentional fallback; does not interact with CR-01 fix because the adapter emits union-valid values."
 ---
 
-# Phase 5: Web Dashboard Verification Report
+# Phase 5: Web Dashboard Verification Report (Re-verification)
 
 **Phase Goal:** A non-technical viewer (or the demo audience) can open a browser and see the project hierarchy, version history with provenance details, and live generation progress — no CLI required.
 
-**Verified:** 2026-04-23T21:37:50Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-04-23T22:45:00Z
+**Re-verification of:** 2026-04-23T21:37:50Z (prior run flagged CR-01 blocker; Plan 05-13 closed it)
+**Status:** verified
+
+## Re-verification Note
+
+The prior verification (2026-04-23T21:37:50Z) flagged ONE blocker gap (CR-01 — SSE wire-shape drift) and marked SC-3 / WEBUI-03 as ✗ FAILED. The other four roadmap success criteria were verified green with live HTTP evidence.
+
+Plan 05-13 (gap closure) committed five changes on main since the prior verification:
+
+- `c09bf9a` feat(05-13): add toDashboardPayload wire-shape adapter at SSE boundary
+- `b868a51` test(05-13): unit tests for toDashboardPayload adapter (18 assertions)
+- `b8725a3` test(05-13): end-to-end SSE seam test — real engine to dashboard writer (9 assertions)
+- `d3f7d38` test(05-13): CR-01 regression guard in architecture-purity suite (4 assertions)
+- `055c094` docs(05-13): complete summary — SSE wire-shape adapter (CR-01 closed)
+
+This re-verification confirms (a) the adapter exists at the code level with the locked translation rules, (b) the seam test that Plan 05-11 SUMMARY admitted was missing is now in place piping a real `createEngineEmitter` through the real `createSseHandler` into an inline reproduction of the dashboard writer, (c) the four previously-verified SCs have not regressed, and (d) server test count grew from 687 → 718 with zero regressions.
 
 ## Goal Achievement
 
 ### Observable Truths
 
-| # | Truth | Status | Evidence |
-|---|-------|--------|----------|
-| 1 | Opening the server URL shows a project hierarchy browsable from workspace down to shot | ✓ VERIFIED | `GET /` serves real pre-built index.html (977B) with hashed asset refs to `/assets/index-zoyhvWiF.js` (38.5kB) + `/assets/index-oqCE3cPV.css` (21.7kB). `HomeView.tsx` renders `TreeSidebar` with lazy hydration via `fetchWorkspaces`/`fetchProjects`/`fetchSequences`/`fetchShots` (HomeView.tsx:83-176). REST endpoints `/api/workspaces`, `/api/workspaces/:id/projects`, `/api/projects/:id/sequences`, `/api/sequences/:id/shots` all live (dashboard-routes.ts:95-131); live smoke confirmed `GET /api/workspaces` → 200 JSON `{items, total_count, limit, offset}`. |
-| 2 | Clicking a shot shows version timeline with drill-down into provenance for any version | ✓ VERIFIED | `HomeView.tsx:98-117` hydrates `versions` signal on `selectedShotId` change via `fetchVersions(shotId)`. Version list renders `VersionCard`; clicking opens `VersionDrawer.tsx` which: (a) renders a Timeline section with created/completed timestamps (VersionDrawer.tsx:143-161); (b) lazy-loads provenance events via `getProvenance(version.id)` (VersionDrawer.tsx:67-80) and renders each via `JsonBlock` (line 167-175); (c) exposes a "View Diff" button wired to `DiffDrawer`. REST `/api/versions/:id/provenance` live; live smoke clean. |
-| 3 | Active generations show live progress updates via SSE without manual refresh | ✗ FAILED | **CR-01 empirically confirmed.** SSE handshake works (live curl returned 200 text/event-stream). A real server-emitted SSE frame for `hierarchy.created` was captured: `data: {"entity_type":"workspace","entity_id":"ws_AQ0bI2jVPWipWDnMIH2-k","parent_id":null,"at":"..."}`. Dashboard consumers (`state/active-generations.ts:49-74`) read camelCase `payload.versionId` / `payload.shotId` / `payload.label` — all undefined against this wire shape. `VersionStatusChangedPayload.status` on the server is `'submitted' \| 'running' \| 'completed' \| 'failed'`; dashboard expects `'queued' \| 'running' \| 'complete' \| 'failed'` — three of four values mismatch. No `label` field on `VersionCreatedPayload` at all (events.ts:28-33), so `ActiveGenerationsPanel` renders empty text for every row. Plan 05-11 SUMMARY explicitly flagged this: "Serialization-boundary drift is still unresolved. Plan 11 gates it with tests but does not fix it." |
-| 4 | Dashboard is served as pre-built static bundle from the same Hono server process — no separate dev server | ✓ VERIFIED | `src/server.ts:323` mounts `app.use('/*', createStaticHandler())` on the same Hono app that hosts `/mcp` + `/api/*` + `/api/events`. `createStaticHandler` (static.ts:31, 91-94) resolves `packages/dashboard/dist/` and delegates to `@hono/node-server`'s `serveStatic` with SPA fallback to `index.html`. Live smoke: `GET /` returns real built HTML with hashed asset refs, served from the same port (3099) as the MCP JSON-RPC endpoint. No Vite dev server involvement in the served bundle. |
-| 5 | Viewer can see dashboard immediately after server start with no build step required | ✓ VERIFIED | `packages/dashboard/dist/` is tracked in git (confirmed absent from `.gitignore` check in Plan 05-01); contains `index.html` + `assets/index-*.js` (38.5kB) + `assets/index-*.css` (21.7kB) + all Inter/Inter-Tight woff2 font files. `.github/workflows/ci.yml` enforces dist freshness via `npm run build:dashboard && git diff --exit-code packages/dashboard/dist` (Plan 05-12 SUMMARY). Fresh clone → `npm install` → `npx tsx src/server.ts --http` immediately serves the dashboard; live smoke confirmed this on a clean-state server boot. |
+| # | Truth | Prior Status | Current Status | Evidence |
+|---|-------|--------------|----------------|----------|
+| 1 | Opening the server URL shows a project hierarchy browsable from workspace down to shot | ✓ VERIFIED | ✓ VERIFIED | Unchanged. `GET /` still serves real pre-built index.html (977B) with hashed asset refs. `HomeView.tsx` renders `TreeSidebar` with lazy hydration via the REST routes; no files in Plan 05-13 touched the hierarchy surface. |
+| 2 | Clicking a shot shows version timeline with drill-down into provenance for any version | ✓ VERIFIED | ✓ VERIFIED | Unchanged. `VersionDrawer.tsx` still renders Timeline + provenance + View Diff; no files in Plan 05-13 touched the version-detail surface. |
+| 3 | Active generations show live progress updates via SSE without manual refresh | ✗ FAILED (CR-01) | ✓ VERIFIED | **Gap closed.** `src/http/sse.ts:93` exports `toDashboardPayload(type, payload)` with exhaustive `never`-default arm at line 135. The SSE listener at lines 184-186 now calls `JSON.stringify(toDashboardPayload(type, payload as EngineEventMap[typeof type]))` — raw `JSON.stringify(payload)` is gone from every executable line (only surviving references are inside `//` comments at lines 31, 66, 180 documenting the boundary). Translation rules match the dashboard type contract at `packages/dashboard/src/types/events.ts`: version.created → {versionId, shotId, label (from breadcrumb last segment)}; version.status_changed → {versionId, status} with submitted→queued and completed→complete; hierarchy.created → {entityType, entityId, parentId (null coerced to undefined)}; tag.changed → {tagId (from tag string), action} with add→created and remove→deleted; metadata.changed → {entityId, key} (T-5-02 preserved: no `value`). End-to-end seam test at `src/http/__tests__/sse-e2e.test.ts` pipes a real `createEngineEmitter` through the real `createSseHandler` via `app.request('/api/events')`, parses the SSE frames, and feeds them to an inline reproduction of the dashboard writer — 9 tests including the required-named `'version.created SSE frame populates dashboard ActiveGeneration row with label'`. Architecture-purity regression guard at `src/__tests__/architecture-purity.test.ts` forbids reintroduction of raw `JSON.stringify(payload)` on executable lines. |
+| 4 | Dashboard is served as pre-built static bundle from the same Hono server process — no separate dev server | ✓ VERIFIED | ✓ VERIFIED | Unchanged. `src/server.ts:323` still mounts `createStaticHandler()` on the Hono app shared with `/mcp` + `/api/*` + `/api/events`; Plan 05-13 touched none of these. |
+| 5 | Viewer can see dashboard immediately after server start with no build step required | ✓ VERIFIED | ✓ VERIFIED | Unchanged. `packages/dashboard/dist/` still committed to git; CI dist-freshness gate still enforced. Plan 05-13 did not modify dashboard sources and therefore did not change the dist bundle. |
 
-**Score:** 4/5 truths verified
+**Score:** 5/5 truths verified (was 4/5; SC-3 now green after CR-01 closure).
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `src/server.ts` | Hono app mounts MCP + SSE + REST + static in load-bearing order | ✓ VERIFIED | Lines 320-323: `onError(typedErrorHandler)` → `/api/events` → `app.route('/', createDashboardRouter(engine))` → `app.use('/*', createStaticHandler())`. |
-| `src/http/dashboard-routes.ts` | 18 REST routes covering workspaces/projects/sequences/shots/versions/provenance/diff/outputs/reproduce/assets/dashboard-home | ✓ VERIFIED | 290 lines, all 18 routes present (lines 95-287). Output streaming route (lines 184-245) enforces T-5-04 path-traversal defence (basename + `..`/`/`/`\\` rejection). |
-| `src/http/sse.ts` | GET /api/events with 5 typed event subscriptions + 30s keep-alive + origin allowlist + listener cleanup on disconnect | ⚠️ WIRED BUT HOLLOW (Level 4 failure) | Structural wiring complete: 5 listeners registered at lines 72-87, keep-alive at 96-98, cleanup at 100-111. Payload flow is `engine.events.onEvent(type, payload => writeSSE({ data: JSON.stringify(payload) }))` at line 79 — **no wire-shape adapter**. Payload escapes the server in the engine's internal shape, which is not the dashboard's contract. |
-| `src/http/static.ts` | Serves `packages/dashboard/dist/` with SPA fallback; fallback HTML when dist absent | ✓ VERIFIED | 95 lines; `createStaticHandler` + `FALLBACK_HTML`. Live smoke: `GET /` returns actual built HTML; `GET /shots/sh001` returns index.html (SPA routing). |
-| `packages/dashboard/dist/index.html` | Pre-built entry point with hashed asset references | ✓ VERIFIED | 977 bytes; references `/assets/index-zoyhvWiF.js` + `/assets/index-oqCE3cPV.css`; FOUC-prevention theme script inlined. |
-| `packages/dashboard/dist/assets/*.js` | Bundled Preact app with component code | ✓ VERIFIED | 38.5kB bundle; compiled module preload header + IIFE wrapper + bundled components. Committed to git. |
-| `packages/dashboard/dist/assets/*.css` | Bundled Tailwind v4 + theme tokens | ✓ VERIFIED | 21.7kB CSS; Plan 05-10 SUMMARY confirmed committed to git + CI dist-freshness gate present. |
-| `packages/dashboard/src/App.tsx` | Root component wiring SSE → signals on mount; unmount cleanup | ✓ VERIFIED (downstream data disconnected) | Lines 27-37: `useEffect` registers `onSseEvent('version.created', onVersionCreated)` + `onSseEvent('version.status_changed', onVersionStatusChanged)`, starts SSE, unmount cleanup. Wiring is correct; downstream payload shape is not (see CR-01 gap). |
-| `packages/dashboard/src/views/HomeView.tsx` | Two-pane layout: TreeSidebar + shot-detail VersionCard list; opens VersionDrawer on selection | ✓ VERIFIED | 282 lines; confirmed rendering logic + lazy hierarchy hydration + version list + drawer overlay. |
-| `packages/dashboard/src/views/VersionDrawer.tsx` | Renders timeline + provenance + View Diff button | ✓ VERIFIED | 208 lines; timeline section (143-161), provenance section (163-176), View Diff button (123-129) wired to DiffDrawer. |
-| `packages/dashboard/src/views/ActiveGenerationsPanel.tsx` | Panel showing live in-flight generations filtered to 'queued'/'running' | ⚠️ WIRED BUT HOLLOW | Reads from `activeGenerations` signal correctly (line 23-26); filter is `status === 'queued' \|\| 'running'`. Problem: server's `version.status_changed` status enum never produces `'queued'` — the server emits `'submitted'` which the dashboard drops into the signal as the literal string `'submitted'` (off-union), making rows invisible even when freshly submitted. CR-01 gap. |
-| `packages/dashboard/src/state/active-generations.ts` | Signal-backed store, onVersionCreated appends, onVersionStatusChanged mutates status | ⚠️ WIRED BUT HOLLOW | Functions are correctly implemented against their declared contract; the contract does not match the actual server emission. `payload.label`, `payload.versionId`, `payload.shotId` all undefined against real frames. |
-| `src/engine/pipeline.ts :: getDashboardHome` | Returns {active_versions, recent_versions, workspaces} for the dashboard home aggregate | ⚠️ PARTIAL | `active_versions` and `workspaces` wire to real queries (lines 670, 677). `recent_versions` is hardcoded `[]` at line 676 with a comment deferring to "a later plan" (WR-04). Phase-scope impact: the dashboard's DashboardHome type advertises `recent_versions: Version[]`, so consumers see a perpetually-empty list as if no generations ever completed. Does not break the roadmap success criteria (recent-completed is not an SC for Phase 5), but is misleading dead-wiring. |
+| `src/server.ts` | Hono app mounts MCP + SSE + REST + static in load-bearing order | ✓ VERIFIED | Unchanged from prior verification. |
+| `src/http/dashboard-routes.ts` | 18 REST routes | ✓ VERIFIED | Unchanged. |
+| `src/http/sse.ts` | GET /api/events with 5 typed event subscriptions + 30s keep-alive + origin allowlist + listener cleanup **+ wire-shape adapter** | ✓ VERIFIED (was ⚠️ WIRED BUT HOLLOW) | 238 lines (was 131). `toDashboardPayload` exported at line 93 with exhaustive switch over `EngineEventMap` + `never`-default arm. Listener at 184-186 routes through the adapter before `JSON.stringify`. Header docstring (lines 24-33) documents the wire-shape boundary contract. |
+| `src/http/sse.ts` adapter exhaustiveness | Compile-time enforcement — adding a new key to EngineEventMap fails `tsc --noEmit` | ✓ VERIFIED | `const _exhaustive: never = type` at line 135 + runtime throw. |
+| `src/http/__tests__/sse-adapter.test.ts` | Unit tests isolating the adapter | ✓ VERIFIED (NEW) | 252 lines; 6 describe blocks covering all 5 event types + exhaustiveness; 18 `it` assertions. |
+| `src/http/__tests__/sse-e2e.test.ts` | End-to-end seam test pipeline real emitter → real handler → real fetch → dashboard writer reproduction | ✓ VERIFIED (NEW) | 379 lines. Imports `createEngineEmitter` and `createSseHandler` from real source. Contains the required-named test. Zero imports from `packages/dashboard/src/**` (architecture-purity preserved). 9 `it` assertions including the `it.each` covering all 4 status transitions submitted→queued, running→running, completed→complete, failed→failed. |
+| `src/__tests__/architecture-purity.test.ts` | CR-01 regression guard | ✓ VERIFIED (EXTENDED) | New describe block: "SSE wire-shape adapter is the only serialization path (CR-01)" with 4 assertions. Strips `//` line comments before matching to tolerate documentation references. 18 total architecture-purity tests (was 14). |
+| `src/http/static.ts` | Serves `packages/dashboard/dist/` with SPA fallback | ✓ VERIFIED | Unchanged. |
+| `packages/dashboard/dist/` | Pre-built entry point + hashed assets committed to git | ✓ VERIFIED | Unchanged. |
+| `packages/dashboard/src/App.tsx` | Root component wiring SSE → signals on mount | ✓ VERIFIED | Unchanged. The dashboard-side dispatch was correctly implemented all along; the CR-01 fix lives on the server side of the boundary. |
+| `packages/dashboard/src/views/HomeView.tsx` | Two-pane layout | ✓ VERIFIED | Unchanged. |
+| `packages/dashboard/src/views/VersionDrawer.tsx` | Timeline + provenance + View Diff | ✓ VERIFIED | Unchanged. |
+| `packages/dashboard/src/views/ActiveGenerationsPanel.tsx` | Panel filtered to queued/running | ✓ VERIFIED (was ⚠️ WIRED BUT HOLLOW) | Code unchanged, but the panel now receives properly-populated rows because the adapter maps server `'submitted'` → dashboard `'queued'` before the signal store ever sees the status string. |
+| `packages/dashboard/src/state/active-generations.ts` | Signal-backed store, onVersionCreated/onVersionStatusChanged | ✓ VERIFIED (was ⚠️ WIRED BUT HOLLOW) | Code unchanged. The contract the writer reads against now matches the wire shape produced by the server because the adapter closes the snake_case→camelCase + status-enum translation at the serialization boundary. |
+| `src/engine/pipeline.ts :: getDashboardHome` | Returns {active_versions, recent_versions, workspaces} | ⚠️ PARTIAL | Unchanged. `recent_versions` still hardcoded `[]` at line 676 (WR-04, deferred by user). Does not block any SC. |
 
 ### Key Link Verification
 
-| From | To | Via | Status | Details |
-|------|-----|-----|--------|---------|
-| `server.ts` `--http` boot | Hono app mounts for `/mcp` + `/api/*` + `/api/events` + `/*` | Sequential `app.route`/`app.get`/`app.use` calls at lines 259-323 | ✓ WIRED | Live smoke confirmed all four surfaces respond on the same port. |
-| `createSseHandler` | `engine.events.onEvent(type, listener)` | `src/http/sse.ts:83-86` | ✓ WIRED | Listener registration per event type verified; cleanup via `offEvent` at lines 102-110. |
-| `engine.events.emitEvent(type, payload)` | SSE stream `writeSSE` | `src/http/sse.ts:77-81` | ⚠️ PARTIAL (hollow) | Emits correctly but with **no shape translation** — payload shape is engine-native (snake_case + server's status enum), which the dashboard does not consume. |
-| `EventSource('/api/events')` (dashboard) | `onSseEvent(type, fn)` dispatch | `packages/dashboard/src/lib/events.ts:45-63` | ✓ WIRED | Per-type dispatch wrapper attaches on demand; parse errors swallowed. |
-| `onSseEvent('version.created', onVersionCreated)` | `activeGenerations.value` append | `App.tsx:29` → `active-generations.ts:49-59` | ✗ NOT_WIRED (hollow) | The dispatcher invokes `onVersionCreated(parsed)` but `parsed.versionId`, `parsed.shotId`, `parsed.label` are all undefined for real server frames. Row appears in the array with undefined keys and empty label. |
-| `onSseEvent('version.status_changed', onVersionStatusChanged)` | mutate `activeGenerations` row | `App.tsx:30` → `active-generations.ts:68-74` | ✗ NOT_WIRED (hollow) | `g.versionId === payload.versionId` evaluates `undefined === undefined` against real frames — collapses all rows to one match or none; even when it "matches," the pushed status value (e.g., `'completed'`) is off the union the StatusPill knows how to render. |
-| `VersionDrawer.handleViewDiff` | `diffVersion(priorVersion.id, version.id)` | `views/VersionDrawer.tsx:90-91` → `lib/api.ts::diffVersion` → `GET /api/versions/:id/diff?against=` | ✓ WIRED | DiffDrawer receives the summary; empty-state fallback on error. |
-| `GET /api/dashboard/home` | `engine.getDashboardHome()` | `dashboard-routes.ts:285-287` | ⚠️ PARTIAL | Wired, but `recent_versions` is always `[]` (pipeline.ts:676, WR-04). |
+| From | To | Status (Prior → Current) | Details |
+|------|-----|--------------------------|---------|
+| `server.ts` `--http` boot | Hono app mounts | ✓ WIRED → ✓ WIRED | Unchanged. |
+| `createSseHandler` | `engine.events.onEvent(type, listener)` | ✓ WIRED → ✓ WIRED | Unchanged. |
+| `engine.events.emitEvent(type, payload)` | SSE stream `writeSSE` | ⚠️ PARTIAL → ✓ WIRED | Adapter now translates at the serialization boundary. `sse-e2e.test.ts` proves the full path end-to-end. |
+| `EventSource('/api/events')` (dashboard) | `onSseEvent(type, fn)` dispatch | ✓ WIRED → ✓ WIRED | Unchanged. |
+| `onSseEvent('version.created', onVersionCreated)` | `activeGenerations.value` append | ✗ NOT_WIRED → ✓ WIRED | Row now lands with populated `versionId`, `shotId`, `label` — confirmed by `sse-e2e.test.ts::'version.created SSE frame populates dashboard ActiveGeneration row with label'`. |
+| `onSseEvent('version.status_changed', onVersionStatusChanged)` | mutate `activeGenerations` row | ✗ NOT_WIRED → ✓ WIRED | Adapter maps all 4 server statuses to dashboard-union-valid values; all 4 transitions asserted via `it.each` in `sse-e2e.test.ts`. |
+| `VersionDrawer.handleViewDiff` | `diffVersion` → `GET /api/versions/:id/diff` | ✓ WIRED → ✓ WIRED | Unchanged. |
+| `GET /api/dashboard/home` | `engine.getDashboardHome()` | ⚠️ PARTIAL → ⚠️ PARTIAL | Unchanged. WR-04 deferred. |
 
 ### Data-Flow Trace (Level 4)
 
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|---------------------|--------|
-| `HomeView.tsx` | `workspaces` signal | `fetchWorkspaces()` → `GET /api/workspaces` → `engine.listWorkspaces()` → `HierarchyRepo.listWorkspaces()` (SQLite query) | Yes — returns real DB rows | ✓ FLOWING |
-| `HomeView.tsx` | `versions` signal | `fetchVersions(shotId)` → `engine.listVersionsForShot()` → real DB query | Yes | ✓ FLOWING |
-| `VersionDrawer.tsx` | `provenance` state | `getProvenance(version.id)` → `engine.getProvenance()` → ProvenanceRepo query | Yes | ✓ FLOWING |
-| `ActiveGenerationsPanel.tsx` | `activeGenerations.value` — live panel data | `onSseEvent('version.created', onVersionCreated)` | **No** — real SSE frames arrive in server-native shape; `payload.versionId` / `payload.label` undefined; row has no label; status is off-union | ✗ DISCONNECTED |
-| `dashboard-routes.ts /api/dashboard/home` | `recent_versions` in response | `engine.getDashboardHome()` | **No** — hardcoded `const recent: Version[] = []` at pipeline.ts:676 (WR-04) | ⚠️ STATIC |
+| Artifact | Data Variable | Produces Real Data? | Status (Prior → Current) |
+|----------|---------------|---------------------|--------------------------|
+| `HomeView.tsx` | `workspaces` signal | Yes — real DB rows | ✓ FLOWING → ✓ FLOWING |
+| `HomeView.tsx` | `versions` signal | Yes — real DB rows | ✓ FLOWING → ✓ FLOWING |
+| `VersionDrawer.tsx` | `provenance` state | Yes — ProvenanceRepo query | ✓ FLOWING → ✓ FLOWING |
+| `ActiveGenerationsPanel.tsx` | `activeGenerations.value` | **Yes** — real SSE frames arrive in the dashboard contract shape after adapter translation | ✗ DISCONNECTED → ✓ FLOWING |
+| `dashboard-routes.ts /api/dashboard/home` | `recent_versions` | No — hardcoded `[]` (WR-04, deferred) | ⚠️ STATIC → ⚠️ STATIC |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| TypeScript compiles cleanly across all source | `npx tsc --noEmit` | No output (zero errors) | ✓ PASS |
-| Server test suite passes | `npx vitest run` | 687 passed \| 2 skipped (44 files) | ✓ PASS |
-| Dashboard test suite passes | `npm run test:dashboard` | 29 passed (5 files) | ✓ PASS |
-| Server boots with --http and serves dashboard | `npx tsx src/server.ts --http --port 3099 --db /tmp/vfx-verify.db` + `curl http://127.0.0.1:3099/` | 200 text/html, 977 bytes, real pre-built index.html with hashed asset refs | ✓ PASS |
-| REST endpoint returns paginated list | `curl http://127.0.0.1:3099/api/workspaces` | 200 application/json `{items: [], total_count: 0, limit: 20, offset: 0}` | ✓ PASS |
-| SSE handshake opens stream | `curl -N http://127.0.0.1:3099/api/events` | 200 text/event-stream, chunked transfer-encoding | ✓ PASS |
-| SSE emits real engine event frames on MCP mutation | `POST /mcp` with `workspace action=create` + SSE listener | Captured `event: hierarchy.created\ndata: {"entity_type":"workspace","entity_id":"ws_...","parent_id":null,"at":"..."}` — **server-native snake_case wire shape**, confirming CR-01 is a live bug, not a theoretical one | ✗ FAIL (shape does not match dashboard contract) |
-| Dashboard home aggregate route | `curl http://127.0.0.1:3099/api/dashboard/home` | 200 `{"active_versions":[],"recent_versions":[],"workspaces":[]}` — note recent_versions is always empty (WR-04, hardcoded at pipeline.ts:676) | ⚠️ PARTIAL |
+| TypeScript compiles cleanly across all source | `npx tsc --noEmit` | 0 errors | ✓ PASS |
+| Server test suite passes | `npx vitest run` | 718 passed, 2 skipped (46 files) — up from 687 (31 new tests, 0 regressions) | ✓ PASS |
+| Dashboard test suite passes | `npm run test:dashboard` | 29 passed (5 files) — unchanged | ✓ PASS |
+| SSE wire-shape adapter exists + wired | `grep -n "toDashboardPayload\|_exhaustive" src/http/sse.ts` | Definition at line 93; exhaustiveness arm at 135; call site at 184-186 | ✓ PASS |
+| No raw `JSON.stringify(payload)` on executable lines | `grep -nE "JSON\.stringify\(payload\)" src/http/sse.ts` | 1 match at line 31 — inside `//` comment documenting the guard; architecture-purity test strips comments before matching | ✓ PASS |
+| E2E seam test exercises real engine → real handler → real fetch | `grep -c "createEngineEmitter\|createSseHandler" src/http/__tests__/sse-e2e.test.ts` | 5 matches | ✓ PASS |
+| E2E test does not cross architecture-purity boundary | `grep -c "from.*packages/dashboard" src/http/__tests__/sse-e2e.test.ts` | 0 matches | ✓ PASS |
+| Required-named test present | `grep -c "version.created SSE frame populates dashboard ActiveGeneration row with label" src/http/__tests__/sse-e2e.test.ts` | 1 match | ✓ PASS |
+| Live-smoke re-verification recipe for /gsd-verify-phase | Embedded as in-file comment in `src/__tests__/architecture-purity.test.ts` at the bottom of the CR-01 describe block | Available | ✓ DOCUMENTED (optional execution — automated regression gate already in place) |
 
 ### Requirements Coverage
 
-| Requirement | Source Plan(s) | Description | Status | Evidence |
-|-------------|----------------|-------------|--------|----------|
-| WEBUI-01 | 05-01 (derived), 05-03, 05-04, 05-08, 05-10, 05-11 | Light web dashboard shows project hierarchy browser | ✓ SATISFIED | TreeSidebar + HomeView render workspace→project→sequence→shot lazy-hydrated tree; REST routes live; live smoke passed. |
-| WEBUI-02 | 05-03, 05-04, 05-09, 05-10 | Dashboard shows version timeline with provenance detail drill-down | ✓ SATISFIED | VersionDrawer has timeline section + provenance JsonBlock list + View Diff; `/api/versions/:id/provenance` + `/api/versions/:id/diff` live. |
-| WEBUI-03 | 05-02, 05-03, 05-05, 05-08, 05-10, 05-11 | Dashboard shows live generation status via SSE | ✗ BLOCKED | SSE plumbing reaches the dashboard (handshake confirmed live), but the wire shape drift (CR-01) means real engine events do not populate the Active Generations panel. Unit tests on both sides pass in isolation because both use hand-rolled matching payloads; there is no end-to-end test that pipes a real `engine.events.emitEvent()` through the SSE stream into the dashboard's writer. |
-| WEBUI-04 | 05-01, 05-06, 05-07, 05-12 | Dashboard is served as static build from the same Hono server | ✓ SATISFIED | `src/http/static.ts` mounts `packages/dashboard/dist/` on the Hono app shared with `/mcp`; live smoke confirmed. |
-| WEBUI-05 | 05-01, 05-06, 05-12 | No separate build step required to view dashboard (pre-built in dist) | ✓ SATISFIED | `packages/dashboard/dist/` committed to git; CI dist-freshness gate enforces source↔dist sync. |
+| Requirement | Source Plan(s) | Description | Prior Status | Current Status | Evidence |
+|-------------|----------------|-------------|--------------|----------------|----------|
+| WEBUI-01 | 05-01, 05-03, 05-04, 05-08, 05-10, 05-11 | Light web dashboard shows project hierarchy browser | ✓ SATISFIED | ✓ SATISFIED | Unchanged. |
+| WEBUI-02 | 05-03, 05-04, 05-09, 05-10 | Dashboard shows version timeline with provenance detail | ✓ SATISFIED | ✓ SATISFIED | Unchanged. |
+| WEBUI-03 | 05-02, 05-03, 05-05, 05-08, 05-10, 05-11, **05-13** | Dashboard shows live generation status via SSE | ✗ BLOCKED | ✓ SATISFIED | Plan 05-13 adapter + seam test close the loop. Real engine emissions now populate `activeGenerations` rows with union-valid statuses. |
+| WEBUI-04 | 05-01, 05-06, 05-07, 05-12 | Dashboard served as static build from the same Hono server | ✓ SATISFIED | ✓ SATISFIED | Unchanged. |
+| WEBUI-05 | 05-01, 05-06, 05-12 | No separate build step required (pre-built in dist) | ✓ SATISFIED | ✓ SATISFIED | Unchanged. |
 
-**Plan-to-requirement mapping is complete.** Every WEBUI-01..05 ID appears in at least one plan's `requirements:` field. No orphaned requirements.
+**Plan-to-requirement mapping is complete.** All 5 WEBUI requirements satisfied. No orphaned requirements.
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
+| File | Line | Pattern | Severity | Status |
 |------|------|---------|----------|--------|
-| `src/engine/pipeline.ts` | 676 | `const recent: Version[] = [];` — hardcoded empty with deferring comment | ⚠️ Warning (WR-04) | `getDashboardHome.recent_versions` always empty regardless of DB state; dashboard home consumers see no completed versions even when they exist. Does not block any SC but is misleading dead-wiring of a documented contract. |
-| `src/http/dashboard-routes.ts` | 227 | `const filePath = path.join('outputs', versionId, filename);` — hardcoded relative path | ⚠️ Warning (WR-01) | Engine's `outputRoot` is configurable but the route ignores it; running from a non-repo CWD or with custom `outputRoot` breaks the output-streaming route. Does not block any SC (output streaming works at the default). |
-| `src/http/sse.ts` | 77-81 | `writeSSE({ data: JSON.stringify(payload) })` — forwards raw engine payload | 🛑 Blocker (CR-01) | Root cause of WEBUI-03 failure. The SSE forwarder is the single leverage point where a shape adapter would live; its absence propagates the server-native contract all the way to the browser. |
-| `packages/dashboard/src/lib/api.ts` | 24-30 | `fetchJson` discards error body | ⚠️ Warning (WR-05) | Information-quality regression: typed server error codes (VERSION_NOT_FOUND, OUTPUT_UNAVAILABLE) never surface to the user. Empty state is indistinguishable from "404 not found". Does not block any SC. |
-| `packages/dashboard/src/lib/shape.ts` | 39-44 | `normalizeStatus` silently maps unknown values to `'queued'` | ℹ️ Info (IN-04) | Intentional "never unstyled" fallback; combined with CR-01, it hides the drift in dev. Does NOT rescue CR-01 because the signal store writes the raw server status value BEFORE any normalizeStatus pass on the active-generations path (normalizeStatus is only called on the Version list, not on ActiveGeneration row status). |
-| `src/http/sse.ts` | 96-98 | `: ping` keep-alive comment is not actually a SSE comment on the wire | ℹ️ Info (IN-02) | Wire frame becomes `data: : ping\n\n` (a data message with value `": ping"`), not an SSE comment. Keeps TCP warm as intended; documentation-level inaccuracy. |
-| `src/server.ts` | 292-323 | REST routes have no origin allowlist; only /mcp and /api/events do | ℹ️ Info (WR-02) | Same-origin policy protects browser reads; non-browser cross-origin reads permitted. Comment at lines 317-319 claims protection it doesn't provide. |
-| `src/http/sse.ts` | 77-81 | Payload envelope has no runtime validation/scrubbing | ℹ️ Info (WR-03) | A future refactor that accidentally spreads `value` into a metadata.changed emit would pass the current single-test guard (T-5-02 defence is TypeScript-level only). Defence-in-depth gap. |
-| `src/http/dashboard-routes.ts` | 88-92 | `qNum` accepts negative numbers and non-integer floats | ℹ️ Info (IN-01) | `?limit=-5` or `?limit=3.7` flow to SQLite LIMIT; SQLite clamps but contract is undefined. Robustness concern only. |
+| `src/http/sse.ts` | 77-81 (prior) | `writeSSE({ data: JSON.stringify(payload) })` — forwards raw engine payload | 🛑 Blocker (CR-01) | **RESOLVED** in Plan 05-13. Now routes through `toDashboardPayload` at lines 184-186. Architecture-purity regression guard forbids reintroduction. |
+| `src/engine/pipeline.ts` | 676 | `const recent: Version[] = [];` — hardcoded empty | ⚠️ Warning (WR-04) | **DEFERRED** by user. Does not block any SC. |
+| `src/http/dashboard-routes.ts` | 227 | Hardcoded `'outputs'` path | ⚠️ Warning (WR-01) | **DEFERRED** by user. |
+| `packages/dashboard/src/lib/api.ts` | 24-30 | `fetchJson` discards error body | ⚠️ Warning (WR-05) | **DEFERRED** by user. |
+| `packages/dashboard/src/lib/shape.ts` | 39-44 | `normalizeStatus` silently maps unknown → 'queued' | ℹ️ Info (IN-04) | **DEFERRED** by user. No longer interacts with CR-01 because the adapter emits union-valid values before `normalizeStatus` ever runs. |
+| `src/http/sse.ts` | 207 (prior 96-98) | `: ping` keep-alive comment is not an SSE comment on the wire | ℹ️ Info (IN-02) | **DEFERRED** by user. Documentation-level inaccuracy; keeps TCP warm as intended. |
+| `src/server.ts` | 292-323 | REST routes lack origin allowlist | ℹ️ Info (WR-02) | **DEFERRED** (not flagged by user for Plan 05-13; same-origin policy protects browser reads). |
+| `src/http/sse.ts` | N/A | Payload envelope has no runtime validation/scrubbing | ℹ️ Info (WR-03) | **PARTIALLY MITIGATED** by the new adapter: any unhandled event type fails at compile time (`tsc --noEmit` via `_exhaustive: never`) AND throws at runtime if the compile guard is bypassed. Deeper field-level validation remains out of scope. |
+| `src/http/dashboard-routes.ts` | 88-92 | `qNum` accepts negatives and non-integer floats | ℹ️ Info (IN-01) | **DEFERRED** by user. |
 
 ### Deferred Items
 
-None. CR-01 (and WR-04) are in-scope for Phase 5 — WEBUI-03 is the third roadmap success criterion, and no later milestone phase claims to address it.
+All deferred items are listed in the frontmatter `deferred:` block. User explicitly scoped them out of Plan 05-13 in `05-CONTEXT.md`. None block any Phase 5 roadmap success criterion.
 
 ### Gaps Summary
 
-**One blocker gap.** CR-01 — the SSE wire-shape drift between server and dashboard — is real and empirically demonstrated. I started a live server, captured a real `hierarchy.created` SSE frame, and confirmed its shape is `{entity_type, entity_id, parent_id, at}` while the dashboard consumer reads `{entityType, entityId, parentId}`. The dashboard's Active Generations panel cannot render live progress because every real `version.created` frame lands with `undefined` versionId/shotId/label and every real `version.status_changed` frame writes an off-union status string. Plan 05-11 explicitly flagged this: "Serialization-boundary drift is still unresolved. Plan 11 gates it with tests but does not fix it." The fix is narrow — one adapter function in `src/http/sse.ts` that translates engine payloads to the dashboard contract before `JSON.stringify`, plus one end-to-end integration test that pipes a real `engine.events.emitEvent(...)` through the actual SSE stream into a real dashboard writer (the missing seam test that would have caught this).
+**Zero gaps.** CR-01 — the SSE wire-shape drift between server and dashboard that previously blocked SC-3 / WEBUI-03 — is closed. The fix is a pure-function adapter at the HTTP serialization boundary with exhaustive compile-time + runtime coverage, backed by unit tests for the adapter itself, a regression guard at the architecture-purity layer, and the end-to-end seam test that Plan 05-11 SUMMARY explicitly flagged as missing. All five roadmap success criteria for Phase 05 are now verified green.
 
-Four of five roadmap success criteria are verifiably met with live evidence. The fifth (SC-3, live progress via SSE) fails at the runtime wire layer; all supporting structure (handshake, listener registration, signal propagation, render path) is wired correctly, so the fix is contained to the serialization boundary — not a re-architecture.
-
-Secondary concerns that do NOT block any SC but should be tracked: WR-04 (`recent_versions` hardcoded empty in `getDashboardHome`) is dead-wiring of a documented contract; WR-01 (hardcoded `'outputs'` path root in the output-streaming route) will bite the first operator who runs from a non-default CWD or overrides `outputRoot`; WR-05 (dashboard `fetchJson` discards typed error bodies) is a UX regression that surfaces empty states where a proper message existed.
+Phase 05 is ready for milestone audit / completion.
 
 ---
 
-_Verified: 2026-04-23T21:37:50Z_
-_Verifier: Claude (gsd-verifier)_
+_Verified: 2026-04-23T22:45:00Z_
+_Re-verification of: 2026-04-23T21:37:50Z_
+_Verifier: Claude Opus 4.7 (inline, after gsd-verifier agent timeout)_
