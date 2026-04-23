@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-23T05:32:22.110Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-04-23T05:46:54.693Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 14
-  completed_plans: 10
-  percent: 71
+  completed_plans: 11
+  percent: 79
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 04 (asset-management) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-04-23
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [███████░░░] 71%
 | Phase 03 P02 | 17min | 3 tasks | 18 files |
 | Phase 03 P03 | 12min | 5 tasks tasks | 8 files files |
 | Phase 04 P01 | 10min | 3 tasks | 9 files |
+| Phase 04 P02 | 10min | 3 tasks tasks | 4 files files |
 
 ## Accumulated Context
 
@@ -103,6 +104,10 @@ Recent decisions affecting current work:
 - [Plan 04-01] EXPECTED_MIGRATIONS bumped 3 to 4 (Rule 3 blocking fix — existing Phase 2/3 migration-count assertions) bundled with Task 1 commit; a separate test fix commit would have left Task 1 verification red
 - [Plan 04-01] drizzle-kit roundtrip parity confirmed: schema.ts --> generate --> 0004.sql --> generate says 'No schema changes, nothing to migrate' — zero structural delta between Drizzle ORM declarations and hand-prefixed SQL migration
 - [Plan 04-01] src/types/hierarchy.ts UNCHANGED per D-ASST-21/D-ASST-22 — Phase 4 hydration uses VersionWithAssets extension type in src/types/assets.ts, not Version mutation
+- [Plan 04-02] Widened Db type to BetterSQLite3Database<typeof schema> & { $client: SqliteClient } — drizzle 0.45.2 factory returns this intersection but class declaration omits $client; widening at repo type alias keeps json_group_array + scope-JOIN SQL type-clean
+- [Plan 04-02] insertTag uses INSERT-then-fallback-SELECT (ON CONFLICT DO NOTHING RETURNING + follow-up SELECT when RETURNING empty); upsertMetadata uses single INSERT ON CONFLICT DO UPDATE RETURNING (no fallback — DO UPDATE always emits a row). Semantic asymmetry between idempotent-insert and upsert patterns
+- [Plan 04-02] buildScopeFragment duplicated verbatim between tag-repo.ts and metadata-repo.ts per RESEARCH alternatives-rejected guidance — repo files stay independent, 30 lines each, zero cross-repo coupling
+- [Plan 04-02] Pre-check parent pattern via constructor-injected VersionRepo — both TagRepo and MetadataRepo surface VERSION_NOT_FOUND as typed error before INSERT; never let SQLITE_CONSTRAINT_FOREIGNKEY leak (Pitfall #3)
 
 ### Pending Todos
 
@@ -123,8 +128,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T05:32:22.104Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-04-23T05:46:54.688Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
 
 **Planned Phase:** 4 (Asset Management) — 5 plans — 2026-04-23T05:16:28.785Z
