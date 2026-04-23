@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 3 context gathered
-last_updated: "2026-04-23T01:26:14.253Z"
-last_activity: 2026-04-21
+status: executing
+stopped_at: Completed 03-01 — provenance foundations landed
+last_updated: "2026-04-23T01:45:09.337Z"
+last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 7
+  percent: 78
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 02 — comfyui-generation
+**Current focus:** Phase 03 — provenance-versioning
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-04-21
+Phase: 03 (provenance-versioning) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-23
 
-Progress: [██████████] 100%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 01 P01 | 13min | 8 tasks | 18 files |
 | Phase 01 P02 | 9min | 4 tasks | 10 files |
 | Phase 01 P03 | 11min | 9 tasks tasks | 8 files files |
+| Phase 03 P01 | 11min | 9 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,10 @@ Recent decisions affecting current work:
 - [Plan 01-03] buildServer(engine, version) factory — MCP SDK 1.29 Protocol disallows one McpServer across two live transports; factory spawns a fresh server per HTTP request, shared engine/db for process-wide consistency
 - [Plan 01-03] Tool-budget grep scoped to src/tools/ to avoid self-matching docstring; architecture-purity independently enforces that tools are the only MCP-importing layer
 - [Plan 01-03] MCP Inspector UI deferred to local pre-release verification; every Inspector assertion maps 1:1 to an automated test; live HTTP curl roundtrip fills the wire-level gap
+- [Plan 03-01] Discarded drizzle-kit auto-generated migration 0003_curious_violations.sql (contained extraneous DROP INDEX statements for DM-03 indexes); kept hand-authored 0003_phase3_provenance.sql with clean additive-only shape
+- [Plan 03-01] ProvenanceRepo is structurally append-only — 4 public methods (insertEvent, getEventsForVersion, getLatestCompletedEvent, getSubmitEvent); structural prototype assertion in tests enforces T-03-01
+- [Plan 03-01] Prototype-pollution tests use JSON.parse input because object-literal {__proto__: ...} syntax sets prototype (not own-property); real attack vector is MCP tool JSON input so tests mirror that path
+- [Plan 03-01] VersionRepo.insertVersion seeds lineage_type: null on direct submits (Rule 3 blocking fix for exhaustive object check); Plan 2 extends with optional lineage arg for reproduce/iterate
 
 ### Pending Todos
 
@@ -99,8 +104,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 3 context gathered
-Resume file: --resume-file
+Last session: 2026-04-23T01:45:09.331Z
+Stopped at: Completed 03-01 — provenance foundations landed
+Resume file: None
 
 **Planned Phase:** 03 (provenance-versioning) — 3 plans — 2026-04-23T01:26:14.248Z

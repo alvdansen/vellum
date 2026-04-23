@@ -45,12 +45,18 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Provenance
 
-- [ ] **PROV-01**: Every version captures full provenance: workflow JSON, prompt JSON, seed, timestamp
-- [ ] **PROV-02**: Provenance captures model names (checksums best-effort, nullable on Cloud)
-- [ ] **PROV-03**: Provenance records are append-only (immutable once written)
-- [ ] **PROV-04**: Agent can diff two versions (structured comparison of what changed)
-- [ ] **PROV-05**: Agent can reproduce any version exactly (re-submit stored prompt blob)
-- [ ] **PROV-06**: Agent can iterate from a version (load params + apply specified changes, track lineage)
+- [x] **PROV-01
+**: Every version captures full provenance: workflow JSON, prompt JSON, seed, timestamp
+- [x] **PROV-02
+**: Provenance captures model names (checksums best-effort, nullable on Cloud)
+- [x] **PROV-03
+**: Provenance records are append-only (immutable once written)
+- [x] **PROV-04
+**: Agent can diff two versions (structured comparison of what changed)
+- [x] **PROV-05
+**: Agent can reproduce any version exactly (re-submit stored prompt blob)
+- [x] **PROV-06
+**: Agent can iterate from a version (load params + apply specified changes, track lineage)
 
 ### Assets & Query
 
