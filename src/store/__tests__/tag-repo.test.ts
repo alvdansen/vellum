@@ -5,7 +5,11 @@ import { HierarchyRepo } from '../hierarchy-repo.js';
 import { VersionRepo } from '../version-repo.js';
 import { TagRepo } from '../tag-repo.js';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { Database as SqliteClient } from 'better-sqlite3';
 import type * as schema from '../schema.js';
+
+/** Widened Db type — factory intersection surface `$client` for raw SQL. */
+type DbWithClient = BetterSQLite3Database<typeof schema> & { $client: SqliteClient };
 
 /**
  * Tests for TagRepo (Phase 4 — D-ASST-03, D-ASST-04, D-ASST-06, D-ASST-19).
@@ -26,7 +30,7 @@ import type * as schema from '../schema.js';
 
 /** Intentional duplication — Plan 04-02 keeps repo tests independent; Plan 05 may extract. */
 function buildSmallHierarchy(): {
-  db: BetterSQLite3Database<typeof schema>;
+  db: DbWithClient;
   h: HierarchyRepo;
   v: VersionRepo;
   ws: ReturnType<HierarchyRepo['createWorkspace']>;
@@ -43,7 +47,7 @@ function buildSmallHierarchy(): {
   const seq = h.createSequence(proj.id, 'sq010');
   const shot = h.createShot(seq.id, 'sh010');
   const ver = v.insertVersion(shot.id);
-  return { db, h, v, ws, proj, seq, shot, ver };
+  return { db: db as DbWithClient, h, v, ws, proj, seq, shot, ver };
 }
 
 /**
@@ -66,11 +70,26 @@ function buildMultiProjectHierarchy() {
   const verA2 = v.insertVersion(shotA.id);
   const verB1 = v.insertVersion(shotB.id);
   const verB2 = v.insertVersion(shotB.id);
-  return { db, h, v, ws, projA, projB, seqA, seqB, shotA, shotB, verA1, verA2, verB1, verB2 };
+  return {
+    db: db as DbWithClient,
+    h,
+    v,
+    ws,
+    projA,
+    projB,
+    seqA,
+    seqB,
+    shotA,
+    shotB,
+    verA1,
+    verA2,
+    verB1,
+    verB2,
+  };
 }
 
 describe('TagRepo — idempotent insert, scope aggregation, hydration (INV-ASST-01, INV-ASST-02)', () => {
-  let db: BetterSQLite3Database<typeof schema>;
+  let db: DbWithClient;
   let repo: TagRepo;
   let versionRepo: VersionRepo;
   let versionId: string;
