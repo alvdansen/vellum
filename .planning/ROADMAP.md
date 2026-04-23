@@ -17,6 +17,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 3: Provenance & Versioning** - Append-only provenance capture with diff, reproduce, and iterate-from-version
 - [ ] **Phase 4: Asset Management** - Tagging, metadata, paginated search/filter across hierarchy
 - [ ] **Phase 5: Web Dashboard** - Preact UI with hierarchy browser, version timeline, and live generation status
+- [ ] **Phase 6: Dashboard Wire Quality** - [GAP CLOSURE] Phase 5 tech debt — WR-01/04/05 wire fixes + IN-01/02/04 robustness
+- [ ] **Phase 7: ComfyUI Endpoint Reconciliation** - [GAP CLOSURE] Resolve COMFYUI_API_BASE 401/404 drift; live-smoke green
+- [ ] **Phase 8: Documentation Attribution Backfill** - [GAP CLOSURE] Attribute HIER-06 + TOOL-02..05 in 01-02-SUMMARY; override + SDK caveat notes
+- [ ] **Phase 9: Nyquist Wave 0 Closure** - [GAP CLOSURE] Retrofit VALIDATION.md Wave 0 for phases 01, 02, 03, 05
 
 ## Phase Details
 
@@ -116,7 +120,56 @@ Plans:
 - [x] 05-10-PLAN.md — Views (HomeView, VersionDrawer, DiffDrawer, ActiveGenerationsPanel) + App + Vite build
 - [x] 05-11-PLAN.md — Cross-cutting dashboard tests (theme persistence + SSE→signal integration)
 - [x] 05-12-PLAN.md — Build dist, commit, CI freshness gate, live smoke script
-- [ ] 05-13-PLAN.md — **[GAP CLOSURE]** SSE wire-shape adapter + seam test (closes CR-01, unblocks WEBUI-03)
+- [x] 05-13-PLAN.md — **[GAP CLOSURE]** SSE wire-shape adapter + seam test (closes CR-01, unblocks WEBUI-03)
+
+### Phase 6: Dashboard Wire Quality
+**Goal**: Close the six Phase 5 wire-quality tech debt items from the v1.0 audit so every dashboard surface the audit flagged behaves correctly end-to-end — accurate recent versions, configurable output root, typed error propagation, safe query parsing, spec-correct SSE keep-alive, and exhaustive status normalization
+**Depends on**: Phase 5
+**Requirements**: None (gap closure — all v1.0 requirements remain satisfied; closes deferred tech debt)
+**Gap Closure**: Closes audit tech debt items WR-01, WR-04, WR-05, IN-01, IN-02, IN-04 from `.planning/v1.0-MILESTONE-AUDIT.md`
+**Success Criteria** (what must be TRUE):
+  1. `pipeline.getDashboardHome()` returns actual recent versions from the DB (query + limit), not the hardcoded `[]` at `pipeline.ts:676`
+  2. The output-streaming route at `dashboard-routes.ts:227` uses the configured `outputRoot` (resolvable from any CWD), not the hardcoded `'outputs'` literal
+  3. Dashboard `lib/api.ts fetchJson` preserves typed error bodies so codes like `VERSION_NOT_FOUND` and `OUTPUT_UNAVAILABLE` surface in the UI
+  4. `qNum` parser rejects negatives and non-integer floats at the HTTP boundary with a typed error (no silent SQLite clamping)
+  5. SSE keep-alive frame is emitted as a proper comment (`: ping\n\n`, no `data:` prefix); existing connection tests still pass
+  6. `lib/shape.ts normalizeStatus` exhaustively handles the status union (no unknown→queued silent fallback) and regressions are caught by tests
+**Plans**: TBD
+
+### Phase 7: ComfyUI Endpoint Reconciliation
+**Goal**: Reconcile the COMFYUI_API_BASE endpoint drift so live-smoke authenticates and returns 200 across stdio + HTTP transports, closing the Phase 2 infrastructure tech debt captured in project memory
+**Depends on**: Phase 2
+**Requirements**: None (gap closure — GEN-01..07 remain satisfied by FakeEngine unit tests; closes live-runtime infra)
+**Gap Closure**: Closes audit tech debt: "Phase 02 — ComfyUI Cloud API endpoint drift (.env COMFYUI_API_BASE reconciliation needed, both cloud.comfy.org and api.comfy.org fail live-smoke with 401/404)"
+**Success Criteria** (what must be TRUE):
+  1. `.env COMFYUI_API_BASE` points at a single endpoint that returns 200 for authenticated requests (documented rationale + credential source-of-truth)
+  2. Live-smoke script exercises `generation.submit` + `generation.status` round-trip against the live endpoint and returns a completed job
+  3. The endpoint decision, credential layout, and fallback-if-redirected behavior are documented in `02-VERIFICATION.md` (or a successor note) so the resolution survives future rotations
+**Plans**: TBD
+
+### Phase 8: Documentation Attribution Backfill
+**Goal**: Close the three Phase 1 documentation-only tech debt items so plan-level attribution matches what the Phase 1 VERIFICATION already verified, the inspector UI smoke override is visible in writeup, and the Zod inputSchema envelope caveat is findable
+**Depends on**: Phase 1
+**Requirements**: None (docs-only — HIER-06 and TOOL-02..05 are already verified satisfied; this closes the attribution gap)
+**Gap Closure**: Closes audit tech debt: (a) five requirements (HIER-06, TOOL-02..05) verified in `01-VERIFICATION.md` but not in `01-02-SUMMARY.md` frontmatter; (b) inspector UI UX smoke override notation; (c) Zod `inputSchema` error envelope MCP SDK 1.29 intercept caveat
+**Success Criteria** (what must be TRUE):
+  1. `01-02-SUMMARY.md` frontmatter `requirements-completed` lists HIER-06, TOOL-02, TOOL-03, TOOL-04, TOOL-05 (matching what the VERIFICATION row already attributes to plan 01-02)
+  2. `01-VERIFICATION.md` (or a linked note) records the inspector UI UX smoke override decision — programmatic `scripts/inspector-smoke.mjs` (56/56 wire-level checks) replaces manual browser UX check
+  3. A Phase 2+ follow-up note captures the Zod `inputSchema` → `structuredContent.code` intercept behavior (MCP SDK 1.29) so the divergence is easy to find later
+**Plans**: TBD
+
+### Phase 9: Nyquist Wave 0 Closure
+**Goal**: Retrofit Wave 0 Nyquist validation for phases 01, 02, 03, and 05 so `VALIDATION.md` reports `nyquist_compliant: true` + `wave_0_complete: true` across every v1.0 phase (Phase 04 already compliant)
+**Depends on**: Phases 1, 2, 3, 5
+**Requirements**: None (audit meta — validation retrofit, not new feature work)
+**Gap Closure**: Closes the audit's "partial Nyquist" status for phases 01, 02, 03, 05 — each has a draft `VALIDATION.md` but did not close Wave 0
+**Success Criteria** (what must be TRUE):
+  1. Phase 01 `VALIDATION.md` reports `status: closed`, `nyquist_compliant: true`, `wave_0_complete: true` after running `/gsd-validate-phase 01`
+  2. Phase 02 `VALIDATION.md` reports same three flags true after `/gsd-validate-phase 02`
+  3. Phase 03 `VALIDATION.md` reports same three flags true after `/gsd-validate-phase 03` (phase already flags `nyquist_compliant: true`; only `wave_0_complete` needs closure)
+  4. Phase 05 `VALIDATION.md` reports same three flags true after `/gsd-validate-phase 05`
+  5. The audit frontmatter overall Nyquist status changes from `partial` to `compliant` on re-audit
+**Plans**: TBD
 
 ## Future (v2)
 
@@ -129,12 +182,18 @@ The following are tracked in REQUIREMENTS.md v2 section and not part of the curr
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+
+Phases 6-9 were added 2026-04-23 as gap closure phases from `v1.0-MILESTONE-AUDIT.md` (audit Recommendation §B). All v1.0 functional requirements remain satisfied; these phases close deferred tech debt and Nyquist validation retrofits before archival.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
 | 1. Foundation & Hierarchy | 3/3 | Complete | 2026-04-20 |
 | 2. ComfyUI Generation | 3/3 | Complete | 2026-04-21 |
-| 3. Provenance & Versioning | 3/3 | Awaiting verification | - |
-| 4. Asset Management | 0/5 | Planned | - |
-| 5. Web Dashboard | 12/13 | Gap closure planned (CR-01) | - |
+| 3. Provenance & Versioning | 3/3 | Complete | 2026-04-22 |
+| 4. Asset Management | 5/5 | Complete | 2026-04-22 |
+| 5. Web Dashboard | 13/13 | Complete | 2026-04-23 |
+| 6. Dashboard Wire Quality | 0/? | Planned (gap closure) | - |
+| 7. ComfyUI Endpoint Reconciliation | 0/? | Planned (gap closure) | - |
+| 8. Documentation Attribution Backfill | 0/? | Planned (gap closure) | - |
+| 9. Nyquist Wave 0 Closure | 0/? | Planned (gap closure, optional) | - |
