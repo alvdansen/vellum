@@ -884,27 +884,27 @@ export function registerAsset(server: McpServer, engine: Engine) {
 
 **If this table is empty:** All claims in this research were verified against the local stack (better-sqlite3 12.9.0 / SQLite 3.53.0) or cited from official sources (sqlite.org, drizzle-orm docs, wiselibs/better-sqlite3 docs via Context7). The planner can proceed without further user confirmation on technical shape.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `add_tag` return `inserted: boolean` in the response?**
    - What we know: D-ASST-03 says mutators are idempotent; D-ASST-04 says response is the refreshed version entity. Neither explicitly says whether the agent can tell if it was a no-op vs actual insert.
    - What's unclear: Some agents may want to distinguish "added fresh" vs "already present" for UX (logging, etc.).
-   - Recommendation: The engine's `addTag` method can return `{ entity, inserted }` but the TOOL response should NOT expose `inserted` — stays consistent with D-ASST-03 (the agent's mental model is "added, don't care if new or existing"). Planner decides; low-stakes.
+   - **RESOLVED:** Engine's `addTag` method returns `{ entity, inserted }` internally (for telemetry) but the MCP tool response does NOT expose `inserted` — consistent with D-ASST-03 (agent mental model is "added, don't care if new or existing"). Applied in Plan 04-02 (TagRepo) + Plan 04-04 (asset-tool).
 
 2. **`list_tags` default limit: 20 or 100?**
    - What we know: D-24 locks default `limit=20`. CONTEXT.md §"Claude's Discretion" says "default `limit=100` acceptable here since the item is tiny."
    - What's unclear: Whether the `asset.list_tags` input schema should default to 100 as an override of D-24.
-   - Recommendation: Keep `limit=20` as default to match D-24 everywhere; agents who want "all tags" can pass `limit=100` explicitly. One default, one rule, less special-case code. Downstream cost is near-zero.
+   - **RESOLVED:** Keep `limit=20` as default everywhere to match D-24; agents who want "all tags" pass `limit=100` explicitly. One default, one rule. Applied in Plan 04-04 (asset-tool Zod schema).
 
 3. **Should `asset.query` echo the input filter in its response?**
    - What we know: D-ASST-06 says list_tags echoes `scope` in `structuredContent.scope`. D-ASST-05 doesn't mention for `asset.query`.
    - What's unclear: Whether agents need the filter echoed for pagination-navigation UIs.
-   - Recommendation: Include `filter` in the query response (the exact validated filter descriptor that was applied). Near-zero cost; makes the dashboard (Phase 5) easier; aligns with the "honest data" stance.
+   - **RESOLVED (DEFERRED):** Planner chose NOT to echo filter in `asset.query` response for Phase 4 — keeps envelope minimal and matches D-ASST-05 literally. Can be added in Phase 5 if the dashboard needs it (additive, non-breaking). Applied in Plan 04-04 (shapeQueryResponse omits filter echo).
 
 4. **What happens when `asset.query` is called with no filter at all (global query)?**
    - What we know: CONTEXT.md §Specifics says "(or none = global)" for scope; AND-only filter with no terms matches everything.
    - What's unclear: Whether to return ALL versions in the DB (could be 10k+ rows across page boundaries) or to require at least one filter.
-   - Recommendation: Allow the global query (no filter is just a degenerate case of "all ANDs held vacuously"); pagination limits the response; return `total_count` accurately so the agent can paginate.
+   - **RESOLVED:** Allow the global query (no filter is a degenerate case of "all ANDs held vacuously"); pagination limits the response; `total_count` is accurate. Applied in Plan 04-03 (validateScopeXor accepts 0 fields).
 
 ## Environment Availability
 
