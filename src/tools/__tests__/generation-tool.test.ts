@@ -12,6 +12,7 @@ import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
 import { ProvenanceRepo } from '../../store/provenance-repo.js';
+import { ProvenanceWriter } from '../../engine/provenance.js';
 import { Engine } from '../../engine/pipeline.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import { toolOk, toolError } from '../envelope.js';
@@ -30,16 +31,25 @@ async function buildStack() {
   const { db } = makeInMemoryDb();
   const repo = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
-  const provenance = new ProvenanceRepo(db);
+  const provenanceRepo = new ProvenanceRepo(db);
+  const provenanceWriter = new ProvenanceWriter(provenanceRepo);
   const fake = new FakeComfyUIClient();
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-tool-${nanoid(6)}-`));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const engine = new Engine(repo, versions, provenance, fake as unknown as any, tempRoot);
+  const engine = new Engine(repo, versions, provenanceRepo, fake as unknown as any, tempRoot);
   const ws = repo.createWorkspace('ws1');
   const proj = repo.createProject(ws.id, 'p1');
   const seq = repo.createSequence(proj.id, 'sq010');
   const shot = repo.createShot(seq.id, 'sh010');
-  return { engine, fake, versions, shotId: shot.id, tempRoot };
+  return {
+    engine,
+    fake,
+    versions,
+    provenanceRepo,
+    provenanceWriter,
+    shotId: shot.id,
+    tempRoot,
+  };
 }
 
 function shapeVersion(result: { entity: Version; breadcrumb: Breadcrumb }) {
@@ -126,6 +136,100 @@ async function invokeStatus(stack: { engine: Engine }, input: any): Promise<Tool
     }
     return toolError(err) as ToolResponse;
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeReproduce(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('reproduce'),
+        version_id: z.string().min(1),
+        notes: z.string().optional(),
+      })
+      .parse(input);
+    const result = await stack.engine.reproduceVersion(parsed.version_id, parsed.notes);
+    return toolOk({
+      ...shapeVersion({ entity: result.entity, breadcrumb: result.breadcrumb }),
+      reproduction_warnings: result.reproduction_warnings,
+    }) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${first.path.join('.')}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeIterate(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('iterate'),
+        version_id: z.string().min(1),
+        overrides: z
+          .record(
+            z.string().min(1),
+            z.object({
+              inputs: z.record(z.string(), z.unknown()).optional(),
+              class_type: z.string().optional(),
+            }),
+          )
+          .optional(),
+        seed: z.number().int().optional(),
+        notes: z.string().optional(),
+      })
+      .parse(input);
+    return toolOk(
+      shapeVersion(
+        await stack.engine.iterateFromVersion(
+          parsed.version_id,
+          parsed.overrides,
+          parsed.seed,
+          parsed.notes,
+        ),
+      ),
+    ) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${first.path.join('.')}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+const SOURCE_BLOB = {
+  '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7 } },
+  '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
+};
+
+function seedCompletedSource(stack: Awaited<ReturnType<typeof buildStack>>): string {
+  const row = stack.versions.insertVersion(stack.shotId);
+  stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+  stack.provenanceWriter.writeCompletedEvent(row.id, SOURCE_BLOB, '[]');
+  stack.versions.markCompleted(row.id, '[]');
+  return row.id;
+}
+
+function seedFailedSource(stack: Awaited<ReturnType<typeof buildStack>>): string {
+  const row = stack.versions.insertVersion(stack.shotId);
+  stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+  stack.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', 'boom');
+  stack.versions.markFailed(row.id, 'COMFYUI_API_ERROR', 'boom');
+  return row.id;
 }
 
 let stack: Awaited<ReturnType<typeof buildStack>>;
@@ -404,5 +508,213 @@ describe('generation tool — registration smoke', () => {
     const desc = registered['generation']?.description ?? '';
     expect(desc).toContain('ComfyUI API-format');
     expect(desc).toContain("'Dev Mode > Save (API Format)'");
+  });
+});
+
+describe('generation tool — reproduce (D-PROV-12, D-PROV-28)', () => {
+  it('happy path: new version with lineage_type=reproduce + reproduction_warnings ALWAYS present', async () => {
+    // fetchResolvedPrompt returns null so the new version's completion path doesn't need a real blob.
+    (stack.fake as unknown as { fetchResolvedPrompt: () => Promise<null> }).fetchResolvedPrompt =
+      async () => null;
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeReproduce(stack, {
+      action: 'reproduce',
+      version_id: sourceId,
+      notes: 'reproduced',
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: {
+        id: string;
+        parent_version_id: string;
+        lineage_type: string;
+        version_label: string;
+      };
+      breadcrumb: unknown[];
+      breadcrumb_text: string;
+      reproduction_warnings: string[];
+    };
+    expect(sc.entity.parent_version_id).toBe(sourceId);
+    expect(sc.entity.lineage_type).toBe('reproduce');
+    expect(sc.entity.version_label).toBe('v002');
+    expect(Array.isArray(sc.reproduction_warnings)).toBe(true);
+    // D-PROV-28 honesty: models_json was '[]' in seed, so the engine emits
+    // the "no model metadata" warning.
+    expect(sc.reproduction_warnings.length).toBeGreaterThan(0);
+  });
+
+  it('content[0].text JSON.parse equals structuredContent even with reproduction_warnings (D-25)', async () => {
+    (stack.fake as unknown as { fetchResolvedPrompt: () => Promise<null> }).fetchResolvedPrompt =
+      async () => null;
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: sourceId });
+    expect(JSON.parse(res.content[0].text)).toEqual(res.structuredContent);
+  });
+
+  it('source not completed → VERSION_NOT_COMPLETED', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('source completed but no completed provenance event → REPRODUCE_BLOCKED', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('REPRODUCE_BLOCKED');
+  });
+
+  it('source completed with null prompt_json → PROVENANCE_UNAVAILABLE', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+    stack.provenanceWriter.writeCompletedEvent(row.id, null, '[]');
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('PROVENANCE_UNAVAILABLE');
+  });
+
+  it('unknown version_id → VERSION_NOT_FOUND', async () => {
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: 'ver_missing' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+  });
+
+  it('missing version_id → INVALID_INPUT via Zod', async () => {
+    const res = await invokeReproduce(stack, { action: 'reproduce' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('INVALID_INPUT');
+  });
+});
+
+describe('generation tool — iterate (D-PROV-13, D-PROV-21..D-PROV-25)', () => {
+  it('happy path with overrides: new version has lineage_type=iterate + merged workflow submitted', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      overrides: { '3': { inputs: { cfg: 9 } } },
+      notes: 'tweak-cfg',
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: { parent_version_id: string; lineage_type: string };
+    };
+    expect(sc.entity.parent_version_id).toBe(sourceId);
+    expect(sc.entity.lineage_type).toBe('iterate');
+    // Engine delegated to applyOverrides + submitInternal; assert the
+    // fake received the merged blob with cfg=9 and seed=42 preserved.
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.cfg).toBe(9);
+    expect(submitted['3'].inputs.seed).toBe(42);
+  });
+
+  it('seed shortcut with single KSampler updates KSampler.inputs.seed', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      seed: 999,
+    });
+    expect(res.isError).toBeUndefined();
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.seed).toBe(999);
+  });
+
+  it('iterate from FAILED source succeeds using workflow_json (D-PROV-24)', async () => {
+    const failedId = seedFailedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: failedId,
+      overrides: { '3': { inputs: { cfg: 9 } } },
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: { lineage_type: string; parent_version_id: string };
+    };
+    expect(sc.entity.lineage_type).toBe('iterate');
+    expect(sc.entity.parent_version_id).toBe(failedId);
+  });
+
+  it('iterate from submitted source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('iterate from running source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.transition(row.id, 'running');
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('unknown node id in overrides → ITERATE_INVALID_PATCH (D-PROV-23)', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      overrides: { '999': { inputs: { x: 1 } } },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('ITERATE_INVALID_PATCH');
+  });
+
+  it('seed shortcut with no KSampler → ITERATE_INVALID_PATCH (D-PROV-22)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const noKSamplerBlob = {
+      '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hi' } },
+    };
+    stack.provenanceWriter.writeSubmitEvent(row.id, noKSamplerBlob);
+    stack.provenanceWriter.writeCompletedEvent(row.id, noKSamplerBlob, '[]');
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: row.id,
+      seed: 42,
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('ITERATE_INVALID_PATCH');
+  });
+
+  it('unknown source version_id → VERSION_NOT_FOUND', async () => {
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: 'ver_missing' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+  });
+
+  it('rejects any input with a top-level `patch` key — shape is overrides, not JSON Patch (D-PROV-13)', async () => {
+    // Direct-mirror note: IterateInput schema does not define `patch`, so
+    // Zod silently drops unknown top-level keys. Assert the happy path
+    // still works AND assert no 'patch' symbol leaks into the submitted
+    // blob — engine never sees a patch array.
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: [{ op: 'replace', path: '/3/inputs/cfg', value: 9 }] as any,
+    });
+    expect(res.isError).toBeUndefined();
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    // Unchanged because no overrides/seed were passed through the valid path.
+    expect(submitted['3'].inputs.cfg).toBe(7);
+    expect(submitted['3'].inputs.seed).toBe(42);
   });
 });
