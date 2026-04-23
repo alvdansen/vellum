@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../../engine/pipeline.js';
 import {
   registerWorkspace,
@@ -22,7 +23,8 @@ async function spinUp() {
   const { db } = makeInMemoryDb();
   const repo = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
-  const engine = new Engine(repo, versions, null);
+  const provenance = new ProvenanceRepo(db);
+  const engine = new Engine(repo, versions, provenance, null);
   const server = new McpServer(
     { name: 'bounds-test', version: '0.0.0' },
     { instructions: 'test' },

@@ -45,6 +45,7 @@ import { nanoid } from 'nanoid';
 import { openDb } from '../../store/db.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../../engine/pipeline.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../client.js';
 import type { StoredOutput } from '../types.js';
@@ -132,8 +133,9 @@ describe.skipIf(SKIP)('live ComfyUI Cloud smoke (D-GEN-42.7)', () => {
     const { db } = openDb(dbPath);
     const repo = new HierarchyRepo(db);
     const versions = new VersionRepo(db);
+    const provenance = new ProvenanceRepo(db);
     const client = new ComfyUIClient(apiKey, apiBase);
-    const engine = new Engine(repo, versions, client, tempOutputRoot);
+    const engine = new Engine(repo, versions, provenance, client, tempOutputRoot);
 
     try {
       // Seed minimal hierarchy up to a shot.

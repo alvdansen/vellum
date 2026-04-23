@@ -61,6 +61,7 @@ import { parseCliFlags, printHelp } from './utils/cli.js';
 import { openDb } from './store/db.js';
 import { HierarchyRepo } from './store/hierarchy-repo.js';
 import { VersionRepo } from './store/version-repo.js';
+import { ProvenanceRepo } from './store/provenance-repo.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
 import { validateBaseUrlFromEnv } from './utils/validate-base-url.js';
 import { Engine } from './engine/pipeline.js';
@@ -134,6 +135,7 @@ async function main(): Promise<void> {
 
   const repo = new HierarchyRepo(db);
   const versionRepo = new VersionRepo(db);
+  const provenanceRepo = new ProvenanceRepo(db);
 
   // Optional ComfyUI client — built only if COMFYUI_API_KEY is set (D-GEN-10,
   // D-GEN-14). Absent key ⇒ hierarchy tools work; `generation submit` surfaces
@@ -170,7 +172,7 @@ async function main(): Promise<void> {
   const maxConcurrentPollers = maxConcurrentPollersRaw
     ? Number.parseInt(maxConcurrentPollersRaw, 10)
     : undefined;
-  const engine = new Engine(repo, versionRepo, client, 'outputs', {
+  const engine = new Engine(repo, versionRepo, provenanceRepo, client, 'outputs', {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
   });
   const version = await readVersion();

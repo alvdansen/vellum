@@ -1,11 +1,14 @@
 import path from 'node:path/posix';
 import type { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
+import type { ProvenanceRepo } from '../store/provenance-repo.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
 import type { BreadcrumbResolver } from './breadcrumb.js';
-import { TypedError } from './errors.js';
+import type { ProvenanceWriter } from './provenance.js';
+import { TypedError, type ErrorCode } from './errors.js';
 import { createBackoffIterator, sleep } from './backoff.js';
 import { validateWorkflowFormat, extractFirstNodeError } from '../comfyui/format.js';
+import { applySeedShortcut, applyOverrides } from './iterate-merge.js';
 import {
   buildOutputPath,
   ensureDir,
@@ -13,6 +16,7 @@ import {
   versionLabel,
 } from '../utils/outputs.js';
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
+import type { ModelRef, IterateOverride } from '../types/provenance.js';
 import type { ComfyOutput, StatusResponse, StoredOutput } from '../comfyui/types.js';
 
 const GENERATION_TIMEOUT_MS = 600_000; // D-GEN-25: 10 minutes
@@ -65,6 +69,8 @@ export class GenerationEngine {
   constructor(
     private hierarchy: HierarchyRepo,
     private versions: VersionRepo,
+    private provenanceRepo: ProvenanceRepo,
+    private provenanceWriter: ProvenanceWriter,
     private client: ComfyUIClient | null,
     private breadcrumb: BreadcrumbResolver,
     private outputRoot: string = 'outputs',
@@ -78,13 +84,31 @@ export class GenerationEngine {
   /**
    * Two-phase submit (Pattern 2): shot-exists + format validation → insert row →
    * POST /api/prompt → setJobId. On ComfyUI failure, the row is transitioned to
-   * `failed` with the matching code before rethrowing.
+   * `failed` with the matching code before rethrowing. Public signature preserved
+   * verbatim from Phase 2 (LANDMINE #1) — body delegates to submitInternal which
+   * is shared with reproduce/iterate.
    */
   async submitGeneration(
     shotId: string,
     workflowJson: Record<string, unknown>,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    return this.submitInternal({ shotId, workflowJson, notes });
+  }
+
+  /**
+   * Shared submit path — Phase 2 two-phase submit + Phase 3 provenance writes.
+   * Called by submitGeneration (no lineage), reproduceVersion (lineage='reproduce'),
+   * and iterateFromVersion (lineage='iterate'). The submitted provenance event is
+   * written BEFORE the HTTP POST so D-PROV-04 holds even when ComfyUI rejects.
+   */
+  private async submitInternal(args: {
+    shotId: string;
+    workflowJson: Record<string, unknown>;
+    notes?: string;
+    parentVersionId?: string;
+    lineageType?: 'reproduce' | 'iterate';
+  }): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     if (!this.client) {
       throw new TypedError(
         'COMFYUI_CREDENTIALS_MISSING',
@@ -93,30 +117,39 @@ export class GenerationEngine {
       );
     }
     // Fail-fast: shot existence + format. No DB writes until both succeed.
-    const shot = this.hierarchy.getShot(shotId);
+    const shot = this.hierarchy.getShot(args.shotId);
     if (!shot) {
       throw new TypedError(
         'SHOT_NOT_FOUND',
-        `Shot '${shotId}' not found`,
+        `Shot '${args.shotId}' not found`,
         `Verify the shot id with { tool: 'shot', action: 'get' }`,
       );
     }
-    validateWorkflowFormat(workflowJson);
+    validateWorkflowFormat(args.workflowJson);
 
-    // Two-phase submit: insert row first (version_number = MAX+1 inside txn),
-    // then hit ComfyUI. Row exists before any network I/O (Pitfall #6).
-    const row = this.versions.insertVersion(shotId, notes);
+    // D-PROV-33 (LANDMINE #8): lineage written at INSERT time, not via follow-up
+    // UPDATE. A reader observing the row between INSERT and UPDATE would otherwise
+    // briefly see `lineage_type: null` on a reproduce/iterate row.
+    const lineage =
+      args.parentVersionId && args.lineageType
+        ? { parent_version_id: args.parentVersionId, lineage_type: args.lineageType }
+        : undefined;
+    const row = this.versions.insertVersion(args.shotId, args.notes, lineage);
+
+    // Submit-event provenance BEFORE HTTP so D-PROV-04 holds even if ComfyUI rejects.
+    this.provenanceWriter.writeSubmitEvent(row.id, args.workflowJson);
+
     try {
-      const { prompt_id } = await this.client.submit(workflowJson);
+      const { prompt_id } = await this.client.submit(args.workflowJson);
       this.versions.setJobId(row.id, prompt_id);
     } catch (err) {
-      // ComfyUI-side failure — transition the row to failed with the matching code.
-      if (err instanceof TypedError) {
-        this.versions.markFailed(row.id, err.code, err.message);
-        throw err;
-      }
-      this.versions.markFailed(row.id, 'COMFYUI_API_ERROR', String(err));
-      throw new TypedError('COMFYUI_API_ERROR', String(err));
+      // ComfyUI-side failure — provenance first, then markFailed, then rethrow.
+      const code: ErrorCode = err instanceof TypedError ? err.code : 'COMFYUI_API_ERROR';
+      const msg = err instanceof TypedError ? err.message : String(err);
+      this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+      this.versions.markFailed(row.id, code, msg);
+      if (err instanceof TypedError) throw err;
+      throw new TypedError('COMFYUI_API_ERROR', msg);
     }
     const refreshed = this.versions.getVersion(row.id)!;
     return { entity: refreshed, breadcrumb: this.breadcrumb.resolve('version', row.id) };
@@ -142,11 +175,9 @@ export class GenerationEngine {
     // 10-minute timeout check (D-GEN-25). Runs BEFORE any network call so a
     // stuck ComfyUI cannot hold the row hostage.
     if (Date.now() - row.created_at > GENERATION_TIMEOUT_MS) {
-      this.versions.markFailed(
-        row.id,
-        'GENERATION_TIMEOUT',
-        `Generation did not complete within ${GENERATION_TIMEOUT_MS / 1000}s`,
-      );
+      const msg = `Generation did not complete within ${GENERATION_TIMEOUT_MS / 1000}s`;
+      this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg);
+      this.versions.markFailed(row.id, 'GENERATION_TIMEOUT', msg);
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
@@ -160,6 +191,7 @@ export class GenerationEngine {
     if (!row.job_id) {
       // Edge case: row inserted at submit-time but submit call failed before
       // setJobId (very rare — markFailed runs in the catch in submitGeneration).
+      this.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', 'Version has no job_id');
       this.versions.markFailed(row.id, 'COMFYUI_API_ERROR', 'Version has no job_id');
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
@@ -174,12 +206,158 @@ export class GenerationEngine {
       const flat =
         extractFirstNodeError(nodeErrors) ??
         (typeof remote.error === 'string' ? remote.error : 'ComfyUI reported failed');
+      this.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', flat);
       this.versions.markFailed(row.id, 'COMFYUI_API_ERROR', flat);
     } else if (mapped === 'running' && row.status !== 'running') {
       this.versions.transition(row.id, 'running');
     }
     const updated = this.versions.getVersion(versionId)!;
     return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
+  }
+
+  /**
+   * Re-submit a completed version's resolved prompt blob verbatim (PROV-05).
+   * New version gets parent_version_id + lineage_type='reproduce' at INSERT
+   * (D-PROV-33). Warnings array flags drift-detection limits (D-PROV-28) —
+   * ALWAYS present (empty array permitted).
+   */
+  async reproduceVersion(
+    sourceVersionId: string,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
+    const source = this.versions.getVersion(sourceVersionId);
+    if (!source) {
+      throw new TypedError(
+        'VERSION_NOT_FOUND',
+        `Version '${sourceVersionId}' not found`,
+        `Verify the id with { tool: 'version', action: 'get' }`,
+      );
+    }
+    if (source.status !== 'completed') {
+      throw new TypedError(
+        'VERSION_NOT_COMPLETED',
+        `Version '${sourceVersionId}' is in '${source.status}' — cannot reproduce`,
+        `Only completed versions can be reproduced. Check status via { tool: 'generation', action: 'status' }.`,
+      );
+    }
+    const completedEvent = this.provenanceRepo.getLatestCompletedEvent(sourceVersionId);
+    if (!completedEvent) {
+      throw new TypedError(
+        'REPRODUCE_BLOCKED',
+        `Version '${sourceVersionId}' has no completed provenance row`,
+        `Source predates Phase 3 provenance capture or crashed before completion. Source status: '${source.status}'.`,
+      );
+    }
+    if (completedEvent.prompt_json == null) {
+      throw new TypedError(
+        'PROVENANCE_UNAVAILABLE',
+        `Version '${sourceVersionId}' has no resolved prompt blob (likely non-PNG output)`,
+        `Reproduce needs the resolved prompt JSON. Use { tool: 'generation', action: 'iterate' } with explicit overrides instead.`,
+      );
+    }
+
+    const warnings: string[] = [];
+    let models: ModelRef[] = [];
+    try {
+      models = JSON.parse(completedEvent.models_json ?? '[]') as ModelRef[];
+    } catch {
+      models = [];
+    }
+    for (const m of models) {
+      if (m.model_hash == null) {
+        warnings.push(
+          `Model '${m.model_name}' not checksummed — cannot guarantee byte-identical output`,
+        );
+      }
+    }
+    if (models.length === 0) {
+      warnings.push('Cloud API did not expose model metadata — reproduction is best-effort');
+    }
+
+    const promptBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;
+    const result = await this.submitInternal({
+      shotId: source.shot_id,
+      workflowJson: promptBlob,
+      notes,
+      parentVersionId: sourceVersionId,
+      lineageType: 'reproduce',
+    });
+    return {
+      entity: result.entity,
+      breadcrumb: result.breadcrumb,
+      reproduction_warnings: warnings,
+    };
+  }
+
+  /**
+   * Iterate from a source version with node-scoped overrides / seed shortcut (PROV-06).
+   * From 'completed' sources uses prompt_json (D-PROV-13); from 'failed' uses
+   * workflow_json (D-PROV-24). Rejects submitted/running (D-PROV-25). Merged blob
+   * re-validated via validateWorkflowFormat (D-PROV-23). Lineage set at INSERT.
+   */
+  async iterateFromVersion(
+    sourceVersionId: string,
+    overrides?: Record<string, IterateOverride>,
+    seed?: number,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    const source = this.versions.getVersion(sourceVersionId);
+    if (!source) {
+      throw new TypedError(
+        'VERSION_NOT_FOUND',
+        `Version '${sourceVersionId}' not found`,
+        `Verify the id with { tool: 'version', action: 'get' }`,
+      );
+    }
+
+    let baseBlob: Record<string, unknown>;
+    if (source.status === 'completed') {
+      const completedEvent = this.provenanceRepo.getLatestCompletedEvent(sourceVersionId);
+      if (!completedEvent || completedEvent.prompt_json == null) {
+        throw new TypedError(
+          'PROVENANCE_UNAVAILABLE',
+          `Version '${sourceVersionId}' has no resolved prompt blob`,
+          `Source predates Phase 3 or used a non-PNG output format. Iterate not available.`,
+        );
+      }
+      baseBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;
+    } else if (source.status === 'failed') {
+      // D-PROV-24: iterate from failed uses authored workflow.
+      const submitEvent = this.provenanceRepo.getSubmitEvent(sourceVersionId);
+      if (!submitEvent || submitEvent.workflow_json == null) {
+        throw new TypedError(
+          'PROVENANCE_UNAVAILABLE',
+          `Version '${sourceVersionId}' has no captured submit workflow`,
+          `Source failed before provenance capture. Iterate not available.`,
+        );
+      }
+      baseBlob = JSON.parse(submitEvent.workflow_json) as Record<string, unknown>;
+    } else {
+      // D-PROV-25: submitted/running → block.
+      throw new TypedError(
+        'VERSION_NOT_COMPLETED',
+        `Version '${sourceVersionId}' is in '${source.status}' — cannot iterate`,
+        `Iterate supports completed or failed sources. Wait for completion via { tool: 'generation', action: 'status' }.`,
+      );
+    }
+
+    let mergedBlob: Record<string, unknown> = baseBlob;
+    if (seed !== undefined) {
+      mergedBlob = applySeedShortcut(mergedBlob, seed);
+    }
+    if (overrides !== undefined) {
+      mergedBlob = applyOverrides(mergedBlob, overrides);
+    }
+    // D-PROV-23: merged blob must still be API-format-valid.
+    validateWorkflowFormat(mergedBlob);
+
+    return this.submitInternal({
+      shotId: source.shot_id,
+      workflowJson: mergedBlob,
+      notes,
+      parentVersionId: sourceVersionId,
+      lineageType: 'iterate',
+    });
   }
 
   /** Map ComfyUI status strings onto the Phase 2 state machine (D-GEN-18). */
@@ -251,15 +429,27 @@ export class GenerationEngine {
         }
       }
       if (lastErr) {
-        this.versions.markFailed(
-          row.id,
-          'DOWNLOAD_FAILED',
-          `Failed to download output ${out.filename} after ${DOWNLOAD_MAX_ATTEMPTS} attempts`,
-        );
+        const msg = `Failed to download output ${out.filename} after ${DOWNLOAD_MAX_ATTEMPTS} attempts`;
+        this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg);
+        this.versions.markFailed(row.id, 'DOWNLOAD_FAILED', msg);
         return; // subsequent outputs intentionally left for debug/audit per D-GEN-36
       }
     }
-    this.versions.markCompleted(row.id, JSON.stringify(stored));
+    // D-PROV-05 / D-PROV-03: fetch the resolved prompt blob from the first
+    // downloaded PNG output and emit the completed provenance event BEFORE
+    // markCompleted. Null prompt_json is tolerated — PROVENANCE_UNAVAILABLE
+    // surfaces later when the agent tries reproduce/iterate.
+    const firstPngPath =
+      stored.find((s) => s.content_type.startsWith('image/png'))?.path ??
+      stored[0]?.path ??
+      null;
+    let promptBlob: Record<string, unknown> | null = null;
+    if (firstPngPath && this.client) {
+      promptBlob = await this.client.fetchResolvedPrompt(firstPngPath);
+    }
+    const outputsJson = JSON.stringify(stored);
+    this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson);
+    this.versions.markCompleted(row.id, outputsJson);
   }
 
   /**

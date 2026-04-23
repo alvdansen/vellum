@@ -11,6 +11,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../../engine/pipeline.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import { toolOk, toolError } from '../envelope.js';
@@ -29,10 +30,11 @@ async function buildStack() {
   const { db } = makeInMemoryDb();
   const repo = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
+  const provenance = new ProvenanceRepo(db);
   const fake = new FakeComfyUIClient();
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-tool-${nanoid(6)}-`));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const engine = new Engine(repo, versions, fake as unknown as any, tempRoot);
+  const engine = new Engine(repo, versions, provenance, fake as unknown as any, tempRoot);
   const ws = repo.createWorkspace('ws1');
   const proj = repo.createProject(ws.id, 'p1');
   const seq = repo.createSequence(proj.id, 'sq010');
@@ -213,10 +215,11 @@ describe('generation tool — submit error paths', () => {
     const { db } = makeInMemoryDb();
     const repo = new HierarchyRepo(db);
     const vRepo = new VersionRepo(db);
+    const pRepo = new ProvenanceRepo(db);
     const tempRoot = await fsp.mkdtemp(
       pth.join(os.tmpdir(), `vfx-gen-tool-nokey-${nanoid(6)}-`),
     );
-    const engine = new Engine(repo, vRepo, null, tempRoot);
+    const engine = new Engine(repo, vRepo, pRepo, null, tempRoot);
     const ws = repo.createWorkspace('ws');
     const proj = repo.createProject(ws.id, 'p');
     const seq = repo.createSequence(proj.id, 'sq010');

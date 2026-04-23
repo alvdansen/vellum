@@ -1,8 +1,10 @@
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
+import type { ProvenanceRepo } from '../store/provenance-repo.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
+import { ProvenanceWriter } from './provenance.js';
 import { TypedError } from './errors.js';
 import {
   SHOT_NAME_REGEX,
@@ -43,14 +45,18 @@ export class Engine {
   constructor(
     private repo: HierarchyRepo,
     private versionRepo: VersionRepo,
+    private provenanceRepo: ProvenanceRepo,
     private client: ComfyUIClient | null = null,
     outputRoot: string = 'outputs',
     options: { maxConcurrentPollers?: number } = {},
   ) {
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
+    const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     this.generation = new GenerationEngine(
       repo,
       versionRepo,
+      provenanceRepo,
+      provenanceWriter,
       client,
       this.breadcrumb,
       outputRoot,

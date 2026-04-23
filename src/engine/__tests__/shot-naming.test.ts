@@ -3,6 +3,7 @@ import '../../test-utils/matchers.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../pipeline.js';
 
 /**
@@ -39,8 +40,8 @@ describe('shot naming regex (^sh\\d{3,}$)', () => {
   beforeEach(() => {
     const { db } = makeInMemoryDb();
     const repo = new HierarchyRepo(db);
-    // Phase 2 Engine constructor: (repo, versionRepo, client?).
-    engine = new Engine(repo, new VersionRepo(db), null);
+    // Phase 3 Engine constructor: (repo, versionRepo, provenanceRepo, client?).
+    engine = new Engine(repo, new VersionRepo(db), new ProvenanceRepo(db), null);
 
     // Seed a workspace → project → sequence so createShot has a valid parent.
     const ws = engine.createWorkspace('demo-ws');

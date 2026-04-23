@@ -63,6 +63,16 @@ export class FakeComfyUIClient {
   /** For tests needing outputs on completed. */
   cannedOutputs: ComfyOutput[] = [{ filename: 'out.png', subfolder: '', type: 'output' }];
 
+  /**
+   * Phase 3 addition: canned return value for fetchResolvedPrompt. Mirrors the
+   * real ComfyUIClient method. Default null exercises the PROVENANCE_UNAVAILABLE
+   * path in engine tests; tests set this to a canned blob to exercise the happy
+   * prompt-blob-captured path. The real client reads PNG tEXt chunks — this fake
+   * skips the filesystem layer since engine tests don't need to exercise PNG
+   * parsing (covered independently by png-metadata.test.ts + client.test.ts).
+   */
+  cannedPromptBlob: Record<string, unknown> | null = null;
+
   /** For tests needing a specific node_errors response shape on 'failed'. */
   cannedNodeErrors: unknown = {
     '3': {
@@ -211,10 +221,22 @@ export class FakeComfyUIClient {
     };
   }
 
+  /**
+   * Phase 3 addition (D-PROV-05): mirror of the real ComfyUIClient method.
+   * Returns `cannedPromptBlob` regardless of path so tests can drive both
+   * the null-blob branch (PROVENANCE_UNAVAILABLE reserve) and the captured-blob
+   * branch by assigning `fake.cannedPromptBlob = {...}` per test.
+   */
+  async fetchResolvedPrompt(pngPath: string): Promise<Record<string, unknown> | null> {
+    this.calls.push({ method: 'fetchResolvedPrompt', args: [pngPath] });
+    return this.cannedPromptBlob;
+  }
+
   reset(): void {
     this.calls = [];
     this.statusCalls = 0;
     this.downloadCalls = 0;
     this.scenario = 'happy';
+    this.cannedPromptBlob = null;
   }
 }

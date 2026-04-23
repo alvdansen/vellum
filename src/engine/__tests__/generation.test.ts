@@ -7,8 +7,10 @@ import '../../test-utils/matchers.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { BreadcrumbResolver } from '../breadcrumb.js';
 import { GenerationEngine } from '../generation.js';
+import { ProvenanceWriter } from '../provenance.js';
 import { TypedError } from '../errors.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import type { ComfyUIClient } from '../../comfyui/client.js';
@@ -31,6 +33,8 @@ type Ctx = {
   engine: GenerationEngine;
   hierarchy: HierarchyRepo;
   versions: VersionRepo;
+  provenanceRepo: ProvenanceRepo;
+  provenanceWriter: ProvenanceWriter;
   fake: FakeComfyUIClient;
   shotId: string;
   tempRoot: string;
@@ -43,13 +47,17 @@ async function setup(): Promise<Ctx> {
   const { db } = makeInMemoryDb();
   const hierarchy = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
+  const provenanceRepo = new ProvenanceRepo(db);
+  const provenanceWriter = new ProvenanceWriter(provenanceRepo);
   const fake = new FakeComfyUIClient();
   const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-${nanoid(6)}-`));
-  // Fake is structurally compatible with ComfyUIClient for the 3 methods used.
+  // Fake is structurally compatible with ComfyUIClient for the methods used.
   const engine = new GenerationEngine(
     hierarchy,
     versions,
+    provenanceRepo,
+    provenanceWriter,
     fake as unknown as ComfyUIClient,
     breadcrumb,
     tempRoot,
@@ -62,6 +70,8 @@ async function setup(): Promise<Ctx> {
     engine,
     hierarchy,
     versions,
+    provenanceRepo,
+    provenanceWriter,
     fake,
     shotId: shot.id,
     tempRoot,
@@ -141,8 +151,10 @@ describe('GenerationEngine.submitGeneration', () => {
     const { db } = makeInMemoryDb();
     const h = new HierarchyRepo(db);
     const v = new VersionRepo(db);
+    const pr = new ProvenanceRepo(db);
+    const pw = new ProvenanceWriter(pr);
     const bc = new BreadcrumbResolver(h, v);
-    const e = new GenerationEngine(h, v, null, bc, ctx.tempRoot);
+    const e = new GenerationEngine(h, v, pr, pw, null, bc, ctx.tempRoot);
     const ws = h.createWorkspace('wsx');
     const p = h.createProject(ws.id, 'px');
     const s = h.createSequence(p.id, 'sq010');
@@ -508,11 +520,15 @@ describe('GenerationEngine recovery poller (start / stop)', () => {
     const hierarchy = new HierarchyRepo(db);
     const versions = new VersionRepo(db);
     const fake = new FakeComfyUIClient();
+    const provenanceRepo = new ProvenanceRepo(db);
+    const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
     const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-c6-${nanoid(6)}-`));
     const engine = new GenerationEngine(
       hierarchy,
       versions,
+      provenanceRepo,
+      provenanceWriter,
       fake as unknown as ComfyUIClient,
       breadcrumb,
       tempRoot,
@@ -570,5 +586,258 @@ describe('GenerationEngine on-demand status bypasses backoff', () => {
     expect(res.entity.status).toBe('completed');
     // Should be well under 1s with real timers — zero sleep in the happy path.
     expect(elapsed).toBeLessThan(1_000);
+  });
+});
+
+describe('GenerationEngine — provenance writes (PROV-01, D-PROV-03, D-PROV-04)', () => {
+  test('submit happy path writes submitted event before HTTP returns', async () => {
+    const res = await ctx.engine.submitGeneration(ctx.shotId, API_WORKFLOW);
+    const events = ctx.provenanceRepo.getEventsForVersion(res.entity.id);
+    expect(events).toHaveLength(1);
+    expect(events[0].event_type).toBe('submitted');
+    expect(events[0].workflow_json).not.toBeNull();
+    expect(JSON.parse(events[0].workflow_json!)).toEqual(API_WORKFLOW);
+  });
+
+  test('submit → ComfyUI failure writes submitted + failed events (D-PROV-04)', async () => {
+    // Capture the inserted version id via spy so we can read its events after failure.
+    let capturedId: string | null = null;
+    const origInsert = ctx.versions.insertVersion.bind(ctx.versions);
+    vi.spyOn(ctx.versions, 'insertVersion').mockImplementation((shotId, notes, lineage) => {
+      const row = origInsert(shotId, notes, lineage);
+      capturedId = row.id;
+      return row;
+    });
+    ctx.fake.scenario = 'rate-limited';
+    await expect(
+      ctx.engine.submitGeneration(ctx.shotId, API_WORKFLOW),
+    ).rejects.toMatchObject({ code: 'COMFYUI_RATE_LIMITED' });
+    expect(capturedId).not.toBeNull();
+    const events = ctx.provenanceRepo.getEventsForVersion(capturedId!);
+    expect(events.map((e) => e.event_type)).toEqual(['submitted', 'failed']);
+    expect(events[1].error_code).toBe('COMFYUI_RATE_LIMITED');
+  });
+
+  test('completed download writes completed event with prompt_json + models_json + seed', async () => {
+    // Canned prompt blob reaches the writer via fetchResolvedPrompt.
+    const cannedBlob = {
+      '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20 } },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
+    };
+    ctx.fake.cannedPromptBlob = cannedBlob;
+
+    const submitRes = await ctx.engine.submitGeneration(ctx.shotId, API_WORKFLOW);
+    const versionId = submitRes.entity.id;
+    // Drive status until completion (fake default scenario='happy' returns completed).
+    await ctx.engine.getGenerationStatus(versionId);
+    const events = ctx.provenanceRepo.getEventsForVersion(versionId);
+    expect(events.map((e) => e.event_type)).toEqual(['submitted', 'completed']);
+    const completed = events[1];
+    expect(completed.prompt_json).not.toBeNull();
+    expect(JSON.parse(completed.prompt_json!)).toEqual(cannedBlob);
+    expect(completed.seed).toBe(42);
+    expect(JSON.parse(completed.models_json!)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node_id: '4',
+          class_type: 'CheckpointLoaderSimple',
+          model_name: 'sd_xl.safetensors',
+        }),
+      ]),
+    );
+    expect(completed.outputs_json).not.toBeNull();
+  });
+
+  test('completed download with null fetchResolvedPrompt → completed event has prompt_json=null', async () => {
+    ctx.fake.cannedPromptBlob = null; // default — explicit for clarity
+
+    const submitRes = await ctx.engine.submitGeneration(ctx.shotId, API_WORKFLOW);
+    await ctx.engine.getGenerationStatus(submitRes.entity.id);
+    const events = ctx.provenanceRepo.getEventsForVersion(submitRes.entity.id);
+    const completed = events.find((e) => e.event_type === 'completed')!;
+    expect(completed.prompt_json).toBeNull();
+    expect(completed.outputs_json).not.toBeNull();
+  });
+});
+
+describe('GenerationEngine.reproduceVersion (PROV-05, D-PROV-12, D-PROV-27..D-PROV-30)', () => {
+  async function seedCompletedSource(): Promise<{
+    versionId: string;
+    promptBlob: Record<string, unknown>;
+  }> {
+    const promptBlob = {
+      '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20 } },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
+    };
+    const row = ctx.versions.insertVersion(ctx.shotId, 'source');
+    ctx.provenanceWriter.writeSubmitEvent(row.id, promptBlob);
+    ctx.provenanceWriter.writeCompletedEvent(row.id, promptBlob, JSON.stringify([]));
+    ctx.versions.markCompleted(row.id, '[]');
+    return { versionId: row.id, promptBlob };
+  }
+
+  test('happy path: creates new version with lineage=reproduce + submits same blob', async () => {
+    const { versionId, promptBlob } = await seedCompletedSource();
+    const result = await ctx.engine.reproduceVersion(versionId, 'reproduced');
+    expect(result.entity.parent_version_id).toBe(versionId);
+    expect(result.entity.lineage_type).toBe('reproduce');
+    expect(result.entity.version_number).toBe(2);
+    expect(Array.isArray(result.reproduction_warnings)).toBe(true);
+    // ComfyUI fake received the exact prompt blob.
+    const submits = ctx.fake.calls.filter((c) => c.method === 'submit');
+    expect(submits.length).toBeGreaterThanOrEqual(1);
+    expect(submits[submits.length - 1].args[0]).toEqual(promptBlob);
+  });
+
+  test('reproduction_warnings always present with unchecksummed models', async () => {
+    const { versionId } = await seedCompletedSource();
+    const result = await ctx.engine.reproduceVersion(versionId);
+    // Models extracted from the seeded prompt blob have model_hash=null, so warnings
+    // include the not-checksummed notice for the CheckpointLoaderSimple.
+    expect(result.reproduction_warnings.some((w) => w.includes('not checksummed'))).toBe(true);
+  });
+
+  test('source in submitted → VERSION_NOT_COMPLETED', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    await expect(ctx.engine.reproduceVersion(row.id)).rejects.toMatchObject({
+      code: 'VERSION_NOT_COMPLETED',
+    });
+  });
+
+  test('completed source with no completed provenance event → REPRODUCE_BLOCKED', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.markCompleted(row.id, '[]');
+    await expect(ctx.engine.reproduceVersion(row.id)).rejects.toMatchObject({
+      code: 'REPRODUCE_BLOCKED',
+    });
+  });
+
+  test('completed source with prompt_json=null → PROVENANCE_UNAVAILABLE', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.provenanceWriter.writeSubmitEvent(row.id, { '1': { class_type: 'KSampler', inputs: {} } });
+    ctx.provenanceWriter.writeCompletedEvent(row.id, null, '[]');
+    ctx.versions.markCompleted(row.id, '[]');
+    await expect(ctx.engine.reproduceVersion(row.id)).rejects.toMatchObject({
+      code: 'PROVENANCE_UNAVAILABLE',
+    });
+  });
+
+  test('unknown sourceVersionId → VERSION_NOT_FOUND', async () => {
+    await expect(ctx.engine.reproduceVersion('ver_missing')).rejects.toMatchObject({
+      code: 'VERSION_NOT_FOUND',
+    });
+  });
+});
+
+describe('GenerationEngine.iterateFromVersion (PROV-06, D-PROV-21..D-PROV-25)', () => {
+  const BASE_BLOB = {
+    '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7 } },
+    '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
+  };
+
+  function seedCompleted(): string {
+    const row = ctx.versions.insertVersion(ctx.shotId, 'source');
+    ctx.provenanceWriter.writeSubmitEvent(row.id, BASE_BLOB);
+    ctx.provenanceWriter.writeCompletedEvent(row.id, BASE_BLOB, JSON.stringify([]));
+    ctx.versions.markCompleted(row.id, '[]');
+    return row.id;
+  }
+
+  function seedFailed(): string {
+    const row = ctx.versions.insertVersion(ctx.shotId, 'failed-src');
+    ctx.provenanceWriter.writeSubmitEvent(row.id, BASE_BLOB);
+    ctx.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', 'boom');
+    ctx.versions.markFailed(row.id, 'COMFYUI_API_ERROR', 'boom');
+    return row.id;
+  }
+
+  test("completed source with overrides: new version has lineage_type='iterate' and merged workflow submitted", async () => {
+    const versionId = seedCompleted();
+    const result = await ctx.engine.iterateFromVersion(
+      versionId,
+      { '3': { inputs: { cfg: 9 } } },
+      undefined,
+      'tweak-cfg',
+    );
+    expect(result.entity.parent_version_id).toBe(versionId);
+    expect(result.entity.lineage_type).toBe('iterate');
+    const submits = ctx.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.cfg).toBe(9);
+    expect(submitted['3'].inputs.seed).toBe(42); // untouched
+  });
+
+  test('completed source with seed shortcut: KSampler.seed updated', async () => {
+    const versionId = seedCompleted();
+    await ctx.engine.iterateFromVersion(versionId, undefined, 999);
+    const submits = ctx.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.seed).toBe(999);
+  });
+
+  test('failed source uses workflow_json (D-PROV-24) and succeeds', async () => {
+    const versionId = seedFailed();
+    const result = await ctx.engine.iterateFromVersion(versionId, {
+      '3': { inputs: { cfg: 9 } },
+    });
+    expect(result.entity.parent_version_id).toBe(versionId);
+    expect(result.entity.lineage_type).toBe('iterate');
+  });
+
+  test('submitted source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    await expect(ctx.engine.iterateFromVersion(row.id)).rejects.toMatchObject({
+      code: 'VERSION_NOT_COMPLETED',
+    });
+  });
+
+  test('running source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.versions.transition(row.id, 'running');
+    await expect(ctx.engine.iterateFromVersion(row.id)).rejects.toMatchObject({
+      code: 'VERSION_NOT_COMPLETED',
+    });
+  });
+
+  test('completed source with null prompt_json → PROVENANCE_UNAVAILABLE', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    ctx.provenanceWriter.writeSubmitEvent(row.id, BASE_BLOB);
+    ctx.provenanceWriter.writeCompletedEvent(row.id, null, '[]');
+    ctx.versions.markCompleted(row.id, '[]');
+    await expect(ctx.engine.iterateFromVersion(row.id)).rejects.toMatchObject({
+      code: 'PROVENANCE_UNAVAILABLE',
+    });
+  });
+
+  test('unknown node id in overrides → ITERATE_INVALID_PATCH (propagated from Plan 01)', async () => {
+    const versionId = seedCompleted();
+    await expect(
+      ctx.engine.iterateFromVersion(versionId, { '999': { inputs: { x: 1 } } }),
+    ).rejects.toMatchObject({ code: 'ITERATE_INVALID_PATCH' });
+  });
+
+  test('seed shortcut with no KSampler → ITERATE_INVALID_PATCH (propagated from Plan 01)', async () => {
+    const row = ctx.versions.insertVersion(ctx.shotId);
+    const noKSamplerBlob = {
+      '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hi' } },
+    };
+    ctx.provenanceWriter.writeSubmitEvent(row.id, noKSamplerBlob);
+    ctx.provenanceWriter.writeCompletedEvent(row.id, noKSamplerBlob, '[]');
+    ctx.versions.markCompleted(row.id, '[]');
+    await expect(ctx.engine.iterateFromVersion(row.id, undefined, 42)).rejects.toMatchObject({
+      code: 'ITERATE_INVALID_PATCH',
+    });
+  });
+
+  test('unknown sourceVersionId → VERSION_NOT_FOUND', async () => {
+    await expect(ctx.engine.iterateFromVersion('ver_missing')).rejects.toMatchObject({
+      code: 'VERSION_NOT_FOUND',
+    });
   });
 });
