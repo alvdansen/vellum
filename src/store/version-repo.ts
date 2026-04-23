@@ -46,11 +46,21 @@ export class VersionRepo {
    * Allocate the next version_number for shotId and insert a new row at status
    * 'submitted' inside a single transaction. Retries ONCE on UNIQUE violation
    * (rare race per Pitfall 3); second failure surfaces CONCURRENT_SUBMIT_CONFLICT.
+   *
+   * Phase 3 extension (D-PROV-33, RESEARCH.md landmine #8): when the caller is
+   * reproduce/iterate, pass `lineage` to write parent_version_id + lineage_type
+   * at INSERT time. NEVER via follow-up UPDATE — a reader observing the row
+   * between INSERT and UPDATE would briefly see `lineage_type: null` on a
+   * reproduce/iterate row, which is a lie. Insert-time write closes that window.
    */
-  insertVersion(shotId: string, notes?: string): Version {
+  insertVersion(
+    shotId: string,
+    notes?: string,
+    lineage?: { parent_version_id?: string; lineage_type?: 'reproduce' | 'iterate' },
+  ): Version {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return this.doInsert(shotId, notes);
+        return this.doInsert(shotId, notes, lineage);
       } catch (err) {
         if (isUniqueViolation(err) && attempt === 0) continue;
         if (isUniqueViolation(err)) {
@@ -66,7 +76,11 @@ export class VersionRepo {
     throw new TypedError('CONCURRENT_SUBMIT_CONFLICT', 'Exhausted retries (unreachable)');
   }
 
-  private doInsert(shotId: string, notes?: string): Version {
+  private doInsert(
+    shotId: string,
+    notes?: string,
+    lineage?: { parent_version_id?: string; lineage_type?: 'reproduce' | 'iterate' },
+  ): Version {
     return this.db.transaction((tx) => {
       const maxRow = tx
         .select({ m: sql<number>`COALESCE(MAX(${versions.version_number}), 0)` })
@@ -80,7 +94,7 @@ export class VersionRepo {
         version_number: versionNumber,
         status: 'submitted',
         job_id: null,
-        parent_version_id: null,
+        parent_version_id: lineage?.parent_version_id ?? null,
         notes: notes ?? null,
         created_at: Date.now(),
         completed_at: null,
@@ -88,9 +102,9 @@ export class VersionRepo {
         error_message: null,
         outputs_json: null,
         // Phase 3 addition — D-PROV-33: NULL marks originals from generation.submit.
-        // Plan 2 sets this at INSERT time for reproduce/iterate via the repo's
-        // extended insertVersion signature.
-        lineage_type: null,
+        // Written at INSERT time for reproduce/iterate via the `lineage` param —
+        // NEVER via follow-up UPDATE (LANDMINE #8).
+        lineage_type: lineage?.lineage_type ?? null,
       };
       tx.insert(versions).values(row).run();
       return row;

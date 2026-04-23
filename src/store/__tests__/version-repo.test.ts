@@ -204,3 +204,78 @@ describe('VersionRepo — allocation, state transitions, immutability', () => {
     expect(got.job_id).toBe('prompt_xyz');
   });
 });
+
+describe('VersionRepo.insertVersion — Phase 3 lineage params (D-PROV-33)', () => {
+  let repo: VersionRepo;
+  let hierarchy: HierarchyRepo;
+  let shotId: string;
+
+  beforeEach(() => {
+    const { db } = makeInMemoryDb();
+    repo = new VersionRepo(db);
+    hierarchy = new HierarchyRepo(db);
+    const ws = hierarchy.createWorkspace('ws1');
+    const proj = hierarchy.createProject(ws.id, 'p1');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const shot = hierarchy.createShot(seq.id, 'sh010');
+    shotId = shot.id;
+  });
+
+  test('omitted lineage → parent_version_id=null, lineage_type=null (Phase 2 default)', () => {
+    const v = repo.insertVersion(shotId);
+    expect(v.parent_version_id).toBeNull();
+    expect(v.lineage_type).toBeNull();
+  });
+
+  test('empty lineage object → parent_version_id=null, lineage_type=null', () => {
+    const v = repo.insertVersion(shotId, undefined, {});
+    expect(v.parent_version_id).toBeNull();
+    expect(v.lineage_type).toBeNull();
+  });
+
+  test("lineage: reproduce → parent_version_id + lineage_type='reproduce' set at INSERT", () => {
+    const parent = repo.insertVersion(shotId);
+    const child = repo.insertVersion(shotId, 'reproduced', {
+      parent_version_id: parent.id,
+      lineage_type: 'reproduce',
+    });
+    expect(child.parent_version_id).toBe(parent.id);
+    expect(child.lineage_type).toBe('reproduce');
+    expect(child.notes).toBe('reproduced');
+    expect(child.version_number).toBe(2);
+  });
+
+  test("lineage: iterate → parent_version_id + lineage_type='iterate' set at INSERT", () => {
+    const parent = repo.insertVersion(shotId);
+    const child = repo.insertVersion(shotId, undefined, {
+      parent_version_id: parent.id,
+      lineage_type: 'iterate',
+    });
+    expect(child.parent_version_id).toBe(parent.id);
+    expect(child.lineage_type).toBe('iterate');
+  });
+
+  test('round-trip via getVersion preserves lineage fields', () => {
+    const parent = repo.insertVersion(shotId);
+    const child = repo.insertVersion(shotId, undefined, {
+      parent_version_id: parent.id,
+      lineage_type: 'reproduce',
+    });
+    const reloaded = repo.getVersion(child.id)!;
+    expect(reloaded.parent_version_id).toBe(parent.id);
+    expect(reloaded.lineage_type).toBe('reproduce');
+  });
+
+  test('lineage params do not break existing version_number monotonicity on the shot', () => {
+    const parent = repo.insertVersion(shotId);
+    const child1 = repo.insertVersion(shotId, undefined, {
+      parent_version_id: parent.id,
+      lineage_type: 'reproduce',
+    });
+    const child2 = repo.insertVersion(shotId, undefined, {
+      parent_version_id: parent.id,
+      lineage_type: 'iterate',
+    });
+    expect([parent.version_number, child1.version_number, child2.version_number]).toEqual([1, 2, 3]);
+  });
+});

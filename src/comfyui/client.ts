@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { TypedError } from '../engine/errors.js';
 import { extractFirstNodeError } from './format.js';
+import { extractTextChunk } from './png-metadata.js';
 import { streamToPath } from '../utils/stream-to-path.js';
 import type {
   SubmitRequest,
@@ -453,6 +455,40 @@ export class ComfyUIClient {
           ? result.contentLength
           : bytes,
     };
+  }
+
+  /**
+   * Phase 3 (D-PROV-05, RESEARCH.md §D-PROV-05 Resolution): fetch the resolved
+   * prompt blob for a completed job from the already-downloaded PNG output.
+   *
+   * Implementation: read PNG tEXt 'prompt' chunk from disk via fs.promises.readFile
+   * → extractTextChunk (Plan 01 output) → JSON.parse. Returns null if the file
+   * is not a PNG, if the tEXt 'prompt' chunk is missing, if the chunk payload
+   * fails to JSON-parse, or if the parsed value is not a plain object. Never
+   * throws — callers (GenerationEngine.downloadAndPersist) tolerate null by
+   * passing it to ProvenanceWriter.writeCompletedEvent, which stores
+   * `prompt_json: null`; reproduce/iterate then surface `PROVENANCE_UNAVAILABLE`
+   * when the agent tries to use that version.
+   *
+   * If a follow-up spike confirms /api/job/{id}/status or /api/history/{id}
+   * returns the resolved blob, this method's body can be swapped for an
+   * HTTP call with the same signature. The caller contract stays the same.
+   *
+   * DOES NOT make any HTTP call. Zero network I/O. Pure filesystem read.
+   */
+  async fetchResolvedPrompt(pngPath: string): Promise<Record<string, unknown> | null> {
+    try {
+      const buf = await readFile(pngPath);
+      const promptStr = extractTextChunk(buf, 'prompt');
+      if (!promptStr) return null;
+      const parsed = JSON.parse(promptStr) as unknown;
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed as Record<string, unknown>;
+    } catch {
+      return null;
+    }
   }
 
   private isAllowedHost(host: string): boolean {

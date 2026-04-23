@@ -1,4 +1,8 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import * as os from 'node:os';
+import * as pth from 'node:path';
+import * as fsp from 'node:fs/promises';
+import { nanoid } from 'nanoid';
 import {
   ComfyUIClient,
   DEFAULT_COMFYUI_API_BASE,
@@ -935,5 +939,107 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     });
     const out = await client.download('file.png');
     expect(out.url).toContain('tenant.example.com');
+  });
+});
+
+describe('ComfyUIClient.fetchResolvedPrompt (D-PROV-05)', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-fetch-prompt-${nanoid(6)}-`));
+  });
+
+  afterEach(async () => {
+    await fsp.rm(tempDir, { recursive: true, force: true });
+  });
+
+  /**
+   * Build a minimal valid PNG with a tEXt chunk carrying (key, value).
+   * CRC is zeroed — png-metadata.ts does NOT validate CRC (per extractTextChunk
+   * comment: ComfyUI writes correct CRCs, and strict CRC checking would make
+   * the parser intolerant of otherwise-valid test fixtures).
+   */
+  function buildPngWithTextChunk(key: string, value: string): Buffer {
+    const magic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const typeBuf = Buffer.from('tEXt', 'latin1');
+    const keyBuf = Buffer.from(key, 'latin1');
+    const nullSep = Buffer.from([0x00]);
+    const valueBuf = Buffer.from(value, 'utf8');
+    const data = Buffer.concat([keyBuf, nullSep, valueBuf]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length, 0);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(0, 0);
+    const chunk = Buffer.concat([length, typeBuf, data, crc]);
+    const iendLen = Buffer.from([0x00, 0x00, 0x00, 0x00]);
+    const iendType = Buffer.from('IEND', 'latin1');
+    const iendCrc = Buffer.from([0xae, 0x42, 0x60, 0x82]);
+    const iend = Buffer.concat([iendLen, iendType, iendCrc]);
+    return Buffer.concat([magic, chunk, iend]);
+  }
+
+  test('valid PNG with valid JSON prompt chunk → returns parsed object', async () => {
+    const blob = { '3': { class_type: 'KSampler', inputs: { seed: 42 } } };
+    const png = buildPngWithTextChunk('prompt', JSON.stringify(blob));
+    const pngPath = pth.join(tempDir, 'out.png');
+    await fsp.writeFile(pngPath, png);
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pngPath);
+    expect(result).toEqual(blob);
+  });
+
+  test('PNG missing prompt chunk → returns null', async () => {
+    const png = buildPngWithTextChunk('workflow', '{}');
+    const pngPath = pth.join(tempDir, 'out.png');
+    await fsp.writeFile(pngPath, png);
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pngPath);
+    expect(result).toBeNull();
+  });
+
+  test('PNG with malformed JSON in prompt chunk → returns null', async () => {
+    const png = buildPngWithTextChunk('prompt', 'not-json{');
+    const pngPath = pth.join(tempDir, 'out.png');
+    await fsp.writeFile(pngPath, png);
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pngPath);
+    expect(result).toBeNull();
+  });
+
+  test('prompt chunk JSON is an array (not object) → returns null', async () => {
+    const png = buildPngWithTextChunk('prompt', '[1,2,3]');
+    const pngPath = pth.join(tempDir, 'out.png');
+    await fsp.writeFile(pngPath, png);
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pngPath);
+    expect(result).toBeNull();
+  });
+
+  test('file does not exist → returns null (never throws)', async () => {
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pth.join(tempDir, 'missing.png'));
+    expect(result).toBeNull();
+  });
+
+  test('non-PNG file (bad magic) → returns null', async () => {
+    const bogus = Buffer.from('not a png at all');
+    const pngPath = pth.join(tempDir, 'bogus.png');
+    await fsp.writeFile(pngPath, bogus);
+    const client = new ComfyUIClient(KEY, BASE);
+    const result = await client.fetchResolvedPrompt(pngPath);
+    expect(result).toBeNull();
+  });
+
+  test('NO network I/O — fetchImpl is never called', async () => {
+    let fetchCalls = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () => {
+        fetchCalls++;
+        return jsonResponse(200, {});
+      }),
+    });
+    const pngPath = pth.join(tempDir, 'missing.png');
+    await client.fetchResolvedPrompt(pngPath);
+    expect(fetchCalls).toBe(0);
   });
 });
