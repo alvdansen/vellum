@@ -86,12 +86,17 @@ async function buildAssetStack() {
   // assert description + Zod + handler body end-to-end).
   const server = new McpServer({ name: 'test', version: '0.0.0' });
   registerAsset(server, engine);
+  // MCP SDK 1.29 stores the registered callback under the `handler` key (see
+  // node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js _createRegisteredTool).
   const registered = (
     server as unknown as {
-      _registeredTools: Record<string, { callback: AssetHandler; description?: string }>;
+      _registeredTools: Record<
+        string,
+        { handler: AssetHandler; description?: string }
+      >;
     }
   )._registeredTools;
-  const handler = registered.asset!.callback as AssetHandler;
+  const handler = registered.asset!.handler as AssetHandler;
   const description = registered.asset!.description ?? '';
 
   return {
