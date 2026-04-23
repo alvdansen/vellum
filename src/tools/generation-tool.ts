@@ -22,7 +22,7 @@ const SubmitInput = z.object({
   action: z.literal('submit'),
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
   // SEC-02: cap node count at the tool boundary. Byte-size cap is enforced
-  // in validateWorkflowFormat (engine-layer) so future REST adapters inherit
+  // in the engine-layer workflow-format check so future REST adapters inherit
   // the same guard.
   workflow_json: z
     .record(z.string(), z.unknown())
@@ -41,7 +41,48 @@ const StatusInput = z.object({
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
 });
 
-const GenerationInputSchema = z.discriminatedUnion('action', [SubmitInput, StatusInput]);
+/**
+ * D-PROV-12: reproduce input — action + source version_id + optional notes.
+ * Response is shaped as the existing submitted entity envelope PLUS the
+ * ALWAYS-PRESENT `reproduction_warnings: string[]` field (D-PROV-28 honesty).
+ */
+const ReproduceInput = z.object({
+  action: z.literal('reproduce'),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
+/**
+ * D-PROV-13, D-PROV-21: iterate input — action + source version_id +
+ * node-scoped overrides (deep-merged at the inputs level by the engine)
+ * + optional seed convenience shortcut (D-PROV-22 — resolved to KSampler.inputs.seed
+ * by the engine; 0/>1 KSampler surfaces as ITERATE_INVALID_PATCH).
+ *
+ * NOT a JSON Patch. The overrides shape is `Record<nodeId, { inputs?, class_type? }>`.
+ * Compared to RFC 6902 `{ op, path, value }` arrays, this shape is ComfyUI-native
+ * (node ids are the natural addressing key) and cannot introduce prototype
+ * pollution — keys are structurally constrained to the source prompt blob.
+ */
+const IterateInput = z.object({
+  action: z.literal('iterate'),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
+  overrides: z.record(
+    z.string().min(1),
+    z.object({
+      inputs: z.record(z.string(), z.unknown()).optional(),
+      class_type: z.string().optional(),
+    }),
+  ).optional(),
+  seed: z.number().int().optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
+const GenerationInputSchema = z.discriminatedUnion('action', [
+  SubmitInput,
+  StatusInput,
+  ReproduceInput,
+  IterateInput,
+]);
 
 /**
  * Render the version entity for tool responses — adds `version_label` (D-GEN-17).
@@ -124,20 +165,30 @@ export function registerGeneration(server: McpServer, engine: Engine) {
     {
       title: 'Generation',
       description:
-        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status. " +
+        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status, reproduce, iterate. " +
         "State machine (D-GEN-18): submitted → running → completed | failed. " +
-        "Dual error model (IAC-03): submit and status return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found).",
+        "Dual error model (IAC-03): submit/status/reproduce/iterate return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found, version-not-completed, reproduce-blocked, iterate-invalid-patch). " +
+        "reproduce re-submits a completed version's resolved prompt blob verbatim (byte-identical) and returns a new version with lineage_type='reproduce' plus an always-present reproduction_warnings: string[] array (empty when no drift indicators — D-PROV-28 honesty). " +
+        "iterate loads the source version's prompt_json (or workflow_json for failed sources per D-PROV-24), applies node-scoped overrides { '<nodeId>': { inputs?, class_type? } } and/or an optional seed shortcut (valid only when exactly one KSampler is present), re-validates the merged blob, and submits as a new version with lineage_type='iterate'.",
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `GenerationInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
-        action: z.enum(['submit', 'status']),
+        action: z.enum(['submit', 'status', 'reproduce', 'iterate']),
         shot_id: z.string().optional(),
         workflow_json: z.record(z.string(), z.unknown()).optional(),
         notes: z.string().optional(),
         version_id: z.string().optional(),
+        overrides: z.record(
+          z.string(),
+          z.object({
+            inputs: z.record(z.string(), z.unknown()).optional(),
+            class_type: z.string().optional(),
+          }),
+        ).optional(),
+        seed: z.number().int().optional(),
       },
     },
     async (rawInput) => {
@@ -157,6 +208,30 @@ export function registerGeneration(server: McpServer, engine: Engine) {
           case 'status':
             return toolOk(
               shapeVersionEntity(await engine.getGenerationStatus(input.version_id)),
+            );
+          case 'reproduce': {
+            const result = await engine.reproduceVersion(input.version_id, input.notes);
+            // D-PROV-12 / D-PROV-28: reproduction_warnings is ALWAYS on the response.
+            // The spread precedes reproduction_warnings so the entity/breadcrumb
+            // envelope stays at the top level exactly as submit/status return it.
+            return toolOk({
+              ...shapeVersionEntity({
+                entity: result.entity,
+                breadcrumb: result.breadcrumb,
+              }),
+              reproduction_warnings: result.reproduction_warnings,
+            });
+          }
+          case 'iterate':
+            return toolOk(
+              shapeVersionEntity(
+                await engine.iterateFromVersion(
+                  input.version_id,
+                  input.overrides,
+                  input.seed,
+                  input.notes,
+                ),
+              ),
             );
           default: {
             const _exhaustive: never = input;
