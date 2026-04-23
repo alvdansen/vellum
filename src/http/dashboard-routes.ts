@@ -8,10 +8,10 @@
 // 4xx/5xx response (D-WEBUI-32).
 //
 // Architecture purity (D-WEBUI-28 + D-WEBUI-31): this file has ZERO MCP SDK
-// imports, zero better-sqlite3 imports, and zero drizzle-orm imports. All
-// data moves through the Engine interface. (Docstring phrasing per Plan
-// 04-03 convention — avoid the sentinel package string because
-// architecture-purity.test.ts does substring grep against file text.)
+// imports and zero SQLite imports (ORM + driver). All data moves through
+// the Engine interface. Docstring phrasing per Plan 04-03 convention:
+// avoid sentinel package strings (MCP, ORM, DB driver) because
+// architecture-purity.test.ts does substring grep against file text.
 //
 // One exception: GET /api/versions/:id/output — streams a binary file from
 // disk via `fs.createReadStream`. This is the single FS-boundary route in the

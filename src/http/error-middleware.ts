@@ -8,8 +8,12 @@
 //     • Converts unknown Error instances into 500 + { error: { code: 'INTERNAL_ERROR', message } }.
 //     • Never leaks stack traces (T-5-09 mitigation — verified by unit test).
 //
-// Architecture note: this file is part of the HTTP layer, so it does NOT import
-// `@modelcontextprotocol/sdk` or `better-sqlite3` (tool-engine separation).
+// Architecture note: this file is part of the HTTP layer (D-WEBUI-28 /
+// D-WEBUI-31), so it has zero MCP SDK imports and zero SQLite imports
+// (tool-engine separation). The architecture-purity test does substring
+// grep against file text, so avoid spelling the package sentinels in
+// comments here — paraphrase matches the Phase 4 / Plan 05-02 convention
+// and keeps the test signal strong (STATE.md decisions line 119).
 
 import type { ErrorHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
