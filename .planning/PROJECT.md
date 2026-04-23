@@ -15,15 +15,15 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 - [x] Project hierarchy: workspace → project → sequence → shot → version — *Validated in Phase 1: foundation-hierarchy (hierarchy + breadcrumbs live end-to-end over stdio + Streamable HTTP; 76 unit tests + 56 live-client smoke checks green)*
 - [x] MCP server wraps ComfyUI Cloud API as structured tools (submit, status) with async non-blocking generation and exponential-backoff polling — *Validated in Phase 2: comfyui-generation (GEN-01..GEN-07, 188 tests + 1 gated live-smoke; tool budget 5/12; src/comfyui/** architecture-purity enforced)*
 - [x] Automatic versioning on every generation (never overwrites) — *Validated in Phase 2 via VersionRepo MAX(version_number)+1 insert + append-only markCompleted guard*
+- [x] Full provenance capture: workflow JSON, prompt JSON, seed, model names (checksums nullable), timestamp — *Validated in Phase 3: provenance-versioning (PROV-01..06, append-only ProvenanceRepo + two-event submit/terminal model; 462 unit tests + 15/15 protocol-level MCP SDK UAT green)*
+- [x] Diff between versions — *Validated in Phase 3 via pure diffVersions returning structured {summary, changes:{params, models, seed, workflow, metadata}}; surfaced through `version` MCP tool `diff` action*
+- [x] Reproduce any version exactly — *Validated in Phase 3 via engine.reproduceVersion re-submitting stored prompt_json verbatim with lineage_type='reproduce'; reproduction_warnings array always present per D-PROV-28*
+- [x] Iterate from a version with specified changes — *Validated in Phase 3 via engine.iterateFromVersion applying node-scoped overrides (FORBIDDEN_KEYS prototype-pollution guarded) + optional seed shortcut; lineage_type='iterate' + parent_version_id tracked*
 
 ### Active
 
-- [ ] Full provenance capture: workflow JSON, parameters, seed, model checksums, timestamp, artist, machine — *Phase 2 captures workflow_json, prompt_json, job_id, status, outputs; PROV-* details land in Phase 3*
 - [ ] Asset tagging and arbitrary metadata attachment
 - [ ] Asset query/filter by tags, metadata, project hierarchy, date range
-- [ ] Diff between versions ("what changed between v002 and v003?")
-- [ ] Reproduce any version exactly (re-run with identical params)
-- [ ] Iterate from a version (same params + specified changes)
 - [ ] Multi-backend routing (multiple ComfyUI instances by capability)
 - [ ] Function-calling adapter for non-Anthropic agents (open-source, not Claude-locked)
 - [ ] Light web UI showing project hierarchy, provenance trail, and generation status
@@ -99,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 after Phase 2 completion (comfyui-generation)*
+*Last updated: 2026-04-23 after Phase 3 completion (provenance-versioning) — 3/5 phases done*
