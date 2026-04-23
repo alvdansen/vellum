@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-02 — provenance wired into submit/terminal lifecycle; reproduce/iterate + Engine facade methods landed
-last_updated: "2026-04-23T02:07:27.542Z"
+status: verifying
+stopped_at: Completed 03-03 — MCP surface for provenance lands (version tool get/list/diff/provenance + generation reproduce/iterate); Phase 3 ready for verification
+last_updated: "2026-04-23T02:45:18.840Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 
 Phase: 03 (provenance-versioning) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-23
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [█████████░] 89%
 | Phase 01 P03 | 11min | 9 tasks tasks | 8 files files |
 | Phase 03 P01 | 11min | 9 tasks | 22 files |
 | Phase 03 P02 | 17min | 3 tasks | 18 files |
+| Phase 03 P03 | 12min | 5 tasks tasks | 8 files files |
 
 ## Accumulated Context
 
@@ -90,6 +91,12 @@ Recent decisions affecting current work:
 - [Plan 03-02] submitInternal is private shared helper for submit/reproduce/iterate; preserves submitGeneration public signature (LANDMINE #1) while three methods share the two-phase submit + provenance-write body
 - [Plan 03-02] reproduce throws PROVENANCE_UNAVAILABLE on null prompt_json; iterate-from-failed uses workflow_json (D-PROV-24 asymmetry — reproduce is verbatim-replay contract, iterate is authored-intent-plus-patch contract)
 - [Plan 03-02] reproduction_warnings[] always non-empty in Phase 3 — model hashes always null (checksums deferred), so every reproduce emits per-model 'not checksummed' warnings or the generic 'no model metadata' notice (T-03-02-03 spoofing mitigation, D-PROV-28)
+- [Plan 03-03] D-PROV-28 reproduction_warnings layered AFTER shapeVersionEntity spread — missing key is bug; empty array is honest default in Phase 3 (checksums deferred)
+- [Plan 03-03] NO JSON-Patch patch field on iterate — D-PROV-13 locks shape as node-scoped overrides Record<string, {inputs?, class_type?}> + optional seed shortcut; Zod discriminated union silently drops patch:[] (regression test asserts this)
+- [Plan 03-03] Tool layer has zero status branching on iterate — engine branches internally per D-PROV-24 (completed→prompt_json, failed→workflow_json, submitted/running→VERSION_NOT_COMPLETED); tool passes version_id/overrides/seed/notes through unchanged
+- [Plan 03-03] Tool-budget test rewritten to use readFile + multi-line regex /server\.registerTool\(\s*'([a-z_-]+)'/gs — single-line grep was passing vacuously because SDK call signature spreads name literal across lines; portable across BSD/GNU grep
+- [Plan 03-03] Tool budget at exactly 6 of 12 (D-PROV-07) — workspace/project/sequence/shot/generation/version; assertion checks count AND name-set (alphabetically sorted for stable snapshot); zero asset/collection/search leakage
+- [Plan 03-03 UAT] Approved on 462 unit tests + 15/15 protocol-level MCP SDK gates via verify-phase3-uat.mts (untracked driver at repo root); live-smoke endpoint drift (api.comfy.org 404, cloud.comfy.org 401) diagnosed as pre-existing infrastructure issue — not Plan 3 defect
 
 ### Pending Todos
 
@@ -110,8 +117,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T02:07:27.537Z
-Stopped at: Completed 03-02 — provenance wired into submit/terminal lifecycle; reproduce/iterate + Engine facade methods landed
+Last session: 2026-04-23T02:45:18.835Z
+Stopped at: Completed 03-03 — MCP surface for provenance lands (version tool get/list/diff/provenance + generation reproduce/iterate); Phase 3 ready for verification
 Resume file: None
 
 **Planned Phase:** 03 (provenance-versioning) — 3 plans — 2026-04-23T01:26:14.248Z
