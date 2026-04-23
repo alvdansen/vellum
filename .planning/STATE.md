@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-04-23T06:05:05.487Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-04-23T06:27:24.786Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 04 (asset-management) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-04-23
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [█████████░] 86%
 | Phase 04 P01 | 10min | 3 tasks | 9 files |
 | Phase 04 P02 | 10min | 3 tasks tasks | 4 files files |
 | Phase 04 P03 | 11min | 2 tasks tasks | 15 files files |
+| Phase 04 P04-04 | 15min | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Recent decisions affecting current work:
 - [Plan 04-03] INV-ASST-10 ordering test uses raw-SQL UPDATE to set distinct created_at timestamps (1000/2000/3000) then asserts primary DESC ordering; a second subcase forces all-equal timestamps and asserts the id-DESC tiebreaker via sort().reverse() — cleanly separates primary-sort and tiebreaker contracts of D-ASST-16
 - [Plan 04-03] setMetadata cap check is upsert-aware: reads listMetadataForVersion to detect existing-key upserts (bypass cap) vs new-key inserts (cap enforced). Small indexed-read cost for correct upsert semantics when version is at MAX_METADATA_PER_VERSION=100
 - [Plan 04-03] Architecture-purity test uses substring grep; JSDoc citing 'MCP SDK imports' (not the sentinel '@modelcontextprotocol/sdk' string) avoids false positives — same convention Phase 3 had to adopt
+- [Plan 04-04] MCP Inspector visual check replaced by wire-level UAT driver verify-phase4-tool-surface.mts (6/6 pass) — follows Phase 3 precedent and MEMORY.md 'don't punt on tests' rule
+- [Plan 04-04] SDK _registeredTools handler key is 'handler' not 'callback' in this SDK version; Rule 3 fix in 05d2f07; version-tool.test.ts uses same internal key
 
 ### Pending Todos
 
@@ -134,8 +137,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T06:05:05.482Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-04-23T06:27:24.780Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
 
 **Planned Phase:** 4 (Asset Management) — 5 plans — 2026-04-23T05:16:28.785Z
