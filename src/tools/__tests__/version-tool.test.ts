@@ -7,7 +7,12 @@ import * as os from 'node:os';
 import * as pth from 'node:path';
 import * as fsp from 'node:fs/promises';
 import { nanoid } from 'nanoid';
-import { makeInMemoryDb } from '../../test-utils/fixtures.js';
+import {
+  makeInMemoryDb,
+  seedAssetFixtures,
+  versionWithTags,
+  versionWithMetadata,
+} from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../../store/hierarchy-repo.js';
 import { VersionRepo } from '../../store/version-repo.js';
 import { ProvenanceRepo } from '../../store/provenance-repo.js';
@@ -24,7 +29,8 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from '../shape.js';
-import type { Version, Breadcrumb } from '../../types/hierarchy.js';
+import type { Breadcrumb } from '../../types/hierarchy.js';
+import type { VersionWithAssets } from '../../types/assets.js';
 import type { ProvenanceEvent, DiffResponse } from '../../types/provenance.js';
 
 type ToolResponse = {
@@ -34,7 +40,8 @@ type ToolResponse = {
 };
 
 async function buildStack() {
-  const { db } = makeInMemoryDb();
+  const testDb = makeInMemoryDb();
+  const { db } = testDb;
   const hierarchy = new HierarchyRepo(db);
   const versions = new VersionRepo(db);
   const provenanceRepo = new ProvenanceRepo(db);
@@ -64,10 +71,15 @@ async function buildStack() {
     shotId: shot.id,
     shotBId: shotB.id,
     tempRoot,
+    // Phase 4: expose the TestDb so fixture helpers (versionWithTags /
+    // versionWithMetadata) can attach rows to the stack's database.
+    testDb,
   };
 }
 
-function shapeVersion(r: { entity: Version; breadcrumb: Breadcrumb }) {
+function shapeVersion(r: { entity: VersionWithAssets; breadcrumb: Breadcrumb }) {
+  // Phase 4 (D-ASST-19): engine.getVersion now returns VersionWithAssets;
+  // spread carries tags + metadata through automatically.
   return {
     entity: {
       ...r.entity,
@@ -106,6 +118,9 @@ const ListInput = z.object({
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Phase 4 — D-ASST-20 opt-in hydration flags (mirror production tool schema).
+  include_tags: z.boolean().default(false),
+  include_metadata: z.boolean().default(false),
 });
 const DiffInputSchema = z.object({
   action: z.literal('diff'),
@@ -138,7 +153,12 @@ async function invokeList(stack: { engine: Engine }, input: any): Promise<ToolRe
   try {
     const p = ListInput.parse(input);
     return toolOk(
-      shapeList(stack.engine.listVersionsForShot(p.shot_id, p.limit, p.offset)),
+      shapeList(
+        stack.engine.listVersionsForShot(p.shot_id, p.limit, p.offset, {
+          include_tags: p.include_tags,
+          include_metadata: p.include_metadata,
+        }),
+      ),
     ) as ToolResponse;
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -379,5 +399,160 @@ describe('version tool — register smoke', () => {
     // assert the handler body was structurally correct via the invokeX
     // helpers above (direct mirror), which is how generation-tool.test.ts
     // handles the same concern.
+  });
+});
+
+// =============================================================================
+// Phase 4 extensions — INV-ASST-15, 16, 17, 22, 23, 25
+// =============================================================================
+//
+// Traceability:
+//   INV-ASST-15 → version.get always inlines tags (ASC) + metadata (ASC by key),
+//                 including empty arrays when no attachments (D-ASST-19)
+//   INV-ASST-16 → version.list default omits tags per item (D-ASST-20 default)
+//   INV-ASST-17 → version.list include_tags=true carries tags: string[] per item
+//   INV-ASST-22 → version.list default omits metadata per item (D-ASST-20 default)
+//   INV-ASST-23 → version.list include_metadata=true carries metadata per item
+//   INV-ASST-25 → version.provenance UNCHANGED — tags/metadata never in event stream
+//                 (D-ASST-21)
+
+describe('version tool — get — Phase 4 hydration (D-ASST-19, INV-ASST-15)', () => {
+  it('INV-ASST-15 entity.tags is sorted ASC alphabetically across mixed-case seed order', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    // Seed tags out of alphabetical order to prove the engine sorts them.
+    versionWithTags(stack.testDb, row.id, ['zebra', 'apple', 'mango']);
+    const res = await invokeGet(stack, { action: 'get', version_id: row.id });
+    expect(res.isError).toBeUndefined();
+    const entity = (res.structuredContent as { entity: Record<string, unknown> }).entity;
+    expect(entity.tags).toEqual(['apple', 'mango', 'zebra']);
+  });
+
+  it('INV-ASST-15 entity.metadata is sorted ASC by key across mixed-case seed order', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    // Seed metadata keys out of alphabetical order; assert they come back ASC by key.
+    versionWithMetadata(stack.testDb, row.id, {
+      zeta: '3',
+      alpha: '1',
+      mu: '2',
+    });
+    const res = await invokeGet(stack, { action: 'get', version_id: row.id });
+    expect(res.isError).toBeUndefined();
+    const entity = (res.structuredContent as { entity: Record<string, unknown> }).entity;
+    expect(entity.metadata).toEqual([
+      { key: 'alpha', value: '1' },
+      { key: 'mu', value: '2' },
+      { key: 'zeta', value: '3' },
+    ]);
+  });
+
+  it('INV-ASST-15 bare version (no tags, no metadata) returns tags:[] and metadata:[] (not null/undefined)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    // Do NOT attach any tags or metadata.
+    const res = await invokeGet(stack, { action: 'get', version_id: row.id });
+    expect(res.isError).toBeUndefined();
+    const entity = (res.structuredContent as { entity: Record<string, unknown> }).entity;
+    // Explicit empty-array contract — agents can .map/.filter without branches.
+    expect(entity.tags).toEqual([]);
+    expect(entity.metadata).toEqual([]);
+  });
+});
+
+describe('version tool — list — Phase 4 include flags (D-ASST-20, INV-ASST-16, 17, 22, 23)', () => {
+  it('INV-ASST-16, INV-ASST-22 default (no include flags) omits tags AND metadata per item', async () => {
+    // Seed 3 versions with tags + metadata via fixture helpers using the stack's db.
+    const seeded = await seedAssetFixtures(stack.testDb, {
+      versionCount: 3,
+      tagsPerVersion: 2,
+      metadataPerVersion: 2,
+    });
+    // Use the shot from the fixture (a distinct hierarchy from stack.shotId).
+    const res = await invokeList(stack, {
+      action: 'list',
+      shot_id: seeded.hierarchy.shotId,
+      limit: 10,
+    });
+    expect(res.isError).toBeUndefined();
+    const items = (res.structuredContent as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+      expect(item).not.toHaveProperty('tags');
+      expect(item).not.toHaveProperty('metadata');
+    }
+  });
+
+  it('INV-ASST-17 include_tags=true adds tags: string[] per item (ASC); metadata still omitted', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    versionWithTags(stack.testDb, row.id, ['charlie', 'alpha', 'bravo']);
+    versionWithMetadata(stack.testDb, row.id, { artist: 'tim' }); // seeded but NOT opted in
+    const res = await invokeList(stack, {
+      action: 'list',
+      shot_id: stack.shotId,
+      include_tags: true,
+    });
+    expect(res.isError).toBeUndefined();
+    const items = (res.structuredContent as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0].tags).toEqual(['alpha', 'bravo', 'charlie']);
+    // Not opted in — metadata must remain absent.
+    expect(items[0]).not.toHaveProperty('metadata');
+  });
+
+  it('INV-ASST-23 include_metadata=true (alone) carries metadata: Array<{key,value}> ASC by key; tags still omitted', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    versionWithTags(stack.testDb, row.id, ['hero']); // seeded but NOT opted in
+    versionWithMetadata(stack.testDb, row.id, { department: 'vfx', artist: 'tim' });
+    const res = await invokeList(stack, {
+      action: 'list',
+      shot_id: stack.shotId,
+      include_metadata: true,
+    });
+    expect(res.isError).toBeUndefined();
+    const items = (res.structuredContent as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0].metadata).toEqual([
+      { key: 'artist', value: 'tim' },
+      { key: 'department', value: 'vfx' },
+    ]);
+    // Not opted in — tags must remain absent.
+    expect(items[0]).not.toHaveProperty('tags');
+  });
+
+  it('INV-ASST-17, INV-ASST-23 include_tags=true AND include_metadata=true carries both per item', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    versionWithTags(stack.testDb, row.id, ['final', 'approved']);
+    versionWithMetadata(stack.testDb, row.id, { status: 'complete' });
+    const res = await invokeList(stack, {
+      action: 'list',
+      shot_id: stack.shotId,
+      include_tags: true,
+      include_metadata: true,
+    });
+    expect(res.isError).toBeUndefined();
+    const items = (res.structuredContent as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0].tags).toEqual(['approved', 'final']);
+    expect(items[0].metadata).toEqual([{ key: 'status', value: 'complete' }]);
+  });
+});
+
+describe('version tool — provenance — Phase 4 non-regression (D-ASST-21, INV-ASST-25)', () => {
+  it('INV-ASST-25 provenance response does NOT surface tags or metadata (not provenance)', async () => {
+    // Seed a version with both tags + metadata AND a submit/completed event,
+    // then assert the provenance response does NOT include any "tags":
+    // or "metadata": keys anywhere in its structuredContent.
+    const versionId = seedCompleted(stack, stack.shotId);
+    versionWithTags(stack.testDb, versionId, ['hero', 'approved']);
+    versionWithMetadata(stack.testDb, versionId, { artist: 'tim', department: 'vfx' });
+    const res = await invokeProvenance(stack, { action: 'provenance', version_id: versionId });
+    expect(res.isError).toBeUndefined();
+    const serialized = JSON.stringify(res.structuredContent);
+    // D-ASST-21 lock: tags/metadata are NEVER in the event stream. Walk the
+    // serialized JSON to catch any unexpected leak — belt-and-suspenders on top
+    // of the positive events[] assertion.
+    expect(serialized).not.toMatch(/"tags"\s*:/);
+    expect(serialized).not.toMatch(/"metadata"\s*:/);
+    // And the events array MUST still be present (Phase 3 contract preserved).
+    const sc = res.structuredContent as { events: { event_type: string }[] };
+    expect(sc.events.map((e) => e.event_type)).toEqual(['submitted', 'completed']);
   });
 });
