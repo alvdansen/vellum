@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-04-23T06:27:24.786Z"
+status: verifying
+stopped_at: Completed 04-05-PLAN.md — Phase 4 complete
+last_updated: "2026-04-23T06:42:29.077Z"
 last_activity: 2026-04-23
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
-  completed_plans: 13
-  percent: 93
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 
 Phase: 04 (asset-management) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-23
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 93%
 | Phase 04 P02 | 10min | 3 tasks tasks | 4 files files |
 | Phase 04 P03 | 11min | 2 tasks tasks | 15 files files |
 | Phase 04 P04-04 | 15min | 4 tasks | 7 files |
+| Phase 04 P05 | 11min | 3 tasks tasks | 3 files files |
 
 ## Accumulated Context
 
@@ -117,6 +118,11 @@ Recent decisions affecting current work:
 - [Plan 04-03] Architecture-purity test uses substring grep; JSDoc citing 'MCP SDK imports' (not the sentinel '@modelcontextprotocol/sdk' string) avoids false positives — same convention Phase 3 had to adopt
 - [Plan 04-04] MCP Inspector visual check replaced by wire-level UAT driver verify-phase4-tool-surface.mts (6/6 pass) — follows Phase 3 precedent and MEMORY.md 'don't punt on tests' rule
 - [Plan 04-04] SDK _registeredTools handler key is 'handler' not 'callback' in this SDK version; Rule 3 fix in 05d2f07; version-tool.test.ts uses same internal key
+- [Plan 04-05] DbWithClient widening re-introduced at src/test-utils/fixtures.ts top-level to satisfy TagRepo/MetadataRepo constructor arity — mirrors Plan 04-02 test-layer pattern; Rule 3 blocking fix
+- [Plan 04-05] Dropped unused Version type import from version-tool.ts after widening shapeVersionEntity to VersionWithAssets — type-level reference no longer needed
+- [Plan 04-05] Added 8 test cases instead of planned 6 — split list-include-flags into truth-table coverage (default both-off, tags-only, metadata-only, both-on) for cross-flag leak regression protection
+- [Plan 04-05] buildStack() exposes testDb (TestDb) so Phase 4 fixture helpers (versionWithTags/versionWithMetadata) can attach rows to the stack's in-memory database — non-breaking addition
+- [Plan 04-05] No Phase 2/3 existing test assertions required update — 15/15 existing tests passed unchanged because toBe/toBeUndefined/toHaveLength assertions don't intersect with the new inline tags/metadata keys
 
 ### Pending Todos
 
@@ -137,8 +143,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-23T06:27:24.780Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-04-23T06:42:29.071Z
+Stopped at: Completed 04-05-PLAN.md — Phase 4 complete
 Resume file: None
 
 **Planned Phase:** 4 (Asset Management) — 5 plans — 2026-04-23T05:16:28.785Z
