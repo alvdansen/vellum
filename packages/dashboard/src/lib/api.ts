@@ -28,8 +28,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Build a query string from a plain record; undefined values are skipped. */
-function qs(params?: Record<string, string | number | boolean | undefined>): string {
+/** Build a query string from a plain object; undefined values are skipped. */
+function qs(params?: Record<string, unknown>): string {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return '';
@@ -106,7 +106,9 @@ export function fetchVersions(
   params?: FetchVersionsParams,
 ): Promise<Version[]> {
   return fetchJson<Version[]>(
-    `/api/shots/${encodeURIComponent(shotId)}/versions${qs(params)}`,
+    `/api/shots/${encodeURIComponent(shotId)}/versions${qs(
+      params as Record<string, unknown> | undefined,
+    )}`,
   );
 }
 
