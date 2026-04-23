@@ -119,7 +119,7 @@ describe('createSseHandler', () => {
     await drain(res.body);
   });
 
-  it('forwards version.created as SSE data line with event name', async () => {
+  it('forwards version.created as SSE data line with event name (adapted shape)', async () => {
     const { app, engine } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -140,10 +140,18 @@ describe('createSseHandler', () => {
     const res = await resPromise;
     const text = await drain(res.body);
     expect(text).toContain('event: version.created');
-    expect(text).toContain(JSON.stringify(payload));
+    // CR-01 fix (Plan 05-13): adapter translates snake_case + breadcrumb to
+    // camelCase + derived label before JSON.stringify.
+    expect(text).toContain('"versionId":"ver_1"');
+    expect(text).toContain('"shotId":"shot_1"');
+    expect(text).toContain('"label":"v001"');
+    // Snake_case keys MUST NOT leak through.
+    expect(text).not.toMatch(/"version_id"/);
+    expect(text).not.toMatch(/"shot_id"/);
+    expect(text).not.toMatch(/"breadcrumb"/);
   });
 
-  it('forwards version.status_changed', async () => {
+  it('forwards version.status_changed (adapted shape — completed→complete)', async () => {
     const { app, engine } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -162,10 +170,16 @@ describe('createSseHandler', () => {
     controller.abort();
     const text = await drain((await resPromise).body);
     expect(text).toContain('event: version.status_changed');
-    expect(text).toContain(JSON.stringify(payload));
+    // CR-01 fix (Plan 05-13): adapter translates version_id → versionId and
+    // maps server status 'completed' → dashboard status 'complete'.
+    expect(text).toContain('"versionId":"ver_1"');
+    expect(text).toContain('"status":"complete"');
+    // Server status enum MUST NOT leak through.
+    expect(text).not.toMatch(/"status":"completed"/);
+    expect(text).not.toMatch(/"version_id"/);
   });
 
-  it('forwards tag.changed', async () => {
+  it('forwards tag.changed (adapted shape — add→created)', async () => {
     const { app, engine } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -184,10 +198,15 @@ describe('createSseHandler', () => {
     controller.abort();
     const text = await drain((await resPromise).body);
     expect(text).toContain('event: tag.changed');
-    expect(text).toContain(JSON.stringify(payload));
+    // CR-01 fix (Plan 05-13): adapter maps tag → tagId, action 'add' → 'created'.
+    expect(text).toContain('"tagId":"hero"');
+    expect(text).toContain('"action":"created"');
+    // Server-side action enum ('add') MUST NOT leak through.
+    expect(text).not.toMatch(/"action":"add"/);
+    expect(text).not.toMatch(/"version_id"/);
   });
 
-  it('forwards metadata.changed without leaking `value`', async () => {
+  it('forwards metadata.changed without leaking `value` (adapted shape)', async () => {
     const { app, engine } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -210,12 +229,18 @@ describe('createSseHandler', () => {
     controller.abort();
     const text = await drain((await resPromise).body);
     expect(text).toContain('event: metadata.changed');
-    expect(text).toContain(JSON.stringify(payload));
+    // CR-01 fix (Plan 05-13): adapter maps version_id → entityId, drops action/
+    // shot_id/at. T-5-02 `value` exclusion preserved by the adapter itself.
+    expect(text).toContain('"entityId":"ver_1"');
+    expect(text).toContain('"key":"artist"');
+    expect(text).not.toMatch(/"version_id"/);
+    expect(text).not.toMatch(/"shot_id"/);
+    expect(text).not.toMatch(/"action"/);
     // T-5-02 regression — no `"value"` substring anywhere in the SSE frame.
     expect(text).not.toMatch(/"value"\s*:/);
   });
 
-  it('forwards hierarchy.created', async () => {
+  it('forwards hierarchy.created (adapted shape — camelCase, null parent stripped)', async () => {
     const { app, engine } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -233,7 +258,16 @@ describe('createSseHandler', () => {
     controller.abort();
     const text = await drain((await resPromise).body);
     expect(text).toContain('event: hierarchy.created');
-    expect(text).toContain(JSON.stringify(payload));
+    // CR-01 fix (Plan 05-13): adapter renames snake_case → camelCase; parent_id
+    // null coerces to undefined and JSON.stringify strips the key.
+    expect(text).toContain('"entityType":"workspace"');
+    expect(text).toContain('"entityId":"ws_1"');
+    // Snake_case keys MUST NOT leak.
+    expect(text).not.toMatch(/"entity_type"/);
+    expect(text).not.toMatch(/"entity_id"/);
+    expect(text).not.toMatch(/"parent_id"/);
+    // null parent: `parentId` key is omitted entirely (undefined → stripped).
+    expect(text).not.toMatch(/"parentId"/);
   });
 
   it('cleanup: offEvent called for all 5 types on disconnect (T-5-08)', async () => {

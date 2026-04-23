@@ -17,11 +17,30 @@
 //    only subscribes to events published by the engine facade.
 //  - Zero imports from src/tools/** — tools are MCP-aware, the HTTP surface
 //    lives in a parallel subsystem.
+//
+// Wire-shape boundary (CR-01 fix — Plan 05-13):
+//  - INPUT: engine-native payloads (src/engine/events.ts) — snake_case +
+//    server status enum 'submitted/running/completed/failed' + breadcrumb
+//    text but no `label`.
+//  - OUTPUT: dashboard-rendered contract (packages/dashboard/src/types/
+//    events.ts) — camelCase + dashboard status enum 'queued/running/
+//    complete/failed' + `label` derived from breadcrumb last segment.
+//  - ADAPTER: toDashboardPayload(type, payload) pure function exported from
+//    this file. Every SSE frame MUST pass through it; a regression guard in
+//    src/__tests__/architecture-purity.test.ts (Plan 05-13 Task 4) asserts
+//    raw JSON.stringify(payload) is never reintroduced at the listener.
 
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type { Engine } from '../engine/pipeline.js';
-import type { EngineEventMap } from '../engine/events.js';
+import type {
+  EngineEventMap,
+  VersionCreatedPayload,
+  VersionStatusChangedPayload,
+  TagChangedPayload,
+  MetadataChangedPayload,
+  HierarchyCreatedPayload,
+} from '../engine/events.js';
 
 // The 5 event types the dashboard subscribes to (D-WEBUI-06). Declared as a
 // `const` tuple so the subscribe/cleanup loops below get exact key-level
@@ -34,6 +53,90 @@ const EVENT_TYPES = [
   'metadata.changed',
   'hierarchy.created',
 ] as const satisfies ReadonlyArray<keyof EngineEventMap>;
+
+// ================================================================
+// Wire-shape adapter (D-WEBUI-XX / CR-01 fix — Plan 05-13)
+// ================================================================
+//
+// Boundary contract: engine payloads are snake_case + internal status enum
+// ('submitted'|'running'|'completed'|'failed'); the dashboard at
+// packages/dashboard/src/types/events.ts renders camelCase + a 4-state
+// union ('queued'|'running'|'complete'|'failed') + a `label` field derived
+// from the breadcrumb. This adapter is the single leverage point — every
+// SSE frame MUST pass through it before JSON.stringify.
+//
+// Exhaustiveness: the return type is `unknown` but the switch uses a
+// `never`-default arm, so adding a sixth key to EngineEventMap fails
+// `npx tsc --noEmit` at the default arm until the adapter handles it.
+
+const SERVER_TO_DASHBOARD_STATUS = {
+  submitted: 'queued',
+  running: 'running',
+  completed: 'complete',
+  failed: 'failed',
+} as const;
+
+/**
+ * Translate an engine-native payload to the dashboard's rendered contract.
+ *
+ * Invariants:
+ *  - Pure function (no side effects; no Date.now(); no console).
+ *  - Drops fields the dashboard does not render (shot_id on status_changed,
+ *    at on every event). T-5-02 preserved: metadata.changed still omits
+ *    `value`; no field addition.
+ *  - Coerces `parent_id: null` to `undefined` to match the optional
+ *    dashboard field.
+ *  - Derives `label` on `version.created` from the last segment of
+ *    `breadcrumb` (format 'ws > p > sq > sh > vNNN' per pipeline
+ *    BreadcrumbResolver). Empty string when breadcrumb is empty.
+ */
+export function toDashboardPayload<T extends keyof EngineEventMap>(
+  type: T,
+  payload: EngineEventMap[T],
+): unknown {
+  switch (type) {
+    case 'version.created': {
+      const p = payload as VersionCreatedPayload;
+      const segments = p.breadcrumb.split(' > ');
+      const label = segments[segments.length - 1] ?? '';
+      return { versionId: p.version_id, shotId: p.shot_id, label };
+    }
+    case 'version.status_changed': {
+      const p = payload as VersionStatusChangedPayload;
+      return {
+        versionId: p.version_id,
+        status: SERVER_TO_DASHBOARD_STATUS[p.status],
+      };
+    }
+    case 'hierarchy.created': {
+      const p = payload as HierarchyCreatedPayload;
+      return {
+        entityType: p.entity_type,
+        entityId: p.entity_id,
+        parentId: p.parent_id ?? undefined,
+      };
+    }
+    case 'tag.changed': {
+      const p = payload as TagChangedPayload;
+      return {
+        tagId: p.tag,
+        action: p.action === 'add' ? 'created' : 'deleted',
+      };
+    }
+    case 'metadata.changed': {
+      const p = payload as MetadataChangedPayload;
+      // T-5-02 reminder: NO `value` field here even if the server's payload
+      // ever gains one in a future engine extension. The adapter is the
+      // second line of defense.
+      return { entityId: p.version_id, key: p.key };
+    }
+    default: {
+      // Exhaustiveness check — any unhandled key fails here.
+      const _exhaustive: never = type;
+      throw new Error(`toDashboardPayload: unhandled event type: ${String(_exhaustive)}`);
+    }
+  }
+}
 
 /** Keep-alive interval (milliseconds) — long enough to avoid chattiness but
  * short enough to beat common proxy idle timeouts (nginx defaults to 60s;
@@ -74,9 +177,16 @@ export function createSseHandler(engine: Engine, allowedOrigins: string[] = []) 
         // between emit and flush, writeSSE rejects with a stream-closed error.
         // Swallowing is correct because the cleanup handler below removes the
         // listener; there is nothing the handler can do about a closed stream.
+        // toDashboardPayload is the wire-shape adapter (CR-01 fix, Plan 05-13)
+        // — every SSE frame MUST route through it before JSON.stringify.
         const listener = (payload: unknown) => {
           void stream
-            .writeSSE({ data: JSON.stringify(payload), event: type })
+            .writeSSE({
+              data: JSON.stringify(
+                toDashboardPayload(type, payload as EngineEventMap[typeof type]),
+              ),
+              event: type,
+            })
             .catch(() => {});
         };
         listeners.set(type, listener);
