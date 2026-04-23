@@ -1238,13 +1238,19 @@ Rationale: Vitest browser mode requires additional Playwright driver installatio
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`outputs_json` schema in `src/store/schema.ts`** — what is the exact shape of `outputs_json` stored on the `versions` table? The output route (Section 7) assumes `[{filename: string}]`. Executor must verify against `src/store/schema.ts` and `src/comfyui/types.ts` before implementing the output route.
 
+**RESOLVED:** Executor reads `src/store/schema.ts` before implementing the route in Plan 04 / Plan 06; the route uses fs.createReadStream from outputs/<versionId>/<filename> per D-WEBUI-26 + D-WEBUI-33, NOT a schema-derived path.
+
 2. **Does `GenerationEngine.markCompleted` exist as a discrete method or is completion inlined in the polling loop?** The output-downloader hook (Section 6) assumes a discrete method. Executor checks `src/engine/generation.ts` before wiring.
 
+**RESOLVED:** Executor reads `src/engine/generation.ts` (or wherever the recovery poller lives) before implementing the events.emit call in Plan 02 Task on pipeline.ts extension. If markCompleted is inline in the poller rather than a discrete method, the emit call lands at the same point.
+
 3. **Root `vitest.config.ts` or `vitest` field in root `package.json`?** The current root test setup runs without an explicit config file. When workspaces are added, Vitest discovery might pick up `packages/dashboard/` tests. Executor should add a root `vitest.config.ts` that explicitly excludes `packages/` to prevent double-running. [LOW priority — vitest workspace support may handle this automatically]
+
+**RESOLVED:** Plan 01 Task 1 creates root vitest.config.ts that excludes packages/** so dashboard tests are not double-collected by root vitest.
 
 ---
 
