@@ -10,7 +10,8 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
-import type { Version, Breadcrumb } from '../types/hierarchy.js';
+import type { Breadcrumb } from '../types/hierarchy.js';
+import type { VersionWithAssets } from '../types/assets.js';
 import type { ProvenanceEvent, DiffResponse } from '../types/provenance.js';
 
 /**
@@ -34,6 +35,12 @@ const ListInput = z.object({
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Phase 4 — D-ASST-20: opt-in hydration for version list items. Default
+  // false keeps the list payload cheap; setting either (or both) asks the
+  // engine to emit tags: string[] and/or metadata: Array<{key, value}> per
+  // item. The `get` action is always-hydrated (D-ASST-19) — no such flag there.
+  include_tags: z.boolean().default(false),
+  include_metadata: z.boolean().default(false),
 });
 
 /**
@@ -64,15 +71,23 @@ const VersionInputSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * D-PROV-08: shape a Version entity for `get` responses. Adds `version_label`
- * (mirrors generation-tool's derivation). Does NOT parse outputs_json —
- * `version get` is the cheap-metadata action; heavy payload lives on
- * `version provenance`. outputs_json is still present on the entity when
- * populated — downstream consumers can read it as the raw column — but the
- * tool does not synthesize a typed `outputs` array at this surface.
+ * D-PROV-08 + D-ASST-19: shape a Version entity for `get` responses. Adds
+ * `version_label` (mirrors generation-tool's derivation). Does NOT parse
+ * outputs_json — `version get` is the cheap-metadata action; heavy payload
+ * lives on `version provenance`. outputs_json is still present on the entity
+ * when populated — downstream consumers can read it as the raw column — but
+ * the tool does not synthesize a typed `outputs` array at this surface.
+ *
+ * Phase 4: the engine (Plan 04-03) now returns VersionWithAssets on getVersion
+ * so the `...result.entity` spread carries `tags: string[]` and
+ * `metadata: Array<{key, value}>` through automatically. Body is unchanged
+ * from Phase 3 — only the type annotation widens to VersionWithAssets.
  */
-function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb }): {
-  entity: Version & { version_label: string };
+function shapeVersionEntity(result: {
+  entity: VersionWithAssets;
+  breadcrumb: Breadcrumb;
+}): {
+  entity: VersionWithAssets & { version_label: string };
   breadcrumb: Breadcrumb['entries'];
   breadcrumb_text: string;
 } {
@@ -151,10 +166,10 @@ export function registerVersion(server: McpServer, engine: Engine) {
       title: 'Version',
       description:
         'Inspect and compare versions. Actions: ' +
-        'get (cheap metadata for a version_id — lineage_type/parent_version_id included), ' +
-        'list (paginated versions for a shot_id, ordered version_number DESC), ' +
+        'get (cheap metadata for a version_id — always includes inline tags: string[] (alphabetical) and metadata: Array<{key, value}> (by-key); lineage_type/parent_version_id included), ' +
+        'list (paginated versions for a shot_id, ordered version_number DESC; optional include_tags and include_metadata boolean flags default false to keep default payload cheap), ' +
         'diff (same-shot structured comparison between two completed/failed versions — returns summary + changes{params, models, seed, workflow, metadata}), ' +
-        'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in). ' +
+        'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in; tags/metadata are NOT in the event stream per D-ASST-21). ' +
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).
@@ -166,6 +181,11 @@ export function registerVersion(server: McpServer, engine: Engine) {
         version_b: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
+        // Phase 4 — D-ASST-20: opt-in hydration flags for `list`. Unused on
+        // other actions (action-discriminated re-validation inside the
+        // handler drops them for get/diff/provenance).
+        include_tags: z.boolean().optional(),
+        include_metadata: z.boolean().optional(),
       },
     },
     async (rawInput) => {
@@ -177,7 +197,10 @@ export function registerVersion(server: McpServer, engine: Engine) {
           case 'list':
             return toolOk(
               shapeList(
-                engine.listVersionsForShot(input.shot_id, input.limit, input.offset),
+                engine.listVersionsForShot(input.shot_id, input.limit, input.offset, {
+                  include_tags: input.include_tags,
+                  include_metadata: input.include_metadata,
+                }),
               ),
             );
           case 'diff':
