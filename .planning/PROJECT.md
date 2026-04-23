@@ -19,11 +19,11 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 - [x] Diff between versions — *Validated in Phase 3 via pure diffVersions returning structured {summary, changes:{params, models, seed, workflow, metadata}}; surfaced through `version` MCP tool `diff` action*
 - [x] Reproduce any version exactly — *Validated in Phase 3 via engine.reproduceVersion re-submitting stored prompt_json verbatim with lineage_type='reproduce'; reproduction_warnings array always present per D-PROV-28*
 - [x] Iterate from a version with specified changes — *Validated in Phase 3 via engine.iterateFromVersion applying node-scoped overrides (FORBIDDEN_KEYS prototype-pollution guarded) + optional seed shortcut; lineage_type='iterate' + parent_version_id tracked*
+- [x] Asset tagging and arbitrary metadata attachment — *Validated in Phase 4: asset-management (ASST-01, ASST-02; idempotent TagRepo/MetadataRepo via INSERT ON CONFLICT DO NOTHING / DO UPDATE RETURNING; asset MCP tool with 7-action Zod discriminated union)*
+- [x] Asset query/filter by tags, metadata, project hierarchy, date range — *Validated in Phase 4 via AssetsEngine.queryAssets composing AND-only SQL filters with json_each tag membership, scope XOR enforcement, inclusive date range, limit/offset pagination + total_count; version.get always hydrates, version.list gains include_tags/include_metadata flags (D-ASST-19/20)*
 
 ### Active
 
-- [ ] Asset tagging and arbitrary metadata attachment
-- [ ] Asset query/filter by tags, metadata, project hierarchy, date range
 - [ ] Multi-backend routing (multiple ComfyUI instances by capability)
 - [ ] Function-calling adapter for non-Anthropic agents (open-source, not Claude-locked)
 - [ ] Light web UI showing project hierarchy, provenance trail, and generation status
@@ -99,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-23 after Phase 3 completion (provenance-versioning) — 3/5 phases done*
+*Last updated: 2026-04-23 after Phase 4 completion (asset-management) — 4/5 phases done*
