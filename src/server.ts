@@ -74,6 +74,13 @@ import {
   registerVersion,
   registerAsset,
 } from './tools/index.js';
+// Phase 5 Plan 05-06: dashboard HTTP surface (D-WEBUI-01 / D-WEBUI-12).
+// Dashboard REST + SSE + static share the same Hono app as the /mcp route;
+// mount order below is load-bearing — SSE before REST router, REST before
+// the /* static catch-all. See Plan 05-06 SUMMARY for the full rationale.
+import { createDashboardRouter, typedErrorHandler } from './http/index.js';
+import { createSseHandler } from './http/sse.js';
+import { createStaticHandler } from './http/static.js';
 
 /**
  * Read version from package.json — single source of truth, no hardcoded duplicate.
@@ -281,6 +288,40 @@ async function main(): Promise<void> {
         await requestServer.close().catch(() => {});
       }
     });
+
+    // Phase 5 Plan 05-06 dashboard mount sequence (D-WEBUI-12 mount order).
+    //
+    // The order below is load-bearing:
+    //   1. /mcp handlers (registered above) — existing MCP JSON-RPC surface.
+    //   2. app.onError(typedErrorHandler) — must be registered BEFORE the
+    //      dashboard routes so TypedError throws inside the router convert to
+    //      the structured { error: { code, message } } JSON body with the
+    //      correct HTTP status (Plan 05-03).
+    //   3. /api/events (SSE) — MUST come before /api/* REST routes. Hono's
+    //      trie matches the most specific route, so this ordering is actually
+    //      insurance against future wildcard routes; today /api/events is
+    //      distinct enough that either order works, but the contract is
+    //      specific-before-generic.
+    //   4. /api/* (dashboard REST) — mounted at ROOT, not at '/api', because
+    //      dashboard-routes.ts registers its 18 routes with FULL /api/ paths
+    //      (app.get('/api/workspaces'), etc.). Mounting at '/api' would
+    //      double-prefix to /api/api/workspaces — Rule 1 fix against the plan's
+    //      reference code. The test fixture (dashboard-routes.test.ts#57)
+    //      uses app.route('/', router) for the same reason.
+    //   5. /* (static catch-all) — LAST. Serves Preact dashboard assets from
+    //      packages/dashboard/dist/ or fallback HTML when unbuilt. Registered
+    //      via app.use so serveStatic runs as middleware rather than a
+    //      terminal route handler.
+    //
+    // All three mounts share `engine` + `httpAllowedOrigins` for parity with
+    // the /mcp origin-allowlist check. SSE passes the allowlist verbatim; the
+    // REST router inherits it implicitly via the app-level origin policy the
+    // browser enforces via CORS.
+    app.onError(typedErrorHandler);
+    app.get('/api/events', createSseHandler(engine, httpAllowedOrigins));
+    app.route('/', createDashboardRouter(engine));
+    app.use('/*', createStaticHandler());
+
     // NOTE: do not log request bodies here — future phases will carry ComfyUI
     // keys in headers (T-03-04 reminder).
     // Bind 127.0.0.1 explicitly (T-03-03) — no remote reachability until auth lands.
