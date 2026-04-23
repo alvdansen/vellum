@@ -38,6 +38,12 @@ type Ctx = {
 async function setup(): Promise<Ctx> {
   const stack = buildStackWithOutputs();
   const engine = stack.engine;
+  // Preload the fake's canned resolved-prompt blob so reproduce/iterate tests
+  // that walk the completed path find a non-null prompt_json in provenance
+  // (otherwise GenerationEngine throws PROVENANCE_UNAVAILABLE).
+  stack.client.cannedPromptBlob = {
+    '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7 } },
+  };
 
   // Seed hierarchy. These create calls themselves emit hierarchy.created —
   // we capture that in a dedicated test; other tests use the returned ids.

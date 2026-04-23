@@ -1,4 +1,4 @@
-import { EventEmitter } from 'node:events';
+import { EngineEmitter } from '../engine/events.js';
 import type {
   Workspace, Project, Sequence, Shot, Version, Breadcrumb, BreadcrumbEntry,
 } from '../types/hierarchy.js';
@@ -19,19 +19,20 @@ type ListResult<T> = { items: (T & Breadcrumb)[]; total_count: number; limit: nu
  *
  * Surface mirrors the real Engine facade methods that the dashboard REST routes
  * call. Each method returns canned fixtures by default but can be overridden via
- * the `cans` map for per-test scenarios. The `events` field is a plain Node
- * EventEmitter — Plan 02 introduces the typed `EngineEmitter` interface; this
- * stub is structurally compatible (EngineEmitter extends EventEmitter).
+ * the `cans` map for per-test scenarios. The `events` field is the typed
+ * `EngineEmitter` (Plan 02, D-WEBUI-29) — SSE tests (Plan 03) get typed
+ * `.onEvent('version.created', cb)` calls with no runtime change from Plan 01
+ * (EngineEmitter extends EventEmitter → structural narrow).
  *
  * Test pattern:
  *   const engine = new FakeEngine();
  *   engine.cans.versions.set('ver_1', { entity: { ...fixture }, breadcrumb: EMPTY_BREADCRUMB });
  *   await myRoute(engine).handle(...);
- *   engine.events.emit('version.created', { ... });   // simulate SSE event
+ *   engine.events.emitEvent('version.created', { ... });   // simulate SSE event
  *   expect(engine.calls).toContainEqual({ method: 'getVersion', args: ['ver_1'] });
  */
 export class FakeEngine {
-  public readonly events: EventEmitter = new EventEmitter();
+  public readonly events: EngineEmitter = new EngineEmitter();
   public readonly calls: Array<{ method: string; args: unknown[] }> = [];
 
   /** Per-test override map. Tests populate the relevant entries before invoking routes. */

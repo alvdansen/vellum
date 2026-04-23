@@ -13,6 +13,8 @@ import { ProvenanceWriter } from './provenance.js';
 import { AssetsEngine } from './assets.js';
 import { diffVersions as pureDiffVersions } from './diff.js';
 import { TypedError } from './errors.js';
+import { createEngineEmitter, type EngineEmitter } from './events.js';
+import { downloadOutput } from './output-downloader.js';
 import {
   SHOT_NAME_REGEX,
   type Workspace,
@@ -79,6 +81,15 @@ export class Engine {
   private breadcrumb: BreadcrumbResolver;
   private generation: GenerationEngine;
   private assets: AssetsEngine;
+  /**
+   * Phase 5 (D-WEBUI-29): typed event bus for the SSE handler + route tests.
+   * Public readonly — subscribers call `engine.events.onEvent('type', cb)`.
+   * Published to by each mutation path below (see the emit* private helpers
+   * and the wrapped delegates on submit/reproduce/iterate/status/tag/metadata).
+   */
+  public readonly events: EngineEmitter;
+  /** Dashboard-stable download root (D-WEBUI-26) — keyed by versionId. */
+  private readonly outputRoot: string;
 
   constructor(
     db: BaseDb,
@@ -92,6 +103,8 @@ export class Engine {
     // Widen once at the boundary — drizzle factory returns the intersection
     // at runtime, but the class-level type omits $client. Plan 04-02 pattern.
     this.db = db as Db;
+    this.outputRoot = outputRoot;
+    this.events = createEngineEmitter();
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     this.generation = new GenerationEngine(
@@ -118,11 +131,28 @@ export class Engine {
   }
 
   // ================================================================
+  // PHASE 5 — EVENT EMISSION HELPERS (D-WEBUI-29)
+  // ================================================================
+
+  /** Current ISO timestamp — one place so tests can be time-travel-friendly. */
+  private nowIso(): string {
+    return new Date().toISOString();
+  }
+
+  // ================================================================
   // WORKSPACE
   // ================================================================
 
   createWorkspace(name: string): { entity: Workspace; breadcrumb: Breadcrumb } {
     const entity = this.repo.createWorkspace(name);
+    // D-WEBUI-29: hierarchy.created fires AFTER the row is inserted so
+    // a listener can safely call engine.getWorkspace(entity.id) without race.
+    this.events.emitEvent('hierarchy.created', {
+      entity_type: 'workspace',
+      entity_id: entity.id,
+      parent_id: null,
+      at: this.nowIso(),
+    });
     return { entity, breadcrumb: this.breadcrumb.resolve('workspace', entity.id) };
   }
 
@@ -157,6 +187,12 @@ export class Engine {
     name: string,
   ): { entity: Project; breadcrumb: Breadcrumb } {
     const entity = this.repo.createProject(workspaceId, name);
+    this.events.emitEvent('hierarchy.created', {
+      entity_type: 'project',
+      entity_id: entity.id,
+      parent_id: workspaceId,
+      at: this.nowIso(),
+    });
     return { entity, breadcrumb: this.breadcrumb.resolve('project', entity.id) };
   }
 
@@ -195,6 +231,12 @@ export class Engine {
     name: string,
   ): { entity: Sequence; breadcrumb: Breadcrumb } {
     const entity = this.repo.createSequence(projectId, name);
+    this.events.emitEvent('hierarchy.created', {
+      entity_type: 'sequence',
+      entity_id: entity.id,
+      parent_id: projectId,
+      at: this.nowIso(),
+    });
     return { entity, breadcrumb: this.breadcrumb.resolve('sequence', entity.id) };
   }
 
@@ -238,6 +280,12 @@ export class Engine {
       );
     }
     const entity = this.repo.createShot(sequenceId, name);
+    this.events.emitEvent('hierarchy.created', {
+      entity_type: 'shot',
+      entity_id: entity.id,
+      parent_id: sequenceId,
+      at: this.nowIso(),
+    });
     return { entity, breadcrumb: this.breadcrumb.resolve('shot', entity.id) };
   }
 
@@ -276,13 +324,63 @@ export class Engine {
     workflowJson: Record<string, unknown>,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    return this.generation.submitGeneration(shotId, workflowJson, notes);
+    const result = await this.generation.submitGeneration(shotId, workflowJson, notes);
+    // D-WEBUI-29: version.created fires AFTER the row is inserted. The
+    // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
+    this.events.emitEvent('version.created', {
+      version_id: result.entity.id,
+      shot_id: result.entity.shot_id,
+      breadcrumb: result.breadcrumb.text,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
+  /**
+   * Phase 5 wrapper around GenerationEngine.getGenerationStatus:
+   *  - Captures the pre-call status so we can detect transitions.
+   *  - On status change, emits version.status_changed (D-WEBUI-29).
+   *  - On transition to `completed`, fires the dashboard-stable download hook
+   *    (D-WEBUI-26) — writes the first output to `outputsDir/versionId/filename`
+   *    so `/api/versions/:id/output` (Plan 04) has a stable lookup path.
+   *    Non-fatal: downloadOutput swallows failures and returns null.
+   */
   async getGenerationStatus(
     versionId: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    return this.generation.getGenerationStatus(versionId);
+    const before = this.versionRepo.getVersion(versionId);
+    const beforeStatus = before?.status ?? null;
+    const result = await this.generation.getGenerationStatus(versionId);
+    const afterStatus = result.entity.status;
+    if (beforeStatus !== afterStatus) {
+      this.events.emitEvent('version.status_changed', {
+        version_id: result.entity.id,
+        shot_id: result.entity.shot_id,
+        status: afterStatus,
+        breadcrumb: result.breadcrumb.text,
+        at: this.nowIso(),
+      });
+    }
+    // D-WEBUI-26: non-fatal dashboard-stable download on completion.
+    // outputs_json is populated by GenerationEngine.downloadAndPersist BEFORE
+    // markCompleted flips the status; we re-use the first stored filename.
+    if (afterStatus === 'completed' && beforeStatus !== 'completed' && result.entity.outputs_json) {
+      try {
+        const parsed = JSON.parse(result.entity.outputs_json) as Array<{ filename?: string }>;
+        const firstFilename = Array.isArray(parsed) ? parsed[0]?.filename ?? null : null;
+        if (firstFilename) {
+          // Fire-and-forget — explicit catch silences any late rejection the
+          // helper may surface (the helper already catches internally, but
+          // .catch(() => {}) is belt-and-suspenders per the plan contract).
+          void downloadOutput(this.client, result.entity.id, this.outputRoot, firstFilename).catch(
+            () => {},
+          );
+        }
+      } catch {
+        // outputs_json malformed — non-fatal. Dashboard renders placeholder.
+      }
+    }
+    return result;
   }
 
   async start(): Promise<void> {
@@ -443,7 +541,14 @@ export class Engine {
     sourceVersionId: string,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
-    return this.generation.reproduceVersion(sourceVersionId, notes);
+    const result = await this.generation.reproduceVersion(sourceVersionId, notes);
+    this.events.emitEvent('version.created', {
+      version_id: result.entity.id,
+      shot_id: result.entity.shot_id,
+      breadcrumb: result.breadcrumb.text,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
   /** PROV-06: iterate — delegates to GenerationEngine. */
@@ -453,7 +558,14 @@ export class Engine {
     seed?: number,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    return this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
+    const result = await this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
+    this.events.emitEvent('version.created', {
+      version_id: result.entity.id,
+      shot_id: result.entity.shot_id,
+      breadcrumb: result.breadcrumb.text,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
   // ================================================================
@@ -462,22 +574,60 @@ export class Engine {
 
   /** D-ASST-03 + D-ASST-11: idempotent tag add + regex/cap validation. */
   addTag(versionId: string, tag: string) {
-    return this.assets.addTag(versionId, tag);
+    const result = this.assets.addTag(versionId, tag);
+    this.events.emitEvent('tag.changed', {
+      action: 'add',
+      version_id: versionId,
+      shot_id: result.entity.shot_id,
+      tag,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
   /** D-ASST-03: idempotent tag remove. */
   removeTag(versionId: string, tag: string) {
-    return this.assets.removeTag(versionId, tag);
+    const result = this.assets.removeTag(versionId, tag);
+    this.events.emitEvent('tag.changed', {
+      action: 'remove',
+      version_id: versionId,
+      shot_id: result.entity.shot_id,
+      tag,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
-  /** D-ASST-03 + D-ASST-08 + D-ASST-11: upsert metadata + regex/cap validation. */
+  /**
+   * D-ASST-03 + D-ASST-08 + D-ASST-11: upsert metadata + regex/cap validation.
+   *
+   * T-5-02: emitted payload must NOT contain `value` — MetadataChangedPayload
+   * type deliberately omits it (see events.ts). Only the key is safe to
+   * broadcast over SSE.
+   */
   setMetadata(versionId: string, key: string, value: string) {
-    return this.assets.setMetadata(versionId, key, value);
+    const result = this.assets.setMetadata(versionId, key, value);
+    this.events.emitEvent('metadata.changed', {
+      action: 'set',
+      version_id: versionId,
+      shot_id: result.entity.shot_id,
+      key,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
   /** D-ASST-03: idempotent metadata remove. */
   removeMetadata(versionId: string, key: string) {
-    return this.assets.removeMetadata(versionId, key);
+    const result = this.assets.removeMetadata(versionId, key);
+    this.events.emitEvent('metadata.changed', {
+      action: 'remove',
+      version_id: versionId,
+      shot_id: result.entity.shot_id,
+      key,
+      at: this.nowIso(),
+    });
+    return result;
   }
 
   /** D-ASST-12..18 + D-ASST-22: AND-only filter + pagination + always-hydrated items. */
