@@ -22,6 +22,13 @@
       "when": 1776907892725,
       "tag": "0003_phase3_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1776921667014,
+      "tag": "0004_phase4_assets",
+      "breakpoints": true
     }
   ]
 }

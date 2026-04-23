@@ -125,6 +125,45 @@ export const provenance = sqliteTable('provenance', {
 }));
 
 /**
+ * Phase 4 — D-ASST-07: tag attachments for versions. Plain CRUD (DELETE allowed);
+ * repo can expose both insertTag and deleteTag (unlike provenance-repo). UNIQUE
+ * autoindex on (version_id, tag) covers per-version reads; idx_tags_tag supports
+ * multi-tag AND filter via `tag IN (SELECT value FROM json_each(?))` (Pattern 1
+ * of RESEARCH.md). Added by migrator via 0004_phase4_assets.sql; SCHEMA_DDL does
+ * NOT declare this table (additive-split pattern — D-ASST-31).
+ */
+export const tags = sqliteTable('tags', {
+  id: text('id').primaryKey(),
+  version_id: text('version_id')
+    .notNull()
+    .references(() => versions.id),
+  tag: text('tag').notNull(),
+  created_at: integer('created_at').notNull(),
+}, (t) => ({
+  uniqueVersionTag: unique().on(t.version_id, t.tag),
+  idxTag: index('idx_tags_tag').on(t.tag),
+}));
+
+/**
+ * Phase 4 — D-ASST-08: key-value metadata for versions. Upsert semantics via
+ * ON CONFLICT(version_id, key) DO UPDATE (D-ASST-03). `value` is arbitrary
+ * UTF-8 text up to 2000 chars (enforced at engine boundary). idx_metadata_key_value
+ * is a covering index for the (key, value) AND filter (Pattern 2 of RESEARCH.md).
+ */
+export const metadata = sqliteTable('metadata', {
+  id: text('id').primaryKey(),
+  version_id: text('version_id')
+    .notNull()
+    .references(() => versions.id),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+  created_at: integer('created_at').notNull(),
+}, (t) => ({
+  uniqueVersionKey: unique().on(t.version_id, t.key),
+  idxKeyValue: index('idx_metadata_key_value').on(t.key, t.value),
+}));
+
+/**
  * Raw DDL string used by openDb() first-run path and the in-memory test fixture.
  *
  * IMPORTANT — intentional Phase 1 / Phase 2 split (do not "re-sync"): this DDL
