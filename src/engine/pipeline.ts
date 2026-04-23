@@ -5,6 +5,7 @@ import type { ComfyUIClient } from '../comfyui/client.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
 import { ProvenanceWriter } from './provenance.js';
+import { diffVersions as pureDiffVersions } from './diff.js';
 import { TypedError } from './errors.js';
 import {
   SHOT_NAME_REGEX,
@@ -14,7 +15,15 @@ import {
   type Shot,
   type Version,
   type Breadcrumb,
+  type BreadcrumbEntry,
 } from '../types/hierarchy.js';
+import type {
+  ProvenanceEvent,
+  DiffSnapshot,
+  DiffResponse,
+  ModelRef,
+  IterateOverride,
+} from '../types/provenance.js';
 
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
@@ -238,5 +247,146 @@ export class Engine {
 
   async stop(): Promise<void> {
     return this.generation.stop();
+  }
+
+  // ================================================================
+  // PHASE 3 — VERSION READS + PROVENANCE + DIFF
+  // ================================================================
+
+  /** D-PROV-08: cheap version metadata (no provenance blobs). */
+  getVersion(versionId: string): { entity: Version; breadcrumb: Breadcrumb } {
+    const entity = this.versionRepo.getVersion(versionId);
+    if (!entity) {
+      throw new TypedError(
+        'VERSION_NOT_FOUND',
+        `Version '${versionId}' not found`,
+        `List versions with { tool: 'version', action: 'list', shot_id: <shot> }`,
+      );
+    }
+    return { entity, breadcrumb: this.breadcrumb.resolve('version', entity.id) };
+  }
+
+  /** D-PROV-09: paginated version list for a shot, version_number DESC. */
+  listVersionsForShot(
+    shotId: string,
+    limit: number,
+    offset: number,
+  ): ListResult<Version> {
+    const { items, total_count } = this.versionRepo.listByShot(shotId, limit, offset);
+    return {
+      items: items.map((v) => ({
+        ...v,
+        ...this.breadcrumb.resolve('version', v.id),
+      })),
+      total_count,
+      limit,
+      offset,
+    };
+  }
+
+  /** D-PROV-10: full chronological event history. Empty events[] for pre-Phase-3 rows. */
+  getProvenance(
+    versionId: string,
+  ): { events: ProvenanceEvent[]; breadcrumb: Breadcrumb } {
+    // Assert the version exists before exposing provenance reads.
+    const exists = this.versionRepo.getVersion(versionId);
+    if (!exists) {
+      throw new TypedError(
+        'VERSION_NOT_FOUND',
+        `Version '${versionId}' not found`,
+        `List versions with { tool: 'version', action: 'list', shot_id: <shot> }`,
+      );
+    }
+    const events = this.provenanceRepo.getEventsForVersion(versionId);
+    return { events, breadcrumb: this.breadcrumb.resolve('version', versionId) };
+  }
+
+  /**
+   * D-PROV-11, D-PROV-20: same-shot field-level diff. The pure diffVersions
+   * function enforces same-shot + comparable-state guards — this method only
+   * builds the DiffSnapshot pair from repo state + attaches the breadcrumb.
+   */
+  diffVersions(
+    versionAId: string,
+    versionBId: string,
+  ): DiffResponse & { breadcrumb: BreadcrumbEntry[]; breadcrumb_text: string } {
+    const snapA = this.loadDiffSnapshot(versionAId);
+    const snapB = this.loadDiffSnapshot(versionBId);
+    const result = pureDiffVersions({ a: snapA, b: snapB });
+    const crumbs = this.breadcrumb.resolve('version', versionAId);
+    return {
+      summary: result.summary,
+      changes: result.changes,
+      breadcrumb: crumbs.entries,
+      breadcrumb_text: crumbs.text,
+    };
+  }
+
+  /** Internal helper: assemble a DiffSnapshot for a single version. */
+  private loadDiffSnapshot(versionId: string): DiffSnapshot {
+    const v = this.versionRepo.getVersion(versionId);
+    if (!v) {
+      throw new TypedError(
+        'VERSION_NOT_FOUND',
+        `Version '${versionId}' not found`,
+        `List versions with { tool: 'version', action: 'list', shot_id: <shot> }`,
+      );
+    }
+    const submit = this.provenanceRepo.getSubmitEvent(versionId);
+    const completed = this.provenanceRepo.getLatestCompletedEvent(versionId);
+    const workflow_json = submit?.workflow_json
+      ? (JSON.parse(submit.workflow_json) as Record<string, unknown>)
+      : null;
+    const prompt_json = completed?.prompt_json
+      ? (JSON.parse(completed.prompt_json) as Record<string, unknown>)
+      : null;
+    let models: ModelRef[] | null = null;
+    if (completed?.models_json) {
+      try {
+        models = JSON.parse(completed.models_json) as ModelRef[];
+      } catch {
+        models = null;
+      }
+    }
+    let outputCount = 0;
+    if (v.outputs_json) {
+      try {
+        const parsed = JSON.parse(v.outputs_json) as unknown[];
+        outputCount = Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        outputCount = 0;
+      }
+    }
+    return {
+      version_id: v.id,
+      shot_id: v.shot_id,
+      version_number: v.version_number,
+      status: v.status,
+      created_at: v.created_at,
+      completed_at: v.completed_at,
+      workflow_json,
+      prompt_json,
+      models_json: models,
+      seed: completed?.seed ?? null,
+      output_count: outputCount,
+    };
+  }
+
+  /** PROV-05: reproduce — delegates to GenerationEngine. */
+  async reproduceVersion(
+    sourceVersionId: string,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
+    return this.generation.reproduceVersion(sourceVersionId, notes);
+  }
+
+  /** PROV-06: iterate — delegates to GenerationEngine. */
+  async iterateFromVersion(
+    sourceVersionId: string,
+    overrides?: Record<string, IterateOverride>,
+    seed?: number,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    return this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
   }
 }

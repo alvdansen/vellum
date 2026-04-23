@@ -174,4 +174,29 @@ export class VersionRepo {
       .where(inArray(versions.status, ['submitted', 'running']))
       .all() as Version[];
   }
+
+  /**
+   * Phase 3: paginated version list for a shot, ordered version_number DESC
+   * (latest first — matches VFX expectation per CONTEXT.md §Specifics).
+   */
+  listByShot(
+    shotId: string,
+    limit: number,
+    offset: number,
+  ): { items: Version[]; total_count: number } {
+    const totalRow = this.db
+      .select({ c: sql<number>`COUNT(*)` })
+      .from(versions)
+      .where(eq(versions.shot_id, shotId))
+      .get();
+    const items = this.db
+      .select()
+      .from(versions)
+      .where(eq(versions.shot_id, shotId))
+      .orderBy(sql`${versions.version_number} DESC`)
+      .limit(limit)
+      .offset(offset)
+      .all() as Version[];
+    return { items, total_count: Number(totalRow?.c ?? 0) };
+  }
 }
