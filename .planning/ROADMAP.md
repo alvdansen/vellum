@@ -179,8 +179,8 @@ Plans:
 
 Plans:
 - [x] 08-01-PLAN.md — Vitest regression guard (phase-attribution.test.ts) + reformat 01-02-SUMMARY.md to flow-style YAML (D-ATTR-01, D-ATTR-12, D-ATTR-13, D-ATTR-14, D-ATTR-15)
-- [ ] 08-02-PLAN.md — Inspector UI override reconciliation: rewrite 01-VERIFICATION.md body, delete stub, prepend INSPECTOR-SMOKE.md header, cross-link from 01-02-SUMMARY.md (D-ATTR-02, D-ATTR-05, D-ATTR-06, D-ATTR-07, D-ATTR-08)
-- [ ] 08-03-PLAN.md — MCP SDK 1.29 Zod inputSchema caveat supplement to 02-VERIFICATION.md + audit resolution notes (D-ATTR-03, D-ATTR-04, D-ATTR-09, D-ATTR-10, D-ATTR-11)
+- [x] 08-02-PLAN.md — Inspector UI override reconciliation: rewrite 01-VERIFICATION.md body, delete stub, prepend INSPECTOR-SMOKE.md header, cross-link from 01-02-SUMMARY.md (D-ATTR-02, D-ATTR-05, D-ATTR-06, D-ATTR-07, D-ATTR-08)
+- [x] 08-03-PLAN.md — MCP SDK 1.29 Zod inputSchema caveat supplement to 02-VERIFICATION.md + audit resolution notes (D-ATTR-03, D-ATTR-04, D-ATTR-09, D-ATTR-10, D-ATTR-11)
 
 ### Phase 9: Nyquist Wave 0 Closure
 **Goal**: Retrofit Wave 0 Nyquist validation for phases 01, 02, 03, and 05 so `VALIDATION.md` reports `nyquist_compliant: true` + `wave_0_complete: true` across every v1.0 phase (Phase 04 already compliant)
