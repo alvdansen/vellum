@@ -88,8 +88,10 @@ export class Engine {
    * and the wrapped delegates on submit/reproduce/iterate/status/tag/metadata).
    */
   public readonly events: EngineEmitter;
-  /** Dashboard-stable download root (D-WEBUI-26) — keyed by versionId. */
-  private readonly outputRoot: string;
+  /** Dashboard-stable download root (D-WEBUI-26 + SC-2 Phase 6). Public-readonly
+   * so the HTTP layer can resolve output file paths against it via
+   * EngineForDashboard structural Pick (Plan 06-03 / gap_closure WR-01). */
+  public readonly outputRoot: string;
 
   constructor(
     db: BaseDb,

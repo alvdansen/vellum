@@ -34,6 +34,11 @@ type ListResult<T> = { items: (T & Breadcrumb)[]; total_count: number; limit: nu
 export class FakeEngine {
   public readonly events: EngineEmitter = new EngineEmitter();
   public readonly calls: Array<{ method: string; args: unknown[] }> = [];
+  /** SC-2 (Phase 6): mirror Engine.outputRoot so EngineForDashboard structural
+   * Pick accepts FakeEngine without a cast. Default 'outputs' matches the
+   * Engine constructor default; tests that need a tmp dir can re-assign by
+   * widening the type at the test seam (see dashboard-routes.test.ts SC-2 block). */
+  public outputRoot: string = 'outputs';
 
   /** Per-test override map. Tests populate the relevant entries before invoking routes. */
   public readonly cans = {

@@ -70,6 +70,7 @@ export type EngineForDashboard = Pick<
   | 'listTags'
   | 'listMetadataKeys'
   | 'getDashboardHome'
+  | 'outputRoot'
 >;
 
 /**
@@ -224,7 +225,11 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     const ext = path.extname(filename).toLowerCase();
     const contentType = MIME_MAP[ext] ?? 'application/octet-stream';
 
-    const filePath = path.join('outputs', versionId, filename);
+    // SC-2 (Phase 6 gap_closure WR-01): resolve against engine.outputRoot, not
+    // the hardcoded literal. path.resolve handles both absolute and relative
+    // outputRoot values — relative paths are resolved against process.cwd() at
+    // call time, which matches the engine's behavior in output-downloader.ts.
+    const filePath = path.resolve(engine.outputRoot, versionId, filename);
     if (!existsSync(filePath)) {
       throw new TypedError(
         'OUTPUT_UNAVAILABLE',
