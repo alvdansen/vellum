@@ -405,22 +405,22 @@ This is a maintenance phase against a stable stack — no library churn to track
 | A4 | The 4 server-side status values + 2 dashboard synonyms (`queued`, `complete`) are the FULL union; no in-flight migration adds a 7th status. | SC-6 implementation | If a future status (e.g., `'aborted'`, `'cancelled'`) is on the roadmap, the exhaustive check will catch it at the next type-check, which is the desired behavior. No risk from this assumption. |
 | A5 | `KEEP_ALIVE_INTERVAL_MS = 30_000` does not need changing for SC-5; only the on-the-wire shape changes. | SC-5 implementation | If existing tests assert on the `: ping` SUBSTRING (they do — `sse.test.ts:319` checks `text.toContain(': ping')`), that assertion still passes after the fix because `: ping\n\n` still contains `: ping`. The fix is more strictly correct AND backward-compatible with existing assertions. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `recent_versions` be pageable or scoped to a workspace?**
    - What we know: WR-04 says "actual recent versions from the DB (query + limit)" — no scoping or pagination mentioned.
    - What's unclear: The dashboard home currently has no UI affordance for paging recent versions (per HomeView review).
-   - Recommendation: Implement as `listRecentCompleted(10)` global (fits A1). Add a TODO comment in the engine method noting that scope/pagination can be added later without changing the response shape.
+   - RESOLVED: Implement as `listRecentCompleted(10)` global (fits A1). Plan 06-02 honors this — scope/pagination can be added later without changing the response shape.
 
 2. **Should the dashboard's `Version['status']` type be tightened to drop the synonyms?**
    - What we know: The type at `packages/dashboard/src/types/entities.ts:47` includes `'queued' | 'complete'` because the SSE adapter emits dashboard-shape values, but REST responses still emit server-shape values.
    - What's unclear: Whether the same type is reused for both REST + SSE payloads — if so, the union must stay wide.
-   - Recommendation: Leave the type as-is (six members). SC-6 only changes the function behavior, not the type.
+   - RESOLVED: Leave the type as-is (six members). Plan 06-07 changes function behavior only, not the type.
 
 3. **Do existing dashboard tests currently exercise `fetchJson` error paths?**
    - What we know: `packages/dashboard/src/__tests__/` has 5 test files; none mock fetch.
    - What's unclear: Whether SC-3 needs new test files or can extend an existing one.
-   - Recommendation: New file `packages/dashboard/src/__tests__/api-error.test.ts` mocking `fetch` via `vi.stubGlobal('fetch', ...)`. Pattern matches existing `MockEventSource` setup in `events.test.ts`.
+   - RESOLVED: Plan 06-01 (Wave 0) creates `packages/dashboard/src/__tests__/api-error.test.ts` mocking `fetch` via `vi.stubGlobal('fetch', ...)`. Pattern matches existing `MockEventSource` setup in `events.test.ts`.
 
 ## Environment Availability
 
