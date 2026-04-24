@@ -159,3 +159,26 @@ _Verifier: Claude (gsd-verifier)_
 ## Endpoint Reconciliation (Phase 7, 2026-04-24)
 
 The Phase 2 live-smoke entry (see §"Behavioral Spot-Checks > Live-smoke gated") remained untested end-to-end until Phase 7 resolved the `COMFYUI_API_BASE` drift observed on 2026-04-22. As of 2026-04-24, the locked `COMFYUI_API_BASE` is `https://cloud.comfy.org`, with `HEALTHCHECK_PATH=/api/system_stats` exported from `src/comfyui/client.ts` and a first-submit healthcheck wired into `ComfyUIClient.submit()` to catch future drift as `TypedError('COMFYUI_ENDPOINT_DRIFT')`. Phase 7 additionally surfaced two Phase 2 tech-debt items fixed in-flight — D-EP-16 (`normalizeCloudStatus` translates Cloud's `'success'`/`'error'` terminals to canonical vocabulary) and D-EP-17 (status fetch switched from the singular `/api/job/{id}/status` endpoint, which omits outputs, to the plural `/api/jobs/{id}` endpoint with a nested-outputs flattener). See [`07-VERIFICATION.md`](../07-comfyui-endpoint-reconciliation/07-VERIFICATION.md) for the probe matrix, credential layout, rotation procedure, and fallback-if-redirected behaviour.
+
+---
+
+## MCP SDK 1.29 Zod inputSchema Envelope Caveat (Phase 8, 2026-04-24)
+
+**Runtime behavior.** MCP SDK 1.29 runs each tool's `inputSchema` validator before the tool handler is invoked. Any `z.ZodError` thrown by the schema surfaces at the SDK boundary, not inside the handler's `try/catch`. Concrete example: a `shot action=create` request with `name: "SH010"` triggers Zod's `^sh\d{3,}$` regex check at `src/tools/shot-tool.ts:32` and fails BEFORE the handler's catch block at `:106-118` ever runs. The handler's sentinel-detection path (which would emit `TypedError('INVALID_SHOT_FORMAT')` via `toolError`) is shadowed by the SDK's intercept on this code path.
+
+**Visible symptom.** The wire-level response shape is `{ isError: true, content: [{ type: "text", text: "MCP error -32602: Input validation error: ..." }] }`. The sentinel message (`INVALID_SHOT_FORMAT`) is embedded inside `content[0].text` via the SDK's error message; `structuredContent.code` is **not populated** for SDK-intercepted Zod errors. Live decoded JSON-RPC response captured in `../01-foundation-hierarchy/INSPECTOR-SMOKE.md` §3:
+
+```json
+{
+  "result": {
+    "content": [{ "type": "text", "text": "MCP error -32602: Input validation error: Invalid arguments for tool shot: [{..., \"path\": [\"name\"], \"message\": \"INVALID_SHOT_FORMAT\"}]" }],
+    "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+}
+```
+
+This diverges from the typed-envelope contract (`src/tools/envelope.ts:13-18` `toolOk` and `src/tools/envelope.ts:32-60` `toolError`) where `structuredContent.code` IS populated for handler-thrown TypedErrors. See `01-VERIFICATION.md` `inspector_smoke_automation.notes[0]` for the original observation.
+
+**Engine-layer contrast.** TypedErrors thrown inside the handler body — e.g. `DUPLICATE_NAME` from `src/store/hierarchy-repo.ts:55-63` (unique-violation wrapping) and `PARENT_NOT_FOUND` from `src/store/hierarchy-repo.ts:95-101` (parent pre-check) — DO populate `structuredContent.code` correctly. The defense-in-depth shot-regex enforcement at `src/engine/pipeline.ts:19,275-284` still fires for non-SDK callers (direct engine calls, test harnesses, alternative adapters), so `INVALID_SHOT_FORMAT` via the typed envelope is still **reachable** — just not via the MCP handler path on the current SDK version. The Phase 1 T2 pattern (Zod-at-tool + regex-at-engine, established in `01-02-SUMMARY.md` line 58) holds end-to-end for non-SDK callers; SDK-intercept is a single-layer regression on the MCP handler path only. Follow-up for Phase 2+ (non-blocking): wrap the SDK boundary so Zod errors flow through the typed envelope. Documented as future work in `01-VERIFICATION.md` `inspector_smoke_automation.notes[1]`; not in scope for Phase 8.
