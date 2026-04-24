@@ -32,7 +32,9 @@ export type ErrorCode =
   | 'METADATA_LIMIT_EXCEEDED'
   | 'INVALID_SCOPE'
   // Phase 5 — web dashboard (D-WEBUI-34)
-  | 'OUTPUT_UNAVAILABLE';
+  | 'OUTPUT_UNAVAILABLE'
+  // Phase 7 — endpoint reconciliation (D-EP-08)
+  | 'COMFYUI_ENDPOINT_DRIFT';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
