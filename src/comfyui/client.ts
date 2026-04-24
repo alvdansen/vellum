@@ -105,6 +105,48 @@ async function readTextWithLimit(res: Response, limit: number): Promise<string> 
   return out;
 }
 
+/**
+ * Phase 7 D-EP-16: translate ComfyUI Cloud's on-the-wire status strings to the
+ * canonical `StatusResponse['status']` state machine used by the engine
+ * (D-GEN-18). The Cloud's v0.82.0 API returns `'success'` / `'error'` for
+ * terminal states — values that `StatusResponse` does not enumerate and that
+ * the engine's `mapState()` (`src/engine/generation.ts:364`) silently collapses
+ * to `'pending'`, causing the poll loop to spin until deadline.
+ *
+ * Keep the engine-facing type stable; translate at the client boundary so the
+ * engine stays vocabulary-free. Unknown strings fall through to `'pending'` —
+ * a safe default that lets the poll loop keep trying rather than terminating
+ * on a transient state we haven't catalogued yet.
+ *
+ * Observed terminal Cloud values (2026-04-24 live-smoke run against v0.82.0):
+ *   - `success` — job completed with outputs (confirmed via `/api/job/{id}/status`)
+ *   - `error` — job failed; `error_message` populated with the worker traceback
+ *
+ * Intermediate values are not yet fully catalogued — `running` / `in_progress`
+ * are mapped defensively based on the open-source ComfyUI vocabulary; any
+ * unknown string maps to `pending` rather than `running` to avoid
+ * prematurely flipping downstream state.
+ */
+export function normalizeCloudStatus(raw: unknown): StatusResponse['status'] {
+  if (typeof raw !== 'string') return 'pending';
+  switch (raw) {
+    case 'success':
+    case 'completed':
+      return 'completed';
+    case 'error':
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+    case 'running':
+    case 'in_progress':
+      return 'in_progress';
+    default:
+      return 'pending';
+  }
+}
+
 export interface DownloadResult {
   body: ReadableStream<Uint8Array>;
   contentType: string;
@@ -370,8 +412,12 @@ export class ComfyUIClient {
       );
     }
     const raw = (await res.json()) as Record<string, unknown>;
-    // Accept lenient inputs — status field is canonical; progress/outputs/error are best-effort.
-    const status = (raw.status ?? 'pending') as StatusResponse['status'];
+    // D-EP-16: Cloud uses 'success'/'error' terminal strings; translate to the
+    // canonical StatusResponse vocabulary via normalizeCloudStatus so the
+    // engine's mapState() sees 'completed'/'failed' and advances the state
+    // machine. Passing raw.status through untranslated caused the Phase 7
+    // live-smoke to spin on 'pending' until its 180s deadline.
+    const status = normalizeCloudStatus(raw.status);
     const progress = typeof raw.progress === 'number' ? raw.progress : undefined;
     const outputs = Array.isArray(raw.outputs) ? (raw.outputs as ComfyOutput[]) : undefined;
     // IS-04: scrub any echoed API key from the error blob before it leaves

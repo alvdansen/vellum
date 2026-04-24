@@ -8,6 +8,7 @@ import {
   DEFAULT_COMFYUI_API_BASE,
   HEALTHCHECK_PATH,
   MAX_ERROR_BODY_BYTES,
+  normalizeCloudStatus,
 } from '../client.js';
 import '../../test-utils/matchers.js';
 
@@ -336,6 +337,59 @@ describe('ComfyUIClient.status', () => {
     await expect(client.status('job-1')).rejects.toMatchObject({
       code: 'COMFYUI_API_ERROR',
     });
+  });
+
+  test('D-EP-16: Cloud terminal "success" maps to "completed" via normalizeCloudStatus', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(200, {
+          status: 'success',
+          outputs: [{ filename: 'x.png', subfolder: '', type: 'output' }],
+        }),
+      ),
+    });
+    const s = await client.status('job-1');
+    expect(s.status).toBe('completed');
+  });
+
+  test('D-EP-16: Cloud terminal "error" maps to "failed" and preserves error blob', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(200, {
+          status: 'error',
+          error: { message: 'worker dispatch failed' },
+        }),
+      ),
+    });
+    const s = await client.status('job-1');
+    expect(s.status).toBe('failed');
+    expect(s.error).toEqual({ message: 'worker dispatch failed' });
+  });
+});
+
+describe('normalizeCloudStatus (D-EP-16)', () => {
+  test('Cloud terminal strings map to canonical vocabulary', () => {
+    expect(normalizeCloudStatus('success')).toBe('completed');
+    expect(normalizeCloudStatus('completed')).toBe('completed');
+    expect(normalizeCloudStatus('error')).toBe('failed');
+    expect(normalizeCloudStatus('failed')).toBe('failed');
+    expect(normalizeCloudStatus('cancelled')).toBe('cancelled');
+    expect(normalizeCloudStatus('canceled')).toBe('cancelled');
+  });
+
+  test('intermediate strings map to canonical vocabulary', () => {
+    expect(normalizeCloudStatus('running')).toBe('in_progress');
+    expect(normalizeCloudStatus('in_progress')).toBe('in_progress');
+  });
+
+  test('unknown and non-string inputs fall through to "pending"', () => {
+    expect(normalizeCloudStatus('queued')).toBe('pending');
+    expect(normalizeCloudStatus('submitted')).toBe('pending');
+    expect(normalizeCloudStatus('')).toBe('pending');
+    expect(normalizeCloudStatus(undefined)).toBe('pending');
+    expect(normalizeCloudStatus(null)).toBe('pending');
+    expect(normalizeCloudStatus(42)).toBe('pending');
+    expect(normalizeCloudStatus({ status: 'success' })).toBe('pending');
   });
 });
 
