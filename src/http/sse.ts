@@ -196,15 +196,18 @@ export function createSseHandler(engine: Engine, allowedOrigins: string[] = []) 
         );
       }
 
-      // T-5-08 DoS mitigation: keep-alive every 30s. `: ping` is an SSE
-      // comment (any line starting with `:`); the EventSource spec requires
-      // clients to ignore it, but proxies see the bytes and hold the TCP
-      // session open. `writeSSE` prefixes `data: ` to each logical line, so
-      // the wire form becomes `data: : ping\n\n` — which still begins with
-      // `: ` after the `data: ` prefix is read, and the browser treats the
-      // empty resulting data string as a no-op message.
+      // T-5-08 DoS mitigation + SC-5 (Phase 6 gap_closure IN-02): keep-alive
+      // every 30s as a true SSE comment frame. Per WHATWG SSE spec a comment
+      // line MUST begin with `:` as the FIRST character; Hono's `writeSSE`
+      // prepends `data: ` to every line and was producing `data: : ping\n\n`
+      // on the wire — browsers ignored the malformed message harmlessly but
+      // the wire shape lied about the intent. Fix is to use the inherited
+      // raw-byte path: SSEStreamingApi extends StreamingApi, and
+      // StreamingApi.write(input: string) writes raw bytes without any
+      // SSE-message envelope. The two trailing `\n\n` bytes form the
+      // mandatory blank-line frame terminator (WHATWG SSE §9.2 step 8).
       const keepAliveInterval = setInterval(() => {
-        void stream.writeSSE({ data: ': ping' }).catch(() => {});
+        void stream.write(': ping\n\n').catch(() => {});
       }, KEEP_ALIVE_INTERVAL_MS);
 
       const cleanup = () => {
