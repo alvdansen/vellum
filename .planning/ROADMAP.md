@@ -141,7 +141,7 @@ Plans:
 - [x] 06-02-PLAN.md — SC-1: VersionRepo.listRecentCompleted + Engine.getDashboardHome wiring (closes WR-04)
 - [x] 06-03-PLAN.md — SC-2: Engine.outputRoot widened + path.resolve in dashboard output route (closes WR-01)
 - [x] 06-04-PLAN.md — SC-3: DashboardApiError class + fetchJson rewrite (closes WR-05)
-- [ ] 06-05-PLAN.md — SC-4: qNum strict validation throws INVALID_INPUT (closes IN-01)
+- [x] 06-05-PLAN.md — SC-4: qNum strict validation throws INVALID_INPUT (closes IN-01)
 - [x] 06-06-PLAN.md — SC-5: SSE keep-alive uses raw stream.write for true comment frame (closes IN-02)
 - [x] 06-07-PLAN.md — SC-6: normalizeStatus exhaustive switch + never-default arm (closes IN-04)
 
