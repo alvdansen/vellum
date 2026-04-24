@@ -14,7 +14,10 @@ import type {
  * ComfyUI Cloud HTTP client (D-GEN-21).
  *
  * Zero MCP imports, zero DB imports — pure HTTP over native fetch. Wraps the
- * three Phase 2 endpoints: POST /api/prompt, GET /api/job/{id}/status, GET /api/view.
+ * three Phase 2 endpoints: POST /api/prompt, GET /api/jobs/{id}, GET /api/view.
+ * (Phase 7 D-EP-17 switched the status fetch from the singular
+ * `/api/job/{id}/status` endpoint — dispatch-state-only, no outputs — to the
+ * plural `/api/jobs/{id}` endpoint which returns the full execution record.)
  *
  * Auth: `X-API-Key: <apiKey>` on every request (D-GEN-21 specifics).
  * Redirect safety: `redirect: 'manual'` on /api/view to validate signed-URL host
@@ -145,6 +148,59 @@ export function normalizeCloudStatus(raw: unknown): StatusResponse['status'] {
     default:
       return 'pending';
   }
+}
+
+/**
+ * Phase 7 D-EP-17: flatten ComfyUI Cloud's `/api/jobs/{id}` nested outputs
+ * shape into the engine-facing `ComfyOutput[]` flat list.
+ *
+ * Cloud's `outputs` field is a node-id-keyed map whose values are media-type
+ * buckets (`images` / `gifs` / `videos` / etc.) each carrying a flat array
+ * of `{ filename, subfolder, type, display_name?, ... }` entries:
+ *
+ *     {"outputs": {"9": {"images": [{"filename": "...", "subfolder": "", "type": "output"}]}}}
+ *
+ * Accepts three input shapes for forward/back compatibility:
+ *   1. `undefined` / `null` → `undefined` (no outputs yet)
+ *   2. Flat array `ComfyOutput[]` → passed through (legacy stock ComfyUI shape + unit-test mocks)
+ *   3. Nested map (Cloud /api/jobs shape) → flattened in-order by Object.values iteration
+ *
+ * Non-object and malformed entries are skipped silently — the engine tolerates
+ * `outputs: undefined` via `remote.outputs ?? []`, so a lossy extraction is
+ * safer than throwing mid-poll.
+ */
+export function extractOutputs(raw: unknown): ComfyOutput[] | undefined {
+  if (raw == null) return undefined;
+  if (Array.isArray(raw)) {
+    const items = (raw as unknown[]).filter(
+      (o): o is ComfyOutput =>
+        o != null &&
+        typeof o === 'object' &&
+        typeof (o as { filename?: unknown }).filename === 'string',
+    );
+    return items.length > 0 ? items : undefined;
+  }
+  if (typeof raw !== 'object') return undefined;
+  const out: ComfyOutput[] = [];
+  for (const node of Object.values(raw as Record<string, unknown>)) {
+    if (node == null || typeof node !== 'object') continue;
+    for (const mediaArr of Object.values(node as Record<string, unknown>)) {
+      if (!Array.isArray(mediaArr)) continue;
+      for (const item of mediaArr) {
+        if (item == null || typeof item !== 'object') continue;
+        const filename = (item as { filename?: unknown }).filename;
+        if (typeof filename !== 'string') continue;
+        const subfolder = (item as { subfolder?: unknown }).subfolder;
+        const type = (item as { type?: unknown }).type;
+        out.push({
+          filename,
+          subfolder: typeof subfolder === 'string' ? subfolder : undefined,
+          type: typeof type === 'string' ? type : undefined,
+        });
+      }
+    }
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 export interface DownloadResult {
@@ -379,9 +435,19 @@ export class ComfyUIClient {
     return json;
   }
 
-  /** GET /api/job/{id}/status — normalise to StatusResponse (D-GEN-21). */
+  /**
+   * GET /api/jobs/{id} — normalise to StatusResponse (D-GEN-21, D-EP-17).
+   *
+   * Phase 7 D-EP-17: the singular `/api/job/{id}/status` endpoint returns only
+   * dispatch-layer state (`status`, `assigned_inference`, `error_message`) and
+   * omits the `outputs` field entirely, so the engine can never flip a version
+   * to `completed`. The plural `/api/jobs/{id}` endpoint returns the full
+   * execution record with canonical status (`"completed"`), nested
+   * `outputs[nodeId][mediaType][]` shape, and the resolved workflow prompt.
+   * Both endpoints share the same auth + redirect posture.
+   */
   async status(jobId: string): Promise<StatusResponse> {
-    const url = new URL(`/api/job/${encodeURIComponent(jobId)}/status`, this.base);
+    const url = new URL(`/api/jobs/${encodeURIComponent(jobId)}`, this.base);
     let res: Response;
     try {
       res = await this.fetchImpl(url, {
@@ -400,7 +466,7 @@ export class ComfyUIClient {
     if (res.status >= 300 && res.status < 400) {
       throw new TypedError(
         'COMFYUI_API_ERROR',
-        `ComfyUI /api/job status returned unexpected redirect ${res.status} (API key would leak if followed)`,
+        `ComfyUI /api/jobs returned unexpected redirect ${res.status} (API key would leak if followed)`,
       );
     }
     if (!res.ok) {
@@ -412,21 +478,34 @@ export class ComfyUIClient {
       );
     }
     const raw = (await res.json()) as Record<string, unknown>;
-    // D-EP-16: Cloud uses 'success'/'error' terminal strings; translate to the
-    // canonical StatusResponse vocabulary via normalizeCloudStatus so the
-    // engine's mapState() sees 'completed'/'failed' and advances the state
-    // machine. Passing raw.status through untranslated caused the Phase 7
-    // live-smoke to spin on 'pending' until its 180s deadline.
+    // D-EP-16: Cloud terminal strings arrive as either canonical ('completed' /
+    // 'failed' — plural /api/jobs shape) or legacy ('success' / 'error' —
+    // singular /api/job shape, retained as defence in depth for intermediate
+    // or undocumented states). normalizeCloudStatus collapses both to the
+    // engine vocabulary; any unknown string falls through to 'pending' so the
+    // poll loop keeps trying instead of prematurely advancing downstream state.
     const status = normalizeCloudStatus(raw.status);
     const progress = typeof raw.progress === 'number' ? raw.progress : undefined;
-    const outputs = Array.isArray(raw.outputs) ? (raw.outputs as ComfyOutput[]) : undefined;
+    // D-EP-17: handle both the nested /api/jobs map and the flat legacy array
+    // shape (used by existing unit-test mocks) via extractOutputs.
+    const outputs = extractOutputs(raw.outputs);
     // IS-04: scrub any echoed API key from the error blob before it leaves
     // the client boundary. The engine persists this verbatim into
     // versions.error_message, so scrubbing here prevents the key from
     // reaching disk / agent responses. Applied to both string and object
     // shapes by serialising, scrubbing, and re-parsing when possible.
+    //
+    // Cloud's `/api/jobs/{id}` surfaces failure detail in `error_message`
+    // (top-level string, often a JSON-encoded worker traceback). Legacy
+    // shapes used a top-level `error` field. Prefer `error` when present;
+    // fall back to `error_message` so the failure path produces a non-empty
+    // message the engine can flatten via extractFirstNodeError.
     const error =
-      'error' in raw ? this.scrubErrorValue(raw.error as unknown) : undefined;
+      'error' in raw
+        ? this.scrubErrorValue(raw.error as unknown)
+        : typeof raw.error_message === 'string' && raw.error_message.length > 0
+          ? this.scrubErrorValue(raw.error_message)
+          : undefined;
     return { status, progress, outputs, error };
   }
 

@@ -283,7 +283,7 @@ describe('ComfyUIClient.submit', () => {
 });
 
 describe('ComfyUIClient.status', () => {
-  test('GET /api/job/{id}/status returns normalised StatusResponse', async () => {
+  test('GET /api/jobs/{id} returns normalised StatusResponse (flat-array legacy shape)', async () => {
     let capturedUrl: URL | string | Request | undefined;
     let capturedInit: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
@@ -302,8 +302,50 @@ describe('ComfyUIClient.status', () => {
     expect(s.progress).toBe(1);
     expect(s.outputs).toHaveLength(1);
     const u = new URL(capturedUrl!.toString());
-    expect(u.pathname).toBe('/api/job/job-1/status');
+    expect(u.pathname).toBe('/api/jobs/job-1');
     expect((capturedInit!.headers as Record<string, string>)['X-API-Key']).toBe(KEY);
+  });
+
+  test('D-EP-17: /api/jobs nested-map outputs shape flattens to ComfyOutput[]', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(200, {
+          status: 'completed',
+          outputs: {
+            '9': {
+              images: [
+                { filename: 'a.png', subfolder: '', type: 'output' },
+                { filename: 'b.png', subfolder: 'sub', type: 'output' },
+              ],
+            },
+            '12': {
+              gifs: [{ filename: 'c.gif', subfolder: '', type: 'output' }],
+            },
+          },
+        }),
+      ),
+    });
+    const s = await client.status('job-1');
+    expect(s.status).toBe('completed');
+    expect(s.outputs).toEqual([
+      { filename: 'a.png', subfolder: '', type: 'output' },
+      { filename: 'b.png', subfolder: 'sub', type: 'output' },
+      { filename: 'c.gif', subfolder: '', type: 'output' },
+    ]);
+  });
+
+  test('D-EP-17: top-level error_message populates StatusResponse.error when no `error` field', async () => {
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async () =>
+        jsonResponse(200, {
+          status: 'error',
+          error_message: 'worker dispatch failed',
+        }),
+      ),
+    });
+    const s = await client.status('job-1');
+    expect(s.status).toBe('failed');
+    expect(s.error).toBe('worker dispatch failed');
   });
 
   test('C4: status uses redirect:manual and rejects 302 (API key must not leak)', async () => {
