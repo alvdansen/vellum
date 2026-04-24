@@ -84,18 +84,29 @@ export type EngineForDashboard = Pick<
 export function createDashboardRouter(engine: EngineForDashboard): Hono {
   const app = new Hono();
 
-  // Helper: parse a numeric query param with a default. Returns the default
-  // when the param is absent OR parses to NaN — callers don't have to branch.
-  const qNum = (raw: string | undefined, fallback: number): number => {
+  // SC-4 (Phase 6 gap_closure IN-01): parse a numeric query param with a default.
+  // Throws TypedError('INVALID_INPUT', ...) at the HTTP boundary if the param
+  // is present but not a non-negative integer (negatives, floats, non-numeric
+  // all fail closed). Absent params still return the fallback so optional
+  // ?limit/?offset don't suddenly become required (06-RESEARCH.md §Pitfall 4).
+  // Pattern matches the existing INVALID_INPUT throw at the /diff route below.
+  const qNum = (raw: string | undefined, fallback: number, name: string): number => {
     if (raw === undefined) return fallback;
     const n = Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+    if (!Number.isInteger(n) || n < 0) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Query parameter '${name}' must be a non-negative integer (got '${raw}')`,
+        'Use a positive integer like ?limit=20',
+      );
+    }
+    return n;
   };
 
   // --- Workspaces ---
   app.get('/api/workspaces', (c) => {
-    const limit = qNum(c.req.query('limit'), 20);
-    const offset = qNum(c.req.query('offset'), 0);
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const offset = qNum(c.req.query('offset'), 0, 'offset');
     return c.json(engine.listWorkspaces(limit, offset));
   });
 
@@ -104,8 +115,8 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   app.get('/api/workspaces/:id/projects', (c) => {
-    const limit = qNum(c.req.query('limit'), 20);
-    const offset = qNum(c.req.query('offset'), 0);
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const offset = qNum(c.req.query('offset'), 0, 'offset');
     return c.json(engine.listProjects(c.req.param('id'), limit, offset));
   });
 
@@ -115,8 +126,8 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   app.get('/api/projects/:id/sequences', (c) => {
-    const limit = qNum(c.req.query('limit'), 20);
-    const offset = qNum(c.req.query('offset'), 0);
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const offset = qNum(c.req.query('offset'), 0, 'offset');
     return c.json(engine.listSequences(c.req.param('id'), limit, offset));
   });
 
@@ -126,8 +137,8 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   app.get('/api/sequences/:id/shots', (c) => {
-    const limit = qNum(c.req.query('limit'), 20);
-    const offset = qNum(c.req.query('offset'), 0);
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const offset = qNum(c.req.query('offset'), 0, 'offset');
     return c.json(engine.listShots(c.req.param('id'), limit, offset));
   });
 
@@ -137,8 +148,8 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   app.get('/api/shots/:id/versions', (c) => {
-    const limit = qNum(c.req.query('limit'), 20);
-    const offset = qNum(c.req.query('offset'), 0);
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const offset = qNum(c.req.query('offset'), 0, 'offset');
     const include_tags = c.req.query('include_tags') === 'true';
     const include_metadata = c.req.query('include_metadata') === 'true';
     return c.json(
