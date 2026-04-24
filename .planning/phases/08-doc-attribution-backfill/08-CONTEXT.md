@@ -55,7 +55,7 @@ Close three Phase 1 documentation-only tech-debt items from `v1.0-MILESTONE-AUDI
 - **D-ATTR-10:** Caveat depth = three concise paragraphs:
   1. **Runtime behavior** — MCP SDK 1.29 runs each tool's `inputSchema` validator *before* the handler is invoked. Zod `ZodError` surfaces at the SDK boundary, not inside the handler's try/catch. Example: `shot action=create` with `name: "SH010"` — Zod's `^sh\d{3,}$` regex fails at the SDK layer.
   2. **Visible symptom** — Response shape: `{ isError: true, content: [{ type: "text", text: "MCP error -32602: Input validation error: Invalid arguments for tool shot: [..., \"message\": \"INVALID_SHOT_FORMAT\"]" }] }`. `structuredContent.code` is **not populated** for SDK-intercepted Zod errors — the sentinel message (`INVALID_SHOT_FORMAT`) is embedded in `content[0].text` only. Live evidence: `INSPECTOR-SMOKE.md` §3.
-  3. **Engine-layer contrast** — TypedErrors thrown inside the handler body (e.g., `DUPLICATE_NAME` from `hierarchy-repo.ts:55-63`, `PARENT_NOT_FOUND` from `hierarchy-repo.ts:95-101`) *do* populate `structuredContent.code` correctly via `toolError(err)` in `src/tools/envelope.ts:32-60`. Defense-in-depth shot-regex enforcement at `src/engine/pipeline.ts:13,155-161` still fires for non-SDK callers (direct engine calls, test harnesses), so `INVALID_SHOT_FORMAT` via the typed envelope is reachable — just not via the MCP handler path today.
+  3. **Engine-layer contrast** — TypedErrors thrown inside the handler body (e.g., `DUPLICATE_NAME` from `hierarchy-repo.ts:55-63`, `PARENT_NOT_FOUND` from `hierarchy-repo.ts:95-101`) *do* populate `structuredContent.code` correctly via `toolError(err)` in `src/tools/envelope.ts:32-60`. Defense-in-depth shot-regex enforcement at `src/engine/pipeline.ts:19,275-284` still fires for non-SDK callers (direct engine calls, test harnesses), so `INVALID_SHOT_FORMAT` via the typed envelope is reachable — just not via the MCP handler path today.
 - No fix proposal, no code snippet for a `flattenZodError()` helper, no TODO scaffolding. That's a Phase 2+ design decision, out of this phase's scope.
 - **D-ATTR-11:** Single canonical home — no mirrored pointers into `03-VERIFICATION.md`, `04-VERIFICATION.md`, `05-VERIFICATION.md`. If someone asks "why isn't `structuredContent.code` populated for Zod validation errors?" in the future, they grep for "inputSchema" or "Zod intercept" and land on the 02-VERIFICATION supplement once.
 
@@ -109,8 +109,8 @@ Close three Phase 1 documentation-only tech-debt items from `v1.0-MILESTONE-AUDI
 - `.planning/phases/01-foundation-hierarchy/01-VERIFICATION.md` `inspector_smoke_automation.notes[]` (lines 15–18) — Source of the caveat text; Phase 8 supplement expands + rephrases into three paragraphs per D-ATTR-10.
 - `.planning/phases/01-foundation-hierarchy/INSPECTOR-SMOKE.md` §3 "`shot action=create` with invalid name `SH010`" (lines 97–118) — Live decoded JSON-RPC response showing the Zod intercept. Cite in the symptom paragraph of the supplement.
 - `src/tools/envelope.ts:32-60` — `toolError(err)` TypedError → `structuredContent.code` mapping. Engine-layer contrast paragraph (D-ATTR-10 §3) cites this.
-- `src/tools/shot-tool.ts:17,69-77` — Zod regex with sentinel message + handler catch path. Shows the defense-in-depth structure even though the handler catch is shadowed by the SDK 1.29 intercept today.
-- `src/engine/pipeline.ts:13,155-161` — Engine-layer regex enforcement (second defense-in-depth layer). Still fires for direct engine callers.
+- `src/tools/shot-tool.ts:32,106-118` — Zod regex with sentinel message (line 32: `.regex(SHOT_NAME_REGEX, 'INVALID_SHOT_FORMAT')`) + handler ZodError catch + sentinel-detect-and-remap path (lines 106–118). Shows the defense-in-depth structure even though the handler catch is shadowed by the SDK 1.29 intercept today.
+- `src/engine/pipeline.ts:19,275-284` — Engine-layer regex enforcement (second defense-in-depth layer). Line 19 imports `SHOT_NAME_REGEX`; lines 275–284 are the `createShot` block with the regex test + `INVALID_SHOT_FORMAT` TypedError throw at line 279. Still fires for direct engine callers.
 
 ### Files SC-4 touches
 
@@ -161,7 +161,7 @@ Close three Phase 1 documentation-only tech-debt items from `v1.0-MILESTONE-AUDI
 - **`drizzle/`** — Zero touch. Phase 8 makes no schema changes.
 - **`packages/dashboard/`** — Zero touch.
 - **`src/comfyui/`** — Zero touch. The SC-3 supplement *mentions* tool-layer Zod schemas but does not edit `generation-tool.ts` or any other tool.
-- **`src/tools/`** — Zero touch in source. The SC-3 supplement cites `envelope.ts:32-60`, `shot-tool.ts:17,69-77`, `pipeline.ts:13,155-161` as evidence; no code changes.
+- **`src/tools/`** — Zero touch in source. The SC-3 supplement cites `envelope.ts:32-60`, `shot-tool.ts:32,106-118`, `pipeline.ts:19,275-284` as evidence; no code changes.
 - **`package.json`** — Potential touch only if D-ATTR-12 chooses `js-yaml` as the frontmatter parser. Claude's Discretion (regex-based parse avoids this).
 - **`.planning/STATE.md`** — Updated at phase close (session info + resume pointer) per standard GSD workflow; not a Phase 8 content deliverable.
 
