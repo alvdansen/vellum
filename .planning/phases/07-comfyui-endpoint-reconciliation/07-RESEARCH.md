@@ -664,7 +664,7 @@ import 'dotenv/config';
 
 **Three claims tagged `[ASSUMED]`** — all with LOW risk because the probe script itself is the empirical test that resolves them. None block planning; all are flagged for the executor to verify at Wave 1.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **What is the current API key's scope?** The drift memory says `cloud.comfy.org` 401'd the key on 2026-04-22. Docs don't document key-vs-endpoint scoping. **What we know:** key was issued at `platform.comfy.org`. **What's unclear:** whether it's tied to a specific service (`api.comfy.org`) or a specific tier. **Recommendation:** the probe will reveal which bases return 401 vs 404 vs 200 — that resolves scoping empirically. If ALL bases 401, the resolution is key rotation (explicitly in scope per CONTEXT.md rotation procedure). If `cloud.comfy.org` returns 200 but `api.comfy.org` returns 401, the resolution is base update only.
 
