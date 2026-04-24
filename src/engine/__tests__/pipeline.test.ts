@@ -256,3 +256,32 @@ describe('Engine facade — composition invariants', () => {
     expect(src).not.toContain('@modelcontextprotocol');
   });
 });
+
+describe('Engine.getDashboardHome (SC-1)', () => {
+  test('returns recent_versions: [] on empty DB', () => {
+    const home = ctx.engine.getDashboardHome();
+    expect(home.recent_versions).toEqual([]);
+    expect(home.active_versions).toEqual([]);
+  });
+
+  test('returns 3 completed versions when 3 are seeded', () => {
+    seedCompleted(ctx, ctx.shotId);
+    seedCompleted(ctx, ctx.shotId);
+    seedCompleted(ctx, ctx.shotId);
+    const home = ctx.engine.getDashboardHome();
+    expect(home.recent_versions).toHaveLength(3);
+    home.recent_versions.forEach((v) => expect(v.status).toBe('completed'));
+  });
+
+  test('separates active (submitted) from recent (completed)', () => {
+    // 2 completed + 1 submitted.
+    seedCompleted(ctx, ctx.shotId);
+    seedCompleted(ctx, ctx.shotId);
+    ctx.versions.insertVersion(ctx.shotId); // status='submitted', not completed
+    const home = ctx.engine.getDashboardHome();
+    expect(home.recent_versions).toHaveLength(2);
+    home.recent_versions.forEach((v) => expect(v.status).toBe('completed'));
+    expect(home.active_versions).toHaveLength(1);
+    expect(home.active_versions[0].status).toBe('submitted');
+  });
+});
