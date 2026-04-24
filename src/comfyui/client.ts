@@ -30,8 +30,25 @@ import type {
  * Canonical ComfyUI Cloud base URL. Exported so server wiring and test
  * fixtures agree on one literal (no more scattered copies of the same host).
  * Per D-GEN-21; override with COMFYUI_API_BASE for self-hosted tenants.
+ *
+ * @since 2026-04-24 (Phase 7, D-EP-06) — value confirmed by scripts/probe-comfy-endpoint.mts winner.
  */
 export const DEFAULT_COMFYUI_API_BASE = 'https://cloud.comfy.org';
+
+/**
+ * Phase 7 D-EP-14: path used by both the first-submit healthcheck
+ * (ensureEndpointHealthy) and the sentinel test (endpoint-probe.test.ts).
+ * Set by scripts/probe-comfy-endpoint.mts winner — a read-only GET endpoint
+ * that returns 200 for authenticated requests.
+ *
+ * Note on auth-method-per-endpoint quirk (observed 2026-04-24 by probe):
+ * `cloud.comfy.org/api/queue` returns 401 "invalid API key" and
+ * `/api/history` returns 401 "authentication method not allowed" with the
+ * SAME X-API-Key that `/api/system_stats` accepts with 200. The healthcheck
+ * path MUST be `/api/system_stats` specifically — do NOT switch to `/api/queue`
+ * expecting it to work. See 07-01-SUMMARY.md probe matrix for evidence.
+ */
+export const HEALTHCHECK_PATH = '/api/system_stats';
 
 /**
  * IS-03: hard cap on error-body reads (submit 4xx/5xx) so a misbehaving or
@@ -140,6 +157,16 @@ export class ComfyUIClient {
   private fetchImpl: typeof fetch;
 
   /**
+   * Phase 7 D-EP-07: first-submit healthcheck cache. `null` = never checked;
+   * Promise = in-flight OR confirmed-success. Caching the Promise (not a boolean)
+   * keeps concurrent first-submit callers race-safe — they all await the same
+   * result. On failure, the IIFE resets this to `null` before re-throwing so a
+   * later submit can retry (e.g., after an operator edits .env and the current
+   * process survives the edit — uncommon, but supported).
+   */
+  private healthCheckResult: Promise<void> | null = null;
+
+  /**
    * IS-04: scrub the configured API key literal from any string before it
    * leaves the client boundary, then truncate to MAX_ERROR_MESSAGE_CHARS.
    *
@@ -186,8 +213,67 @@ export class ComfyUIClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
+  /**
+   * Phase 7 D-EP-07: first-submit healthcheck.
+   *
+   * Cheap GET against HEALTHCHECK_PATH to confirm the configured base + key
+   * combo is still live. Called lazily from submit() — result cached on the
+   * instance for the lifetime of the process. Never re-runs (no per-submit
+   * overhead). On failure throws COMFYUI_ENDPOINT_DRIFT with an actionable
+   * hint pointing at the probe script.
+   *
+   * Race-safe: the memoized Promise ensures concurrent submits share one
+   * in-flight check. Failure leaves healthCheckResult=null so a later submit
+   * can retry (drift may resolve via operator .env edit without restart).
+   */
+  private async ensureEndpointHealthy(): Promise<void> {
+    if (this.healthCheckResult) return this.healthCheckResult;
+    this.healthCheckResult = (async () => {
+      const url = new URL(HEALTHCHECK_PATH, this.base);
+      let res: Response;
+      try {
+        res = await this.fetchImpl(url, {
+          method: 'GET',
+          headers: { 'X-API-Key': this.apiKey },
+          // D-EP-07: match submit()/status() redirect policy. Node's fetch
+          // preserves X-API-Key across cross-origin redirects — a single 302
+          // from a drifted or compromised base URL would exfiltrate the key.
+          redirect: 'manual',
+        });
+      } catch (err) {
+        // Failure MUST NOT memoize — let a later submit retry.
+        this.healthCheckResult = null;
+        throw new TypedError(
+          'COMFYUI_ENDPOINT_DRIFT',
+          this.scrubAndTruncate(
+            `ComfyUI healthcheck network error against ${this.base}${HEALTHCHECK_PATH}: ${(err as Error).message}`,
+          ),
+          'COMFYUI_API_BASE may have drifted. Run `npx tsx scripts/probe-comfy-endpoint.mts` to find the current working base, then update .env COMFYUI_API_BASE.',
+        );
+      }
+      if (res.status !== 200) {
+        this.healthCheckResult = null;
+        throw new TypedError(
+          'COMFYUI_ENDPOINT_DRIFT',
+          this.scrubAndTruncate(
+            `ComfyUI healthcheck returned HTTP ${res.status} against ${this.base}${HEALTHCHECK_PATH}`,
+          ),
+          'COMFYUI_API_BASE may have drifted. Run `npx tsx scripts/probe-comfy-endpoint.mts` to find the current working base, then update .env COMFYUI_API_BASE.',
+        );
+      }
+      // 200 path — discard body (we only care about the status). Drain so
+      // the connection can be reused by the next fetch.
+      try { await res.arrayBuffer(); } catch { /* ignore */ }
+    })();
+    return this.healthCheckResult;
+  }
+
   /** POST /api/prompt — returns { prompt_id } (D-GEN-21). */
   async submit(workflowJson: Record<string, unknown>): Promise<SubmitResponse> {
+    // D-EP-07: first-submit healthcheck. Cached for process lifetime on success;
+    // reset to null on failure so a later submit can retry after an .env edit.
+    // Throws COMFYUI_ENDPOINT_DRIFT (surfaces via tool envelope per D-GEN-41).
+    await this.ensureEndpointHealthy();
     const body: SubmitRequest = { prompt: workflowJson };
     const url = new URL('/api/prompt', this.base);
     let res: Response;

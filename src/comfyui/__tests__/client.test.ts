@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import {
   ComfyUIClient,
   DEFAULT_COMFYUI_API_BASE,
+  HEALTHCHECK_PATH,
   MAX_ERROR_BODY_BYTES,
 } from '../client.js';
 import '../../test-utils/matchers.js';
@@ -20,9 +21,56 @@ import '../../test-utils/matchers.js';
  *  - downloadToPath: temp-then-rename atomic write contract
  *
  * Uses `fetchImpl` injection to drive deterministic responses. No real network.
+ *
+ * Phase 7 D-EP-07 note: `submit()` now awaits `ensureEndpointHealthy()` before
+ * the POST /api/prompt. The healthcheck issues a GET against HEALTHCHECK_PATH,
+ * so `mockFetch` transparently returns 200 for that GET and delegates all other
+ * calls to the test-supplied handler. Tests that want to exercise a DRIFT path
+ * (Plan 04) should use `mockFetchRaw` (no auto-healthcheck) to observe the GET.
  */
 
+/**
+ * Auto-healthcheck wrapper: first intercepts the D-EP-07 healthcheck GET
+ * against HEALTHCHECK_PATH and returns 200, then delegates every other call
+ * to the test-supplied handler. This preserves the existing test semantics
+ * (which predate the healthcheck) — non-200 submit responses, 302 rejection,
+ * network errors, etc. — without requiring per-test retrofitting.
+ */
 function mockFetch(
+  fn: (req: Request | URL | string, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  const wrapped = async (
+    req: Request | URL | string,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const urlStr =
+      typeof req === 'string'
+        ? req
+        : req instanceof URL
+          ? req.toString()
+          : (req as Request).url;
+    try {
+      const pathname = new URL(urlStr).pathname;
+      if (method === 'GET' && pathname === HEALTHCHECK_PATH) {
+        return new Response('{}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    } catch {
+      /* fall through — pass to user handler */
+    }
+    return fn(req, init);
+  };
+  return wrapped as unknown as typeof fetch;
+}
+
+/**
+ * Raw mock fetch — NO healthcheck interception. Use when a test needs to
+ * observe or drive the healthcheck GET itself (Plan 04 DRIFT coverage).
+ */
+function mockFetchRaw(
   fn: (req: Request | URL | string, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {
   return fn as unknown as typeof fetch;
