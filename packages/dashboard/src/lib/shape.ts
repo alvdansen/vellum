@@ -26,21 +26,49 @@ export function versionLabel(v: Pick<Version, 'id' | 'version_number'>): string 
 }
 
 /**
- * Normalise the server Version status union (submitted/running/completed/
- * failed + dashboard-side queued/complete synonyms) onto the StatusPill
- * Status contract (queued/running/complete/failed). The StatusPill only
- * knows those four — any other value would miss the STATUS_STYLES map and
- * render without color. The mapping is:
- *   submitted → queued   (pre-running)
- *   completed → complete (dashboard terminology)
- *   everything already in StatusPill's union → passthrough
- *   anything else → queued (defensive fallback — never unstyled)
+ * Normalise the server Version status union onto the StatusPill Status
+ * contract. The StatusPill only knows four members; the server union has
+ * six (4 server states + 2 dashboard synonyms — see types/entities.ts).
+ *
+ * Mapping:
+ *   queued | submitted   → queued
+ *   running              → running
+ *   complete | completed → complete
+ *   failed               → failed
+ *
+ * undefined returns 'queued' (defensive default for missing-status payloads).
+ *
+ * SC-6 (Phase 6 gap_closure IN-04): the previous implementation ended with
+ * a silent `return 'queued'` fallback. After CR-01 closure (Plan 05-13) the
+ * SSE adapter at src/http/sse.ts:108 SERVER_TO_DASHBOARD_STATUS already
+ * guarantees union-valid statuses on the wire — the fallback no longer
+ * rescues any real defect. Replacing it with `_exhaustive: never` makes
+ * future drift impossible to ignore: adding a 7th status to Version['status']
+ * fails `npx tsc --noEmit` at the default arm immediately. Pattern matches
+ * the established `_exhaustive: never` idiom at src/http/sse.ts:135
+ * `toDashboardPayload` (RESEARCH.md §Pattern: Exhaustive Switch with never).
  */
 export function normalizeStatus(raw: Version['status'] | undefined): Status {
-  if (raw === 'running' || raw === 'queued' || raw === 'failed') return raw;
-  if (raw === 'complete' || raw === 'completed') return 'complete';
-  if (raw === 'submitted') return 'queued';
-  return 'queued';
+  // Defensive: undefined is a valid input (Version.status is optional).
+  if (raw === undefined) return 'queued';
+  switch (raw) {
+    case 'queued':
+    case 'submitted':
+      return 'queued';
+    case 'running':
+      return 'running';
+    case 'complete':
+    case 'completed':
+      return 'complete';
+    case 'failed':
+      return 'failed';
+    default: {
+      // Exhaustiveness — adding a new state to Version['status'] fails here at
+      // compile time. Pattern matches src/http/sse.ts:135 toDashboardPayload.
+      const _exhaustive: never = raw;
+      throw new Error(`normalizeStatus: unhandled status: ${String(_exhaustive)}`);
+    }
+  }
 }
 
 /**
