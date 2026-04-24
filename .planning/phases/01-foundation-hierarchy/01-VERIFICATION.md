@@ -193,42 +193,17 @@ Zero orphans: every requirement ID listed in REQUIREMENTS.md for Phase 1 appears
 
 All Warning-class items are already documented in `01-REVIEW.md` with concrete fix sketches. **None block the Phase 1 goal** — they are hardening/UX improvements to surface before layering Phase 2 features on top. Consistent with REVIEW.md status `issues_found` on 6 Warnings + 7 Info with **0 Critical**.
 
-### Human Verification Required
+### Automated Verification (Inspector UI Override Accepted)
 
-Both items below concern the *interactive MCP Inspector UI smoke* that was explicitly deferred in `INSPECTOR-SMOKE.md`. All wire-level automated tests pass; these are the UX/browser-client layer checks that the plan itself flagged as pre-release-only.
+The two items previously listed here as "Human Verification Required" — interactive MCP Inspector UI smoke over stdio and Streamable HTTP — were overridden on 2026-04-24. They are now automated via `scripts/inspector-smoke.mjs` (56/56 wire-level checks across stdio + Streamable HTTP). The override is recorded in this file's frontmatter `overrides_applied: 1` field, with rationale in `override_reason:` and the automation manifest in the `inspector_smoke_automation:` block (lines 9-17 above). See also `INSPECTOR-SMOKE.md` for the historical 1:1 Inspector-assertion to automated-test coverage map.
 
 #### 1. MCP Inspector UI smoke over stdio
 
-**Test:**
-```bash
-npx @modelcontextprotocol/inspector npx tsx src/server.ts
-```
-Open Inspector UI in browser; verify:
-- Tool panel lists exactly 4 tools: `workspace`, `project`, `sequence`, `shot`
-- Invoke `workspace` with `{"action":"create","name":"test"}` → response shows `structuredContent` with `breadcrumb` (1-entry array) and `breadcrumb_text: "test"`
-- Use the id from the first response; chain: project → sequence → shot with name `sh010`
-- Invoke `shot` with `{"action":"create","sequenceId":"<seq id>","name":"SH010"}` → response has `isError: true` with `INVALID_SHOT_FORMAT`
-
-**Expected:** All 4 tools visible, all valid invocations succeed and render breadcrumb, invalid shot name is rejected visibly.
-
-**Why human:** Browser-based UI rendering, MCP capability-negotiation handshake schema, and Inspector-specific pretty-printing of `structuredContent` are visual/UX verifications. Automated coverage maps 1:1 from each assertion to a passing test (see INSPECTOR-SMOKE.md), but the Inspector UI itself cannot be driven headlessly by the current executor. Defer until pre-release sign-off on a dev laptop.
+Covered by `scripts/inspector-smoke.mjs` driving a real MCP SDK Client against `npx tsx src/server.ts` over stdio. The script validates: tool panel lists exactly 4 tools (workspace, project, sequence, shot); `workspace action=create` returns `structuredContent` with `breadcrumb` (1-entry array) and `breadcrumb_text`; the four-level chain workspace to project to sequence to shot creates a shot with name `sh010` and a 4-entry breadcrumb; `shot action=create` with `name: "SH010"` returns `isError: true` with `INVALID_SHOT_FORMAT` surfaced via the SDK 1.29 inputSchema intercept (see `inspector_smoke_automation.notes[0]` in the frontmatter for the envelope-shape caveat).
 
 #### 2. MCP Inspector UI smoke over Streamable HTTP
 
-**Test:**
-```bash
-# Terminal 1
-npx tsx src/server.ts --http
-
-# Terminal 2
-npx @modelcontextprotocol/inspector
-# then select Streamable HTTP, URL http://127.0.0.1:3000/mcp
-```
-Repeat the same invocation sequence as above. Same 4 tools, same breadcrumb shape, same INVALID_SHOT_FORMAT rejection.
-
-**Expected:** Identical tool list and behavior to stdio (confirms TRNS-02 + Pitfall #7 mitigation end-to-end in a real browser client).
-
-**Why human:** Same rationale — browser UI rendering + bidirectional capability negotiation with a real MCP-over-HTTP browser client. `transport-parity.test.ts` proves list identity via InMemoryTransport; the live curl in INSPECTOR-SMOKE.md §1 proves the wire format. The *browser UX* layer is what's deferred.
+Covered by the same `scripts/inspector-smoke.mjs` driving `StreamableHTTPClientTransport` against `npx tsx src/server.ts --http` on `http://127.0.0.1:3000/mcp`. Identical assertions to section 1; the transport switch confirms TRNS-02 + Pitfall #7 mitigation end-to-end. `transport-parity.test.ts` provides the InMemoryTransport-based equivalent assertion against the same `buildServer(engine)` factory.
 
 ### Gaps Summary
 
@@ -237,22 +212,6 @@ Repeat the same invocation sequence as above. Same 4 tools, same breadcrumb shap
 The two human-verification items above are **not gaps** — they are UX-layer smoke checks that the plan explicitly deferred (INSPECTOR-SMOKE.md documents the deferral with 1:1 automated-coverage mapping). Running them requires a human with a browser; completing them is a pre-release sign-off step rather than a Phase 1 functional requirement.
 
 The 6 Warnings in `01-REVIEW.md` (graceful shutdown, Origin validation, N+1 queries, non-null assertions, bind-error handling, method routing) are **post-Phase-1 hardening items**. They surface real risks for Phase 2+ when ComfyUI keys enter headers and list sizes grow, but they do not block the Phase 1 goal "agent can create/navigate a full VFX project hierarchy with proper naming conventions." The code-review agent already flagged each with a concrete fix sketch; they can be scheduled before Phase 2 or absorbed into Phase 2's plan depending on priority.
-
-**Recommendation:** Treat status as `human_needed` strictly for the Inspector UI smoke checks. If the developer considers automated coverage (InMemoryTransport parity + live HTTP curl + 76 passing tests) sufficient and wishes to mark Phase 1 complete without the Inspector UI smoke, an override in this VERIFICATION.md's `overrides:` frontmatter would be appropriate:
-
-```yaml
-overrides:
-  - must_have: "MCP Inspector UI smoke over stdio"
-    reason: "Plan explicitly deferred to local pre-release verification; automated coverage maps 1:1 per INSPECTOR-SMOKE.md; transport-parity + stdio-hygiene + live HTTP curl cover the wire-level contract"
-    accepted_by: "<name>"
-    accepted_at: "<ISO timestamp>"
-  - must_have: "MCP Inspector UI smoke over Streamable HTTP"
-    reason: "Same as above — UX-layer check not required for Phase 1 functional sign-off"
-    accepted_by: "<name>"
-    accepted_at: "<ISO timestamp>"
-```
-
-With both overrides accepted, status becomes `passed` at 21/21 must-haves.
 
 ---
 
