@@ -153,3 +153,9 @@ Test state confirmed: 188 passing, 1 skipped (gated live-smoke), 0 failed. `npx 
 
 _Verified: 2026-04-21T10:35:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Endpoint Reconciliation (Phase 7, 2026-04-24)
+
+The Phase 2 live-smoke entry (see §"Behavioral Spot-Checks > Live-smoke gated") remained untested end-to-end until Phase 7 resolved the `COMFYUI_API_BASE` drift observed on 2026-04-22. As of 2026-04-24, the locked `COMFYUI_API_BASE` is `https://cloud.comfy.org`, with `HEALTHCHECK_PATH=/api/system_stats` exported from `src/comfyui/client.ts` and a first-submit healthcheck wired into `ComfyUIClient.submit()` to catch future drift as `TypedError('COMFYUI_ENDPOINT_DRIFT')`. Phase 7 additionally surfaced two Phase 2 tech-debt items fixed in-flight — D-EP-16 (`normalizeCloudStatus` translates Cloud's `'success'`/`'error'` terminals to canonical vocabulary) and D-EP-17 (status fetch switched from the singular `/api/job/{id}/status` endpoint, which omits outputs, to the plural `/api/jobs/{id}` endpoint with a nested-outputs flattener). See [`07-VERIFICATION.md`](../07-comfyui-endpoint-reconciliation/07-VERIFICATION.md) for the probe matrix, credential layout, rotation procedure, and fallback-if-redirected behaviour.
