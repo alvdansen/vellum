@@ -175,7 +175,12 @@ Plans:
   1. `01-02-SUMMARY.md` frontmatter `requirements-completed` lists HIER-06, TOOL-02, TOOL-03, TOOL-04, TOOL-05 (matching what the VERIFICATION row already attributes to plan 01-02)
   2. `01-VERIFICATION.md` (or a linked note) records the inspector UI UX smoke override decision — programmatic `scripts/inspector-smoke.mjs` (56/56 wire-level checks) replaces manual browser UX check
   3. A Phase 2+ follow-up note captures the Zod `inputSchema` → `structuredContent.code` intercept behavior (MCP SDK 1.29) so the divergence is easy to find later
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Vitest regression guard (phase-attribution.test.ts) + reformat 01-02-SUMMARY.md to flow-style YAML (D-ATTR-01, D-ATTR-12, D-ATTR-13, D-ATTR-14, D-ATTR-15)
+- [ ] 08-02-PLAN.md — Inspector UI override reconciliation: rewrite 01-VERIFICATION.md body, delete stub, prepend INSPECTOR-SMOKE.md header, cross-link from 01-02-SUMMARY.md (D-ATTR-02, D-ATTR-05, D-ATTR-06, D-ATTR-07, D-ATTR-08)
+- [ ] 08-03-PLAN.md — MCP SDK 1.29 Zod inputSchema caveat supplement to 02-VERIFICATION.md + audit resolution notes (D-ATTR-03, D-ATTR-04, D-ATTR-09, D-ATTR-10, D-ATTR-11)
 
 ### Phase 9: Nyquist Wave 0 Closure
 **Goal**: Retrofit Wave 0 Nyquist validation for phases 01, 02, 03, and 05 so `VALIDATION.md` reports `nyquist_compliant: true` + `wave_0_complete: true` across every v1.0 phase (Phase 04 already compliant)
