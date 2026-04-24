@@ -20,11 +20,62 @@ import type {
 /** Same-origin base. No hardcoded host; Vite dev server proxies to the API. */
 const BASE = '';
 
-/** Small helper — fetch JSON and throw with status on !ok. */
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+/**
+ * Typed error thrown by `fetchJson` when the server returns a non-2xx response.
+ * SC-3 (Phase 6 gap_closure WR-05): preserves the typed error envelope the
+ * server emits via `typedErrorHandler` (src/http/error-middleware.ts) so UI
+ * consumers can `instanceof DashboardApiError` and switch on `err.code`.
+ *
+ * Analog: src/engine/errors.ts TypedError (server-side typed error). Diverges
+ * by typing `code` as `string` (the dashboard accepts any code the server
+ * emits, including future codes the dashboard's enum does not yet know about),
+ * adding `status: number` (HTTP status — 4xx/5xx), and adding `body?: unknown`
+ * (the parsed envelope verbatim, useful for debugging).
+ */
+export class DashboardApiError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public status: number,
+    public body?: unknown,
+  ) {
+    super(message);
+    this.name = 'DashboardApiError';
+  }
+}
+
+/**
+ * Fetch JSON from the dashboard API surface; throw `DashboardApiError` on
+ * non-2xx with the typed envelope preserved when the server emitted one.
+ *
+ * Behavior matrix (SC-3 / 06-RESEARCH.md):
+ *   - 2xx: parse and return as T.
+ *   - non-2xx + JSON body matching `{ error: { code, message } }`:
+ *       throw DashboardApiError(error.code, error.message, status, body)
+ *   - non-2xx + non-JSON body (HTML 502 from a proxy, empty body, etc.):
+ *       throw DashboardApiError('HTTP_ERROR', `HTTP <status>: <text>`, status)
+ *
+ * The try/catch around `res.json()` (06-RESEARCH.md §Pitfall 3) prevents a
+ * SyntaxError from masking the original HTTP failure — without it, an HTML
+ * 502 response would surface as an unhandled JSON parse error in the UI
+ * instead of a typed DashboardApiError.
+ */
+export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, init);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}${res.statusText ? `: ${res.statusText}` : ''}`);
+    let body: unknown;
+    let code = 'HTTP_ERROR';
+    let message = `HTTP ${res.status}${res.statusText ? `: ${res.statusText}` : ''}`;
+    try {
+      body = await res.json();
+      const envelope = body as { error?: { code?: string; message?: string } };
+      if (envelope?.error?.code) code = envelope.error.code;
+      if (envelope?.error?.message) message = envelope.error.message;
+    } catch {
+      // Body is not JSON (HTML 502 from a proxy, empty body, malformed JSON).
+      // Fall through with the default 'HTTP_ERROR' code + status-derived message.
+    }
+    throw new DashboardApiError(code, message, res.status, body);
   }
   return (await res.json()) as T;
 }
