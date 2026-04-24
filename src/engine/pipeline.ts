@@ -668,12 +668,10 @@ export class Engine {
     // already exists (recovery poller uses it on boot) and returns exactly the
     // same subset; we reuse it to avoid adding a second DB method.
     const active = this.versionRepo.listPendingVersions();
-    // Recent = completed. Phase 5 demo scope: surface an empty list if the
-    // store doesn't expose a listByStatus helper; server-side SSE updates
-    // the dashboard as versions complete. A later plan may add a dedicated
-    // recent-completed repo method; keeping it honest here avoids stubbing
-    // an ad-hoc SQL query inside the engine facade (architecture-purity).
-    const recent: Version[] = [];
+    // SC-1 (Phase 6 gap_closure WR-04): real DB-backed recent-completed list,
+    // limit=10 for the home rail. Repo helper handles the SQL; engine stays
+    // composition-only (no raw Drizzle here).
+    const recent = this.versionRepo.listRecentCompleted(10);
     const { items: workspaces } = this.repo.listWorkspaces(50, 0);
     return {
       active_versions: active,

@@ -199,4 +199,23 @@ export class VersionRepo {
       .all() as Version[];
     return { items, total_count: Number(totalRow?.c ?? 0) };
   }
+
+  /**
+   * Phase 6 (gap_closure WR-04): list the N most-recent versions whose status
+   * is 'completed', ordered by completed_at DESC. Powers Engine.getDashboardHome
+   * `recent_versions` rail. No total_count or offset — the dashboard home
+   * surfaces a single fixed-N rail; pagination/scoping can be added later
+   * without changing the Version[] return contract (RESEARCH.md §A1).
+   *
+   * Analog: listByShot above (same Drizzle chain, different filter + sort).
+   */
+  listRecentCompleted(limit: number): Version[] {
+    return this.db
+      .select()
+      .from(versions)
+      .where(eq(versions.status, 'completed'))
+      .orderBy(sql`${versions.completed_at} DESC`)
+      .limit(limit)
+      .all() as Version[];
+  }
 }

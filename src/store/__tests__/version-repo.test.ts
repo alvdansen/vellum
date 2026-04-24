@@ -279,3 +279,87 @@ describe('VersionRepo.insertVersion — Phase 3 lineage params (D-PROV-33)', () 
     expect([parent.version_number, child1.version_number, child2.version_number]).toEqual([1, 2, 3]);
   });
 });
+
+describe('VersionRepo.listRecentCompleted', () => {
+  let repo: VersionRepo;
+  let hierarchy: HierarchyRepo;
+  let shotId: string;
+
+  beforeEach(() => {
+    const { db } = makeInMemoryDb();
+    repo = new VersionRepo(db);
+    hierarchy = new HierarchyRepo(db);
+    const ws = hierarchy.createWorkspace('ws_recent');
+    const proj = hierarchy.createProject(ws.id, 'p_recent');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const shot = hierarchy.createShot(seq.id, 'sh010');
+    shotId = shot.id;
+  });
+
+  test('returns [] on empty DB', () => {
+    expect(repo.listRecentCompleted(10)).toEqual([]);
+  });
+
+  test('orders results by completed_at DESC', () => {
+    // Insert 3 versions, mark each completed with distinct timestamps.
+    // markCompleted stamps completed_at = Date.now(); use direct SQL UPDATE
+    // to set deterministic values for an ordering assertion.
+    const v1 = repo.insertVersion(shotId);
+    const v2 = repo.insertVersion(shotId);
+    const v3 = repo.insertVersion(shotId);
+    repo.markCompleted(v1.id, '[]');
+    repo.markCompleted(v2.id, '[]');
+    repo.markCompleted(v3.id, '[]');
+    // Force distinct completed_at via raw UPDATE on the existing repo's client
+    // (better-sqlite3 statements on (repo as any).db.$client) — set
+    // completed_at = 1000/2000/3000 explicitly for deterministic ordering.
+    const client = (repo as unknown as { db: { $client: { exec: (s: string) => void; prepare: (s: string) => { run: (...a: unknown[]) => void } } } }).db.$client;
+    client.prepare('UPDATE versions SET completed_at = ? WHERE id = ?').run(1000, v1.id);
+    client.prepare('UPDATE versions SET completed_at = ? WHERE id = ?').run(2000, v2.id);
+    client.prepare('UPDATE versions SET completed_at = ? WHERE id = ?').run(3000, v3.id);
+
+    const rows = repo.listRecentCompleted(10);
+    expect(rows.map((r) => r.id)).toEqual([v3.id, v2.id, v1.id]);
+  });
+
+  test("filters out non-'completed' rows (submitted/failed/running excluded)", () => {
+    const v1 = repo.insertVersion(shotId); // status='submitted' default
+    const v2 = repo.insertVersion(shotId);
+    const v3 = repo.insertVersion(shotId);
+    const v4 = repo.insertVersion(shotId);
+    const v5 = repo.insertVersion(shotId);
+    const v6 = repo.insertVersion(shotId);
+    const v7 = repo.insertVersion(shotId);
+    const v8 = repo.insertVersion(shotId);
+    // Mark 5 completed.
+    [v1, v2, v3, v4, v5].forEach((v) => repo.markCompleted(v.id, '[]'));
+    // Mark 1 failed (status='failed').
+    repo.markFailed(v6.id, 'COMFYUI_API_ERROR', 'test failure');
+    // v7 stays submitted, v8 stays submitted.
+    void v7;
+    void v8;
+
+    const rows = repo.listRecentCompleted(20);
+    expect(rows).toHaveLength(5);
+    rows.forEach((r) => expect(r.status).toBe('completed'));
+  });
+
+  test('limit caps the result count', () => {
+    // Insert 12 completed versions.
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const v = repo.insertVersion(shotId);
+      repo.markCompleted(v.id, '[]');
+      ids.push(v.id);
+    }
+    const rows = repo.listRecentCompleted(10);
+    expect(rows).toHaveLength(10);
+    rows.forEach((r) => expect(r.status).toBe('completed'));
+  });
+
+  test('limit=0 returns [] (boundary)', () => {
+    const v1 = repo.insertVersion(shotId);
+    repo.markCompleted(v1.id, '[]');
+    expect(repo.listRecentCompleted(0)).toEqual([]);
+  });
+});
