@@ -157,7 +157,7 @@ Plans:
 **Plans**: 8 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Scaffold scripts/probe-comfy-endpoint.mts (read-only matrix probe + exit-code matrix)
+- [x] 07-01-PLAN.md — Scaffold scripts/probe-comfy-endpoint.mts (read-only matrix probe + exit-code matrix)
 - [ ] 07-02-PLAN.md — Lock DEFAULT_COMFYUI_API_BASE + export HEALTHCHECK_PATH + wire ensureEndpointHealthy() + add COMFYUI_ENDPOINT_DRIFT
 - [ ] 07-03-PLAN.md — Update .env and .env.example with locked base + rotation comment (cross-file consistency check)
 - [ ] 07-04-PLAN.md — Add 4 unit tests for ensureEndpointHealthy (cache-hit, drift-throws, race-safe, failure-retry)
