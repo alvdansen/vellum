@@ -213,22 +213,6 @@ The two human-verification items above are **not gaps** — they are UX-layer sm
 
 The 6 Warnings in `01-REVIEW.md` (graceful shutdown, Origin validation, N+1 queries, non-null assertions, bind-error handling, method routing) are **post-Phase-1 hardening items**. They surface real risks for Phase 2+ when ComfyUI keys enter headers and list sizes grow, but they do not block the Phase 1 goal "agent can create/navigate a full VFX project hierarchy with proper naming conventions." The code-review agent already flagged each with a concrete fix sketch; they can be scheduled before Phase 2 or absorbed into Phase 2's plan depending on priority.
 
-**Recommendation:** Treat status as `human_needed` strictly for the Inspector UI smoke checks. If the developer considers automated coverage (InMemoryTransport parity + live HTTP curl + 76 passing tests) sufficient and wishes to mark Phase 1 complete without the Inspector UI smoke, an override in this VERIFICATION.md's `overrides:` frontmatter would be appropriate:
-
-```yaml
-overrides:
-  - must_have: "MCP Inspector UI smoke over stdio"
-    reason: "Plan explicitly deferred to local pre-release verification; automated coverage maps 1:1 per INSPECTOR-SMOKE.md; transport-parity + stdio-hygiene + live HTTP curl cover the wire-level contract"
-    accepted_by: "<name>"
-    accepted_at: "<ISO timestamp>"
-  - must_have: "MCP Inspector UI smoke over Streamable HTTP"
-    reason: "Same as above — UX-layer check not required for Phase 1 functional sign-off"
-    accepted_by: "<name>"
-    accepted_at: "<ISO timestamp>"
-```
-
-With both overrides accepted, status becomes `passed` at 21/21 must-haves.
-
 ---
 
 _Verified: 2026-04-20T22:45:00Z_
