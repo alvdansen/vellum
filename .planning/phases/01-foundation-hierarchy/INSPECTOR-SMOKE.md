@@ -1,3 +1,5 @@
+**Override accepted 2026-04-24.** `scripts/inspector-smoke.mjs` is the authoritative wire-level gate for Phase 1's Inspector UI UX smoke checks (56/56 across stdio + Streamable HTTP). The deferred-to-local-verification framing below is preserved as historical rationale + 1:1 coverage map.
+
 # Phase 01 MCP Inspector Smoke — Results
 
 **Plan:** 01-foundation-hierarchy / 01-03
