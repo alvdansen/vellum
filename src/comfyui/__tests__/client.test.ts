@@ -1091,3 +1091,143 @@ describe('ComfyUIClient.fetchResolvedPrompt (D-PROV-05)', () => {
     expect(fetchCalls).toBe(0);
   });
 });
+
+describe('ComfyUIClient.ensureEndpointHealthy (D-EP-07, D-EP-08, D-EP-10)', () => {
+  test('first-submit healthcheck fires exactly once; second submit skips it (cache hit)', async () => {
+    let healthGets = 0;
+    let promptPosts = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetchRaw(async (url, init) => {
+        const u = new URL(url.toString());
+        if (u.pathname === HEALTHCHECK_PATH && (init?.method ?? 'GET') === 'GET') {
+          healthGets++;
+          return jsonResponse(200, { queue_running: [], queue_pending: [] });
+        }
+        if (u.pathname === '/api/prompt' && init?.method === 'POST') {
+          promptPosts++;
+          return jsonResponse(200, { prompt_id: `p-${promptPosts}` });
+        }
+        throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${u.pathname}`);
+      }),
+    });
+
+    const r1 = await client.submit({ '1': { class_type: 'A', inputs: {} } });
+    const r2 = await client.submit({ '2': { class_type: 'B', inputs: {} } });
+
+    expect(r1.prompt_id).toBe('p-1');
+    expect(r2.prompt_id).toBe('p-2');
+    expect(healthGets).toBe(1); // D-EP-07: cached after first success
+    expect(promptPosts).toBe(2); // Both submits proceeded
+  });
+
+  test('healthcheck 401 throws COMFYUI_ENDPOINT_DRIFT with probe-script hint; /api/prompt never called', async () => {
+    let healthGets = 0;
+    let promptPosts = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetchRaw(async (url, init) => {
+        const u = new URL(url.toString());
+        if (u.pathname === HEALTHCHECK_PATH && (init?.method ?? 'GET') === 'GET') {
+          healthGets++;
+          return jsonResponse(401, { error: 'Unauthorized' });
+        }
+        if (u.pathname === '/api/prompt') promptPosts++;
+        return jsonResponse(200, { prompt_id: 'should-not-be-called' });
+      }),
+    });
+
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({
+      name: 'TypedError',
+      code: 'COMFYUI_ENDPOINT_DRIFT',
+    });
+
+    expect(healthGets).toBe(1);
+    expect(promptPosts).toBe(0); // Submit short-circuited on healthcheck
+
+    // Capture the hint to verify probe-script reference (D-EP-08).
+    try {
+      await client.submit({ '1': { class_type: 'A', inputs: {} } });
+    } catch (e) {
+      const err = e as { hint?: string };
+      expect(err.hint).toContain('scripts/probe-comfy-endpoint.mts');
+    }
+  });
+
+  test('concurrent submits share one in-flight healthcheck Promise (race-safe memoization, D-EP-10)', async () => {
+    let healthGets = 0;
+    let promptPosts = 0;
+    let resolveHealth: ((value: Response) => void) | undefined;
+    const healthPromise = new Promise<Response>((r) => {
+      resolveHealth = r;
+    });
+
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetchRaw(async (url) => {
+        const u = new URL(url.toString());
+        if (u.pathname === HEALTHCHECK_PATH) {
+          healthGets++;
+          return healthPromise;
+        }
+        if (u.pathname === '/api/prompt') {
+          promptPosts++;
+          return jsonResponse(200, { prompt_id: `p-${promptPosts}` });
+        }
+        throw new Error(`Unexpected fetch: ${u.pathname}`);
+      }),
+    });
+
+    // Kick off two submits concurrently BEFORE resolving the healthcheck.
+    const p1 = client.submit({ '1': { class_type: 'A', inputs: {} } });
+    const p2 = client.submit({ '2': { class_type: 'B', inputs: {} } });
+
+    // Give the event loop a tick so both submits reach the await inside
+    // ensureEndpointHealthy.
+    await new Promise((r) => setTimeout(r, 5));
+    expect(healthGets).toBe(1); // Both submits awaiting the same Promise
+
+    // Resolve the healthcheck; both submits should then proceed.
+    resolveHealth!(jsonResponse(200, { queue_running: [] }));
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1.prompt_id).toMatch(/^p-/);
+    expect(r2.prompt_id).toMatch(/^p-/);
+    expect(healthGets).toBe(1); // Confirmed — never a second GET
+    expect(promptPosts).toBe(2);
+  });
+
+  test('failed healthcheck does not poison cache; next submit retries cleanly (Pitfall #2)', async () => {
+    let healthGets = 0;
+    let promptPosts = 0;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetchRaw(async (url) => {
+        const u = new URL(url.toString());
+        if (u.pathname === HEALTHCHECK_PATH) {
+          healthGets++;
+          // First call: drift. Second call: recovered.
+          if (healthGets === 1) return jsonResponse(401, { error: 'Unauthorized' });
+          return jsonResponse(200, { queue_running: [] });
+        }
+        if (u.pathname === '/api/prompt') {
+          promptPosts++;
+          return jsonResponse(200, { prompt_id: 'recovered' });
+        }
+        throw new Error(`Unexpected fetch: ${u.pathname}`);
+      }),
+    });
+
+    // First submit — healthcheck 401 → DRIFT
+    await expect(
+      client.submit({ '1': { class_type: 'A', inputs: {} } }),
+    ).rejects.toMatchObject({ code: 'COMFYUI_ENDPOINT_DRIFT' });
+    expect(healthGets).toBe(1);
+    expect(promptPosts).toBe(0);
+
+    // Second submit — healthcheck retries (cache was reset), returns 200,
+    // submit proceeds.
+    const r = await client.submit({ '1': { class_type: 'A', inputs: {} } });
+    expect(r.prompt_id).toBe('recovered');
+    expect(healthGets).toBe(2); // Fresh check on second submit (cache not poisoned)
+    expect(promptPosts).toBe(1);
+  });
+});
