@@ -327,6 +327,7 @@ No new threat surface introduced beyond the plan's `<threat_model>` register. Al
 - **Architecture-purity test** (from VALIDATION.md, D-33) could be added now but the plan scoped it to Plan 03's validation sweep. grep-verified manually as a pre-commit check for Wave 2.
 - **MCP Inspector smoke tests** (both transports) remain manual verifications blocked until Plan 03 delivers the server.
 - **Tool-budget test** (from VALIDATION.md): could be added as a unit test checking `server._registeredTools` has exactly 4 keys after all 4 registers run. The smoke test in error-wrapping.test.ts covers the same invariant inline; a dedicated file can be added later if desired.
+- **MCP Inspector UI smoke overridden on 2026-04-24** — see `01-VERIFICATION.md` `overrides_applied: 1` and `scripts/inspector-smoke.mjs` (56/56 wire-level checks across both transports).
 
 ## Next Phase Readiness
 
