@@ -18,6 +18,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { resolve as resolvePath } from 'node:path';
 import { FakeEngine } from '../../test-utils/fake-engine.js';
 import { createDashboardRouter } from '../dashboard-routes.js';
 import { typedErrorHandler } from '../error-middleware.js';
@@ -477,6 +479,101 @@ describe('createDashboardRouter', () => {
       const res = await app.request('/api/versions/ver_jpg_stream/output');
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('image/jpeg');
+    });
+  });
+
+  // ================================================================
+  // SC-2 (Phase 6 gap_closure WR-01): outputRoot resolution
+  // ================================================================
+  describe('GET /api/versions/:id/output — outputRoot resolution (SC-2)', () => {
+    // Track tmp dirs for cleanup. Cannot use the existing TEST_VERSION_IDS
+    // helper because that one assumes the repo-relative `outputs/` tree;
+    // these tests intentionally write OUTSIDE the repo to prove resolution.
+    const tmpRoots = new Set<string>();
+
+    afterEach(() => {
+      for (const root of tmpRoots) {
+        if (existsSync(root)) {
+          rmSync(root, { recursive: true, force: true });
+        }
+      }
+      tmpRoots.clear();
+    });
+
+    function writeUnder(root: string, versionId: string, filename: string): void {
+      const dir = join(root, versionId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, filename), Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+      tmpRoots.add(root);
+    }
+
+    function seedVersion(engine: FakeEngine, versionId: string, filename: string): void {
+      engine.cans.versions.set(versionId, {
+        entity: {
+          id: versionId,
+          shot_id: 'shot_1',
+          version_number: 1,
+          status: 'completed',
+          job_id: null,
+          parent_version_id: null,
+          notes: null,
+          created_at: 0,
+          completed_at: null,
+          error_code: null,
+          error_message: null,
+          outputs_json: JSON.stringify([{ filename }]),
+          lineage_type: null,
+          tags: [],
+          metadata: [],
+        },
+        breadcrumb: { entries: [], text: '' },
+      });
+    }
+
+    it('resolves against an absolute outputRoot (proves CWD independence)', async () => {
+      const absRoot = resolvePath(tmpdir(), `vfx-sc2-abs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      // Mutate the FakeEngine surface BEFORE building the app — the route
+      // captures `engine.outputRoot` at call time, not at construction time.
+      engine.outputRoot = absRoot;
+      const versionId = 'ver_sc2_abs';
+      writeUnder(absRoot, versionId, 'out.png');
+      seedVersion(engine, versionId, 'out.png');
+
+      const app = buildApp(engine);
+      const res = await app.request(`/api/versions/${versionId}/output`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+
+      // Negative regression: the same file MUST NOT exist under the repo's
+      // legacy `outputs/<versionId>/...` literal. If this assertion fires, the
+      // route is still using the hardcoded path despite the change above.
+      expect(existsSync(join('outputs', versionId, 'out.png'))).toBe(false);
+    });
+
+    it('resolves a relative outputRoot against process.cwd', async () => {
+      const relRoot = `tmp-sc2-rel-${Date.now()}`;
+      engine.outputRoot = relRoot;
+      const versionId = 'ver_sc2_rel';
+      writeUnder(relRoot, versionId, 'out.png');
+      seedVersion(engine, versionId, 'out.png');
+
+      const app = buildApp(engine);
+      const res = await app.request(`/api/versions/${versionId}/output`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+    });
+
+    it("preserves default 'outputs' resolution (regression guard)", async () => {
+      // Do NOT mutate engine.outputRoot — leaves it at the FakeEngine default
+      // 'outputs', which path.resolve() resolves against process.cwd().
+      const versionId = 'ver_sc2_default';
+      writeTestOutput(versionId, 'out.png');
+      seedVersion(engine, versionId, 'out.png');
+
+      const app = buildApp(engine);
+      const res = await app.request(`/api/versions/${versionId}/output`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
     });
   });
 
