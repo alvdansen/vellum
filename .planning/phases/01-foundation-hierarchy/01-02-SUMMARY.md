@@ -57,18 +57,7 @@ patterns-established:
   - "List envelope (S8 extended): `{items, total, limit, offset}` with defaults limit=20/offset=0. Items are entity fields + their own `breadcrumb` + `breadcrumb_text`. Phase 4 search will inherit this shape verbatim."
   - "Defence-in-depth regex (T2): Shot regex ^sh\\d{3,}$ is enforced at Zod level in shot-tool.ts AND at engine.createShot level (Wave 1). Either layer alone suffices; both together means any future bypass (direct engine call, alternative adapter, test harness) still fails closed."
 
-requirements-completed:
-  - HIER-01
-  - HIER-02
-  - HIER-03
-  - HIER-04
-  - HIER-05
-  - HIER-06
-  - TOOL-01
-  - TOOL-02
-  - TOOL-03
-  - TOOL-04
-  - TOOL-05
+requirements-completed: [HIER-01, HIER-02, HIER-03, HIER-04, HIER-05, HIER-06, TOOL-01, TOOL-02, TOOL-03, TOOL-04, TOOL-05]
 
 # Metrics
 duration: ~9min
