@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 07 (comfyui-endpoint-reconciliation) — EXECUTING
-Plan: 4 of 8 (Wave 3 — 07-01/02/03 complete)
+Plan: 6 of 8 (Wave 4 — 07-01..05 complete)
 Status: Executing Phase 07
-Last activity: 2026-04-24 -- Wave 2 complete: client healthcheck + HEALTHCHECK_PATH + COMFYUI_ENDPOINT_DRIFT + .env mirror (735 tests passing)
+Last activity: 2026-04-24 -- Wave 3 complete: 4 ensureEndpointHealthy unit tests + endpoint-probe drift sentinel (739 passed / 3 skipped)
 
 Progress: [██████████] 100%
 
