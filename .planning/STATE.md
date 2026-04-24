@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 ## Current Position
 
 Phase: 07 (comfyui-endpoint-reconciliation) — EXECUTING
-Plan: 2 of 8 (Wave 2 — 07-01 complete)
+Plan: 4 of 8 (Wave 3 — 07-01/02/03 complete)
 Status: Executing Phase 07
-Last activity: 2026-04-24 -- 07-01 probe scaffold + winner captured (cloud.comfy.org/api/system_stats)
+Last activity: 2026-04-24 -- Wave 2 complete: client healthcheck + HEALTHCHECK_PATH + COMFYUI_ENDPOINT_DRIFT + .env mirror (735 tests passing)
 
 Progress: [██████████] 100%
 

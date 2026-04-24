@@ -158,8 +158,8 @@ Plans:
 
 Plans:
 - [x] 07-01-PLAN.md — Scaffold scripts/probe-comfy-endpoint.mts (read-only matrix probe + exit-code matrix)
-- [ ] 07-02-PLAN.md — Lock DEFAULT_COMFYUI_API_BASE + export HEALTHCHECK_PATH + wire ensureEndpointHealthy() + add COMFYUI_ENDPOINT_DRIFT
-- [ ] 07-03-PLAN.md — Update .env and .env.example with locked base + rotation comment (cross-file consistency check)
+- [x] 07-02-PLAN.md — Lock DEFAULT_COMFYUI_API_BASE + export HEALTHCHECK_PATH + wire ensureEndpointHealthy() + add COMFYUI_ENDPOINT_DRIFT
+- [x] 07-03-PLAN.md — Update .env and .env.example with locked base + rotation comment (cross-file consistency check)
 - [ ] 07-04-PLAN.md — Add 4 unit tests for ensureEndpointHealthy (cache-hit, drift-throws, race-safe, failure-retry)
 - [ ] 07-05-PLAN.md — Create src/comfyui/__tests__/endpoint-probe.test.ts sentinel (RUN_PROBE gate)
 - [ ] 07-06-PLAN.md — Run live-smoke twice; regression gate (stdio-hygiene + tool-budget + architecture-purity + transport-parity)
