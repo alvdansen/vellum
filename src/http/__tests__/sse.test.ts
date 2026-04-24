@@ -303,7 +303,7 @@ describe('createSseHandler', () => {
     expect(engine.events.listenerCount('hierarchy.created')).toBe(0);
   });
 
-  it('keep-alive ping comment emitted after 30s (T-5-08)', async () => {
+  it('keep-alive ping comment emitted after 30s as a true SSE comment frame (SC-5 / T-5-08)', async () => {
     const { app } = buildApp();
     const controller = new AbortController();
     const resPromise = app.request('/api/events', { signal: controller.signal });
@@ -314,8 +314,20 @@ describe('createSseHandler', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     controller.abort();
     const text = await drain((await resPromise).body);
-    // SSE comment form: ": ping" — a bare colon-prefixed line the browser
-    // EventSource ignores, but that keeps the TCP connection from going idle.
-    expect(text).toContain(': ping');
+
+    // SC-5 / IN-02: per WHATWG SSE spec, a comment line MUST begin with `:`
+    // as the FIRST character of the line. Hono's writeSSE prefixes `data: `
+    // to every line and was producing `data: : ping\n\n` on the wire — that
+    // is NOT a comment, it's a malformed message that EventSource ignores.
+    // Fix uses the raw-byte path: SSEStreamingApi.write(': ping\n\n').
+
+    // Positive: `: ping\n\n` must appear at the START of a line (beginning
+    // of string OR immediately after a previous `\n`). The two trailing
+    // `\n\n` form the mandatory frame terminator per WHATWG SSE §9.2.
+    expect(text).toMatch(/(^|\n): ping\n\n/);
+
+    // Negative: the previous broken shape `data: : ping` must NEVER appear.
+    // This regex catches a regression to `stream.writeSSE({ data: ': ping' })`.
+    expect(text).not.toMatch(/data: : ping/);
   });
 });
