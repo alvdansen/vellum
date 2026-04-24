@@ -578,6 +578,65 @@ describe('createDashboardRouter', () => {
   });
 
   // ================================================================
+  // SC-4 (Phase 6 gap_closure IN-01): qNum strict validation
+  // ================================================================
+  describe('qNum validation (SC-4)', () => {
+    it('rejects ?limit=-1 with HTTP 400 INVALID_INPUT', async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces?limit=-1');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('INVALID_INPUT');
+      expect(body.error.message).toMatch(/non-negative integer/);
+    });
+
+    it('rejects ?limit=1.5 with HTTP 400 INVALID_INPUT', async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces?limit=1.5');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('INVALID_INPUT');
+      expect(body.error.message).toMatch(/non-negative integer/);
+    });
+
+    it('rejects ?limit=foo with HTTP 400 INVALID_INPUT', async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces?limit=foo');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('INVALID_INPUT');
+      expect(body.error.message).toMatch(/non-negative integer/);
+    });
+
+    it("propagates the param name into the error message (?offset=-5 → message includes 'offset')", async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces?offset=-5');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('INVALID_INPUT');
+      // RESEARCH.md §Pitfall 4: the signature gains a `name` parameter so the
+      // error message tells the caller WHICH param failed.
+      expect(body.error.message).toContain('offset');
+    });
+
+    it('absent params still return 200 (fallback preserved)', async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces');
+      expect(res.status).toBe(200);
+      // The existing test at /api/workspaces 'returns the paginated workspace
+      // list' covers the delegation arg shape; here we just assert no throw.
+      expect(engine.calls).toContainEqual({ method: 'listWorkspaces', args: [20, 0] });
+    });
+
+    it('?limit=0&offset=0 returns 200 (zero is a valid non-negative integer)', async () => {
+      const app = buildApp(engine);
+      const res = await app.request('/api/workspaces?limit=0&offset=0');
+      expect(res.status).toBe(200);
+      expect(engine.calls).toContainEqual({ method: 'listWorkspaces', args: [0, 0] });
+    });
+  });
+
+  // ================================================================
   // REPRODUCE
   // ================================================================
 
