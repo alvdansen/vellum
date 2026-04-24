@@ -134,7 +134,16 @@ Plans:
   4. `qNum` parser rejects negatives and non-integer floats at the HTTP boundary with a typed error (no silent SQLite clamping)
   5. SSE keep-alive frame is emitted as a proper comment (`: ping\n\n`, no `data:` prefix); existing connection tests still pass
   6. `lib/shape.ts normalizeStatus` exhaustively handles the status union (no unknown→queued silent fallback) and regressions are caught by tests
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Wave 0 test scaffolds for SC-3 (api-error.test.ts) and SC-6 (shape.test.ts)
+- [ ] 06-02-PLAN.md — SC-1: VersionRepo.listRecentCompleted + Engine.getDashboardHome wiring (closes WR-04)
+- [ ] 06-03-PLAN.md — SC-2: Engine.outputRoot widened + path.resolve in dashboard output route (closes WR-01)
+- [ ] 06-04-PLAN.md — SC-3: DashboardApiError class + fetchJson rewrite (closes WR-05)
+- [ ] 06-05-PLAN.md — SC-4: qNum strict validation throws INVALID_INPUT (closes IN-01)
+- [ ] 06-06-PLAN.md — SC-5: SSE keep-alive uses raw stream.write for true comment frame (closes IN-02)
+- [ ] 06-07-PLAN.md — SC-6: normalizeStatus exhaustive switch + never-default arm (closes IN-04)
 
 ### Phase 7: ComfyUI Endpoint Reconciliation
 **Goal**: Reconcile the COMFYUI_API_BASE endpoint drift so live-smoke authenticates and returns 200 across stdio + HTTP transports, closing the Phase 2 infrastructure tech debt captured in project memory
@@ -193,7 +202,7 @@ Phases 6-9 were added 2026-04-23 as gap closure phases from `v1.0-MILESTONE-AUDI
 | 3. Provenance & Versioning | 3/3 | Complete | 2026-04-22 |
 | 4. Asset Management | 5/5 | Complete | 2026-04-22 |
 | 5. Web Dashboard | 13/13 | Complete | 2026-04-23 |
-| 6. Dashboard Wire Quality | 0/? | Planned (gap closure) | - |
+| 6. Dashboard Wire Quality | 0/7 | Planned (gap closure) | - |
 | 7. ComfyUI Endpoint Reconciliation | 0/? | Planned (gap closure) | - |
 | 8. Documentation Attribution Backfill | 0/? | Planned (gap closure) | - |
 | 9. Nyquist Wave 0 Closure | 0/? | Planned (gap closure, optional) | - |
