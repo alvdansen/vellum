@@ -154,7 +154,17 @@ Plans:
   1. `.env COMFYUI_API_BASE` points at a single endpoint that returns 200 for authenticated requests (documented rationale + credential source-of-truth)
   2. Live-smoke script exercises `generation.submit` + `generation.status` round-trip against the live endpoint and returns a completed job
   3. The endpoint decision, credential layout, and fallback-if-redirected behavior are documented in `02-VERIFICATION.md` (or a successor note) so the resolution survives future rotations
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Scaffold scripts/probe-comfy-endpoint.mts (read-only matrix probe + exit-code matrix)
+- [ ] 07-02-PLAN.md — Lock DEFAULT_COMFYUI_API_BASE + export HEALTHCHECK_PATH + wire ensureEndpointHealthy() + add COMFYUI_ENDPOINT_DRIFT
+- [ ] 07-03-PLAN.md — Update .env and .env.example with locked base + rotation comment (cross-file consistency check)
+- [ ] 07-04-PLAN.md — Add 4 unit tests for ensureEndpointHealthy (cache-hit, drift-throws, race-safe, failure-retry)
+- [ ] 07-05-PLAN.md — Create src/comfyui/__tests__/endpoint-probe.test.ts sentinel (RUN_PROBE gate)
+- [ ] 07-06-PLAN.md — Run live-smoke twice; regression gate (stdio-hygiene + tool-budget + architecture-purity + transport-parity)
+- [ ] 07-07-PLAN.md — Write 07-VERIFICATION.md (4 sections) + append supplement to 02-VERIFICATION.md
+- [ ] 07-08-PLAN.md — Memory hygiene: remove/resolve drift memory; update reference + MEMORY.md index
 
 ### Phase 8: Documentation Attribution Backfill
 **Goal**: Close the three Phase 1 documentation-only tech debt items so plan-level attribution matches what the Phase 1 VERIFICATION already verified, the inspector UI smoke override is visible in writeup, and the Zod inputSchema envelope caveat is findable
