@@ -99,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-24 after Phase 6 completion (dashboard-wire-quality) — Phase 5 (web-dashboard) and Phase 6 (gap closure for v1.0 audit tech debt: WR-01, WR-04, WR-05, IN-01, IN-02, IN-04) both shipped since last update*
+*Last updated: 2026-04-24 after Phase 8 completion (doc-attribution-backfill) — Phases 5-8 all shipped; Phase 7 reconciled COMFYUI_API_BASE endpoint drift, Phase 8 closed three Phase 1 documentation-only tech debt items (HIER-06 + TOOL-02..05 attribution in 01-02-SUMMARY.md, inspector UI override reconciliation, MCP SDK 1.29 Zod inputSchema caveat supplement). Phase 8 also added `src/__tests__/phase-attribution.test.ts` as a forward-protection Vitest regression guard for future phases.*
