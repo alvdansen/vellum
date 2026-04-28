@@ -1,7 +1,7 @@
 ---
 phase: 4
 slug: asset-management
-status: draft
+status: closed
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-04-22
@@ -150,4 +150,16 @@ Infrastructure gaps: none. `vitest`, `better-sqlite3` in-memory fixtures, and fa
 - [ ] Feedback latency < 12s (full suite target)
 - [ ] `nyquist_compliant: true` set in frontmatter once `## Per-Task Verification Map` is filled
 
-**Approval:** pending — requires planner to map every plan task to an invariant or wave-0 file; then the auditor promotes `nyquist_compliant: true`.
+**Approval:** closed 2026-04-28 (Phase 9 retrofit) — both Nyquist flags already true (compliant template); status flipped from draft to closed for v1.0 functional phase consistency.
+
+---
+
+## Validation Audit 2026-04-28
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 (no real gaps surfaced; cosmetic status flip only) |
+| Escalated | 0 |
+
+Wave 0 closure: nyquist_compliant + wave_0_complete already true (compliant template); status flipped draft → closed for v1.0 functional phase consistency. See `.planning/phases/09-nyquist-wave0-closure/09-CONTEXT.md` decisions and `.planning/phases/09-nyquist-wave0-closure/09-VERIFICATION.md` for observable truths.
