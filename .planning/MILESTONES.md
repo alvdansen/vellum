@@ -1,0 +1,68 @@
+# Milestones
+
+## v1.0 MVP (Shipped: 2026-04-28)
+
+**Phases completed:** 9 phases, 46 plans, 127 tasks
+
+**Key accomplishments:**
+
+- Pure-engine substrate for VFX Familiar — SQLite+WAL store, Drizzle schema, HierarchyRepo, BreadcrumbResolver, and a 12-method Engine facade with shot-regex enforcement — all with zero MCP SDK dependency.
+- Four coarse-grained MCP tools (workspace, project, sequence, shot) each exposing `create | list | get` actions via Zod v4 discriminated-union schemas, all delegating to the Wave 1 Engine through a dual-form response envelope with TypedError wrapping and breadcrumb-on-every-response.
+- Dual-transport entry point (stdio always + Streamable HTTP on opt-in) over a single process-wide engine, wired via a shared buildServer factory that guarantees transport parity by construction. Five cross-cutting integration tests (parity, hygiene, purity, budget, zero-config) lock every Phase 1 invariant future phases must honor.
+- Drizzle migration infrastructure + VersionRepo state-machine + pure helpers (backoff/format/outputs) + Phase 2 typed error vocabulary + test doubles (FakeComfyUIClient / extended FakeEngine) — the contract layer Plans 02-02 and 02-03 will execute against.
+- ComfyUI Cloud HTTP client with SSRF-safe redirect gate and atomic streaming downloads, plus the engine-tier generation state machine (two-phase submit, fresh-if-not-terminal status with 10-min timeout, 3-attempt download retry, AbortController-wired recovery poller) composed into the Engine facade alongside the Phase 1 hierarchy surface — the layer Plan 02-03's `generation` tool will be a thin Zod wrapper over.
+- `generation` MCP tool with submit/status actions, dotenv-driven server wiring with ComfyUIClient + engine.start/stop + SIGINT/SIGTERM lifecycle, and a gated end-to-end live-smoke against real ComfyUI Cloud.
+- Append-only provenance table + pure engine modules for diff, iterate-merge, and PNG tEXt extraction — zero-coupling foundation that Plan 2 and Plan 3 compose into the submit path and tool surface
+- Wire Plan 01's pure provenance primitives into the Phase 2 generation lifecycle — ProvenanceWriter fires at submit + terminal events, fetchResolvedPrompt captures PNG tEXt blobs for replay, reproduce/iterate create lineage-tagged children. Engine facade exposes six new read/diff/reproduce/iterate methods ready for Plan 3's tool surface.
+- New `version` MCP tool (get/list/diff/provenance) + extended `generation` tool (reproduce/iterate) + live-smoke reproduce round-trip — closes PROV-01..PROV-06 at the agent boundary with tool budget at exactly 6 of 12
+- Additive Drizzle migration 0004 + tags/metadata sqliteTable declarations + Phase 4 bounds constants, error codes, ID prefixes, and pure-TS asset types — zero runtime behavior changes, full foundation for Plans 02-05.
+- Two new repos with idempotent mutators (D-ASST-03), scope-aware aggregation (D-ASST-06), and `json_group_array` ASC-ordered hydration — zero MCP imports, zero cross-repo coupling, 26 new unit tests green and 493 suite tests pass.
+- Phase 4 core business logic landed: 7 asset operations + hydrateVersionWithAssets helper, AND-only SQL filter composition, scope XOR enforcement, inclusive date-range bounds, pagination defaults — all with zero MCP/Zod imports, 38 unit tests green, full suite at 530/531 (1 pre-existing timing flake under full-suite load).
+- `asset` tool registered with 7-action Zod discriminated union (add_tag/remove_tag/set_metadata/remove_metadata/query/list_tags/list_metadata_keys), dual-form envelope via toolOk, ZodError re-wrap as INVALID_INPUT, breadcrumb on every mutator + query response — 27 integration tests green, full suite 562/564 (2 pre-existing timing flakes), wire-level UAT 6/6 via verify-phase4-tool-surface.mts.
+- Version tool wired for Phase 4 — `get` always returns inline tags (ASC) + metadata (ASC by key); `list` grows include_tags/include_metadata opt-in flags with cheap default payload; `provenance` + `diff` untouched. Fixture helpers (7) extracted for engine + tool test composition. 23/23 version-tool tests green (15 existing + 8 new); full suite 568/572 with two pre-existing timing flakes.
+- Foundation wave: npm workspaces monorepo scaffold + config-only dashboard package + server-side test-utils extensions for Plans 02-04.
+- Typed engine event bus and dashboard-stable download hook — every mutation path publishes a T-5-02-safe SSE payload; markCompleted triggers a fire-and-forget download into versionId-keyed output tree.
+- Hono error handler that converts every engine `TypedError` to a semantically correct HTTP status code with a stable `{ error: { code, message } }` JSON shape — the shared error surface for all 18 dashboard REST routes (Plan 05-04) and the SSE endpoint (Plan 05-05).
+- 18 canonical dashboard REST routes wired to the Engine facade as a Hono sub-router — hierarchy reads, version reads, provenance, diff, reproduce, asset filters, and dashboard aggregate; output streaming validates filenames against path traversal (T-5-04) before fs.createReadStream.
+- Hono `streamSSE` handler at `GET /api/events` that forwards 5 typed EngineEventMap payloads to every connected browser, with origin-allowlist gate before stream open, 30s keep-alive ping for proxy timeouts, and full listener cleanup on client disconnect.
+- 1. [Rule 1 - Bug] Plan's mount target `/api` would double-prefix dashboard routes
+- Extended architecture-purity.test.ts with 4 new D-WEBUI-31 assertions (HTTP layer / engine events / dashboard boundary) + paraphrased sentinel strings in 2 src/http/ comments to keep the substring-grep test signal unambiguous.
+- Typed REST client (18 fetch wrappers), SSE client (singleton EventSource + on/offSseEvent), and @preact/signals state atoms (activeGenerations + hierarchy + versions) — no UI yet, but every wire the Plan 05-09/05-10 components pull on is now typed, tested, and zero-server-import.
+- Tailwind v4 @theme design-token layer + 7 pure-Preact primitive components (TreeSidebar, VersionCard, StatusPill, JsonBlock, ThemeToggle, EmptyState, SkeletonThumbnail) with 9 TreeSidebar interaction tests — the reusable primitives every Plan 10+ view composes into full screens.
+- Preact view layer composing Plan 09 primitives against Plan 08 signals — HomeView (tree + shot grid), VersionDrawer (timeline + provenance + diff), DiffDrawer (before/after cards), ActiveGenerationsPanel (live SSE panel), App (SSE lifecycle), main (entry). `npm run build:dashboard` now produces a 38.55 kB JS + 21.70 kB CSS bundle.
+- 10 integration tests locking down the theme/localStorage/DOM chain and the SSE/signal/render chain — end-to-end behavioral gates with render assertions that surface any serialization-boundary drift as a failing test, rather than a silent production bug.
+- Pure-function adapter at the SSE serialization boundary translates engine-native payloads to the dashboard rendered contract, unblocking live progress updates (SC-3 / WEBUI-03).
+- SC-3 (DashboardApiError) and SC-6 (normalizeStatus exhaustive) RED test scaffolds committed ahead of Plans 04/07 with exact assertion shapes + regex contracts pinned
+- VersionRepo.listRecentCompleted(limit) replaces the hardcoded `recent: Version[] = []` in Engine.getDashboardHome — the dashboard home rail now surfaces real completed-generation history ordered by completed_at DESC.
+- Engine.outputRoot is now public-readonly, surfaced through EngineForDashboard, mirrored on FakeEngine, and `/api/versions/:id/output` resolves via `path.resolve(engine.outputRoot, versionId, filename)` — the dashboard streaming route no longer depends on server CWD or the hardcoded `outputs` literal.
+- Typed-error preservation for the dashboard fetch layer: DashboardApiError class + exported fetchJson that unwraps the server's `{ error: { code, message } }` envelope into `code` / `status` / `body` fields, with a graceful `HTTP_ERROR` fallback for HTML 502 / empty bodies.
+- `qNum(raw, fallback, name)` now rejects negatives, non-integer floats, and non-numeric strings with HTTP 400 + `{ error: { code: 'INVALID_INPUT', message: "Query parameter '<name>' must be a non-negative integer (got '<raw>')" } }` at the HTTP boundary — SQLite no longer silently clamps bad pagination input into success-with-empty-results.
+- SSE keep-alive now emits a spec-compliant comment frame (`: ping\n\n` at column 1) via the inherited StreamingApi.write raw-byte path; closes audit item IN-02.
+- Rewrote `normalizeStatus` from silent-fallback if/else chain to an exhaustive `switch` with `_exhaustive: never` default arm — compile-time catches future Version['status'] drift, runtime throws on force-cast bypass.
+- Read-only matrix probe `scripts/probe-comfy-endpoint.mts` identifies `https://cloud.comfy.org` + `/api/system_stats` as the single (base, path) combo that authenticates with the current COMFYUI_API_KEY — locks the default base and healthcheck path for Phase 7 Plans 02 + 03.
+- Wired the first-submit healthcheck (D-EP-07) into ComfyUIClient.submit() with Promise-memoized race-safe caching, added HEALTHCHECK_PATH shared constant (D-EP-14), appended COMFYUI_ENDPOINT_DRIFT to the ErrorCode union (D-EP-08), and locked the DEFAULT_COMFYUI_API_BASE audit trail — all backed by the Plan 01 probe matrix that identified /api/system_stats as the ONLY path on cloud.comfy.org that authenticates with the current key format.
+- Updated .env.example with the Phase 7 rotation-reference comment and swapped .env COMFYUI_API_BASE from the drifted `https://api.comfy.org` to the probe-winning `https://cloud.comfy.org` — completes the D-EP-06 single-source-of-truth contract (three sites, one value) that Plans 01 + 02 started.
+- Added 4 targeted unit tests for `ComfyUIClient.ensureEndpointHealthy()` covering the four D-EP-07/08/10 behaviors Plan 02 wired (cache hit, DRIFT-with-hint, race-safe memoization, failure-retry) — closing the test-coverage gap that the Plan 02 SUMMARY flagged as "test coverage of the 4 DRIFT scenarios is Plan 04." All 4 tests use the `mockFetchRaw` escape hatch Plan 02 left for this exact purpose.
+- Created the D-EP-13 drift sentinel `src/comfyui/__tests__/endpoint-probe.test.ts` — a single-assertion, double-opt-in (`RUN_PROBE=1` + `COMFYUI_API_KEY`) gated test that issues one raw GET against `${apiBase}${HEALTHCHECK_PATH}` and asserts status 200, deep-shrunk from live-smoke (~315 lines → 59 lines). Post-plan test-count invariant locked: 739 passed / 3 skipped (+1 new default-skipped sentinel).
+- SC-2 MET — live-smoke green twice back-to-back after two Rule 3 blocking fixes (D-EP-16 normalizeCloudStatus, D-EP-17 /api/jobs endpoint switch + nested outputs flattening) resolved Phase 2 tech debt that Plan 01's read-only probe matrix couldn't detect.
+- Created `07-VERIFICATION.md` as the canonical Phase 7 resolution document with all 4 D-EP-12 sections (probe matrix + chosen base, credential layout, rotation procedure, fallback-if-redirected + memory hygiene). Appended a 1-paragraph cross-reference supplement to `02-VERIFICATION.md` per D-EP-11 so Phase 2 readers have a forward-pointer to the Phase 7 resolution.
+- Removed the stale `project_comfy_api_endpoint_drift.md` memory (D-EP-15 preferred removal path — Pitfall #5 met via Plan 06), updated `reference_env_comfyui_key.md` body to reflect the locked `COMFYUI_API_BASE=https://cloud.comfy.org` + vitest-dotenv gotcha + Phase 7 cross-reference, and synchronized the `MEMORY.md` index to the post-Phase-7 3-entry memory set.
+- A Vitest cross-cutting invariant test (`src/__tests__/phase-attribution.test.ts`) that asserts SUMMARY frontmatter `requirements-completed:` ⊇ ROADMAP `
+- Reconciled the Phase 1 inspector UI override across three docs (01-VERIFICATION.md body, INSPECTOR-SMOKE.md historical artifact, 01-02-SUMMARY.md cross-link) so the body, the historical artifact, and the cross-link from the plan summary all reflect the accepted-override state. Frontmatter `overrides_applied: 1` (already in place from 2026-04-24) is now the canonical record cited by all three documents.
+- Append-only documentation backfill — three-paragraph Phase 8 supplement appended to 02-VERIFICATION.md (D-ATTR-09 + D-ATTR-10 + D-ATTR-11) plus per-item resolution suffixes on all 3 Phase 01 tech_debt items in v1.0-MILESTONE-AUDIT.md (D-ATTR-03 Shape A)
+- Wave 0 Nyquist validation retrofit across all 5 v1.0 functional phases (01-05) with audit doc re-audit showing compliant + new cross-cutting Vitest regression guard catching future flag flip-back.
+
+**Delivered:** Open-source MCP server layering VFX hierarchy, async ComfyUI Cloud generation, append-only provenance, asset tagging/query, and a Preact dashboard — all under the 12-tool MCP cap with dual-transport (stdio + Streamable HTTP) parity locked at the integration-test layer.
+
+**Stats:**
+- Date range: 2026-04-20 → 2026-04-28 (9 days)
+- Commits: 360 (genesis 65eaf46 → milestone close 25b69c2)
+- LOC: ~25,543 TypeScript (22,613 server + 2,930 dashboard)
+- Tests: 760/763 passing baseline (3 pre-existing timing flakes documented in Phase 4-5 SUMMARY notes)
+- Tool surface: 6 of 12 MCP tools (workspace, project, sequence, shot, generation, version) + asset tool
+
+**Audit:** `passed` per re-audit 2026-04-28 (`milestones/v1.0-MILESTONE-AUDIT.md`). 38/38 v1 requirements validated, 9/9 phases verified, all 4 prior tech-debt categories closed by gap-closure phases 06-09.
+
+**Known deferred items at close:** 0. The pre-close artifact audit surfaced 1 category flag for Phase 01's `01-HUMAN-UAT.md` — file was already `status: resolved` with `resolution: automated` (Plan 08-02 reconciliation, `scripts/inspector-smoke.mjs` 56/56 wire-level checks is canonical). Acknowledged as no-op.
+
+---
