@@ -193,7 +193,10 @@ Plans:
   3. Phase 03 `VALIDATION.md` reports same three flags true after `/gsd-validate-phase 03` (phase already flags `nyquist_compliant: true`; only `wave_0_complete` needs closure)
   4. Phase 05 `VALIDATION.md` reports same three flags true after `/gsd-validate-phase 05`
   5. The audit frontmatter overall Nyquist status changes from `partial` to `compliant` on re-audit
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 09-01-PLAN.md — Wave 0 retrofit across phases 01/02/03/05 + cosmetic Phase 04 flip + v1.0-MILESTONE-AUDIT.md frontmatter/body/append + new src/__tests__/validation-flags.test.ts regression guard + 09-VERIFICATION.md (D-WAVE0-01..18)
 
 ## Future (v2)
 
