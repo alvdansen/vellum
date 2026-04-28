@@ -223,4 +223,4 @@ Phases 6-9 were added 2026-04-23 as gap closure phases from `v1.0-MILESTONE-AUDI
 | 6. Dashboard Wire Quality | 0/7 | Planned (gap closure) | - |
 | 7. ComfyUI Endpoint Reconciliation | 0/? | Planned (gap closure) | - |
 | 8. Documentation Attribution Backfill | 0/? | Planned (gap closure) | - |
-| 9. Nyquist Wave 0 Closure | 0/? | Planned (gap closure, optional) | - |
+| 9. Nyquist Wave 0 Closure | 1/1 | Complete | 2026-04-28 |
