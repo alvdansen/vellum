@@ -18,17 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-15)
+See: .planning/PROJECT.md (updated 2026-04-28 after v1.0 close)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase --phase — 09
+**Current focus:** v1.0 shipped 2026-04-28. Awaiting `/gsd-new-milestone` to define next milestone (candidates: v1.1 C2PA provenance verification per SEED-001, multi-backend routing, function-calling adapter).
 
 ## Current Position
 
-Phase: 09
+Phase: -- (between milestones)
 Plan: Not started
-Status: Milestone complete
-Last activity: 2026-04-28
+Status: v1.0 milestone complete; ready for next milestone
+Last activity: 2026-04-28 — milestone close
 
 Progress: [██████████] 100%
 
@@ -135,8 +135,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 2 depends on live ComfyUI Cloud API access -- API key and endpoint validation needed before Phase 2 planning
-- Model checksums may not be available from Cloud API (PROV-02 allows nullable, but should confirm during Phase 2)
+(All v1.0 blockers resolved. Phase 2 ComfyUI Cloud access locked at https://cloud.comfy.org via Phase 7. Model checksums confirmed null-on-Cloud per PROV-02 — closes the loop on the prior concern; full closure target is v1.1 C2PA model fingerprinting per SEED-001.)
 
 ## Deferred Items
 
@@ -148,8 +147,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 09 context gathered
-Resume file: --resume-file
+Last session: 2026-04-28 — v1.0 milestone close
+Stopped at: Milestone complete; awaiting `/gsd-new-milestone`
+Resume file: --
 
-**Planned Phase:** 09 (nyquist-wave0-closure) — 1 plans — 2026-04-28T15:59:33.724Z
+**Planned Phase:** TBD — to be defined by next milestone via `/gsd-new-milestone`.
