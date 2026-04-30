@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { TypedError } from '../engine/errors.js';
-import { extractFirstNodeError } from './format.js';
+import { flattenComfyError } from './format.js';
 import { extractTextChunk } from './png-metadata.js';
 import { streamToPath } from '../utils/stream-to-path.js';
 import type {
@@ -424,8 +424,17 @@ export class ComfyUIClient {
       } catch {
         /* ignore — malformed or truncated JSON falls through to generic message */
       }
-      const nodeErrors = (parsed as { node_errors?: unknown } | null)?.node_errors;
-      const nodeMessage = extractFirstNodeError(nodeErrors);
+      // DEMO-02: single helper handles node_errors + string + fallback.
+      // Pass the full parsed body so flattenComfyError covers the
+      // {node_errors:...} case. flattenComfyError ALWAYS returns a non-null
+      // string, so we treat the literal "ComfyUI reported failed" fallback as
+      // "no actionable detail" and prefer the status/statusText line — which
+      // preserves today's submit-time message shape for non-node_errors 4xx
+      // bodies (e.g. 500 with empty/non-JSON body, existing client.test.ts
+      // assertions). When body has node_errors, branch 1 flattens; existing
+      // 'Node <id> (<class_type>): <msg>' assertion at client.test.ts:174 holds.
+      const flat = flattenComfyError(parsed);
+      const nodeMessage = flat === 'ComfyUI reported failed' ? null : flat;
       // IS-04: scrub the API key (in case ComfyUI echoed a header) and
       // truncate before the message leaves the client boundary.
       throw new TypedError(

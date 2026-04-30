@@ -7,7 +7,7 @@ import type { BreadcrumbResolver } from './breadcrumb.js';
 import type { ProvenanceWriter } from './provenance.js';
 import { TypedError, type ErrorCode } from './errors.js';
 import { createBackoffIterator, sleep } from './backoff.js';
-import { validateWorkflowFormat, extractFirstNodeError } from '../comfyui/format.js';
+import { validateWorkflowFormat, flattenComfyError } from '../comfyui/format.js';
 import { applySeedShortcut, applyOverrides } from './iterate-merge.js';
 import {
   buildOutputPath,
@@ -201,11 +201,10 @@ export class GenerationEngine {
     if (mapped === 'completed') {
       await this.downloadAndPersist(row, remote.outputs ?? []);
     } else if (mapped === 'failed') {
-      const nodeErrors = (remote.error as { node_errors?: unknown } | undefined)
-        ?.node_errors;
-      const flat =
-        extractFirstNodeError(nodeErrors) ??
-        (typeof remote.error === 'string' ? remote.error : 'ComfyUI reported failed');
+      // DEMO-02: single helper handles node_errors + string + fallback.
+      // Same flatten contract as the submit-time branch in src/comfyui/client.ts.
+      // Recovery poller path (drivePoller → getGenerationStatus) inherits this.
+      const flat = flattenComfyError(remote.error);
       this.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', flat);
       this.versions.markFailed(row.id, 'COMFYUI_API_ERROR', flat);
     } else if (mapped === 'running' && row.status !== 'running') {
