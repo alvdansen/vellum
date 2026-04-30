@@ -427,3 +427,123 @@ describe('Phase 13 (PROV-V-03) — models_fingerprinted sibling event', () => {
     expect(refetched!.timestamp).toBe(completed.timestamp);
   });
 });
+
+describe('Phase 15: manifest_signed event payload extension', () => {
+  let repo: ProvenanceRepo;
+  let versionRepo: VersionRepo;
+  let versionId: string;
+
+  beforeEach(() => {
+    const { db } = makeInMemoryDb();
+    repo = new ProvenanceRepo(db);
+    versionRepo = new VersionRepo(db);
+    const hierarchy = new HierarchyRepo(db);
+    const ws = hierarchy.createWorkspace('ws1');
+    const proj = hierarchy.createProject(ws.id, 'p1');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const shot = hierarchy.createShot(seq.id, 'sh010');
+    versionId = versionRepo.insertVersion(shot.id).id;
+  });
+
+  test('persists manifest_sha256 and ingredients_summary additive fields', () => {
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'out.png',
+      format: 'image/png',
+      signed: true,
+      cert_subject_summary: 'CN=test',
+      signed_at: new Date().toISOString(),
+      status_reason: '',
+      algorithm: 'es256',
+      manifest_sha256: 'a'.repeat(64),
+      ingredients_summary: {
+        parent_count: 1,
+        component_count: 2,
+        input_assertion: true,
+        unavailable_count: 1,
+      },
+    });
+    const event = repo.getLatestManifestSignedEvent(versionId, 'out.png');
+    expect(event).not.toBeNull();
+    expect(event!.manifest_sha256).toBe('a'.repeat(64));
+    expect(event!.ingredients_summary).toEqual({
+      parent_count: 1,
+      component_count: 2,
+      input_assertion: true,
+      unavailable_count: 1,
+    });
+  });
+
+  test('parses Phase 14-vintage rows (no manifest_sha256 / no ingredients_summary) cleanly', () => {
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'out.png',
+      format: 'image/png',
+      signed: true,
+      cert_subject_summary: 'CN=test',
+      signed_at: new Date().toISOString(),
+      status_reason: '',
+      algorithm: 'es256',
+    });
+    const event = repo.getLatestManifestSignedEvent(versionId, 'out.png');
+    expect(event).not.toBeNull();
+    expect(event!.manifest_sha256).toBeUndefined();
+    expect(event!.ingredients_summary).toBeUndefined();
+  });
+
+  test('round-trip with unavailable_count > 0 — confirms Phase 15 audit semantics', () => {
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'out.png',
+      format: 'image/png',
+      signed: true,
+      cert_subject_summary: 'CN=test',
+      signed_at: new Date().toISOString(),
+      status_reason: '',
+      algorithm: 'es256',
+      manifest_sha256: 'b'.repeat(64),
+      ingredients_summary: {
+        parent_count: 0,
+        component_count: 3,
+        input_assertion: true,
+        unavailable_count: 3,
+      },
+    });
+    const event = repo.getLatestManifestSignedEvent(versionId, 'out.png');
+    expect(event!.ingredients_summary?.unavailable_count).toBe(3);
+    expect(event!.ingredients_summary?.component_count).toBe(3);
+    expect(event!.ingredients_summary?.parent_count).toBe(0);
+  });
+
+  test('manifest_sha256 may be null when the engine could not compute it (signed-but-no-bytes-in-memory edge)', () => {
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'out.mp4',
+      format: 'video/mp4',
+      signed: true,
+      cert_subject_summary: 'CN=test',
+      signed_at: new Date().toISOString(),
+      status_reason: '',
+      algorithm: 'es256',
+      manifest_sha256: null,
+      ingredients_summary: {
+        parent_count: 0,
+        component_count: 0,
+        input_assertion: true,
+        unavailable_count: 0,
+      },
+    });
+    const event = repo.getLatestManifestSignedEvent(versionId, 'out.mp4');
+    expect(event!.manifest_sha256).toBeNull();
+  });
+});
+
+describe('Phase 15: append-only invariant preserved', () => {
+  test('provenance-repo.ts contains zero db.update or db.delete calls (lockstep with Phase 13)', () => {
+    // Architecture-purity defence — file-level grep mirrors the directory-level
+    // assertion at src/__tests__/architecture-purity.test.ts. Plan 15-03's
+    // payload extension is TS-only (TEXT column reuses existing storage); no
+    // schema migration, no UPDATEs, no DELETEs.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs');
+    const src = fs.readFileSync('src/store/provenance-repo.ts', 'utf8');
+    expect(src.includes('this.db.update')).toBe(false);
+    expect(src.includes('this.db.delete')).toBe(false);
+  });
+});
