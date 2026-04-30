@@ -71,6 +71,11 @@ export type EngineForDashboard = Pick<
   | 'listMetadataKeys'
   | 'getDashboardHome'
   | 'outputRoot'
+  // Phase 14 Plan 04 — read accessor for the X-C2PA-Signing-Status response
+  // header. The HTTP layer NEVER signs; signing happens at write-time via the
+  // engine downloader hook (Plan 14-03). This accessor returns the latest
+  // manifest_signed event payload for the (versionId, filename) pair, or null.
+  | 'getC2paStatusForVersion'
 >;
 
 /**
@@ -196,8 +201,63 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   // the fs path. Even a malicious ComfyUI response that sets filename to
   // `../../etc/passwd` is neutralised (basename strips to `passwd`; then
   // existsSync() returns false for the missing file → 404).
-  app.get('/api/versions/:id/output', (c) => {
-    const versionId = c.req.param('id');
+  //
+  // Phase 14 Plan 04: response carries an `X-C2PA-Signing-Status` header
+  // sourced from the latest `manifest_signed` provenance event written by the
+  // Plan 14-03 engine downloader hook. The HTTP layer NEVER calls into
+  // `c2pa-node`; it only READS the recorded signing outcome. Files are signed
+  // at write-time, not read-time (D-CTX-8 → Plan 14-03 revision: dual-transport
+  // parity for free, no signing latency on the hot HTTP path).
+  //
+  // Header value matrix:
+  //   - 'signed'                                — manifest_signed event has signed=true
+  //   - 'unsigned:<status_reason>'              — manifest_signed event has signed=false
+  //                                               (signing_disabled / unsupported_format /
+  //                                                cert_load_failed / sign_call_failed /
+  //                                                native_binding_unavailable / etc.)
+  //   - 'unknown'                               — no manifest_signed event recorded
+  //                                               (legacy version, pre-Phase-14, or
+  //                                                download still in progress)
+  //
+  // Both GET and HEAD methods set the header. HEAD returns no body (T-14-10
+  // mitigation: header addition does NOT regress streaming bytes; HEAD is the
+  // dashboard's lightweight status check via getC2paStatus in
+  // packages/dashboard/src/lib/api.ts).
+  //
+  // v1.1 scope reduction (Plan 14-03 Concern #2): NO sidecar route in v1.1.
+  // c2pa-node v0.5.26 has no public sidecar API; producing pseudo-sidecars
+  // would be cryptographically invalid. EXR/PSD surface as
+  // `unsigned:unsupported_format` in the X-C2PA-Signing-Status header. v1.2
+  // will add the sidecar route + dashboard link when the c2pa-node JS surface
+  // exposes signEmbeddable / sign_no_embed equivalent.
+
+  /**
+   * Resolve the signing-status string from the engine's manifest_signed event
+   * lookup. Pure function — no HTTP / no FS / no c2pa-node imports.
+   */
+  function resolveSigningStatus(versionId: string, filename: string): string {
+    const status = engine.getC2paStatusForVersion(versionId, filename);
+    if (status === null) return 'unknown';
+    if (status.signed) return 'signed';
+    // status_reason is a server-trusted enum (Plan 14-03 — one of 6 codes).
+    // Defence-in-depth: empty string falls back to 'unknown' so a malformed
+    // event row never surfaces as `unsigned:` (broken trailing colon).
+    const reason = status.status_reason || 'unknown';
+    return `unsigned:${reason}`;
+  }
+
+  /**
+   * Phase 14 Plan 04: shared resolution of (filename, contentType, filePath)
+   * for both GET and HEAD on /api/versions/:id/output. Throws TypedError on
+   * the same conditions as the original GET handler (OUTPUT_UNAVAILABLE,
+   * INVALID_INPUT) — the error middleware converts to 4xx JSON identically
+   * for both verbs.
+   */
+  function resolveOutputForVersion(versionId: string): {
+    filename: string;
+    contentType: string;
+    filePath: string;
+  } {
     const version = engine.getVersion(versionId); // throws VERSION_NOT_FOUND → 404
 
     const raw = version.entity.outputs_json;
@@ -252,6 +312,16 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
       );
     }
 
+    return { filename, contentType, filePath };
+  }
+
+  app.get('/api/versions/:id/output', (c) => {
+    const versionId = c.req.param('id');
+    const { filename, contentType, filePath } = resolveOutputForVersion(versionId);
+
+    // Phase 14 Plan 04 — read manifest_signed event for X-C2PA-Signing-Status.
+    const signingStatus = resolveSigningStatus(versionId, filename);
+
     const nodeStream = createReadStream(filePath);
     const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
 
@@ -260,6 +330,25 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
       // Output files are content-addressed by version_id — safe to cache
       // aggressively. Plan 05-06 server wiring inherits this header.
       'Cache-Control': 'public, max-age=3600, immutable',
+      // Phase 14 Plan 04 — signing-state header (purely additive; T-14-10
+      // mitigation guarantees body bytes / Content-Type / Cache-Control are
+      // byte-identical to the pre-Phase-14 baseline).
+      'X-C2PA-Signing-Status': signingStatus,
+    });
+  });
+
+  // Phase 14 Plan 04 — HEAD /api/versions/:id/output returns the same headers
+  // as GET (including X-C2PA-Signing-Status) without the body. The dashboard's
+  // packages/dashboard/src/lib/api.ts getC2paStatus helper uses HEAD to read
+  // the signing status without downloading file bytes.
+  app.on('HEAD', '/api/versions/:id/output', (c) => {
+    const versionId = c.req.param('id');
+    const { filename, contentType } = resolveOutputForVersion(versionId);
+    const signingStatus = resolveSigningStatus(versionId, filename);
+    return c.body(null, 200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=3600, immutable',
+      'X-C2PA-Signing-Status': signingStatus,
     });
   });
 

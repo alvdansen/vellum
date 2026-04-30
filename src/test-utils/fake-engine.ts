@@ -3,7 +3,11 @@ import type {
   Workspace, Project, Sequence, Shot, Version, Breadcrumb, BreadcrumbEntry,
 } from '../types/hierarchy.js';
 import type { VersionWithAssets, MetadataKV } from '../types/assets.js';
-import type { ProvenanceEvent, DiffResponse } from '../types/provenance.js';
+import type {
+  ProvenanceEvent,
+  DiffResponse,
+  ManifestSignedPayloadFields,
+} from '../types/provenance.js';
 
 /**
  * Phase 5: shared empty Breadcrumb fixture — used by every fake getter so the
@@ -265,6 +269,26 @@ export class FakeEngine {
   } {
     this.calls.push({ method: 'getDashboardHome', args: [] });
     return this.cans.dashboardHome;
+  }
+
+  // ============== Phase 14 Plan 04 — C2PA signing-status read accessor ======
+  /**
+   * Default returns null (no manifest_signed event yet) — pre-Phase-14 tests
+   * that don't care about C2PA continue to work unchanged. Tests that exercise
+   * the X-C2PA-Signing-Status header path override this method on a per-test
+   * instance: `engine.getC2paStatusForVersion = (v, f) => signedPayload(f)`.
+   *
+   * The route in src/http/dashboard-routes.ts treats null as 'unknown' so the
+   * pre-existing GET /api/versions/:id/output tests pass through without
+   * needing fixture changes — only the new X-C2PA-Signing-Status assertions
+   * exercise the override path.
+   */
+  getC2paStatusForVersion(
+    versionId: string,
+    filename: string,
+  ): ManifestSignedPayloadFields | null {
+    this.calls.push({ method: 'getC2paStatusForVersion', args: [versionId, filename] });
+    return null;
   }
 
   reset(): void {

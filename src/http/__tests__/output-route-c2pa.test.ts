@@ -35,12 +35,12 @@ const TEST_VERSION_IDS = new Set<string>();
 function writeTestOutput(
   versionId: string,
   filename: string,
-  content = Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  content?: Buffer,
 ): string {
   const dir = join('outputs', versionId);
   mkdirSync(dir, { recursive: true });
   const p = join(dir, filename);
-  writeFileSync(p, content);
+  writeFileSync(p, content ?? Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   TEST_VERSION_IDS.add(versionId);
   return p;
 }
