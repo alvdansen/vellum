@@ -121,6 +121,120 @@ describe('architecture purity', () => {
       if (status !== 1) throw err;
     }
   });
+
+  // ================================================================
+  // Phase 14 Plan 14-02 — engine-layer C2PA module purity (PROV-V-01).
+  // The new src/engine/c2pa/ directory MUST be MCP-free, SQLite-free,
+  // ORM-free, HTTP-server-free. Additionally, the c2pa-node native
+  // binding import is centralized in EXACTLY ONE file: signer.ts.
+  // Plan 14-03 (engine integration) and Plan 14-04 (HTTP route) reach
+  // c2pa-node only through the index.ts barrel + signer wrapper.
+  // ================================================================
+
+  it('src/engine/c2pa/ has zero imports from @modelcontextprotocol/sdk (PROV-V-01)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/')).toBe(0);
+  });
+
+  it('src/engine/c2pa/ has zero imports from better-sqlite3 (PROV-V-01)', () => {
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/')).toBe(0);
+  });
+
+  it('src/engine/c2pa/ has zero imports from drizzle-orm (PROV-V-01)', () => {
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/')).toBe(0);
+  });
+
+  it('src/engine/c2pa/ has zero imports from hono (robust regex, LOW review note)', () => {
+    // Robust regex per LOW review note — handles single-quote, double-
+    // quote, any whitespace between `from` and the quote.
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-rE', "from[[:space:]]*['\"]hono['\"]", 'src/engine/c2pa/'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `hono import found in src/engine/c2pa/:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+  });
+
+  it('src/engine/c2pa/ has zero imports from @hono/node-server', () => {
+    expect(grepCount('@hono/node-server', 'src/engine/c2pa/')).toBe(0);
+  });
+
+  it('c2pa-node imports are centralized in src/engine/c2pa/signer.ts ONLY (Concern #11)', () => {
+    // Robust regex per LOW review note — covers BOTH static `from 'c2pa-node'`
+    // imports AND dynamic `import('c2pa-node')` calls; handles single-quote,
+    // double-quote, any whitespace between `from`/`import(` and the quote.
+    // Excludes the __tests__ directories (test cases may include the
+    // string in mocks / docstrings without violating the boundary).
+    let out = '';
+    try {
+      out = execFileSync(
+        'grep',
+        [
+          '-rlE',
+          "from[[:space:]]*['\"]c2pa-node|import[[:space:]]*\\([[:space:]]*['\"]c2pa-node",
+          'src/',
+        ],
+        { encoding: 'utf8' },
+      );
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+      // No matches at all — file count == 0 — also a violation (signer
+      // SHOULD import c2pa-node lazily). Caught below.
+    }
+    const files = out
+      ? out
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+      : [];
+    const nonTestFiles = files.filter((f) => !f.includes('__tests__/'));
+    expect(
+      nonTestFiles,
+      `c2pa-node imports outside src/engine/c2pa/signer.ts:\n${nonTestFiles.join('\n')}`,
+    ).toEqual(['src/engine/c2pa/signer.ts']);
+  });
+
+  it('src/engine/c2pa/manifest-builder.ts is pure (zero c2pa-node imports)', () => {
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/manifest-builder.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `c2pa-node import in manifest-builder.ts:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    // Defensive — the directory-level guards above already cover MCP/SQLite/
+    // ORM, but a file-level assertion fires in isolation when one specific
+    // file regresses. Cheaper to debug than the directory-wide fail.
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/manifest-builder.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/manifest-builder.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/manifest-builder.ts')).toBe(0);
+  });
+
+  it('src/engine/c2pa/format-router.ts has zero external dep imports', () => {
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/format-router.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `c2pa-node import in format-router.ts:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/format-router.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/format-router.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/format-router.ts')).toBe(0);
+  });
 });
 
 // ================================================================
