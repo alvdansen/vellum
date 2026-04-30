@@ -251,10 +251,25 @@ export class Engine {
     message: string;
   } | null = null;
   /**
-   * Phase 15 (B4 mitigation) — per-version sign mutex. Concurrent signOutput
-   * calls on the SAME versionId coalesce to a single in-flight Promise; the
-   * second caller awaits the first's result. Different versions remain
-   * parallel — the map is keyed on versionId.
+   * Phase 15 (B4 mitigation) — per-(version, filename) sign mutex. Concurrent
+   * signOutput calls for the SAME (versionId, filename) pair coalesce to a
+   * single in-flight Promise; the second caller awaits the first's result.
+   * Different (versionId, filename) pairs remain parallel — the map is keyed
+   * on `${versionId}::${filename}`.
+   *
+   * Why compound key (Phase 15 WR-01 fix):
+   *   - Concurrent signs of the SAME (versionId, filename) MUST coalesce —
+   *     this preserves the re-sign idempotency intent from Plan 14-03 / B4
+   *     (the second caller receives the first's signed buffer / alreadySigned
+   *     shortcut without producing a duplicate manifest_signed event).
+   *   - Concurrent signs of the SAME versionId but DIFFERENT filenames are a
+   *     legitimate use case (e.g., a future Phase 16 re-derive feature signing
+   *     multiple outputs of one version in parallel). Returning the first
+   *     filename's signed buffer to a caller that asked for a different
+   *     filename was a silent-correctness bug — the second filename never got
+   *     a manifest_signed event of its own. Keying on the (versionId, filename)
+   *     pair lets distinct filenames execute as TWO independent sign operations
+   *     while same-pair concurrency still coalesces.
    *
    * Cleared on settle (try/finally). The mutex is in-process only — multi-
    * process coordination is out-of-scope for v1.1 (single-server design).
@@ -975,21 +990,26 @@ export class Engine {
     signedToPath: string | null;
     alreadySigned?: boolean;
   }> {
-    // Phase 15 / B4 — coalesce concurrent same-version sign calls. Lock at
-    // the versionId level (not (versionId, filename)) — concurrent signs for
-    // the same version across different filenames are pathological and
-    // we'd rather serialise them than race.
-    const inflight = this.signMutex.get(versionId);
+    // Phase 15 / B4 — coalesce concurrent sign calls for the SAME
+    // (versionId, filename) pair. Concurrent calls with the SAME versionId but
+    // DIFFERENT filenames execute as TWO independent sign operations (Phase 15
+    // WR-01 fix — the prior versionId-only key returned filename A's signed
+    // buffer to callers asking for filename B with no manifest_signed event
+    // for B). The compound key preserves re-sign idempotency for matching
+    // (version, filename) pairs while letting distinct filenames sign in
+    // parallel.
+    const mutexKey = `${versionId}::${filename}`;
+    const inflight = this.signMutex.get(mutexKey);
     if (inflight !== undefined) {
       return await inflight;
     }
     const promise = this._signOutputInner(versionId, filename, input);
-    this.signMutex.set(versionId, promise);
+    this.signMutex.set(mutexKey, promise);
     try {
       return await promise;
     } finally {
       // Clear the mutex entry on settle — both success and failure paths.
-      this.signMutex.delete(versionId);
+      this.signMutex.delete(mutexKey);
     }
   }
 

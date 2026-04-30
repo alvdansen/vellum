@@ -244,6 +244,33 @@ describe('Plan 15-03 B4 — per-version sign mutex', () => {
     // Mutex is in-process state — no observable property to assert directly,
     // but the fact that we got here without timeout proves no entry leaked.
   });
+
+  it('Test M4 (WR-01 regression): two concurrent signs for SAME versionId but DIFFERENT filenames execute as TWO sign operations', async () => {
+    // WR-01 regression: the pre-fix mutex was keyed on versionId only, so a
+    // concurrent signOutput(v, "a.png", ...) + signOutput(v, "b.png", ...)
+    // would coalesce — the second caller silently received the first's signed
+    // buffer + zero manifest_signed events for "b.png". With the compound key
+    // `${versionId}::${filename}`, distinct filenames execute as two separate
+    // sign operations.
+    const versionId = seedCompletedVersion(ctx, { promptBlob: {}, seed: null });
+    const [r1, r2] = await Promise.all([
+      ctx.engine.signOutput(versionId, 'a.png', { bytes: TINY_PNG }),
+      ctx.engine.signOutput(versionId, 'b.png', { bytes: TINY_PNG }),
+    ]);
+    // Both calls must produce their own signed buffers (no coalescing across
+    // different filenames). Each sign op flows through _signOutputInner —
+    // neither hits the alreadySigned shortcut (no prior event for either
+    // filename) and neither returns the other's buffer.
+    expect(r1.signed).not.toBeNull();
+    expect(r2.signed).not.toBeNull();
+    expect(r1.alreadySigned).not.toBe(true);
+    expect(r2.alreadySigned).not.toBe(true);
+    // ONE manifest_signed event per (versionId, filename) — TWO total for the
+    // same versionId. Pre-fix this would have been ONE total (the second
+    // filename would have inherited the first's event).
+    expect(countManifestSignedEventsFor(ctx, versionId, 'a.png')).toBe(1);
+    expect(countManifestSignedEventsFor(ctx, versionId, 'b.png')).toBe(1);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
