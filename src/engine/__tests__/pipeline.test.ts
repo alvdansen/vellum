@@ -373,6 +373,67 @@ describe('Engine.diffVersions reproduction_divergence (Phase 12 — DEMO-03)', (
     expect(div.reproduction_output_present).toBe(true);
   });
 
+  // Phase 12 WR-01: graceful degradation regression. When the on-disk path
+  // exists but is unreadable as a file (e.g. it is a directory — EISDIR),
+  // computeOutputSha256 throws. computeReproductionDivergence MUST swallow
+  // the throw and surface the divergence object with *_output_present=false
+  // and any warnings preserved — version.diff must NOT reject. The honesty
+  // contract requires partner-API non-determinism warnings to remain
+  // visible even when the disk state is broken.
+  test('WR-01: EISDIR on reproduction output returns divergence with warnings preserved (no throw)', async () => {
+    const same = Buffer.from('identical bytes');
+    const { parentId, reproductionId } = await seedReproducePair(ctx, {
+      parentBytes: same,
+      reproductionBytes: same,
+      reproductionWarnings: [
+        'Partner API non-deterministic — reproduction is best-effort',
+      ],
+    });
+    // Replace the reproduction's output FILE with a DIRECTORY at the same
+    // path. stat() succeeds (so the ENOENT short-circuit does NOT fire),
+    // but createReadStream throws EISDIR — the exact non-ENOENT case the
+    // helper re-throws and the WR-01 guard must trap.
+    const reproPath = pth.join(ctx.tempRoot, reproductionId, 'out.png');
+    await fsp.rm(reproPath, { force: true });
+    await fsp.mkdir(reproPath, { recursive: true });
+
+    // Silence the expected console.error so test output stays clean while
+    // capturing the call for operator-visibility assertion. Use a bound
+    // capture instead of vi.spyOn so the capture is independent of any
+    // module-cache identity quirks for the global console.error reference.
+    const captured: unknown[][] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => {
+      captured.push(args);
+    };
+    let result;
+    try {
+      result = await ctx.engine.diffVersions(parentId, reproductionId);
+    } finally {
+      console.error = origErr;
+    }
+
+    // The diff envelope still surfaces — WR-01 success criterion.
+    expect(result.reproduction_divergence).not.toBeNull();
+    const div = result.reproduction_divergence!;
+    // Warnings preserved — operator can still see partner-API non-determinism.
+    expect(div.warnings).toEqual([
+      'Partner API non-deterministic — reproduction is best-effort',
+    ]);
+    // Reproduction hash is null → output-not-present per the helper contract.
+    expect(div.reproduction_output_present).toBe(false);
+    // Parent file is intact and present.
+    expect(div.parent_output_present).toBe(true);
+    // sha256_mismatch should be null because reproductionHash is null
+    // (per buildReproductionDivergence: needs both hashes to compare).
+    expect(div.sha256_mismatch).toBeNull();
+    // Operator visibility: console.error must have been called.
+    expect(captured.length).toBeGreaterThan(0);
+    const logged = String(captured[0]?.[0] ?? '');
+    expect(logged).toContain('output-hash unreadable');
+    expect(logged).toContain(reproductionId);
+  });
+
   test('reproduceVersion persists reproduction_warnings_json on the new version row (Task 3.4)', async () => {
     // PROV-05: reproduce a parent that has no checksummed models so warnings
     // are emitted by GenerationEngine.reproduceVersion. The new version row's

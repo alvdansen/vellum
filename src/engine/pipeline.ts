@@ -533,12 +533,37 @@ export class Engine {
     }
     const parentFilename = this.firstStoredFilename(parentVersionId);
     const reproductionFilename = this.firstStoredFilename(reproductionVersionId);
-    const parentHash = parentFilename
-      ? await computeOutputSha256(this.outputRoot, parentVersionId, parentFilename)
-      : null;
-    const reproductionHash = reproductionFilename
-      ? await computeOutputSha256(this.outputRoot, reproductionVersionId, reproductionFilename)
-      : null;
+    // Phase 12 WR-01: graceful degradation. computeOutputSha256 returns null
+    // for the ENOENT (missing file) case but re-throws other I/O errors —
+    // EACCES (permission flipped mid-flight), EISDIR (a directory exists at
+    // the expected file path), EBUSY (locked), EMFILE (fd exhaustion), etc.
+    // The honesty contract treats divergence as best-effort transparency: a
+    // hash failure must degrade to "output unreadable" (same downstream UX
+    // as missing) so the divergence object still surfaces (warnings still
+    // visible, *_output_present=false). Without this guard, version.diff
+    // rejects, surfacing a 500 to HTTP and a tool error to MCP — silently
+    // erasing partner-API non-determinism warnings the user needs to see.
+    const safeHash = async (
+      vid: string,
+      fname: string | null,
+    ): Promise<string | null> => {
+      if (!fname) return null;
+      try {
+        return await computeOutputSha256(this.outputRoot, vid, fname);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code ?? 'UNKNOWN';
+        const msg = (err as Error).message;
+        // Low-frequency event (per-disk failures). Log once via console.error
+        // for operator visibility; never throw — the diff envelope must
+        // still return so the user can see the warnings array.
+        console.error(
+          `vfx-familiar: output-hash unreadable: ${vid}/${fname} (${code}): ${msg}`,
+        );
+        return null;
+      }
+    };
+    const parentHash = await safeHash(parentVersionId, parentFilename);
+    const reproductionHash = await safeHash(reproductionVersionId, reproductionFilename);
     return buildReproductionDivergence({ warnings, parentHash, reproductionHash });
   }
 
