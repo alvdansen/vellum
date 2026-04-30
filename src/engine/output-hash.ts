@@ -23,13 +23,39 @@ import * as path from 'node:path';
  *
  * Uses createReadStream + createHash to handle large outputs (videos can be
  * 100+ MB) without buffering the full file in memory.
+ *
+ * Phase 12 WR-02 defense-in-depth: although `outputs_json` is always written
+ * by trusted server code (`buildOutputPath` at src/utils/outputs.ts already
+ * rejects `..`, `/`, `\`, NUL on the write path), this engine-side hash
+ * helper is a single trust boundary that may also be reached by future
+ * direct-write features or DB-tampered rows. Mirror the basename + separator
+ * check used by `src/http/dashboard-routes.ts:222-236` so a tampered
+ * filename degrades to "output unreadable" (null) rather than resolving via
+ * `path.join` to an arbitrary outside-of-versionId path. Treats path
+ * traversal as semantically equivalent to "no comparable bytes" — same
+ * downstream UX as a missing file.
  */
 export async function computeOutputSha256(
   outputsDir: string,
   versionId: string,
   filename: string,
 ): Promise<string | null> {
-  const fullPath = path.join(outputsDir, versionId, filename);
+  // Defense-in-depth: reject empty / separator / traversal / NUL filenames
+  // before any path resolution. Returning null (not throwing) keeps the
+  // honesty contract: the diff envelope still surfaces, the
+  // *_output_present booleans report false, and the divergence object can
+  // still carry warnings.
+  if (
+    filename.length === 0 ||
+    filename.includes('..') ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    filename.includes('\0')
+  ) {
+    return null;
+  }
+  const safeName = path.basename(filename);
+  const fullPath = path.join(outputsDir, versionId, safeName);
   // Pre-check existence so missing files map to null without a stream-error
   // round-trip. stat() throws ENOENT for missing files; we trap that one
   // case and let other failures (EACCES, EBUSY, ...) propagate.

@@ -64,4 +64,68 @@ describe('computeOutputSha256 (DEMO-03)', () => {
     expect(hashA).toBe(createHash('sha256').update('aaaa').digest('hex'));
     expect(hashB).toBe(createHash('sha256').update('bbbb').digest('hex'));
   });
+
+  // Phase 12 WR-02: defense-in-depth path-traversal guard. Mirrors the
+  // basename + separator check at src/http/dashboard-routes.ts:222-236.
+  // Tampered filenames degrade to null (no throw) — same downstream UX as
+  // a missing file. Honest contract preserved: divergence still surfaces.
+  describe('WR-02 defense-in-depth path-traversal guard', () => {
+    it('returns null for filenames containing `..` (parent traversal)', async () => {
+      // Even if a payload like `../../etc/passwd` would resolve to an
+      // existing file outside <outputsDir>/<versionId>, the helper must
+      // refuse to read it and return null without throwing.
+      const hash = await computeOutputSha256(outputsDir, 'ver_a', '..');
+      expect(hash).toBeNull();
+      const hash2 = await computeOutputSha256(outputsDir, 'ver_a', '../etc/passwd');
+      expect(hash2).toBeNull();
+      const hash3 = await computeOutputSha256(outputsDir, 'ver_a', '../../etc/passwd');
+      expect(hash3).toBeNull();
+      // Even subtle "double-dot inside name" patterns are rejected — the
+      // dashboard-routes guard at line 226-230 uses includes('..'), so we
+      // mirror exactly.
+      const hash4 = await computeOutputSha256(outputsDir, 'ver_a', 'foo..bar.png');
+      expect(hash4).toBeNull();
+    });
+
+    it('returns null for filenames containing `/` (forward slash)', async () => {
+      const hash = await computeOutputSha256(outputsDir, 'ver_a', 'a/b.png');
+      expect(hash).toBeNull();
+      const hash2 = await computeOutputSha256(outputsDir, 'ver_a', '/etc/passwd');
+      expect(hash2).toBeNull();
+    });
+
+    it('returns null for filenames containing `\\` (backslash)', async () => {
+      const hash = await computeOutputSha256(outputsDir, 'ver_a', 'a\\b.png');
+      expect(hash).toBeNull();
+      const hash2 = await computeOutputSha256(outputsDir, 'ver_a', '..\\..\\etc\\passwd');
+      expect(hash2).toBeNull();
+    });
+
+    it('returns null for filenames containing NUL (`\\0`)', async () => {
+      const hash = await computeOutputSha256(outputsDir, 'ver_a', 'safe.png\0.evil');
+      expect(hash).toBeNull();
+    });
+
+    it('returns null for an empty filename without throwing', async () => {
+      const hash = await computeOutputSha256(outputsDir, 'ver_a', '');
+      expect(hash).toBeNull();
+    });
+
+    it('does not read a tampered traversal target even if it exists on disk', async () => {
+      // Write a sibling-of-outputsDir file that a `../` traversal would
+      // otherwise resolve to. The guard MUST return null and NOT hash it.
+      const sibling = path.join(outputsDir, '..', 'sibling-secret.txt');
+      await fs.writeFile(sibling, 'secret-bytes');
+      try {
+        const hash = await computeOutputSha256(
+          outputsDir,
+          'ver_a',
+          '../sibling-secret.txt',
+        );
+        expect(hash).toBeNull();
+      } finally {
+        await fs.rm(sibling, { force: true });
+      }
+    });
+  });
 });
