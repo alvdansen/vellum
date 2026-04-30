@@ -82,6 +82,23 @@ export class FakeComfyUIClient {
     },
   };
 
+  /**
+   * DEMO-02 parity-test escape hatch (Plan 11-02). When set, the
+   * `failed-workflow` scenario uses THIS value verbatim as `StatusResponse.error`
+   * (replacing the default `{ node_errors: this.cannedNodeErrors }` wrap). Lets
+   * the parity test drive string-error, missing-error, and malformed-error
+   * fixtures through the engine's failed branch. `null` (default) means: use
+   * the legacy wrap, preserving every pre-existing test's behaviour byte-for-byte.
+   *
+   * Sentinel: `FakeComfyUIClient.OMIT_ERROR` (a unique symbol) means "emit the
+   * failed status with NO error field" (StatusResponse.error === undefined).
+   * Distinct from the default `null` which preserves the legacy wrap.
+   */
+  cannedFailedError: unknown = null;
+
+  /** Sentinel for cannedFailedError to indicate "omit the error field entirely". */
+  static OMIT_ERROR = Symbol('OMIT_ERROR');
+
   private statusCalls = 0;
   private downloadCalls = 0;
 
@@ -118,6 +135,22 @@ export class FakeComfyUIClient {
         await new Promise((r) => setTimeout(r, this.statusDelayMs));
       }
       if (this.scenario === 'failed-workflow') {
+        // DEMO-02 (Plan 11-02) parity-test escape hatch. Default (null)
+        // preserves the legacy `{ node_errors: cannedNodeErrors }` wrap so
+        // every pre-existing failed-workflow test continues to behave
+        // identically. Setting `cannedFailedError` to a custom value (or to
+        // OMIT_ERROR) overrides the wrap so the parity test can drive
+        // string-error, missing-error, and malformed-error fixtures through
+        // the engine's failed branch.
+        if (this.cannedFailedError === FakeComfyUIClient.OMIT_ERROR) {
+          return { status: 'failed' } as StatusResponse;
+        }
+        if (this.cannedFailedError !== null) {
+          return {
+            status: 'failed',
+            error: this.cannedFailedError,
+          } as StatusResponse;
+        }
         return {
           status: 'failed',
           error: { node_errors: this.cannedNodeErrors },
@@ -238,5 +271,6 @@ export class FakeComfyUIClient {
     this.downloadCalls = 0;
     this.scenario = 'happy';
     this.cannedPromptBlob = null;
+    this.cannedFailedError = null; // Plan 11-02 DEMO-02 parity field
   }
 }
