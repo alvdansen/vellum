@@ -41,7 +41,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 - [x] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge. (completed 2026-04-30)
 - [x] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`. (completed 2026-04-30)
 - [x] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP/TIFF at download with explicit AI-origin disclosure; EXR/PSD remain unsigned (v1.2 cryptographic-sidecar follow-up). (completed 2026-04-30)
-- [ ] **Phase 15: Ingredient Graph** — Manifest carries `parentOf` / `componentOf` / `inputTo` assertions linking lineage parents, control/reference images, and prompt parameters by hash.
+- [x] **Phase 15: Ingredient Graph** — Manifest carries `parentOf` / `componentOf` ingredients (via c2pa-node's manifestBuilder.addIngredient — surfaces on manifest.ingredients[]) + `inputTo` vendor assertion linking lineage parents, control/reference images, and prompt parameters by hash. (completed 2026-04-30)
 - [ ] **Phase 16: Redaction & Agent Surface** — Redaction primitive emits a derived manifest with `c2pa.redacted` assertion (originals stay append-only); two new `version` tool actions: `export_manifest` and `verify_manifest`.
 
 ## Phase Details
@@ -131,10 +131,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. A test fixture that generates v1, reproduces it as v2 (control image + LoRA), and iterates from v2 as v3 produces a v3 manifest whose ingredient graph traces back through v2 → v1, with control-image and LoRA hashes pinned at every step — verifiable by an independent C2PA reader.
   5. When an ingredient's source artifact is unreachable (e.g., control image deleted from disk after generation), the assertion records the dangling-reference state rather than silently dropping the ingredient.
 **Plans**: 4 plans
-  - [x] 15-01-PLAN.md — IMAGE_INPUT_CLASS_TYPES + pure ingredient extractors + ingredient hasher (engine layer + unit tests)
-  - [x] 15-02-PLAN.md — Manifest builder extension (parentOf / componentOf / inputTo assertion shapes + backward-compat fallback)
-  - [x] 15-03-PLAN.md — Engine.signOutput integration (read parent manifest hash + walk components + hash + manifest_signed payload extension)
-  - [ ] 15-04-PLAN.md — End-to-end fixture (v1→v2→v3 traceback) + dangling-reference test + cohort closure (PROV-V-04)
+  - [x] 15-01-PLAN.md — IMAGE_INPUT_CLASS_TYPES (v1.1 audit) + pure ingredient extractors (KSampler edge walk for inputTo) + ingredient hasher (engine layer + unit tests)
+  - [x] 15-02-PLAN.md — Manifest builder extension: BuildManifestResult { definition, ingredientSpecs }; vfx_familiar.input + vfx_familiar.unavailable_ingredient custom assertions
+  - [x] 15-03-PLAN.md — Engine.signOutput integration: signer gains signEmbedBufferWithIngredients / signEmbedFileWithIngredients (drive c2pa-node createIngredient + addIngredient); per-version sign mutex (B4); B3 outputs_json shape verification; manifest_signed payload extension; wire-level UAT (C6)
+  - [x] 15-04-PLAN.md — End-to-end fixture (v1→v2→v3 traceback reading manifest.ingredients[]) + dangling-reference test (vfx_familiar.unavailable_ingredient) + cohort closure (PROV-V-04 + v1.2 deferred items)
 
 ### Phase 16: Redaction & Agent Surface
 **Goal**: Close the v1.1 surface at the agent boundary. Add a redaction primitive that strips sensitive prompt/metadata values from a version's manifest while emitting a `c2pa.redacted` assertion preserving the *fact* of redaction (originals remain append-only in the `provenance` table). Add the two new `version` MCP tool actions: `export_manifest` (returns the C2PA-signed manifest) and `verify_manifest` (verifies signature + reports gaps). Tool budget stays at 6 of 12 — no new top-level tool.
@@ -180,5 +180,5 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
-| 15. Ingredient Graph                | v1.1 | 3/4 | In Progress|  |
+| 15. Ingredient Graph                | v1.1 | 4/4 | Complete   | 2026-04-30 |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
