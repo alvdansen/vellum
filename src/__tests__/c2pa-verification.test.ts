@@ -148,6 +148,13 @@ function readFileSyncSafe(p: string): Buffer {
 const REAL_C2PA_CONFIG: C2paConfig = {
   certPemPath: BUNDLED_CERT_PATH,
   privateKeyPemPath: BUNDLED_KEY_PATH,
+  // MR-01 fix: real signing tests need a working TSA URL because c2pa-node
+  // v0.5.26 has a binding bug that fails signClaimBytes when LocalSigner
+  // omits tsaUrl (see src/engine/c2pa/signer.ts FALLBACK_TSA_URL docstring).
+  // Using the public DigiCert TSA matches pre-MR-01 behavior + c2pa-node's
+  // own createTestSigner default — this is a TEST-ONLY fixture, not the
+  // production default (which is now operator-controlled via env var).
+  tsaUrl: 'http://timestamp.digicert.com',
 };
 
 interface TestCtx {

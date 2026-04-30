@@ -202,6 +202,10 @@ async function seedVersionFile(
 const REAL_C2PA_CONFIG: C2paConfig = {
   certPemPath: BUNDLED_CERT_PATH,
   privateKeyPemPath: BUNDLED_KEY_PATH,
+  // MR-01 fix: real signing tests need a working TSA URL. See
+  // src/__tests__/c2pa-verification.test.ts REAL_C2PA_CONFIG for the same
+  // rationale (c2pa-node v0.5.26 binding bug).
+  tsaUrl: 'http://timestamp.digicert.com',
 };
 
 // ============================================================================

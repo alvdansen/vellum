@@ -40,6 +40,8 @@ beforeEach(() => {
   delete process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
   delete process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
   delete process.env.VFX_FAMILIAR_C2PA_CERT_ROOT;
+  // MR-01 fix: ensure no stale TSA URL leaks from the host shell or earlier tests.
+  delete process.env.VFX_FAMILIAR_C2PA_TSA_URL;
   // Default the allowlist to our temp root for the tests that don't override.
   process.env.VFX_FAMILIAR_C2PA_CERT_ROOT = tempRoot;
   stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -299,5 +301,57 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     expect(thrown).toBeInstanceOf(TypedError);
     expect(thrown!.code).toBe('C2PA_CONFIG_INVALID');
     expect(thrown!.message).toMatch(/allowlist root does not exist/);
+  });
+
+  // ============================================================
+  // MR-01 fix — VFX_FAMILIAR_C2PA_TSA_URL plumbing.
+  // ============================================================
+
+  test('Test 12 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL unset → tsaUrl is null (offline-friendly default)', () => {
+    const certPath = writePem('cert.pem');
+    const keyPath = writePem('key.pem');
+    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    delete process.env.VFX_FAMILIAR_C2PA_TSA_URL;
+
+    const cfg = loadC2paConfigFromEnv();
+    expect(cfg).not.toBeNull();
+    expect(cfg!.tsaUrl).toBeNull();
+  });
+
+  test('Test 13 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL set → tsaUrl flows through verbatim', () => {
+    const certPath = writePem('cert.pem');
+    const keyPath = writePem('key.pem');
+    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VFX_FAMILIAR_C2PA_TSA_URL = 'https://internal-tsa.example.com/tsa';
+
+    const cfg = loadC2paConfigFromEnv();
+    expect(cfg).not.toBeNull();
+    expect(cfg!.tsaUrl).toBe('https://internal-tsa.example.com/tsa');
+  });
+
+  test('Test 14 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL = empty string → treated as unset (null)', () => {
+    const certPath = writePem('cert.pem');
+    const keyPath = writePem('key.pem');
+    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VFX_FAMILIAR_C2PA_TSA_URL = '';
+
+    const cfg = loadC2paConfigFromEnv();
+    expect(cfg).not.toBeNull();
+    expect(cfg!.tsaUrl).toBeNull();
+  });
+
+  test('Test 15 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL = whitespace-only → treated as unset (null)', () => {
+    const certPath = writePem('cert.pem');
+    const keyPath = writePem('key.pem');
+    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VFX_FAMILIAR_C2PA_TSA_URL = '   \t  ';
+
+    const cfg = loadC2paConfigFromEnv();
+    expect(cfg).not.toBeNull();
+    expect(cfg!.tsaUrl).toBeNull();
   });
 });

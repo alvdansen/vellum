@@ -594,6 +594,103 @@ describe('T-14-01 negative test — no key bytes leak via stdout/stderr', () => 
 });
 
 // ----------------------------------------------------------------------------
+// MR-01 fix — tsaUrl plumbing through loadSigner
+// ----------------------------------------------------------------------------
+
+describe('loadSigner — MR-01 fix: tsaUrl plumbing', () => {
+  /**
+   * Capture the LocalSigner literal that loadSigner builds and passes to
+   * c2pa-node's createC2pa. We intercept via vi.doMock so we can inspect the
+   * shape regardless of whether the real native binding is available.
+   *
+   * The createC2pa stub returns a no-op c2pa surface; loadSigner only checks
+   * that the call returned without throwing, then walks on.
+   *
+   * Each test resets module state via afterEach -> __resetC2paNodeStateForTests
+   * so the lazy import path runs fresh.
+   */
+  async function captureLocalSigner(
+    tsaUrlArg: string | null | undefined,
+  ): Promise<Record<string, unknown>> {
+    let captured: Record<string, unknown> | null = null;
+    vi.doMock('c2pa-node', () => ({
+      createC2pa: (opts: { signer: Record<string, unknown> }) => {
+        captured = opts.signer;
+        return { sign: vi.fn(), read: vi.fn() };
+      },
+      // Provide enough enum + class surface for detectSigningAlgorithm.
+      SigningAlgorithm: {
+        ES256: 'es256',
+        ES384: 'es384',
+        ES512: 'es512',
+        Ed25519: 'ed25519',
+        PS256: 'ps256',
+        PS384: 'ps384',
+        PS512: 'ps512',
+      },
+      ManifestBuilder: class {
+        constructor(public def: unknown) {}
+      },
+    }));
+    if (tsaUrlArg === undefined) {
+      // Use the default-argument code path (no third arg).
+      await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
+    } else {
+      await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH, tsaUrlArg);
+    }
+    vi.doUnmock('c2pa-node');
+    expect(captured).not.toBeNull();
+    return captured!;
+  }
+
+  it('Test 21 (MR-01 fix): default tsaUrl falls back to FALLBACK_TSA_URL when caller passes nothing — back-compat for non-engine callers / tests', async () => {
+    const localSigner = await captureLocalSigner(undefined);
+    // The default-argument path uses FALLBACK_TSA_URL so back-compat
+    // holds for tests + non-engine callers that don't supply a third arg.
+    // Engine call sites (pipeline.ts) pass the operator-controlled value
+    // explicitly — the env-var-driven null path is exercised in Test 22.
+    expect(typeof localSigner.tsaUrl).toBe('string');
+    expect((localSigner.tsaUrl as string).length).toBeGreaterThan(0);
+    expect(localSigner.type).toBe('local');
+  });
+
+  it('Test 22 (MR-01 fix): explicit null tsaUrl — LocalSigner literal OMITS the property (operator-explicit no-TSA path; binding bug means signing fails on c2pa-node v0.5.26)', async () => {
+    const localSigner = await captureLocalSigner(null);
+    // The conditional literal at signer.ts OMITS tsaUrl entirely when the
+    // caller-passed value is null. This is the operator-explicit no-TSA
+    // path reachable via VFX_FAMILIAR_C2PA_TSA_URL='' or unset. c2pa-node
+    // v0.5.26 will fail signClaimBytes with a downcast error in this state
+    // (binding bug), but loadSigner itself completes successfully and the
+    // failure surfaces via Engine.signOutput as status_reason='sign_call_failed'.
+    expect('tsaUrl' in localSigner).toBe(false);
+    expect(localSigner.type).toBe('local');
+  });
+
+  it('Test 23 (MR-01 fix): non-null tsaUrl — LocalSigner literal includes the value verbatim (operator-supplied URL flows through)', async () => {
+    const localSigner = await captureLocalSigner('https://internal-tsa.example.com/tsa');
+    expect(localSigner.tsaUrl).toBe('https://internal-tsa.example.com/tsa');
+    expect(localSigner.type).toBe('local');
+  });
+
+  it('Test 24 (MR-01 fix): the legacy DEFAULT_TSA_URL constant is renamed to FALLBACK_TSA_URL — clarifies the OPERATOR-controllable contract', () => {
+    // Source-level guard: the renamed constant signals that the public TSA
+    // is a documented FALLBACK (only when caller passes nothing) — not the
+    // production default. Engine call sites in pipeline.ts pass the
+    // operator-controlled value verbatim. Future contributors who reintroduce
+    // a `DEFAULT_TSA_URL` name (the pre-MR-01 shape) trip this assertion
+    // immediately.
+    const src = readFileSync('src/engine/c2pa/signer.ts', 'utf-8');
+    expect(src).not.toMatch(/const\s+DEFAULT_TSA_URL\s*=/);
+    expect(src).toMatch(/const\s+FALLBACK_TSA_URL\s*=/);
+    // The Engine call site MUST pass the third argument explicitly so the
+    // env-var-driven null path reaches loadSigner. A regression that drops
+    // the third arg would silently route signs through DigiCert again.
+    const pipelineSrc = readFileSync('src/engine/pipeline.ts', 'utf-8');
+    expect(pipelineSrc).toMatch(/this\.c2paConfig\.tsaUrl/);
+  });
+});
+
+// ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
 

@@ -107,7 +107,15 @@ async function seedSignedVersionInDb(opts: {
     outputsDir,
     {
       c2paConfig: opts.c2paEnabled
-        ? { certPemPath: BUNDLED_CERT_PATH, privateKeyPemPath: BUNDLED_KEY_PATH }
+        ? {
+            certPemPath: BUNDLED_CERT_PATH,
+            privateKeyPemPath: BUNDLED_KEY_PATH,
+            // MR-01 fix: real signing tests need a working TSA URL because
+            // c2pa-node v0.5.26 has a binding bug that fails signClaimBytes
+            // when LocalSigner omits tsaUrl. See src/engine/c2pa/signer.ts
+            // FALLBACK_TSA_URL docstring for full context.
+            tsaUrl: 'http://timestamp.digicert.com',
+          }
         : null,
     },
   );

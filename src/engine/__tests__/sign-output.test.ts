@@ -119,6 +119,10 @@ async function setupEngine(options: { c2paConfig?: C2paConfig | null } = {}): Pr
 const REAL_C2PA_CONFIG: C2paConfig = {
   certPemPath: BUNDLED_CERT_PATH,
   privateKeyPemPath: BUNDLED_KEY_PATH,
+  // MR-01 fix: real signing tests need a working TSA URL. See
+  // src/__tests__/c2pa-verification.test.ts REAL_C2PA_CONFIG for the same
+  // rationale (c2pa-node v0.5.26 binding bug).
+  tsaUrl: 'http://timestamp.digicert.com',
 };
 
 function readManifestSignedPayload(
@@ -221,6 +225,7 @@ describe('Engine.signOutput — signing-disabled / unsupported / cert-fail / siz
     const badConfig: C2paConfig = {
       certPemPath: '/tmp/nonexistent-cert.pem',
       privateKeyPemPath: '/tmp/nonexistent-key.pem',
+      tsaUrl: null,
     };
     ctx = await setupEngine({ c2paConfig: badConfig });
     const result = await ctx.engine.signOutput(ctx.versionId, 'out.png', { bytes: TINY_PNG });

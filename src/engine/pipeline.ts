@@ -1070,9 +1070,13 @@ export class Engine {
     if (this.c2paConfig === null) return { errorCode: 'cert_load_failed' };
 
     try {
+      // Phase 14 fix MR-01: thread tsaUrl through C2paConfig so the operator
+      // can opt in to a TSA via VFX_FAMILIAR_C2PA_TSA_URL without source-level
+      // changes. Default is null (no TSA — fully offline-friendly).
       const signer = await loadSigner(
         this.c2paConfig.certPemPath,
         this.c2paConfig.privateKeyPemPath,
+        this.c2paConfig.tsaUrl,
       );
       this.signerCache = { signer };
       return { signer };

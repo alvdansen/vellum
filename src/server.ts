@@ -210,8 +210,16 @@ async function main(): Promise<void> {
   const c2paConfig = loadC2paConfigFromEnv();
   if (c2paConfig) {
     // Concern #4: log basenames ONLY, never the full resolved path.
+    // MR-01 fix: surface TSA URL choice (operator-controllable via
+    // VFX_FAMILIAR_C2PA_TSA_URL). When unset, the engine passes null to
+    // loadSigner — c2pa-node v0.5.26's binding bug then surfaces as
+    // status_reason='sign_call_failed' on every sign attempt. Operators
+    // who haven't configured a TSA see a clear breadcrumb here.
+    const tsaSummary = c2paConfig.tsaUrl
+      ? `tsa ${c2paConfig.tsaUrl}`
+      : 'tsa <unset — set VFX_FAMILIAR_C2PA_TSA_URL to enable RFC 3161 timestamping>';
     console.error(
-      `vfx-familiar: C2PA signing enabled (cert ${basename(c2paConfig.certPemPath)}, key ${basename(c2paConfig.privateKeyPemPath)})`,
+      `vfx-familiar: C2PA signing enabled (cert ${basename(c2paConfig.certPemPath)}, key ${basename(c2paConfig.privateKeyPemPath)}, ${tsaSummary})`,
     );
   }
 

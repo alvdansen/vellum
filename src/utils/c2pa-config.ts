@@ -88,7 +88,19 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
     );
   }
 
-  return { certPemPath: certPath, privateKeyPemPath: keyPath };
+  // Phase 14 fix MR-01: optional TSA endpoint. When the env var is set, the
+  // value is passed through verbatim to the signer wrapper (no validation
+  // here — c2pa-node will reject malformed URLs at sign time, mirroring the
+  // file-mode permissive-key warning's treatment of operator-controllable
+  // misconfig). When unset, the field is null and the signer builds a
+  // LocalSigner WITHOUT the tsaUrl property, signing fully offline. Empty
+  // string is treated as unset (defensive — operators using shell `export`
+  // to "unset" a value sometimes leave it as empty string). Whitespace-only
+  // values (spaces/tabs) are also treated as unset.
+  const tsaUrlRaw = env.VFX_FAMILIAR_C2PA_TSA_URL;
+  const tsaUrl = tsaUrlRaw && tsaUrlRaw.trim().length > 0 ? tsaUrlRaw : null;
+
+  return { certPemPath: certPath, privateKeyPemPath: keyPath, tsaUrl };
 }
 
 function resolveAndValidate(

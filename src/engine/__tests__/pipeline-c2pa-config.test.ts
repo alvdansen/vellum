@@ -40,6 +40,7 @@ describe('Engine constructor — c2paConfig wiring (Phase 14 Plan 14-01 Task 2)'
     const cfg: C2paConfig = {
       certPemPath: '/p/cert.pem',
       privateKeyPemPath: '/p/key.pem',
+      tsaUrl: null,
     };
     const engine = buildEngine({ c2paConfig: cfg });
     expect(engine).toBeInstanceOf(Engine);
@@ -64,6 +65,7 @@ describe('Engine constructor — c2paConfig wiring (Phase 14 Plan 14-01 Task 2)'
     const cfg: C2paConfig = {
       certPemPath: '/abs/path/cert.pem',
       privateKeyPemPath: '/abs/path/key.pem',
+      tsaUrl: null,
     };
     expect(typeof cfg.certPemPath).toBe('string');
     expect(typeof cfg.privateKeyPemPath).toBe('string');

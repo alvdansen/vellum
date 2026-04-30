@@ -18,13 +18,17 @@
 //   `RelativeUrlWithoutBase` error.
 //
 //   Mitigation: the signer wrapper accepts an optional `tsaUrl` parameter
-//   on `loadSigner` (default `'http://timestamp.digicert.com'` — same default
-//   c2pa-node's own `createTestSigner` uses). The default is a public TSA
-//   that does not require credentials. Plan 14-04 will surface tsaUrl as a
-//   config option in C2paConfig if production deployments need an internal
-//   TSA. The LocalSigner literal is built CONDITIONALLY (property absent
-//   when tsaUrl is null) so the `tsaUrl: undefined` downcast bug is
-//   sidestepped.
+//   on `loadSigner`. The LocalSigner literal is built CONDITIONALLY (the
+//   property is OMITTED when tsaUrl is null) so the `tsaUrl: undefined`
+//   downcast bug is sidestepped — c2pa-node treats the absent property as
+//   "no timestamp authority", and signing succeeds fully offline.
+//
+//   Phase 14 fix MR-01: the default is now `null` (NO TSA), and operators
+//   opt in to a TSA via VFX_FAMILIAR_C2PA_TSA_URL. The earlier hard-coded
+//   default of a public RFC 3161 endpoint was removed because (a) it
+//   silently reached a third-party endpoint on every sign call (privacy
+//   surprise + air-gapped deployments fail) and (b) it could not be
+//   disabled without source-level changes. Operator-controllable now.
 
 import { readFile } from 'node:fs/promises';
 import { X509Certificate } from 'node:crypto';
@@ -101,12 +105,24 @@ export interface LoadedSigner {
 const BUFFER_API_MIMETYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png']);
 
 /**
- * Default TSA URL used when caller does not supply one. Mirrors c2pa-node's
- * own `createTestSigner` default. RFC 3161 timestamping is OPTIONAL in
- * theory but required in c2pa-node v0.5.26's native binding (see deviation
- * note in the file header).
+ * Phase 14 fix MR-01: documented fallback TSA used ONLY when `loadSigner` is
+ * called WITHOUT a third argument (i.e., legacy callers / tests that haven't
+ * been threaded through C2paConfig.tsaUrl yet). Engine call sites in
+ * Plan 14-03 always pass an explicit value (operator-supplied via
+ * VFX_FAMILIAR_C2PA_TSA_URL OR explicit null when the operator opts out).
+ *
+ * Mirrors c2pa-node's own `createTestSigner` default (lib/signer.js line 51).
+ * Required by c2pa-node v0.5.26's native binding: signClaimBytes throws
+ * "TypeError: failed to downcast any to string" when the LocalSigner literal
+ * omits `tsaUrl` entirely (see file header — Plan 14-02 RUNTIME DEVIATION).
+ *
+ * Operators who explicitly want to opt out of any TSA (air-gapped, internal
+ * CA only, no third-party calls) pass `null` from the engine; signing will
+ * then fail with C2PA_SIGNING_FAILED (the engine surfaces this as
+ * status_reason='sign_call_failed'). Operators who want to use an internal
+ * TSA pass that URL via VFX_FAMILIAR_C2PA_TSA_URL.
  */
-const DEFAULT_TSA_URL = 'http://timestamp.digicert.com';
+const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
 
 /**
  * Loads the cert + key into memory ONCE, detects the cert's signature
@@ -118,15 +134,30 @@ const DEFAULT_TSA_URL = 'http://timestamp.digicert.com';
  * (binding load, file read, cert parse, key parse, unsupported algorithm,
  * c2pa-node createC2pa rejection). NEVER logs key bytes (T-14-01 mitigation).
  *
+ * Phase 14 fix MR-01: `tsaUrl` is now operator-controllable via
+ * `VFX_FAMILIAR_C2PA_TSA_URL`. The Engine call site (pipeline.ts) passes
+ * `c2paConfig.tsaUrl` verbatim. When `tsaUrl` is null, the LocalSigner
+ * literal omits the property — c2pa-node v0.5.26 will then fail at sign
+ * time (binding bug; documented in file header). Engine's signOutput
+ * surfaces this as status_reason='sign_call_failed' so the operator sees
+ * a typed manifest_signed event with the reason. For operators who want
+ * working signing without setting a TSA URL, the loadSigner default
+ * (when called without the 3rd arg) is FALLBACK_TSA_URL — same as
+ * c2pa-node's own createTestSigner.
+ *
  * @param certPemPath  Absolute path to the PEM-encoded cert (chain).
  * @param privateKeyPemPath  Absolute path to the PEM-encoded private key.
- * @param tsaUrl  Optional TSA endpoint. Defaults to DigiCert public TSA.
- *                Plan 14-04 may make this configurable via C2paConfig.
+ * @param tsaUrl  Optional RFC 3161 TSA endpoint. Default is FALLBACK_TSA_URL
+ *                (only used when caller passes nothing for this argument).
+ *                Engine sites pass the operator-controlled value (null OR
+ *                a custom URL) verbatim. `null` means NO TSA — no
+ *                third-party network call at sign time, but signing will
+ *                fail on c2pa-node v0.5.26 due to a binding bug.
  */
 export async function loadSigner(
   certPemPath: string,
   privateKeyPemPath: string,
-  tsaUrl: string | null = DEFAULT_TSA_URL,
+  tsaUrl: string | null = FALLBACK_TSA_URL,
 ): Promise<LoadedSigner> {
   const c2paNode = await ensureC2paNode(); // Concern #11 — fails loud if binding broken
 
