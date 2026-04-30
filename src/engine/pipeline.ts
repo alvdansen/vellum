@@ -1002,10 +1002,15 @@ export class Engine {
       }
       // mode === 'embed-file' — MP4 / WebP / TIFF. Drive c2pa-node's file API
       // via signViaTempFiles which manages the temp dir + 0700/0600 modes
-      // + nanoid-suffixed unique partial paths (Concerns #5 and #9).
+      // + nanoid-suffixed unique partial paths (Concerns #5 and #9). The
+      // filename's extension MUST be preserved on the temp paths so c2pa-rs
+      // selects the correct asset handler (BMFF for .mp4, RIFF for .webp,
+      // TIFF for .tif/.tiff). Without the extension, c2pa-rs silently emits
+      // unsigned output (a Rule 1 silent-failure bug discovered Plan 14-05).
       const result = await this.signViaTempFiles(
         versionId,
         input,
+        filename,
         route.mimeType,
         manifestDef,
         signer,
@@ -1110,6 +1115,7 @@ export class Engine {
   private async signViaTempFiles(
     versionId: string,
     input: { bytes: Buffer } | { filePath: string },
+    filename: string,
     mimeType: string,
     manifestDef: ManifestDefinition,
     signer: LoadedSigner,
@@ -1117,8 +1123,14 @@ export class Engine {
     const tmpRoot = nodepath.join(this.outputRoot, '.tmp-c2pa', versionId);
     await mkdir(tmpRoot, { mode: 0o700, recursive: true });
     const suffix = nanoid(8);
-    const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}`);
-    const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}`);
+    // Preserve the original file extension on temp paths so c2pa-rs's asset
+    // handler selection (BMFF / RIFF / TIFF) succeeds. nodepath.extname
+    // returns '' if no extension; in that case the temp paths inherit no
+    // extension, matching the format-router's 'unknown-extension' route
+    // which never reaches this helper.
+    const ext = nodepath.extname(filename);
+    const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}${ext}`);
+    const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}${ext}`);
     let usedSrcTemp = false;
     try {
       if ('bytes' in input) {
