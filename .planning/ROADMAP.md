@@ -38,7 +38,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 
 - [x] **Phase 10: Migrate-on-boot Hardening** — Server runs pending Drizzle migrations on boot or refuses to boot with a typed `MIGRATION_PENDING` error. (completed 2026-04-30)
 - [x] **Phase 11: Recovery Poller Error Detail** — Async terminal failures surface ComfyUI Cloud `node_errors` instead of collapsing to `"ComfyUI reported failed"`. (completed 2026-04-30)
-- [ ] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge.
+- [x] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge. (completed 2026-04-30)
 - [ ] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`.
 - [ ] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP at download with explicit AI-origin disclosure; sidecar `.c2pa` for non-embed formats (EXR, PSD, TIFF).
 - [ ] **Phase 15: Ingredient Graph** — Manifest carries `parentOf` / `componentOf` / `inputTo` assertions linking lineage parents, control/reference images, and prompt parameters by hash.
@@ -84,7 +84,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. A reproduce-lineage version whose output IS bit-identical to its parent shows no divergence pill and no comparison block — the UI signal is unambiguous.
 **Plans**: 2 plans
   - [x] 12-01-PLAN.md — Engine: 0005 migration + reproduction_warnings_json column + DiffResponse.reproduction_divergence field + computeOutputSha256 helper + facade wiring
-  - [ ] 12-02-PLAN.md — Dashboard: WarningPill + VersionDrawer auto-fetch on reproduce-lineage + side-by-side parent-vs-reproduction comparison block
+  - [x] 12-02-PLAN.md — Dashboard: WarningPill + VersionDrawer auto-fetch on reproduce-lineage + side-by-side parent-vs-reproduction comparison block
 **UI hint**: yes
 
 ### Phase 13: Model Fingerprinting
@@ -174,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
 | 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
-| 12. Reproduce Divergence Transparency | v1.1 | 1/2 | In Progress|  |
+| 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 0/TBD | Not started | - |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |

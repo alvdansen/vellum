@@ -22,7 +22,7 @@ Each requirement maps to a single roadmap phase. Coarse-grained where appropriat
 
 - [x] **DEMO-01**: Server runs pending Drizzle migrations on boot, OR refuses to boot with a clear actionable error when `__drizzle_migrations` is behind the filesystem. Today the server boots silently with stale schema; the only signal is a downstream HTTP 500 (`no such table: tags`) on the dashboard. A unit test verifies stale-DB boot fails with `MIGRATION_PENDING` typed error.
 - [x] **DEMO-02**: The recovery poller surfaces rich ComfyUI Cloud error detail. Today async terminal failures all collapse to `"ComfyUI reported failed"` regardless of cause. The submit-time error path already extracts `node_errors` via `extractFirstNodeError(...)`; the recovery-poller path discards it. Mirror the submit pattern so failed-version provenance carries the actionable detail (e.g., `"Unauthorized: Please login first"`, `"value_not_in_list: ckpt_name 'X' not in []"`).
-- [ ] **DEMO-03**: The dashboard renders a "non-deterministic — outputs may differ from parent" pill on reproduce-lineage versions when the partner-API model warned about non-determinism, or when a SHA-256 of v3's output differs from v4's despite verbatim reproduction. The version drawer also surfaces a side-by-side "parent vs reproduction" image comparison so the divergence is visible. Optional: emit a `reproduction_divergence` field in `version.diff` carrying the SHA-256 mismatch + warning.
+- [x] **DEMO-03**: The dashboard renders a "non-deterministic — outputs may differ from parent" pill on reproduce-lineage versions when the partner-API model warned about non-determinism, or when a SHA-256 of v3's output differs from v4's despite verbatim reproduction. The version drawer also surfaces a side-by-side "parent vs reproduction" image comparison so the divergence is visible. Optional: emit a `reproduction_divergence` field in `version.diff` carrying the SHA-256 mismatch + warning.
 
 ## Future Requirements
 
@@ -56,7 +56,7 @@ Carried forward from v1.0 archive — deferred past v1.1 unless explicitly pulle
 | PROV-V-07 | Phase 16 | Pending |
 | DEMO-01   | Phase 10 | Complete |
 | DEMO-02   | Phase 11 | Complete |
-| DEMO-03   | Phase 12 | Pending |
+| DEMO-03   | Phase 12 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 10 total (7 PROV-V + 3 DEMO)

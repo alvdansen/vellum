@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
-stopped_at: Completed Plan 12-01 — engine-layer cohort for DEMO-03 (reproduction_divergence on version.diff). 817 passing / 5 pre-existing failing / 3 skipped. Plan 12-02 (dashboard) up next.
-last_updated: "2026-04-30T09:11:22.581Z"
+status: verifying
+stopped_at: Completed Plan 12-02 — dashboard cohort for DEMO-03 (WarningPill + VersionDrawer auto-fetch + side-by-side comparison). Phase 12 fully complete (2/2). DEMO-03 marked complete in REQUIREMENTS.md. Root suite 817 passing / 5 pre-existing failing / 3 skipped (unchanged); dashboard suite 47 → 58 (+11). Phase 12 ready for /gsd-verify-phase 12.
+last_updated: "2026-04-30T09:24:49.212Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 12 (Reproduce Divergence Transparency) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -64,7 +64,8 @@ Progress: [█████████░] 86%
 | Phase 10 P03 | 2min | 1 tasks | 1 files |
 | Phase 11 P01 | 5min | 2 tasks | 4 files |
 | Phase 11 P02 | 6min | 2 tasks | 2 files |
-| Phase Phase 12 PP01 | 17min | 3 tasks | 17 files |
+| Phase 12 P01 | 17min | 3 tasks | 17 files |
+| Phase 12 P02 | 6min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -94,7 +95,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Plan 11-02 added same-fixture parity test at src/comfyui/__tests__/error-extraction-parity.test.ts (354 lines, 14 named test cases). Drives 4 Cloud-shaped error fixtures (node_errors object, value_not_in_list, bare string, IT-10 missing-error fallback) through 3 paths (helper / submit / status) and asserts byte-equal output. Cross-arm sweep + IT-10 cross-check provide structural guard against future drift between submit-time and recovery-poller error-extraction call sites. ROADMAP Phase 11 success criterion #2 closed at integration boundary.
 - [Phase 11]: FakeComfyUIClient gained additive cannedFailedError escape-hatch (default null preserves legacy { node_errors: cannedNodeErrors } wrap) plus OMIT_ERROR sentinel symbol. Purely opt-in — every pre-existing failed-workflow test continues to behave byte-for-byte unchanged (46/46 generation.test.ts passing). FakeScenario union, default cannedNodeErrors fixture, and all other scenarios untouched. Threat T-11-06 mitigation honoured.
 - [Phase 11]: DEMO-02 marked complete in REQUIREMENTS.md after Plan 11-02. Cohort-level closure: 11-01 added flattenComfyError helper + dual call-site refactor, 11-02 added the byte-for-byte same-fixture parity test. ROADMAP success criteria #1 (recovery poller surfaces actionable detail), #2 (single helper proven), #3 (no field rename / UI rework), and #4 (graceful fallback when node_errors absent) all provably closed. Phase 11 ready for /gsd-verify-phase 11.
-- [Phase ?]: [Phase 12]: Plan 12-01 closed engine-layer cohort for DEMO-03. ReproductionDivergence interface (D-CTX-4) + buildReproductionDivergence pure helper + computeOutputSha256 streaming hash + migration 0005 + Engine.diffVersions async-conversion + GenerationEngine.reproduceVersion warning persistence. Architecture-purity preserved across all 4 touched engine files. ROADMAP success criteria #3 + #4 closed at engine + tool boundary; criteria #1 + #2 land in Plan 12-02 (dashboard).
+- [Phase 12]: Plan 12-01 closed engine-layer cohort for DEMO-03. ReproductionDivergence interface (D-CTX-4) + buildReproductionDivergence pure helper + computeOutputSha256 streaming hash + migration 0005 + Engine.diffVersions async-conversion + GenerationEngine.reproduceVersion warning persistence. Architecture-purity preserved across all 4 touched engine files. ROADMAP success criteria #3 + #4 closed at engine + tool boundary; criteria #1 + #2 land in Plan 12-02 (dashboard).
+- [Phase 12]: Plan 12-02 closed dashboard cohort for DEMO-03. WarningPill component (43 lines) bound to existing --color-status-running token (no new design tokens) + Version.lineage_type extension + VersionDrawer auto-fetch effect + WarningPill conditional render + side-by-side parent-vs-reproduction comparison block. Auto-fetch effect deps array deliberately excludes diff (T-12-10 mitigation: body guard handles re-render-with-already-loaded case). ReproductionDivergence interface duplicated dashboard-side per D-WEBUI-31. 11 new tests (5 WarningPill + 6 VersionDrawer integration). DEMO-03 cohort 2/2 closed; marked complete in REQUIREMENTS.md.
+- [Phase 12]: All four ROADMAP success criteria for reproduce divergence transparency have automated coverage. #1 (pill on warnings OR sha256 mismatch) + #2 (side-by-side comparison block when both outputs on disk) closed by Plan 12-02 dashboard cohort. #3 (engine + tool emits reproduction_divergence) + #4 (bit-identical reproduction → null → no UI signal) closed by Plan 12-01 engine cohort and confirmed by Plan 12-02 dashboard render guards. Architecture-purity preserved (engine layer zero-MCP, dashboard zero-server-import). Phase 12 ready for /gsd-verify-phase 12.
 
 ### Pending Todos
 
@@ -114,8 +117,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T09:11:22.578Z
-Stopped at: Completed Plan 12-01 — engine-layer cohort for DEMO-03 (reproduction_divergence on version.diff). 817 passing / 5 pre-existing failing / 3 skipped. Plan 12-02 (dashboard) up next.
+Last session: 2026-04-30T09:24:49.209Z
+Stopped at: Completed Plan 12-02 — dashboard cohort for DEMO-03 (WarningPill + VersionDrawer auto-fetch + side-by-side comparison). Phase 12 fully complete (2/2). DEMO-03 marked complete in REQUIREMENTS.md. Root suite 817 passing / 5 pre-existing failing / 3 skipped (unchanged); dashboard suite 47 → 58 (+11). Phase 12 ready for /gsd-verify-phase 12.
 Resume file: None
 
-**Planned Phase:** Phase 11 — Recovery Poller Error Detail (complete). Run `gsd-verify-phase 11` next.
+**Planned Phase:** Phase 12 — Reproduce Divergence Transparency (complete, 2/2 plans). Run `gsd-verify-phase 12` next.
