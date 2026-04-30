@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { runMigrations } from './migrate.js';
 import * as schema from './schema.js';
 import { SCHEMA_DDL } from './schema.js';
 
@@ -65,10 +65,20 @@ export function openDb(path: string): OpenDbResult {
 
   // Phase 2 addition (D-GEN-38): drizzle-kit-generated migrations layer on top.
   // Idempotent — Drizzle's own __drizzle_migrations table tracks applied files.
-  // Synchronous call; no await. Coexists with Phase 1 user_version=1 pragma
-  // (separate mechanisms — pragma is Phase 1 bootstrap, drizzle migrator owns
-  // additive changes from 0001 onward).
-  migrate(db, { migrationsFolder: './drizzle' });
+  // Phase 10 (DEMO-01): runs through runMigrations() so a failed apply
+  // surfaces as TypedError('MIGRATION_PENDING') with the failing migration
+  // filename + remediation hint, BEFORE buildEngine() / tool registration.
+  // On failure we close the WAL lock (DM-02 parity) before the throw escapes.
+  try {
+    runMigrations(db);
+  } catch (err) {
+    // DM-02 parity: release the WAL lock before the typed error
+    // escapes so a follow-up openDb() against the same path is not
+    // blocked. Plan 10 success criterion #2: MIGRATION_PENDING must
+    // surface from openDb() before either transport opens.
+    sqlite.close();
+    throw err;
+  }
 
   return { db, sqlite };
 }

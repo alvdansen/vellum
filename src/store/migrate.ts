@@ -56,7 +56,7 @@ function readJournal(migrationsFolder: string): DrizzleJournal {
   return JSON.parse(raw) as DrizzleJournal;
 }
 
-function countAppliedRows(db: BetterSQLite3Database): number {
+function countAppliedRows(db: BetterSQLite3Database<Record<string, never>>): number {
   // Probe — table may not exist on a fresh DB. better-sqlite3 surfaces
   // the underlying SQLite error; treat "no such table" as applied = 0.
   try {
@@ -93,14 +93,16 @@ function countAppliedRows(db: BetterSQLite3Database): number {
  * Architecture-purity contract: this file has zero MCP-SDK or HTTP-transport
  * imports — it is a pure store-layer helper.
  */
-export function runMigrations(
-  db: BetterSQLite3Database,
+export function runMigrations<TSchema extends Record<string, unknown> = Record<string, never>>(
+  db: BetterSQLite3Database<TSchema>,
   opts?: { migrationsFolder?: string },
 ): MigrationResult {
   const migrationsFolder = opts?.migrationsFolder ?? './drizzle';
   const journal = readJournal(migrationsFolder);
   const totalInJournal = journal.entries.length;
-  const alreadyApplied = countAppliedRows(db);
+  // countAppliedRows reaches past the typed query builder into the raw
+  // better-sqlite3 handle, so its parameter type is schema-agnostic.
+  const alreadyApplied = countAppliedRows(db as unknown as BetterSQLite3Database<Record<string, never>>);
   const pending = Math.max(0, totalInJournal - alreadyApplied);
 
   const firstPendingTag = journal.entries[alreadyApplied]?.tag ?? null;
