@@ -2,10 +2,13 @@
 // ZERO imports — canonical type source consumed by engine, store, and tools.
 // Refs: D-PROV-02 (ProvenanceEvent), D-PROV-15 (DiffResponse), D-PROV-33 (LineageType).
 
-export type ProvenanceEventType = 'submitted' | 'completed' | 'failed';
+export type ProvenanceEventType = 'submitted' | 'completed' | 'failed' | 'models_fingerprinted';
 export type LineageType = 'reproduce' | 'iterate';
 
-/** D-PROV-02: one row per (version, event). Append-only — repo has no UPDATE/DELETE. */
+/** D-PROV-02 + Phase 13: one row per (version, event). Append-only — repo
+ *  has no UPDATE/DELETE. Phase 13 adds the 'models_fingerprinted' event
+ *  carrying populated SHA-256 fingerprints in models_json (sibling row to
+ *  the original 'completed' event — append-only invariant preserved). */
 export interface ProvenanceEvent {
   id: string;                     // nanoid with 'prov_' prefix (D-11 pattern)
   version_id: string;

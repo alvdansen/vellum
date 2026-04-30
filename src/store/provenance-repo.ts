@@ -2,7 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { provenance } from './schema.js';
-import type { ProvenanceEvent } from '../types/provenance.js';
+import type { ModelRef, ProvenanceEvent } from '../types/provenance.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
 
@@ -41,11 +41,18 @@ export type ProvenanceCompletedPayload = {
   outputs_json: string;
 };
 export type ProvenanceFailedPayload = { error_code: string; error_message: string };
+/** Phase 13 — PROV-V-03. Sibling event written by the background fingerprinter
+ *  AFTER the 'completed' event. Carries fingerprinted ModelRef[] (with
+ *  `model_hash` populated on success or `model_hash_unavailable` on
+ *  unreachable / unreadable). Append-only: never updates the original
+ *  'completed' event. */
+export type ProvenanceModelsFingerprintedPayload = { models_json: string };
 
 export type ProvenanceEventPayload =
   | ({ event_type: 'submitted' } & ProvenanceSubmittedPayload)
   | ({ event_type: 'completed' } & ProvenanceCompletedPayload)
-  | ({ event_type: 'failed' } & ProvenanceFailedPayload);
+  | ({ event_type: 'failed' } & ProvenanceFailedPayload)
+  | ({ event_type: 'models_fingerprinted' } & ProvenanceModelsFingerprintedPayload);
 
 export class ProvenanceRepo {
   constructor(private db: Db) {}
@@ -59,7 +66,13 @@ export class ProvenanceRepo {
       workflow_json: payload.event_type === 'submitted' ? payload.workflow_json : null,
       prompt_json: payload.event_type === 'completed' ? payload.prompt_json : null,
       seed: payload.event_type === 'completed' ? payload.seed : null,
-      models_json: payload.event_type === 'completed' ? payload.models_json : null,
+      // Phase 13 — both 'completed' and 'models_fingerprinted' carry models_json.
+      // Discriminated-union narrowing keeps strict TS happy while letting the
+      // sibling fingerprinted row reuse the existing models_json column.
+      models_json:
+        payload.event_type === 'completed' || payload.event_type === 'models_fingerprinted'
+          ? payload.models_json
+          : null,
       outputs_json: payload.event_type === 'completed' ? payload.outputs_json : null,
       error_code: payload.event_type === 'failed' ? payload.error_code : null,
       error_message: payload.event_type === 'failed' ? payload.error_message : null,
@@ -107,5 +120,44 @@ export class ProvenanceRepo {
       .limit(1)
       .all() as ProvenanceEvent[];
     return rows[0] ?? null;
+  }
+
+  /** Phase 13 — PROV-V-03. Append-only sibling event carrying the
+   *  background-fingerprinted models. Caller (Engine.fingerprintModelsForVersion)
+   *  guarantees idempotency by checking for an existing event first. The
+   *  original 'completed' event row stays byte-identical (T-13-07 mitigation). */
+  appendModelsFingerprintedEvent(versionId: string, models: ModelRef[]): ProvenanceEvent {
+    return this.insertEvent(versionId, {
+      event_type: 'models_fingerprinted',
+      models_json: JSON.stringify(models),
+    });
+  }
+
+  /** Phase 13 — PROV-V-03. Returns the latest fingerprinted ModelRef[] for a
+   *  version, falling back to the latest 'completed' event's models_json when
+   *  the fingerprinter has not yet run. Returns null when neither source
+   *  yields a parseable array (legacy / malformed / pre-Phase-13 rows).
+   *  T-13-12 mitigation: catches JSON.parse / non-array errors so downstream
+   *  consumers (Phase 14 C2PA manifest) get a clean null signal rather than a
+   *  partially-parsed object. */
+  getLatestFingerprints(versionId: string): ModelRef[] | null {
+    const fingerprinted = this.db
+      .select()
+      .from(provenance)
+      .where(
+        and(eq(provenance.version_id, versionId), eq(provenance.event_type, 'models_fingerprinted')),
+      )
+      .orderBy(desc(provenance.timestamp))
+      .limit(1)
+      .all() as ProvenanceEvent[];
+    const source = fingerprinted[0] ?? this.getLatestCompletedEvent(versionId);
+    if (!source?.models_json) return null;
+    try {
+      const parsed = JSON.parse(source.models_json);
+      if (!Array.isArray(parsed)) return null;
+      return parsed as ModelRef[];
+    } catch {
+      return null;
+    }
   }
 }
