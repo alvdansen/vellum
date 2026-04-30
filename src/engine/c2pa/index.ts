@@ -1,0 +1,31 @@
+// Phase 14 / Plan 14-02 — engine-layer C2PA module barrel export.
+//
+// This file re-exports the public API surface of the three submodules.
+// Plan 14-03 (engine integration), Plan 14-04 (HTTP route), and Plan 14-05
+// (verification tests) import from here.
+//
+// Architecture-purity: zero non-c2pa imports. The c2pa-node import is
+// confined to ./signer.ts; everything in the barrel is re-export only.
+
+export {
+  buildManifestDefinition,
+  type BuildManifestOptions,
+  type ManifestDefinition,
+  type PrimaryModel,
+} from './manifest-builder.js';
+
+export {
+  routeFormat,
+  type FormatRoute,
+  EMBED_BUFFER_FORMATS,
+  EMBED_FILE_FORMATS,
+  UNSUPPORTED_NATIVE_FORMATS,
+} from './format-router.js';
+
+export {
+  loadSigner,
+  signEmbedBuffer,
+  signEmbedFile,
+  isC2paNodeAvailable,
+  type LoadedSigner,
+} from './signer.js';

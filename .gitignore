@@ -21,3 +21,7 @@ packages/dashboard/node_modules/
 # scripts/gen-dev-c2pa-cert.mts; NEVER commit. Production keys come from
 # operator-managed paths (VFX_FAMILIAR_C2PA_CERT_PEM_PATH).
 .c2pa-dev/
+# Phase 14 Plan 14-02: per-test cert fixtures generated lazily by
+# src/engine/c2pa/__tests__/signer.test.ts via openssl shell-out. Each
+# fixture is a one-shot disposable cert + key — never committed.
+tests/fixtures/c2pa/algorithms/

@@ -38,7 +38,9 @@ export type ErrorCode =
   // Phase 10 — migrate-on-boot hardening (DEMO-01)
   | 'MIGRATION_PENDING'
   // Phase 14 — C2PA signed manifest emission (PROV-V-01)
-  | 'C2PA_CONFIG_INVALID';
+  | 'C2PA_CONFIG_INVALID'
+  | 'C2PA_SIGNER_LOAD_FAILED'
+  | 'C2PA_SIGNING_FAILED';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
