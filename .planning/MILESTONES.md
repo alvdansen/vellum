@@ -1,5 +1,38 @@
 # Milestones
 
+## v1.1 Provenance Verification (Shipped: 2026-04-30)
+
+**Phases completed:** 7 phases, 24 plans, 63 tasks
+
+**Key accomplishments:**
+
+- MIGRATION_PENDING TypedError arm + runMigrations() store helper that wraps drizzle's migrate() with a pending-count pre-check and typed-error failure surface naming the failing migration filename + remediation hint.
+- openDb() routed through runMigrations() with close-before-throw on MIGRATION_PENDING; clean-DB no-op contract proven by a 4-assertion regression test (ROADMAP success criterion #4); both transports inherit the typed-error surface via the single boot-path call site at src/server.ts:154.
+- Failure-path regression test (`src/store/__tests__/migrate-stale-db.test.ts`, 7 assertions across 3 describe blocks) that proves ROADMAP success criteria #2 and #3 — typed-error envelope (code + filename + SQL-error text + remediation hint) and boot-path-bails-before-tool-registration — using vi.mock injection of a synthetic drizzle-migrator failure plus a local engine-constructor spy that proves unreachability after openDb() throws.
+- Single shared `flattenComfyError(error: unknown): string` helper consolidates the 3-branch ComfyUI error flatten chain (node_errors / string / fallback) across both submit-time and recovery-poller paths — eliminating the duplicated extraction shape that previously caused recovery-poller dashboard cards to collapse to "ComfyUI reported failed" when the submit path would have decoded actionable detail.
+- 14-case parity test drives 4 Cloud-shaped error fixtures (node_errors object, value_not_in_list, bare string, IT-10 missing-error fallback) through three paths — flattenComfyError helper, ComfyUIClient.submit() 4xx, GenerationEngine.getGenerationStatus() failed branch — and asserts byte-equal flattened detail strings. Closes ROADMAP Phase 11 success criterion #2 at the integration boundary.
+- Engine + tool surface for DEMO-03: version.diff envelope now carries a `reproduction_divergence` field that surfaces SHA-256 mismatches and partner-API non-determinism warnings on reproduce-lineage versions — null when bytes match AND no warnings (criterion #4).
+- WarningPill + VersionDrawer auto-fetch + side-by-side comparison block close DEMO-03 at the dashboard boundary: reproduce-lineage versions whose bytes drift from their parent OR carry partner-API non-determinism warnings now render an amber pill in the drawer header AND a parent-vs-reproduction <img> comparison block in the body, while bit-identical reproductions render neither (criterion #4).
+- ModelRef gains `model_hash_unavailable: string | null` and Phase 13's streaming SHA-256 helper `fingerprintModel` ships at the engine layer with WR-02 path-traversal defense, three-attempt retry on non-ENOENT I/O, and 17 unit-test cases mapping each Phase 13 success criterion to an explicit assertion.
+- Engine.fingerprintModelsForVersion ships at the integration boundary — fires from a void-wrapped callback after markCompleted, hashes each ModelRef via Plan 13-01's helper, persists as a `models_fingerprinted` sibling provenance event, idempotent for crash recovery, hot-path-isolated by construction (assertion: completion returns BEFORE the fingerprinted event is appended).
+- Phase 13 close: ModelChange shape extended to carry `hash_unavailable` on both sides, diffModels fires on hash↔unavailable transitions, loadDiffSnapshot reads the post-fingerprint view via getLatestFingerprints, 5 end-to-end integration tests prove criteria #1/#2/#3 + the diff boundary, 3 file-level architecture-purity assertions lock src/engine/model-fingerprint.ts as zero-MCP / zero-SQLite-driver / zero-ORM. PROV-V-03 cohort closure.
+- Establishes the configuration foundation for Phase 14 — pinned c2pa-node@0.5.26, typed C2paConfig threaded through Engine, boot-time env validation with realpath + allowlist guard (Concern #4 path-traversal mitigation), basename-only path-leak hygiene, native-binding-load resilience (Concern #11), and a self-signed dev cert generator. No signing logic lands here; Plans 14-02..14-05 build on this base.
+- Engine-layer C2PA module under `src/engine/c2pa/` — pure routeFormat (3-variant discriminated union, NO sidecar mode), pure buildManifestDefinition (c2pa.created assertion only per D-CTX-4), and a thin signer wrapper that is the SINGLE c2pa-node consumer. Algorithm detection via X509Certificate (Concern #1), RFC4514-safe subject parser (Concern #10), and lazy try/catch'd native-binding load (Concern #11) all in place. 46 new tests, +54 root-suite delta, pre-existing 5 v1.1-audit failures unchanged.
+- Engine-layer integration of the Plan 14-02 c2pa module — Engine.signOutput orchestrates lazy signer load, format routing, manifest definition, sign emission, and append-only provenance recording; the output-downloader hook wires it post-Cloud-download with atomic mkstemp -> rename + cross-device fallback + concurrent-writer safety.
+- Surface the Plan 14-03 signing layer at the HTTP + dashboard boundary. The output streaming route gains an X-C2PA-Signing-Status response header (GET + HEAD); the VersionDrawer renders a small inline C2PA signing-state badge driven by a HEAD-based getC2paStatus helper. v1.1 ships native-embed status surfacing only — NO sidecar route, NO sidecar dashboard link (Concern #2 scope reduction; v1.2 reintroduces both when c2pa-node exposes a real sidecar API).
+- End-to-end c2pa-node round-trip verification across PNG/JPEG/MP4/WebP/TIFF (incl. Concern #8 cryptographic binding proof + tamper detection); dual-transport parity automated; T-14-01/T-14-02/T-14-12 mitigations formally proven; wire-level UAT via real MCP SDK Client + spawned server; PROV-V-01/02/05 cohort closed with v1.2 deferred items recorded.
+- Pure ingredient extraction primitives (parent / component / inputTo) plus streaming-SHA256 helper; KSampler edge walk replaces the positional CLIPTextEncode heuristic per REVISION B5; IMAGE_INPUT_CLASS_TYPES audited per REVISION C1/C2 to disjoint set vs LOADER_CLASS_TYPES.
+- Pure manifest builder extension producing BuildManifestResult { definition, ingredientSpecs } for the impure signer to drive; vfx_familiar.input + vfx_familiar.unavailable_ingredient vendor assertions land in definition.assertions[]; ingredients flow via the native binding's manifestBuilder.addIngredient at sign time (NOT via assertions[]).
+- Engine.signOutput now resolves parent + components + inputTo BEFORE manifest construction, drives the c2pa-node createIngredient + ManifestBuilder.addIngredient flow via two new signer entry points, persists manifest_sha256 + ingredients_summary on the manifest_signed event, and serialises concurrent same-version sign calls via a per-version Promise mutex.
+- End-to-end v1 → v2 → v3 ingredient-graph traceback verified by independent createC2pa().read() walking manifest.ingredients[] (NOT assertions[]); dangling-reference state recorded via vfx_familiar.unavailable_ingredient vendor assertion; PROV-V-04 marked complete in REQUIREMENTS.md with 3 new v1.2 deferred items; ROADMAP.md Phase 15 row marked Complete with date 2026-04-30; 4 new cohort-closure smoke tests lock the paperwork at file-content level.
+- Pure-async exportManifest + lazy-binding verifyManifest engine modules wired into Engine facade with allowed-set architecture-purity guard. PROV-V-07 agent-surface foundation.
+- Pure-helper + lazy-integration redaction primitive for PROV-V-06 — strips named fields from a parent manifest's JSON via a bounded DSL, emits a vendor-namespaced `vfx_familiar.redacted` assertion preserving the FACT of redaction (not the values), re-signs with the same Phase 14 cert via the existing signer surface, and appends a NEW manifest_signed event so the original signed row stays byte-identical (append-only contract preserved). Engine.redactManifestForVersion threads the unified asset-writer mutex so concurrent signOutput + redact never produce wrong-shape coalescing or interleaved provenance rows.
+- Two new `version` tool action arms (`export_manifest` + `verify_manifest`) wired through Plan 16-01's Engine facade with discriminated input, payload-size cap, and dual-transport parity guarantee.
+- redact_manifest version-tool action with D-CTX-1 wire-level invariant + D-PROV-08 dual-form envelope, completing PROV-V-06 wire surface (cohort closure pending Plan 16-05)
+- Three test layers (E2E + wire-level UAT + smoke script) + cohort closure documents shipped milestone v1.1 (Phases 10-16, 19 plans, 10 requirements, 7 PROV-V + 3 DEMO)
+
+---
+
 ## v1.0 MVP (Shipped: 2026-04-28)
 
 **Phases completed:** 9 phases, 46 plans, 127 tasks
@@ -55,6 +88,7 @@
 **Delivered:** Open-source MCP server layering VFX hierarchy, async ComfyUI Cloud generation, append-only provenance, asset tagging/query, and a Preact dashboard — all under the 12-tool MCP cap with dual-transport (stdio + Streamable HTTP) parity locked at the integration-test layer.
 
 **Stats:**
+
 - Date range: 2026-04-20 → 2026-04-28 (9 days)
 - Commits: 360 (genesis 65eaf46 → milestone close 25b69c2)
 - LOC: ~25,543 TypeScript (22,613 server + 2,930 dashboard)
