@@ -42,6 +42,7 @@ import {
 import { resolve, basename } from 'node:path';
 import { nanoid } from 'nanoid';
 import type { ComfyUIClient } from '../comfyui/client.js';
+import { BUFFER_SIGNING_MAX_BYTES } from './c2pa/constants.js';
 
 /**
  * Phase 14 (PROV-V-01) — minimal Engine surface needed by the downloader.
@@ -67,15 +68,12 @@ export type EngineForC2pa = {
 };
 
 /**
- * Phase 14 (Concern #6) — defence-in-depth size cap. Mirrors
- * BUFFER_SIGNING_MAX_BYTES exported from src/engine/pipeline.ts; duplicated
- * here so the downloader can decide whether to stat-then-readFile (small)
- * vs. stat-then-pass-filePath (oversized) WITHOUT importing the engine
- * facade (which would create a circular dependency).
- *
- * Keep these two constants in sync: both are 500 MB.
+ * Phase 14 (Concern #6) — defence-in-depth size cap. Imported from the
+ * c2pa-module shared-constants barrel (src/engine/c2pa/constants.ts) so
+ * pipeline.ts and output-downloader.ts can never drift. See MR-03 in
+ * 14-REVIEW-FIX.md — the legacy duplicate has been removed and a single
+ * source of truth is enforced via this import.
  */
-const DOWNLOADER_BUFFER_SIGNING_MAX_BYTES = 500 * 1024 * 1024;
 
 /**
  * Download a single ComfyUI output to `outputsDir/versionId/filename`.
@@ -162,7 +160,7 @@ async function signFileInPlace(
     // Oversized files skip the readFile to avoid OOM; the engine's file-API
     // path streams via c2pa-rs and does not need the full bytes in memory.
     const st = await stat(destPath);
-    const useFilePath = st.size > DOWNLOADER_BUFFER_SIGNING_MAX_BYTES;
+    const useFilePath = st.size > BUFFER_SIGNING_MAX_BYTES;
     const signInput: { bytes: Buffer } | { filePath: string } = useFilePath
       ? { filePath: destPath }
       : { bytes: await readFile(destPath) };

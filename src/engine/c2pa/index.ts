@@ -29,3 +29,5 @@ export {
   isC2paNodeAvailable,
   type LoadedSigner,
 } from './signer.js';
+
+export { BUFFER_SIGNING_MAX_BYTES } from './constants.js';
