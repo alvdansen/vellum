@@ -44,3 +44,8 @@ export {
   type ComponentIngredient,
   type InputAssertion,
 } from './ingredient-extractor.js';
+
+// Phase 15 / Plan 15-01 — streaming SHA-256 helper for component image bytes.
+// Mirrors src/engine/output-hash.ts; impure (filesystem read) but
+// architecture-pure (no MCP / native-binding / SQLite / ORM imports).
+export { hashComponentBytes, type HashOutcome } from './ingredient-hasher.js';
