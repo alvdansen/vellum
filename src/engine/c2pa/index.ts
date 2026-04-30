@@ -31,3 +31,16 @@ export {
 } from './signer.js';
 
 export { BUFFER_SIGNING_MAX_BYTES } from './constants.js';
+
+// Phase 15 / Plan 15-01 — pure ingredient extraction primitives. Consumed by
+// Plan 15-02 (manifest builder extension) and Plan 15-03 (engine integration).
+export {
+  extractParentIngredient,
+  extractComponentIngredients,
+  extractInputAssertion,
+  INPUT_PROMPT_MAX_CHARS,
+  type ComponentRole,
+  type ParentIngredient,
+  type ComponentIngredient,
+  type InputAssertion,
+} from './ingredient-extractor.js';
