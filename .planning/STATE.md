@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: verifying
-stopped_at: Completed Plan 11-02 — same-fixture parity test (14 named test cases / 4 fixtures × 3 arms + cross-arm sweep + IT-10 cross-check). DEMO-02 cohort closed; Phase 11 ready for /gsd-verify-phase. 797 passing / 5 pre-existing failing / 3 skipped.
-last_updated: "2026-04-30T08:26:26.633Z"
+status: executing
+stopped_at: Completed Plan 12-01 — engine-layer cohort for DEMO-03 (reproduction_divergence on version.diff). 817 passing / 5 pre-existing failing / 3 skipped. Plan 12-02 (dashboard) up next.
+last_updated: "2026-04-30T09:11:22.581Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_plans: 7
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 11 — Recovery Poller Error Detail
+**Current focus:** Phase 12 — Reproduce Divergence Transparency
 
 ## Current Position
 
-Phase: 11 (Recovery Poller Error Detail) — EXECUTING
+Phase: 12 (Reproduce Divergence Transparency) — EXECUTING
 Plan: 2 of 2
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-04-30
 
-Progress: [██████████] 100%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | Phase 10 P03 | 2min | 1 tasks | 1 files |
 | Phase 11 P01 | 5min | 2 tasks | 4 files |
 | Phase 11 P02 | 6min | 2 tasks | 2 files |
+| Phase Phase 12 PP01 | 17min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,7 @@ Recent decisions affecting current work:
 - [Phase 11]: Plan 11-02 added same-fixture parity test at src/comfyui/__tests__/error-extraction-parity.test.ts (354 lines, 14 named test cases). Drives 4 Cloud-shaped error fixtures (node_errors object, value_not_in_list, bare string, IT-10 missing-error fallback) through 3 paths (helper / submit / status) and asserts byte-equal output. Cross-arm sweep + IT-10 cross-check provide structural guard against future drift between submit-time and recovery-poller error-extraction call sites. ROADMAP Phase 11 success criterion #2 closed at integration boundary.
 - [Phase 11]: FakeComfyUIClient gained additive cannedFailedError escape-hatch (default null preserves legacy { node_errors: cannedNodeErrors } wrap) plus OMIT_ERROR sentinel symbol. Purely opt-in — every pre-existing failed-workflow test continues to behave byte-for-byte unchanged (46/46 generation.test.ts passing). FakeScenario union, default cannedNodeErrors fixture, and all other scenarios untouched. Threat T-11-06 mitigation honoured.
 - [Phase 11]: DEMO-02 marked complete in REQUIREMENTS.md after Plan 11-02. Cohort-level closure: 11-01 added flattenComfyError helper + dual call-site refactor, 11-02 added the byte-for-byte same-fixture parity test. ROADMAP success criteria #1 (recovery poller surfaces actionable detail), #2 (single helper proven), #3 (no field rename / UI rework), and #4 (graceful fallback when node_errors absent) all provably closed. Phase 11 ready for /gsd-verify-phase 11.
+- [Phase ?]: [Phase 12]: Plan 12-01 closed engine-layer cohort for DEMO-03. ReproductionDivergence interface (D-CTX-4) + buildReproductionDivergence pure helper + computeOutputSha256 streaming hash + migration 0005 + Engine.diffVersions async-conversion + GenerationEngine.reproduceVersion warning persistence. Architecture-purity preserved across all 4 touched engine files. ROADMAP success criteria #3 + #4 closed at engine + tool boundary; criteria #1 + #2 land in Plan 12-02 (dashboard).
 
 ### Pending Todos
 
@@ -112,8 +114,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T08:26:10.766Z
-Stopped at: Completed Plan 11-02 — same-fixture parity test (14 named test cases / 4 fixtures × 3 arms + cross-arm sweep + IT-10 cross-check). DEMO-02 cohort closed; Phase 11 ready for /gsd-verify-phase. 797 passing / 5 pre-existing failing / 3 skipped.
+Last session: 2026-04-30T09:11:22.578Z
+Stopped at: Completed Plan 12-01 — engine-layer cohort for DEMO-03 (reproduction_divergence on version.diff). 817 passing / 5 pre-existing failing / 3 skipped. Plan 12-02 (dashboard) up next.
 Resume file: None
 
 **Planned Phase:** Phase 11 — Recovery Poller Error Detail (complete). Run `gsd-verify-phase 11` next.

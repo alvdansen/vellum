@@ -82,10 +82,9 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   2. The version drawer surfaces a side-by-side "parent vs reproduction" image comparison block when both outputs exist on disk.
   3. `version.diff` (engine + tool path) optionally includes a `reproduction_divergence` field carrying the SHA-256 mismatch detail and any partner-API non-determinism warnings.
   4. A reproduce-lineage version whose output IS bit-identical to its parent shows no divergence pill and no comparison block — the UI signal is unambiguous.
-**Plans**: 3 plans
-  - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
-  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
-  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
+**Plans**: 2 plans
+  - [x] 12-01-PLAN.md — Engine: 0005 migration + reproduction_warnings_json column + DiffResponse.reproduction_divergence field + computeOutputSha256 helper + facade wiring
+  - [ ] 12-02-PLAN.md — Dashboard: WarningPill + VersionDrawer auto-fetch on reproduce-lineage + side-by-side parent-vs-reproduction comparison block
 **UI hint**: yes
 
 ### Phase 13: Model Fingerprinting
@@ -175,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
 | 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
-| 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
+| 12. Reproduce Divergence Transparency | v1.1 | 1/2 | In Progress|  |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 0/TBD | Not started | - |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
