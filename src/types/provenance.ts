@@ -75,6 +75,24 @@ export type ManifestSignedPayloadFields = {
     input_assertion: boolean;
     unavailable_count: number;
   };
+  /**
+   * Phase 16 / Plan 16-02 (D-CTX-5) — additive, non-breaking. When TRUE,
+   * this manifest_signed event row carries the OUTCOME of a redaction
+   * call (Engine.redactManifestForVersion). The original (un-redacted)
+   * event row is BYTE-IDENTICAL — the redacted row is a SIBLING
+   * (append-only invariant per D-CTX-5). Pre-Phase-16 rows always read
+   * undefined here. Tools surface this via Plan 16-04's
+   * version.redact_manifest envelope.
+   */
+  redacted?: boolean;
+  /**
+   * Phase 16 / Plan 16-02 — list of redaction-policy paths actually
+   * applied. Excludes paths that surfaced as `not_found:<path>` (those
+   * surface in Plan 16-04's tool envelope as a separate `not_found`
+   * field). Empty array iff redacted=true is impossible (no-op redactions
+   * are rejected at the helper boundary — Test 11 covers).
+   */
+  redacted_fields?: string[];
 };
 
 export type ProvenanceManifestSignedPayload = {

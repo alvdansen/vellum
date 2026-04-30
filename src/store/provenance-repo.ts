@@ -210,6 +210,41 @@ export class ProvenanceRepo {
     });
   }
 
+  /**
+   * Phase 16 / Plan 16-02 (D-CTX-5) — sibling-row helper for redacted writes.
+   *
+   * Behaviorally identical to appendManifestSignedEvent: serialises the payload
+   * via JSON.stringify into manifest_signed_json. The DIFFERENCE is the
+   * payload shape carries redacted=true + redacted_fields[]. Centralising
+   * the helper lets test harnesses + Engine.redactManifestForVersion share
+   * one writer; pre-Phase-16 callers continue using appendManifestSignedEvent
+   * unchanged (additive surface, no migration).
+   *
+   * Append-only invariant: NEVER updates the original (un-redacted) row.
+   * The redacted row is a SIBLING with later timestamp; getLatestManifestSignedEvent
+   * returns the redacted row first (DESC by timestamp).
+   *
+   * C-02 fix: the redacted=true GUARD runs BEFORE insertEvent. payload.redacted !== true
+   * REJECTS pre-commit — the row is never inserted, the caller's atomic-write
+   * disk overwrite has not corrupted append-only state.
+   */
+  appendManifestSignedRedactedEvent(
+    versionId: string,
+    payload: ManifestSignedPayloadFields,
+  ): ProvenanceEvent {
+    // Defensive (C-02): assert the caller actually flagged redacted=true.
+    // Guard runs BEFORE insertEvent so on misuse no row is committed.
+    if (payload.redacted !== true) {
+      throw new Error(
+        'appendManifestSignedRedactedEvent called with payload.redacted !== true — use appendManifestSignedEvent for non-redacted writes',
+      );
+    }
+    return this.insertEvent(versionId, {
+      event_type: 'manifest_signed',
+      manifest_signed_json: JSON.stringify(payload),
+    });
+  }
+
   /** Phase 14 — PROV-V-01. Returns the most recent manifest_signed event for
    *  a version+filename pair, or null. Used by Engine.signOutput's idempotency
    *  guard (Concern #7) and by the HTTP layer's X-C2PA-Signing-Status header

@@ -48,6 +48,8 @@ import {
   // Phase 16 / Plan 16-01 — agent-surface types (PROV-V-07).
   type ExporterResult,
   type VerificationReport,
+  // Phase 16 / Plan 16-02 — redaction facade type (PROV-V-06).
+  type RedactionResult,
 } from './c2pa/index.js';
 import {
   SHOT_NAME_REGEX,
@@ -287,6 +289,95 @@ export class Engine {
     string,
     Promise<{ signed: Buffer | null; signedToPath: string | null; alreadySigned?: boolean }>
   >();
+
+  /**
+   * Phase 16 / Plan 16-02 (D-PLAN-2-4 / C-04) — UNIFIED per-(versionId, filename)
+   * asset-writer mutex. SERIALIZING FIFO semantics — concurrent acquires
+   * QUEUE behind prior holders rather than coalescing.
+   *
+   * Strategy (a) from the C-04 review: TWO maps. signOutput retains its
+   * COALESCING signMutex above (preserves Phase 14 / 15 idempotent-retry
+   * intent — a second sign call for the same (versionId, filename) shares
+   * the first's in-flight result). The new assetWriterMutex is the OUTER
+   * serializer that prevents signOutput AND redactManifestForVersion from
+   * running concurrently on the same compound key — without it, redaction
+   * could either coalesce with a sign (wrong-shape result) OR interleave
+   * with it (non-deterministic event-row ordering, breaking T-15-08 audit
+   * invariants).
+   *
+   * Both Engine.signOutput and Engine.redactManifestForVersion acquire this
+   * mutex on entry. acquireAssetWriterLock chains the new task onto the
+   * latest in-flight promise for that key (FIFO). 30s acquire timeout maps
+   * to REDACT_TIMEOUT (T-16-15a mitigation).
+   *
+   * Map<key, Promise<void>> — each key's Promise resolves when the most
+   * recent task on that key completes (success OR failure). Acquire chains
+   * onto the existing Promise so tasks run FIFO.
+   */
+  private readonly assetWriterMutex = new Map<string, Promise<void>>();
+
+  /**
+   * FIFO-serializing acquire — runs `task` AFTER all prior holders for the
+   * same compound key release. 30-second timeout maps to REDACT_TIMEOUT.
+   * Map entry self-cleans when the in-flight chain settles AND no later
+   * acquire chained behind it (T-15-06 bounded-growth).
+   */
+  private async acquireAssetWriterLock<T>(
+    versionId: string,
+    filename: string,
+    task: () => Promise<T>,
+    timeoutMs: number = 30_000,
+  ): Promise<T> {
+    const key = `${versionId}::${filename}`;
+    const prior = this.assetWriterMutex.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const slot = new Promise<void>((res) => { release = res; });
+    // Chain — next acquire on this key waits for `slot` to resolve.
+    const ownChain = prior.then(() => slot);
+    this.assetWriterMutex.set(key, ownChain);
+    // Wait for the prior, with timeout guarding against hung callers.
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    const timeout = new Promise<never>((_, rej) => {
+      timeoutHandle = setTimeout(() => {
+        rej(
+          new TypedError(
+            'REDACT_TIMEOUT',
+            `assetWriterMutex acquire timed out after ${timeoutMs}ms for ${key}`,
+            'A prior signOutput or redactManifestForVersion call on the same (version_id, filename) is hung. Investigate the in-flight task.',
+          ),
+        );
+      }, timeoutMs);
+    });
+    // Suppress unhandled-rejection on the timeout promise (in the success
+    // path the timer is cleared but the Promise was attached to a race that
+    // doesn't keep its rejection handler alive after Promise.race settles).
+    timeout.catch(() => { /* swallow when not won */ });
+    try {
+      await Promise.race([prior, timeout]);
+      // Acquire succeeded — clear the pending timer so it doesn't linger.
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      return await task();
+    } finally {
+      // Defensive — if Promise.race rejected via the timeout, the handle
+      // is already fired but we defensively clear in case the race won by
+      // task() throwing before the timer cleared. No-op when already null.
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
+      release();
+      // Self-cleanup: only delete the map entry if our own chain is STILL
+      // the latest (i.e., no concurrent acquire chained behind us). Done in
+      // a microtask so the chain has time to be replaced if needed.
+      queueMicrotask(() => {
+        if (this.assetWriterMutex.get(key) === ownChain) {
+          this.assetWriterMutex.delete(key);
+        }
+      });
+    }
+  }
 
   constructor(
     db: BaseDb,
@@ -1003,12 +1094,22 @@ export class Engine {
     // for B). The compound key preserves re-sign idempotency for matching
     // (version, filename) pairs while letting distinct filenames sign in
     // parallel.
+    //
+    // Phase 16 / Plan 16-02 (D-PLAN-2-4 / C-04): the COALESCING signMutex is
+    // checked OUTSIDE the FIFO-serializing assetWriterMutex so two concurrent
+    // signOutput calls for the same key still share an in-flight Promise
+    // (the existing Phase 14 idempotent-retry intent is preserved). Only the
+    // first caller to acquire the signMutex enters acquireAssetWriterLock —
+    // which serializes against any in-flight redactManifestForVersion call
+    // on the same (versionId, filename) key.
     const mutexKey = `${versionId}::${filename}`;
     const inflight = this.signMutex.get(mutexKey);
     if (inflight !== undefined) {
       return await inflight;
     }
-    const promise = this._signOutputInner(versionId, filename, input);
+    const promise = this.acquireAssetWriterLock(versionId, filename, () =>
+      this._signOutputInner(versionId, filename, input),
+    );
     this.signMutex.set(mutexKey, promise);
     try {
       return await promise;
@@ -1284,6 +1385,60 @@ export class Engine {
       manifestBytes: input.manifestBytes,
       format: input.format,
     });
+  }
+
+  /**
+   * Phase 16 / Plan 16-02 — D-CTX-1 redaction facade. Delegates to
+   * redactManifestForVersionImpl (lazy-imported). The engine threads:
+   *   - this.versionRepo, this.provenanceRepo, this.outputRoot — same as
+   *     Plan 16-01's export/verify facades
+   *   - the loaded signer (Phase 14 lazy-load — D-PLAN-2-1)
+   *   - acquireAssetWriterLock — D-PLAN-2-4 unified FIFO mutex
+   *
+   * D-PLAN-2-1: same cert chain (signer reused). D-PLAN-2-2: algorithm
+   * detected once at signer-load time; reused. D-PLAN-2-3: ingredient
+   * pass-through deferred (parent ingredients not re-mirrored in v1.1;
+   * tracked deferred-items.md).
+   *
+   * Throws TypedError REDACT_SIGNING_DISABLED when c2paConfig is null,
+   * REDACT_NO_MANIFEST when no signed manifest_signed event exists,
+   * REDACT_PARENT_UNREADABLE when c2pa-rs read fails, REDACT_POLICY_INVALID
+   * when applyRedactionPolicy rejects the policy, REDACT_TIMEOUT when the
+   * mutex acquire times out (30s), VERSION_NOT_FOUND when the version row
+   * does not exist, and EXPORT_PATH_TRAVERSAL_REJECTED on traversal chars.
+   */
+  async redactManifestForVersion(
+    versionId: string,
+    redactionPolicy: readonly string[],
+  ): Promise<RedactionResult> {
+    // C-06 fix: c2paConfig === null is "signing disabled" — distinct
+    // semantic from "no manifest". Use the dedicated REDACT_SIGNING_DISABLED
+    // code (was REDACT_NO_MANIFEST pre-revision — wrong semantic).
+    if (this.c2paConfig === null) {
+      throw new TypedError(
+        'REDACT_SIGNING_DISABLED',
+        'C2PA signing is not configured — cannot redact',
+        'Set VFX_FAMILIAR_C2PA_CERT_PEM_PATH + VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH and restart. Redaction requires a signing key to re-sign the redacted manifest.',
+      );
+    }
+    const signerOrCode = await this.getOrLoadSigner();
+    if ('errorCode' in signerOrCode) {
+      throw new TypedError(
+        'REDACT_SIGNING_DISABLED',
+        `Cannot load signer for redaction (${signerOrCode.errorCode})`,
+        'Verify the cert + private key paths are valid and the native binding is available.',
+      );
+    }
+    const { redactManifestForVersionImpl } = await import('./c2pa/redaction.js');
+    return await redactManifestForVersionImpl(
+      versionId,
+      redactionPolicy,
+      this.versionRepo,
+      this.provenanceRepo,
+      this.outputRoot,
+      signerOrCode.signer,
+      this.acquireAssetWriterLock.bind(this),
+    );
   }
 
   /**

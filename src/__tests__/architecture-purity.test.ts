@@ -191,6 +191,7 @@ describe('architecture purity', () => {
       'src/engine/c2pa/signer.ts',
       'src/engine/c2pa/exporter.ts', // D-CTX-7 reserves the slot
       'src/engine/c2pa/verifier.ts', // Plan 16-01 — lazy import('c2pa-node')
+      'src/engine/c2pa/redaction.ts', // Plan 16-02 — lazy import('c2pa-node')
     ]);
     let out = '';
     try {
@@ -224,6 +225,7 @@ describe('architecture purity', () => {
     const expectedActualImporters = [
       'src/engine/c2pa/signer.ts',
       'src/engine/c2pa/verifier.ts',
+      'src/engine/c2pa/redaction.ts', // Plan 16-02 — lazy import('c2pa-node')
     ].sort();
     expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
   });
@@ -363,6 +365,45 @@ describe('architecture purity', () => {
     expect(grepCount('better-sqlite3', 'src/engine/c2pa/verifier.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/c2pa/verifier.ts')).toBe(0);
     expect(grepCount('@hono/node-server', 'src/engine/c2pa/verifier.ts')).toBe(0);
+  });
+
+  // ================================================================
+  // Phase 16 / Plan 16-02 — file-level purity lock for redaction.ts
+  // (PROV-V-06). redaction.ts is allowed to import c2pa-node — but
+  // ONLY via lazy await import(). Static `from 'c2pa-node'` is a
+  // regression that would force eager native-binding load at
+  // module-evaluation time.
+  // ================================================================
+
+  it('src/engine/c2pa/redaction.ts uses lazy c2pa-node + zero MCP/SQLite/ORM/hono imports', () => {
+    // redaction.ts is allowed to import c2pa-node — but ONLY via lazy
+    // await import. Static `from 'c2pa-node'` is a regression.
+    try {
+      const staticImport = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]+['\"]c2pa-node['\"]", 'src/engine/c2pa/redaction.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(
+        staticImport.trim(),
+        `redaction.ts must not statically import c2pa-node (use lazy await import):\n${staticImport}`,
+      ).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    // Confirm the lazy form IS present (defence against silent removal).
+    const lazyImport = execFileSync(
+      'grep',
+      ['-E', "import[[:space:]]*\\([[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/redaction.ts'],
+      { encoding: 'utf8' },
+    );
+    expect(lazyImport.trim()).not.toBe('');
+    // No MCP / SQLite / drizzle / hono.
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/redaction.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/redaction.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/redaction.ts')).toBe(0);
+    expect(grepCount('@hono/node-server', 'src/engine/c2pa/redaction.ts')).toBe(0);
   });
 });
 

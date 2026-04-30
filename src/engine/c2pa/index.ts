@@ -85,3 +85,17 @@ export {
   type VerificationReport,
   type VerifyManifestInput,
 } from './verifier.js';
+
+// Phase 16 / Plan 16-02 — PROV-V-06 redaction primitive. Pure helpers (apply +
+// build) live in redaction.ts; the integration helper that re-signs via
+// signer.ts is also exported for the Engine facade (Engine.redactManifestForVersion).
+export {
+  applyRedactionPolicy,
+  buildRedactedManifestDefinition,
+  redactManifestForVersionImpl,
+  extractAssertions,
+  __resetRedactionStateForTests,
+  type RedactionApplied,
+  type RedactionResult,
+  type AssetWriterAcquire,
+} from './redaction.js';

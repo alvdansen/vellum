@@ -99,11 +99,18 @@ export interface ManifestDefinition {
  * call at the impure signer (Plan 15-03), NOT through assertions[]. The
  * BaseManifestDefinition shape the binding's ManifestBuilder constructor accepts
  * deliberately excludes the `ingredients` field for that reason.
+ *
+ * Phase 16 / Plan 16-02 (D-CTX-1) — extended with VendorRedactedAssertion. The
+ * `vfx_familiar.redacted` assertion preserves the FACT of redaction without
+ * the original values. Original values appear NOWHERE in the redacted manifest
+ * JSON output — this is a structural invariant tested at every layer
+ * (helper, integration, E2E in Plan 16-05).
  */
 export type ManifestAssertion =
   | CreatedActionAssertion
   | VendorInputAssertion
-  | VendorUnavailableIngredientAssertion;
+  | VendorUnavailableIngredientAssertion
+  | VendorRedactedAssertion;
 
 /**
  * Phase 14 c2pa.actions assertion carrying the c2pa.created action — ComfyUI
@@ -159,6 +166,26 @@ export interface VendorUnavailableIngredientAssertion {
      */
     reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' | 'mime_type_unsupported';
     metadata: Record<string, string | number | null>;
+  };
+}
+
+/**
+ * Phase 16 / Plan 16-02 (D-CTX-1) — vendor-namespaced assertion that
+ * preserves the FACT of redaction without the original values. data
+ * carries the policy paths actually applied (`redacted_fields`) and an
+ * ISO timestamp (`redacted_at`). Original VALUES appear nowhere.
+ *
+ * D-CTX-1 SCOPE LIMITATION (C-01): redaction operates on the C2PA MANIFEST
+ * JSON ONLY. The ASSET BINARY (PNG tEXt/iTXt chunks, EXIF, ICC profile
+ * metadata, ID3 tags, video container metadata, pixel data itself) is
+ * UNCHANGED by this primitive. Callers requiring asset-binary scrubbing
+ * must use a separate asset-scrubbing tool BEFORE calling redact_manifest.
+ */
+export interface VendorRedactedAssertion {
+  label: 'vfx_familiar.redacted';
+  data: {
+    redacted_fields: string[];
+    redacted_at: string;
   };
 }
 

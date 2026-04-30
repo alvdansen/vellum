@@ -44,6 +44,13 @@ export type ErrorCode =
   // Phase 16 — Redaction & agent surface (PROV-V-06, PROV-V-07)
   | 'EXPORT_PATH_TRAVERSAL_REJECTED'
   | 'C2PA_VERIFIER_LOAD_FAILED'
+  // Phase 16 / Plan 16-02 — PROV-V-06 redaction error surfaces.
+  | 'REDACT_NO_MANIFEST'           // version has no signed manifest_signed event
+  | 'REDACT_PARENT_UNREADABLE'     // c2pa.read failed on parent bytes
+  | 'REDACT_POLICY_INVALID'        // bounded resolver / DSL violation
+  | 'REDACT_TIMEOUT'               // C-04 fix: assetWriterMutex acquire timeout (30s default)
+  | 'REDACT_SIGNING_DISABLED'      // C-06 fix: c2paConfig === null (signing disabled, distinct from no-manifest)
+  | 'REDACT_DB_WRITE_FAILED'       // C-06 fix: appendManifestSignedRedactedEvent insert failed AFTER re-sign succeeded
   // Internal fallback for unexpected I/O surfaces below the tool boundary.
   | 'INTERNAL_ERROR';
 
