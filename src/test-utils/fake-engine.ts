@@ -192,15 +192,18 @@ export class FakeEngine {
     );
   }
 
-  diffVersions(
+  async diffVersions(
     a: string,
     b: string,
-  ): DiffResponse & { breadcrumb: BreadcrumbEntry[]; breadcrumb_text: string } {
+  ): Promise<DiffResponse & { breadcrumb: BreadcrumbEntry[]; breadcrumb_text: string }> {
     this.calls.push({ method: 'diffVersions', args: [a, b] });
     return (
       this.cans.diffs.get(`${a}::${b}`) ?? {
         summary: 'no changes',
         changes: { params: [], models: [], seed: null, workflow: [], metadata: [] },
+        // Phase 12 — DEMO-03 (D-CTX-4). Default null on FakeEngine — tests
+        // that need a non-null divergence populate cans.diffs explicitly.
+        reproduction_divergence: null,
         breadcrumb: [] as BreadcrumbEntry[],
         breadcrumb_text: '',
       }

@@ -125,18 +125,25 @@ function shapeProvenanceEnvelope(result: {
  * already returns `breadcrumb: Breadcrumb['entries']` + `breadcrumb_text: string`
  * (NOT a nested Breadcrumb object), so no flattening is needed — just forward
  * `summary`, `changes`, and the two breadcrumb fields.
+ *
+ * Phase 12 — DEMO-03 (D-CTX-4): also forwards `reproduction_divergence`,
+ * which is non-null when B is reproduce-lineage AND at least one divergence
+ * signal fired (sha256 mismatch or persisted partner-API warnings). Defaults
+ * to `null` so the field shape is stable for non-reproduce-lineage diffs.
  */
 function shapeDiffEnvelope(
   result: DiffResponse & { breadcrumb: Breadcrumb['entries']; breadcrumb_text: string },
 ): {
   summary: string;
   changes: DiffResponse['changes'];
+  reproduction_divergence: DiffResponse['reproduction_divergence'];
   breadcrumb: Breadcrumb['entries'];
   breadcrumb_text: string;
 } {
   return {
     summary: result.summary,
     changes: result.changes,
+    reproduction_divergence: result.reproduction_divergence ?? null,
     breadcrumb: result.breadcrumb,
     breadcrumb_text: result.breadcrumb_text,
   };
@@ -205,7 +212,7 @@ export function registerVersion(server: McpServer, engine: Engine) {
             );
           case 'diff':
             return toolOk(
-              shapeDiffEnvelope(engine.diffVersions(input.version_a, input.version_b)),
+              shapeDiffEnvelope(await engine.diffVersions(input.version_a, input.version_b)),
             );
           case 'provenance':
             return toolOk(shapeProvenanceEnvelope(engine.getProvenance(input.version_id)));

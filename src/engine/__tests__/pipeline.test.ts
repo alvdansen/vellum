@@ -180,7 +180,7 @@ describe('Engine.getProvenance', () => {
 });
 
 describe('Engine.diffVersions', () => {
-  test('two completed versions on same shot with seed change → diff returns seed change + breadcrumb', () => {
+  test('two completed versions on same shot with seed change → diff returns seed change + breadcrumb', async () => {
     const v1 = seedCompleted(ctx, ctx.shotId, {
       '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7 } },
       '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
@@ -189,7 +189,7 @@ describe('Engine.diffVersions', () => {
       '3': { class_type: 'KSampler', inputs: { seed: 99, steps: 20, cfg: 7 } },
       '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
     });
-    const result = ctx.engine.diffVersions(v1, v2);
+    const result = await ctx.engine.diffVersions(v1, v2);
     expect(result.summary).toBeDefined();
     expect(typeof result.summary).toBe('string');
     expect(result.changes).toBeDefined();
@@ -203,21 +203,21 @@ describe('Engine.diffVersions', () => {
     expect(seedField!.after).toBe(99);
   });
 
-  test('cross-shot → INVALID_INPUT (D-PROV-20 enforced by pure diff.ts)', () => {
+  test('cross-shot → INVALID_INPUT (D-PROV-20 enforced by pure diff.ts)', async () => {
     const v1 = seedCompleted(ctx, ctx.shotId);
     const v2 = seedCompleted(ctx, ctx.shotBId);
     try {
-      ctx.engine.diffVersions(v1, v2);
+      await ctx.engine.diffVersions(v1, v2);
       throw new Error('should have thrown');
     } catch (e) {
       expect((e as { code: string }).code).toBe('INVALID_INPUT');
     }
   });
 
-  test('unknown version id → VERSION_NOT_FOUND', () => {
+  test('unknown version id → VERSION_NOT_FOUND', async () => {
     const v1 = seedCompleted(ctx, ctx.shotId);
     try {
-      ctx.engine.diffVersions(v1, 'ver_missing');
+      await ctx.engine.diffVersions(v1, 'ver_missing');
       throw new Error('should have thrown');
     } catch (e) {
       expect((e as { code: string }).code).toBe('VERSION_NOT_FOUND');
@@ -254,6 +254,139 @@ describe('Engine facade — composition invariants', () => {
       'utf-8',
     );
     expect(src).not.toContain('@modelcontextprotocol');
+  });
+});
+
+// ================================================================
+// Phase 12 — DEMO-03 (D-CTX-4) integration tests for the
+// reproduction_divergence field on Engine.diffVersions.
+// ================================================================
+
+/**
+ * Test helper: wire a reproduce-lineage version pair into the in-memory DB.
+ * - Creates parent (regular) + reproduction (lineage_type='reproduce') version
+ *   rows on the test shot.
+ * - Writes the supplied bytes to disk under <outputRoot>/<versionId>/<filename>
+ *   so the engine's hash path can read them.
+ * - Marks both rows completed with outputs_json containing the filename.
+ * - Writes provenance events so loadDiffSnapshot() succeeds.
+ * - Optionally writes reproduction_warnings_json on the reproduction row.
+ */
+async function seedReproducePair(
+  ctx: Ctx,
+  opts: {
+    parentBytes: Buffer;
+    reproductionBytes: Buffer;
+    filename?: string;
+    reproductionWarnings?: string[] | null;
+  },
+): Promise<{ parentId: string; reproductionId: string }> {
+  const filename = opts.filename ?? 'out.png';
+  const blob = BASE_BLOB;
+
+  // 1. Parent row + provenance + outputs_json + on-disk file.
+  const parent = ctx.versions.insertVersion(ctx.shotId);
+  ctx.provenanceWriter.writeSubmitEvent(parent.id, blob);
+  ctx.provenanceWriter.writeCompletedEvent(parent.id, blob, '[]');
+  const parentDir = pth.join(ctx.tempRoot, parent.id);
+  await fsp.mkdir(parentDir, { recursive: true });
+  await fsp.writeFile(pth.join(parentDir, filename), opts.parentBytes);
+  ctx.versions.markCompleted(parent.id, JSON.stringify([{ filename }]));
+
+  // 2. Reproduction row — INSERT with lineage so D-PROV-33 holds.
+  const reproduction = ctx.versions.insertVersion(ctx.shotId, undefined, {
+    parent_version_id: parent.id,
+    lineage_type: 'reproduce',
+  });
+  ctx.provenanceWriter.writeSubmitEvent(reproduction.id, blob);
+  ctx.provenanceWriter.writeCompletedEvent(reproduction.id, blob, '[]');
+  const reproDir = pth.join(ctx.tempRoot, reproduction.id);
+  await fsp.mkdir(reproDir, { recursive: true });
+  await fsp.writeFile(pth.join(reproDir, filename), opts.reproductionBytes);
+  ctx.versions.markCompleted(reproduction.id, JSON.stringify([{ filename }]));
+
+  // 3. Optional warnings persistence.
+  if (opts.reproductionWarnings !== undefined && opts.reproductionWarnings !== null) {
+    ctx.versions.setReproductionWarnings(reproduction.id, opts.reproductionWarnings);
+  }
+
+  return { parentId: parent.id, reproductionId: reproduction.id };
+}
+
+describe('Engine.diffVersions reproduction_divergence (Phase 12 — DEMO-03)', () => {
+  test('non-reproduce-lineage diff returns reproduction_divergence: null (criterion #4)', async () => {
+    // Two ordinary versions on the same shot — neither has lineage_type='reproduce'.
+    const v1 = seedCompleted(ctx, ctx.shotId);
+    const v2 = seedCompleted(ctx, ctx.shotId);
+    const result = await ctx.engine.diffVersions(v1, v2);
+    expect(result.reproduction_divergence).toBeNull();
+  });
+
+  test('reproduce-lineage with bytes matching + no warnings → reproduction_divergence: null', async () => {
+    // criterion #4 negative path at the engine boundary.
+    const same = Buffer.from('identical bytes');
+    const { parentId, reproductionId } = await seedReproducePair(ctx, {
+      parentBytes: same,
+      reproductionBytes: same,
+      reproductionWarnings: null, // legacy NULL semantics
+    });
+    const result = await ctx.engine.diffVersions(parentId, reproductionId);
+    expect(result.reproduction_divergence).toBeNull();
+  });
+
+  test('reproduce-lineage with bytes differing populates sha256_mismatch with both hex strings', async () => {
+    const { parentId, reproductionId } = await seedReproducePair(ctx, {
+      parentBytes: Buffer.from('parent-bytes-aaaa'),
+      reproductionBytes: Buffer.from('repro-bytes-bbbb'),
+      reproductionWarnings: null,
+    });
+    const result = await ctx.engine.diffVersions(parentId, reproductionId);
+    expect(result.reproduction_divergence).not.toBeNull();
+    const div = result.reproduction_divergence!;
+    expect(div.sha256_mismatch).not.toBeNull();
+    expect(div.sha256_mismatch!.parent).not.toBe(div.sha256_mismatch!.reproduction);
+    expect(div.sha256_mismatch!.parent).toMatch(/^[0-9a-f]{64}$/);
+    expect(div.sha256_mismatch!.reproduction).toMatch(/^[0-9a-f]{64}$/);
+    expect(div.warnings).toEqual([]);
+    expect(div.parent_output_present).toBe(true);
+    expect(div.reproduction_output_present).toBe(true);
+  });
+
+  test('reproduce-lineage with persisted warnings populates warnings array', async () => {
+    const same = Buffer.from('identical bytes');
+    const { parentId, reproductionId } = await seedReproducePair(ctx, {
+      parentBytes: same,
+      reproductionBytes: same,
+      reproductionWarnings: [
+        'Cloud API did not expose model metadata — reproduction is best-effort',
+      ],
+    });
+    const result = await ctx.engine.diffVersions(parentId, reproductionId);
+    expect(result.reproduction_divergence).not.toBeNull();
+    const div = result.reproduction_divergence!;
+    expect(div.warnings).toEqual([
+      'Cloud API did not expose model metadata — reproduction is best-effort',
+    ]);
+    // Bytes match → sha256_mismatch is null even though warnings populated.
+    expect(div.sha256_mismatch).toBeNull();
+    expect(div.parent_output_present).toBe(true);
+    expect(div.reproduction_output_present).toBe(true);
+  });
+
+  test('reproduceVersion persists reproduction_warnings_json on the new version row (Task 3.4)', async () => {
+    // PROV-05: reproduce a parent that has no checksummed models so warnings
+    // are emitted by GenerationEngine.reproduceVersion. The new version row's
+    // reproduction_warnings_json column must carry JSON.stringify(warnings).
+    const sourceId = seedCompleted(ctx, ctx.shotId);
+    const result = await ctx.engine.reproduceVersion(sourceId, 'reproduced');
+
+    // Read the row directly from the repo to inspect the column.
+    const row = ctx.versions.getVersion(result.entity.id);
+    expect(row).not.toBeNull();
+    expect(row!.reproduction_warnings_json).not.toBeNull();
+    const persisted = JSON.parse(row!.reproduction_warnings_json!) as string[];
+    expect(Array.isArray(persisted)).toBe(true);
+    expect(persisted).toEqual(result.reproduction_warnings);
   });
 });
 

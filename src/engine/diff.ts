@@ -11,6 +11,7 @@ import type {
   WorkflowStructureChange,
   MetadataChange,
   ModelRef,
+  ReproductionDivergence,
 } from '../types/provenance.js';
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -165,4 +166,54 @@ export function diffVersions(input: DiffInput): DiffResponse {
     metadata: diffMetadata(input.a, input.b),
   };
   return { summary: buildSummary(changes), changes };
+}
+
+/**
+ * Phase 12 — DEMO-03 (D-CTX-4). Pure helper assembling the
+ * reproduction_divergence field from already-resolved hashes + warnings.
+ * Pure: no I/O, no disk reads, no DB reads. The Engine facade is
+ * responsible for resolving the inputs (computeOutputSha256 + reading
+ * reproduction_warnings_json from the version row).
+ *
+ * Returns null when ALL of the following hold:
+ *   - warnings array is empty,
+ *   - both hashes are present (i.e., outputs exist on disk) AND match,
+ *     OR neither output exists.
+ *
+ * Returns the populated object when:
+ *   - warnings is non-empty, OR
+ *   - both hashes are present AND differ.
+ *
+ * sha256_mismatch is null when:
+ *   - either hash is null (output missing — cannot compare bytes), or
+ *   - hashes are equal.
+ *
+ * D-CTX-4 / criterion #4: a reproduce-lineage version whose bytes ARE
+ * bit-identical to its parent AND has no warnings yields null here, so
+ * the dashboard renders no pill + no comparison block.
+ */
+export function buildReproductionDivergence(args: {
+  warnings: string[];
+  parentHash: string | null;
+  reproductionHash: string | null;
+}): ReproductionDivergence | null {
+  const parentPresent = args.parentHash !== null;
+  const reproductionPresent = args.reproductionHash !== null;
+  const bothPresent = parentPresent && reproductionPresent;
+  const hashesMismatch =
+    bothPresent && args.parentHash !== args.reproductionHash;
+  const hasWarnings = args.warnings.length > 0;
+
+  // Null path: no warnings AND (hashes match OR cannot compare).
+  if (!hasWarnings && !hashesMismatch) return null;
+
+  return {
+    sha256_mismatch:
+      bothPresent && hashesMismatch
+        ? { parent: args.parentHash!, reproduction: args.reproductionHash! }
+        : null,
+    warnings: args.warnings,
+    parent_output_present: parentPresent,
+    reproduction_output_present: reproductionPresent,
+  };
 }

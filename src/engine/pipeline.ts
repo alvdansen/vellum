@@ -11,7 +11,8 @@ import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
 import { ProvenanceWriter } from './provenance.js';
 import { AssetsEngine } from './assets.js';
-import { diffVersions as pureDiffVersions } from './diff.js';
+import { diffVersions as pureDiffVersions, buildReproductionDivergence } from './diff.js';
+import { computeOutputSha256 } from './output-hash.js';
 import { TypedError } from './errors.js';
 import { createEngineEmitter, type EngineEmitter } from './events.js';
 import { downloadOutput } from './output-downloader.js';
@@ -29,6 +30,7 @@ import type {
   ProvenanceEvent,
   DiffSnapshot,
   DiffResponse,
+  ReproductionDivergence,
   ModelRef,
   IterateOverride,
 } from '../types/provenance.js';
@@ -471,21 +473,87 @@ export class Engine {
    * D-PROV-11, D-PROV-20: same-shot field-level diff. The pure diffVersions
    * function enforces same-shot + comparable-state guards — this method only
    * builds the DiffSnapshot pair from repo state + attaches the breadcrumb.
+   *
+   * Phase 12 (DEMO-03): when B is reproduce-lineage, attaches a
+   * reproduction_divergence field carrying SHA-256 mismatch detail and any
+   * persisted partner-API non-determinism warnings (D-CTX-4). NULL for
+   * non-reproduce-lineage diffs OR when bytes match AND no warnings recorded.
+   * Now async because hash computation reads from disk via streaming SHA-256.
    */
-  diffVersions(
+  async diffVersions(
     versionAId: string,
     versionBId: string,
-  ): DiffResponse & { breadcrumb: BreadcrumbEntry[]; breadcrumb_text: string } {
+  ): Promise<DiffResponse & { breadcrumb: BreadcrumbEntry[]; breadcrumb_text: string }> {
     const snapA = this.loadDiffSnapshot(versionAId);
     const snapB = this.loadDiffSnapshot(versionBId);
     const result = pureDiffVersions({ a: snapA, b: snapB });
     const crumbs = this.breadcrumb.resolve('version', versionAId);
+
+    // Phase 12 — only compute reproduction_divergence when B is reproduce-lineage.
+    // Non-reproduce diffs always carry reproduction_divergence: null (criterion #4).
+    let reproduction_divergence: ReproductionDivergence | null = null;
+    const versionB = this.versionRepo.getVersion(versionBId);
+    if (versionB && versionB.lineage_type === 'reproduce') {
+      reproduction_divergence = await this.computeReproductionDivergence(
+        versionAId,
+        versionBId,
+        versionB.reproduction_warnings_json,
+      );
+    }
+
     return {
       summary: result.summary,
       changes: result.changes,
+      reproduction_divergence,
       breadcrumb: crumbs.entries,
       breadcrumb_text: crumbs.text,
     };
+  }
+
+  /**
+   * Phase 12 — DEMO-03. Resolve the divergence inputs (warnings + hashes) and
+   * delegate to the pure helper. Reads outputs_json on each version to find
+   * the first stored filename, hashes the file at <outputRoot>/<versionId>/<filename>.
+   * Hashes are independent: if either file is missing we still call the pure
+   * helper, which returns sha256_mismatch=null when either hash is null.
+   */
+  private async computeReproductionDivergence(
+    parentVersionId: string,
+    reproductionVersionId: string,
+    warningsJson: string | null,
+  ): Promise<ReproductionDivergence | null> {
+    let warnings: string[] = [];
+    if (warningsJson) {
+      try {
+        const parsed = JSON.parse(warningsJson);
+        if (Array.isArray(parsed)) warnings = parsed.filter((w) => typeof w === 'string');
+      } catch {
+        warnings = [];
+      }
+    }
+    const parentFilename = this.firstStoredFilename(parentVersionId);
+    const reproductionFilename = this.firstStoredFilename(reproductionVersionId);
+    const parentHash = parentFilename
+      ? await computeOutputSha256(this.outputRoot, parentVersionId, parentFilename)
+      : null;
+    const reproductionHash = reproductionFilename
+      ? await computeOutputSha256(this.outputRoot, reproductionVersionId, reproductionFilename)
+      : null;
+    return buildReproductionDivergence({ warnings, parentHash, reproductionHash });
+  }
+
+  /** Internal: read outputs_json on a version row and return the first stored
+   *  filename, or null if outputs_json is empty/malformed. Mirrors the
+   *  filename-extraction in pipeline.ts:369-384 (download-on-completion path). */
+  private firstStoredFilename(versionId: string): string | null {
+    const v = this.versionRepo.getVersion(versionId);
+    if (!v?.outputs_json) return null;
+    try {
+      const parsed = JSON.parse(v.outputs_json) as Array<{ filename?: string }>;
+      return Array.isArray(parsed) ? parsed[0]?.filename ?? null : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Internal helper: assemble a DiffSnapshot for a single version. */

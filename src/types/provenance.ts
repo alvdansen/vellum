@@ -75,9 +75,28 @@ export interface DiffChanges {
   metadata: MetadataChange[];
 }
 
+/** Phase 12 — DEMO-03 (D-CTX-4). Shape of `reproduction_divergence` attached
+ *  to the diff envelope when B is a reproduce-lineage version. NULL when:
+ *  (a) B is not reproduce-lineage,
+ *  (b) bytes match AND no partner-API warnings persisted (criterion #4).
+ *  Anything non-null means at least one divergence signal fired and the
+ *  dashboard MUST surface the pill + (when both outputs present) the
+ *  side-by-side comparison block. */
+export interface ReproductionDivergence {
+  sha256_mismatch: { parent: string; reproduction: string } | null;
+  warnings: string[];
+  parent_output_present: boolean;
+  reproduction_output_present: boolean;
+}
+
 export interface DiffResponse {
   summary: string;
   changes: DiffChanges;
+  /** Phase 12 — DEMO-03 (D-CTX-4). The `reproduction_divergence` field is
+   *  optional and only populated when B is a reproduce-lineage version.
+   *  NULL `reproduction_divergence` means "no divergence detected" or
+   *  "B is not a reproduce-lineage version". */
+  reproduction_divergence?: ReproductionDivergence | null;
 }
 
 /** Diff pre-conditions: two resolved snapshots with enough metadata to compare. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diffVersions } from '../diff.js';
+import { diffVersions, buildReproductionDivergence } from '../diff.js';
 import type { DiffSnapshot } from '../../types/provenance.js';
 import '../../test-utils/matchers.js';
 
@@ -183,5 +183,86 @@ describe('diffVersions (D-PROV-15..D-PROV-20)', () => {
     });
     // No throw, changes may include metadata diff for status
     expect(r.changes.metadata).toContainEqual({ field: 'status', before: 'failed', after: 'completed' });
+  });
+});
+
+describe('buildReproductionDivergence (Phase 12 — DEMO-03 / D-CTX-4)', () => {
+  test('null when warnings empty AND hashes match (criterion #4 negative)', () => {
+    const r = buildReproductionDivergence({
+      warnings: [],
+      parentHash: 'abc',
+      reproductionHash: 'abc',
+    });
+    expect(r).toBeNull();
+  });
+
+  test('null when warnings empty AND both hashes missing (cannot compare)', () => {
+    const r = buildReproductionDivergence({
+      warnings: [],
+      parentHash: null,
+      reproductionHash: null,
+    });
+    expect(r).toBeNull();
+  });
+
+  test('populated with sha256_mismatch when hashes differ', () => {
+    const r = buildReproductionDivergence({
+      warnings: [],
+      parentHash: 'aaa',
+      reproductionHash: 'bbb',
+    });
+    expect(r).not.toBeNull();
+    expect(r!.sha256_mismatch).toEqual({ parent: 'aaa', reproduction: 'bbb' });
+    expect(r!.warnings).toEqual([]);
+    expect(r!.parent_output_present).toBe(true);
+    expect(r!.reproduction_output_present).toBe(true);
+  });
+
+  test('populated with warnings when warnings non-empty even if hashes match', () => {
+    const r = buildReproductionDivergence({
+      warnings: ['Cloud API did not expose model metadata — reproduction is best-effort'],
+      parentHash: 'abc',
+      reproductionHash: 'abc',
+    });
+    expect(r).not.toBeNull();
+    expect(r!.sha256_mismatch).toBeNull();
+    expect(r!.warnings).toHaveLength(1);
+    expect(r!.parent_output_present).toBe(true);
+    expect(r!.reproduction_output_present).toBe(true);
+  });
+
+  test('both indicators populated when warnings non-empty AND hashes differ', () => {
+    const r = buildReproductionDivergence({
+      warnings: ['w1'],
+      parentHash: 'aaa',
+      reproductionHash: 'bbb',
+    });
+    expect(r).not.toBeNull();
+    expect(r!.sha256_mismatch).toEqual({ parent: 'aaa', reproduction: 'bbb' });
+    expect(r!.warnings).toEqual(['w1']);
+  });
+
+  test('parent_output_present=false when parent hash is null; sha256_mismatch null', () => {
+    const r = buildReproductionDivergence({
+      warnings: ['w1'],
+      parentHash: null,
+      reproductionHash: 'bbb',
+    });
+    expect(r).not.toBeNull();
+    expect(r!.parent_output_present).toBe(false);
+    expect(r!.reproduction_output_present).toBe(true);
+    expect(r!.sha256_mismatch).toBeNull();
+  });
+
+  test('reproduction_output_present=false when reproduction hash is null', () => {
+    const r = buildReproductionDivergence({
+      warnings: ['w1'],
+      parentHash: 'aaa',
+      reproductionHash: null,
+    });
+    expect(r).not.toBeNull();
+    expect(r!.parent_output_present).toBe(true);
+    expect(r!.reproduction_output_present).toBe(false);
+    expect(r!.sha256_mismatch).toBeNull();
   });
 });

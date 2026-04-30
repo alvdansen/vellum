@@ -150,6 +150,22 @@ export class VersionRepo {
   }
 
   /**
+   * Phase 12 — DEMO-03 (D-CTX-5). Persist the JSON-encoded reproduction
+   * warnings array on a version row. Plain UPDATE — no completed_at guard
+   * (warnings are sticky to the row and may be written for any non-terminal
+   * status; reproduce-lineage rows reach this path immediately after submit).
+   * Empty arrays are persisted as '[]' so the read path can distinguish
+   * "no warnings recorded" (NULL — legacy) from "explicitly empty" ('[]').
+   */
+  setReproductionWarnings(id: string, warnings: string[]): void {
+    this.db
+      .update(versions)
+      .set({ reproduction_warnings_json: JSON.stringify(warnings) })
+      .where(eq(versions.id, id))
+      .run();
+  }
+
+  /**
    * Non-terminal transition (submitted → running). Terminals use markFailed/markCompleted.
    *
    * Guarded by `status = 'submitted' AND completed_at IS NULL` to prevent a TOCTOU race:

@@ -281,6 +281,14 @@ export class GenerationEngine {
       parentVersionId: sourceVersionId,
       lineageType: 'reproduce',
     });
+
+    // Phase 12 — DEMO-03 (D-CTX-5). Persist warnings on the new version row so
+    // version.diff can read them at any time without re-deriving from a
+    // partner-API response that may no longer exist. Empty arrays still
+    // persisted as '[]' so the read path can distinguish "no warnings
+    // recorded" (NULL — legacy) from "explicitly empty" ('[]').
+    this.versions.setReproductionWarnings(result.entity.id, warnings);
+
     return {
       entity: result.entity,
       breadcrumb: result.breadcrumb,

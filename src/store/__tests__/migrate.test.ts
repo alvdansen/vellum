@@ -11,7 +11,7 @@ import { makeInMemoryDb } from '../../test-utils/fixtures.js';
  * Verifies Drizzle migrations apply against real SQLite DBs and
  * that the __drizzle_migrations ledger is idempotent across reboots.
  */
-const EXPECTED_MIGRATIONS = 4; // +0004_phase4_assets (Phase 4 — tags + metadata tables + idx_tags_tag + idx_metadata_key_value)
+const EXPECTED_MIGRATIONS = 5; // +0005_phase12_reproduction_warnings (Phase 12 — DEMO-03: versions.reproduction_warnings_json column)
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);

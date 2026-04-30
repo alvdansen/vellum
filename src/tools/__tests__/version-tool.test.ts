@@ -104,6 +104,7 @@ function shapeDiff(
   return {
     summary: r.summary,
     changes: r.changes,
+    reproduction_divergence: r.reproduction_divergence ?? null,
     breadcrumb: r.breadcrumb,
     breadcrumb_text: r.breadcrumb_text,
   };
@@ -175,7 +176,7 @@ async function invokeList(stack: { engine: Engine }, input: any): Promise<ToolRe
 async function invokeDiff(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
   try {
     const p = DiffInputSchema.parse(input);
-    return toolOk(shapeDiff(stack.engine.diffVersions(p.version_a, p.version_b))) as ToolResponse;
+    return toolOk(shapeDiff(await stack.engine.diffVersions(p.version_a, p.version_b))) as ToolResponse;
   } catch (err) {
     if (err instanceof z.ZodError) {
       const first = err.issues[0];

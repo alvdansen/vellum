@@ -169,7 +169,7 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     return c.json(engine.getProvenance(c.req.param('id')));
   });
 
-  app.get('/api/versions/:id/diff', (c) => {
+  app.get('/api/versions/:id/diff', async (c) => {
     const against = c.req.query('against');
     if (!against) {
       throw new TypedError(
@@ -178,7 +178,10 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
         'Call GET /api/versions/:id/diff?against=<other_version_id>',
       );
     }
-    return c.json(engine.diffVersions(c.req.param('id'), against));
+    // Phase 12 — engine.diffVersions is now async (reads disk for output
+    // hashes when B is reproduce-lineage). Hono coerces the awaited Promise
+    // into the response body via c.json.
+    return c.json(await engine.diffVersions(c.req.param('id'), against));
   });
 
   // --- Output streaming ---
