@@ -116,12 +116,27 @@ function diffModels(a: ModelRef[] | null, b: ModelRef[] | null): ModelChange[] {
   for (const [nodeId, bRef] of bMap) {
     const aRef = aMap.get(nodeId);
     if (!aRef) continue; // added — surfaced via structural diff
-    if (aRef.model_name !== bRef.model_name || aRef.model_hash !== bRef.model_hash) {
+    // Phase 13: also fire on hash_unavailable transitions ("v1 had hash,
+    // v2 unavailable" or "v1 unavailable, v2 hashed"). These are
+    // meaningful auditability signals — Phase 14's C2PA manifest cares.
+    const changed =
+      aRef.model_name !== bRef.model_name ||
+      aRef.model_hash !== bRef.model_hash ||
+      aRef.model_hash_unavailable !== bRef.model_hash_unavailable;
+    if (changed) {
       out.push({
         node_id: nodeId,
         class_type: bRef.class_type,
-        before: { name: aRef.model_name, hash: aRef.model_hash },
-        after: { name: bRef.model_name, hash: bRef.model_hash },
+        before: {
+          name: aRef.model_name,
+          hash: aRef.model_hash,
+          hash_unavailable: aRef.model_hash_unavailable,
+        },
+        after: {
+          name: bRef.model_name,
+          hash: bRef.model_hash,
+          hash_unavailable: bRef.model_hash_unavailable,
+        },
       });
     }
   }

@@ -54,8 +54,12 @@ export interface ParamChange {
 export interface ModelChange {
   node_id: string;
   class_type: string;
-  before: { name: string; hash: string | null };
-  after: { name: string; hash: string | null };
+  /** D-PROV-15 + Phase 13 (D-CTX-1): full pre-state of the model entry.
+   *  After Phase 13, exactly one of `hash` / `hash_unavailable` is non-null
+   *  on each side once the background fingerprinter has run; both null is
+   *  the legacy / fingerprint-pending state. */
+  before: { name: string; hash: string | null; hash_unavailable: string | null };
+  after: { name: string; hash: string | null; hash_unavailable: string | null };
 }
 
 export interface SeedChange {

@@ -116,6 +116,11 @@ describe('diffVersions (D-PROV-15..D-PROV-20)', () => {
     expect(r.changes.models).toHaveLength(1);
     expect(r.changes.models[0]!.before.name).toBe('A.safetensors');
     expect(r.changes.models[0]!.after.name).toBe('B.safetensors');
+    // Phase 13 — both before and after now carry hash + hash_unavailable.
+    expect(r.changes.models[0]!.before.hash).toBeNull();
+    expect(r.changes.models[0]!.before.hash_unavailable).toBeNull();
+    expect(r.changes.models[0]!.after.hash).toBeNull();
+    expect(r.changes.models[0]!.after.hash_unavailable).toBeNull();
   });
 
   test('metadata changes surface (status, output_count, completed_at)', () => {
@@ -276,5 +281,186 @@ describe('buildReproductionDivergence (Phase 12 — DEMO-03 / D-CTX-4)', () => {
     expect(r!.parent_output_present).toBe(true);
     expect(r!.reproduction_output_present).toBe(false);
     expect(r!.sha256_mismatch).toBeNull();
+  });
+});
+
+// ================================================================
+// Phase 13 (PROV-V-03) — model_hash_unavailable transitions in diffModels.
+// diffModels now compares ALL of (model_name, model_hash, model_hash_unavailable).
+// A change in any field surfaces a ModelChange whose before/after carries
+// both hash and hash_unavailable so consumers (Phase 14 C2PA) see the
+// complete state on each side.
+// ================================================================
+describe('Phase 13 — model_hash_unavailable transitions in diffModels', () => {
+  const HEX = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+
+  test('hash populated → unavailable surfaces a ModelChange with hash_unavailable populated on after', () => {
+    const r = diffVersions({
+      a: snap({
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: HEX,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: 'file_not_found',
+          },
+        ],
+      }),
+    });
+    expect(r.changes.models).toHaveLength(1);
+    const m = r.changes.models[0]!;
+    expect(m.before.hash).toBe(HEX);
+    expect(m.before.hash_unavailable).toBeNull();
+    expect(m.after.hash).toBeNull();
+    expect(m.after.hash_unavailable).toBe('file_not_found');
+  });
+
+  test('unavailable → hash populated surfaces a ModelChange with the new hash on after', () => {
+    const r = diffVersions({
+      a: snap({
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: 'models_dir_not_configured',
+          },
+        ],
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: HEX,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+    });
+    expect(r.changes.models).toHaveLength(1);
+    const m = r.changes.models[0]!;
+    expect(m.before.hash).toBeNull();
+    expect(m.before.hash_unavailable).toBe('models_dir_not_configured');
+    expect(m.after.hash).toBe(HEX);
+    expect(m.after.hash_unavailable).toBeNull();
+  });
+
+  test('unavailable code change (file_not_found → file_unreadable) surfaces a ModelChange', () => {
+    const r = diffVersions({
+      a: snap({
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: 'file_not_found',
+          },
+        ],
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: 'file_unreadable',
+          },
+        ],
+      }),
+    });
+    expect(r.changes.models).toHaveLength(1);
+    const m = r.changes.models[0]!;
+    expect(m.before.hash).toBeNull();
+    expect(m.before.hash_unavailable).toBe('file_not_found');
+    expect(m.after.hash).toBeNull();
+    expect(m.after.hash_unavailable).toBe('file_unreadable');
+  });
+
+  test('identical entries with both fields null produce no ModelChange', () => {
+    const r = diffVersions({
+      a: snap({
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: null,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+    });
+    expect(r.changes.models).toEqual([]);
+  });
+
+  test('identical entries with same populated hash produce no ModelChange (post-fingerprint stability)', () => {
+    const r = diffVersions({
+      a: snap({
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: HEX,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        prompt_json: { '4': { class_type: 'CheckpointLoaderSimple', inputs: {} } },
+        models_json: [
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'sd.safetensors',
+            model_hash: HEX,
+            model_hash_unavailable: null,
+          },
+        ],
+      }),
+    });
+    expect(r.changes.models).toEqual([]);
   });
 });
