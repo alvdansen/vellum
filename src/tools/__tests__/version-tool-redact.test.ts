@@ -407,7 +407,7 @@ describe('version redact_manifest — error mapping', () => {
       redaction_policy: ['../etc/passwd'],
     });
     expect(res.isError).toBe(true);
-    const sc = res.structuredContent as { code: string; hint?: string };
+    const sc = res.structuredContent as { code: string; message: string; hint?: string };
     expect(sc.code).toBe('REDACT_POLICY_INVALID');
     expect(sc.message).toContain('..');
     expect(sc.hint).toMatch(/traversal/);

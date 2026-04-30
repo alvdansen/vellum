@@ -612,7 +612,11 @@ describe('version export_manifest + verify_manifest — invariants', () => {
     expect(() => actionSchema.parse('provenance')).not.toThrow();
     expect(() => actionSchema.parse('export_manifest')).not.toThrow();
     expect(() => actionSchema.parse('verify_manifest')).not.toThrow();
+    // Phase 16 / Plan 16-04 — redact_manifest is now a valid action enum
+    // member. The unknown-action sentinel is updated to a clearly-invalid
+    // literal that the enum will never accept.
+    expect(() => actionSchema.parse('redact_manifest')).not.toThrow();
     // And an unknown action MUST reject (sanity).
-    expect(() => actionSchema.parse('redact_manifest')).toThrow();
+    expect(() => actionSchema.parse('not_a_real_action')).toThrow();
   });
 });

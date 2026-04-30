@@ -116,6 +116,59 @@ const VerifyManifestByBytesInput = z.object({
 });
 
 /**
+ * Phase 16 / Plan 16-04 (D-PLAN-4-3) — max policy entries (mirror engine
+ * cap from D-CTX-8). Defence-in-depth: the engine's applyRedactionPolicy
+ * also caps at 32; the Zod cap at this layer rejects oversized payloads
+ * before the engine validator runs.
+ */
+const MAX_REDACTION_POLICY_ENTRIES = 32;
+
+/**
+ * Phase 16 / Plan 16-04 (D-PLAN-4-3) — max chars per policy entry.
+ * 1024 is comfortably above any realistic policy path; coarse guard
+ * against pathological payloads (a single-entry policy of 1 MB would
+ * pass an array-length cap but blow segment-parsing time downstream).
+ */
+const MAX_REDACTION_POLICY_ENTRY_LENGTH = 1024;
+
+/**
+ * Phase 16 / Plan 16-04 (D-CTX-1 + D-CTX-8) — `redact_manifest` input.
+ *
+ * Strips named fields from a version's signed manifest, emits a
+ * vfx_familiar.redacted assertion (D-CTX-1) preserving the FACT of
+ * redaction (NOT the original values), re-signs with the same cert,
+ * appends a NEW manifest_signed event (append-only contract preserved).
+ *
+ * The redaction_policy is a list of dotted/bracketed paths into the
+ * manifest JSON — see Plan 16-02's applyRedactionPolicy DSL doc:
+ *   - 'claim_generator', 'title' (top-level keys)
+ *   - 'assertions[*].data.<field>' (wildcard array index)
+ *   - "assertions[label='vfx_familiar.input'].data.<field>" (label-targeted)
+ *
+ * Engine errors surface verbatim (D-PLAN-4-4):
+ *   - REDACT_NO_MANIFEST       — version has no signed manifest yet
+ *   - REDACT_PARENT_UNREADABLE — c2pa.read failed on the parent bytes
+ *   - REDACT_POLICY_INVALID    — bounded-resolver violation
+ *   - REDACT_SIGNING_DISABLED  — c2paConfig is null (signing not configured)
+ *   - REDACT_DB_WRITE_FAILED   — atomic write or audit-row insert failed
+ *   - REDACT_TIMEOUT           — assetWriterMutex acquire timeout (30s)
+ *   - VERSION_NOT_FOUND, EXPORT_PATH_TRAVERSAL_REJECTED — standard codes
+ */
+const RedactManifestInput = z.object({
+  action: z.literal('redact_manifest'),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
+  redaction_policy: z
+    .array(
+      z.string().min(1).max(MAX_REDACTION_POLICY_ENTRY_LENGTH),
+    )
+    .min(1, 'redaction_policy must contain at least one path entry')
+    .max(
+      MAX_REDACTION_POLICY_ENTRIES,
+      `redaction_policy may not exceed ${MAX_REDACTION_POLICY_ENTRIES} entries`,
+    ),
+});
+
+/**
  * Phase 16 / Plan 16-03 — top-level version input.
  *
  * Note: this WAS a `z.discriminatedUnion('action', [...])` until Phase 16
@@ -141,6 +194,8 @@ const VersionInputSchema = z.union([
   ExportManifestInput,
   VerifyManifestByVersionInput,
   VerifyManifestByBytesInput,
+  // Phase 16 / Plan 16-04 — adds 7th action arm (redact_manifest).
+  RedactManifestInput,
 ]);
 
 /**
@@ -350,6 +405,50 @@ function shapeVerifyManifestEnvelope(
 }
 
 /**
+ * Phase 16 / Plan 16-04 (D-PROV-08) — envelope shaper for `redact_manifest`.
+ * Mirrors Plan 16-03's export_manifest envelope shape but uses RedactionResult
+ * (Plan 16-02) field names and adds redacted_fields + not_found arrays.
+ *
+ * D-PLAN-4-2: caller can pipe manifest_bytes_base64 directly into
+ * verify_manifest (bytes form) for self-checking redact-then-verify.
+ *
+ * D-PLAN-4-6 (C-08 naming drift): the engine's RedactionResult.certSubject
+ * (camelCase, payload-internal) maps verbatim to the envelope's cert_subject
+ * (snake_case, agent-facing). Phase 14 established cert_subject_summary in
+ * the manifest_signed PAYLOAD (DB storage shape); agent-facing ENVELOPES
+ * use the shorter cert_subject form (agents already know cert_subject is a
+ * DN summary from PROV-V-07 docs). This naming drift is INTENTIONAL — a
+ * Phase 14-style convention boundary, not a bug.
+ */
+function shapeRedactManifestEnvelope(
+  versionId: string,
+  result: import('../engine/c2pa/redaction.js').RedactionResult,
+  breadcrumb: Breadcrumb,
+): {
+  version_id: string;
+  manifest_bytes_base64: string;
+  redacted_fields: string[];
+  not_found: string[];
+  signed_at: string;
+  format: string;
+  cert_subject: string;
+  breadcrumb: Breadcrumb['entries'];
+  breadcrumb_text: string;
+} {
+  return {
+    version_id: versionId,
+    manifest_bytes_base64: result.redactedBytes.toString('base64'),
+    redacted_fields: result.redactedFields,
+    not_found: result.notFound,
+    signed_at: result.signedAt,
+    format: result.format,
+    cert_subject: result.certSubject,
+    breadcrumb: breadcrumb.entries,
+    breadcrumb_text: breadcrumb.text,
+  };
+}
+
+/**
  * Register the `version` MCP tool (D-PROV-07).
  *
  * Thin Zod-validated delegator (D-33 / architecture-purity): every action
@@ -379,7 +478,9 @@ export function registerVersion(server: McpServer, engine: Engine) {
         'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in; tags/metadata are NOT in the event stream per D-ASST-21), ' +
         // Phase 16 / Plan 16-03 (D-CTX-4) — two new agent-surface actions.
         'export_manifest (returns the C2PA-signed manifest for a version_id in a structured envelope: {version_id, format, signed_at, manifest_bytes_base64, manifest_status: \'present\'|\'absent\'|\'unsupported_format\', cert_subject, ingredients_summary, breadcrumb} per D-PROV-08), ' +
-        'verify_manifest (verifies a C2PA manifest against the configured trust root — accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form). ' +
+        'verify_manifest (verifies a C2PA manifest against the configured trust root — accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form), ' +
+        // Phase 16 / Plan 16-04 (D-CTX-1) — third agent-surface action.
+        'redact_manifest (strips named fields from a version\'s signed manifest, emits a vfx_familiar.redacted assertion preserving the FACT of redaction (NOT the original values), re-signs the asset, and appends a NEW manifest_signed event — original signed event is byte-identical per append-only contract; envelope returns {version_id, manifest_bytes_base64, redacted_fields, not_found, signed_at, format, cert_subject, breadcrumb}). ' +
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).
@@ -389,6 +490,8 @@ export function registerVersion(server: McpServer, engine: Engine) {
           // Phase 16 / Plan 16-03 (D-CTX-4) — two new actions; tools/list
           // surfaces them in the published JSON-Schema.
           'export_manifest', 'verify_manifest',
+          // Phase 16 / Plan 16-04 (D-CTX-1) — third new action.
+          'redact_manifest',
         ]),
         version_id: z.string().optional(),
         shot_id: z.string().optional(),
@@ -406,6 +509,9 @@ export function registerVersion(server: McpServer, engine: Engine) {
         // require them together.
         manifest_bytes_base64: z.string().optional(),
         format: z.string().optional(),
+        // Phase 16 / Plan 16-04 — redact_manifest policy. Optional at this
+        // layer; the inner RedactManifestInput arm requires it.
+        redaction_policy: z.array(z.string()).optional(),
       },
     },
     async (rawInput) => {
@@ -467,6 +573,21 @@ export function registerVersion(server: McpServer, engine: Engine) {
               format: input.format,
             });
             return toolOk(shapeVerifyManifestEnvelope(report, null));
+          }
+          // Phase 16 / Plan 16-04 (D-CTX-1) — redact_manifest action.
+          case 'redact_manifest': {
+            const result = await engine.redactManifestForVersion(
+              input.version_id,
+              input.redaction_policy,
+            );
+            // Resolve breadcrumb (mirror Plan 16-03 export_manifest pattern).
+            // VERSION_NOT_FOUND would already have thrown from
+            // redactManifestForVersion if the version didn't exist, so
+            // getVersion is safe at this point.
+            const versionResult = engine.getVersion(input.version_id);
+            return toolOk(
+              shapeRedactManifestEnvelope(input.version_id, result, versionResult.breadcrumb),
+            );
           }
           default: {
             const _exhaustive: never = input;
