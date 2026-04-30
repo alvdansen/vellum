@@ -64,6 +64,8 @@ import { VersionRepo } from './store/version-repo.js';
 import { ProvenanceRepo } from './store/provenance-repo.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
 import { validateBaseUrlFromEnv } from './utils/validate-base-url.js';
+import { loadC2paConfigFromEnv } from './utils/c2pa-config.js';
+import { basename } from 'node:path';
 import { Engine } from './engine/pipeline.js';
 import {
   registerWorkspace,
@@ -193,6 +195,26 @@ async function main(): Promise<void> {
   const maxConcurrentPollers = maxConcurrentPollersRaw
     ? Number.parseInt(maxConcurrentPollersRaw, 10)
     : undefined;
+
+  // Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Boot-time C2PA
+  // cert/key validation. Throws TypedError('C2PA_CONFIG_INVALID', ...) BEFORE
+  // any Engine construction or tool registration when env vars are set but
+  // any path is missing / unreadable / empty / OUTSIDE the allowlist root.
+  // Returns null when both env vars are unset → signing is disabled silently.
+  // Concern #4 mitigation (path-traversal / arbitrary-file-disclosure): the
+  // helper realpath-resolves both paths and asserts they live inside the
+  // allowlist root (cwd by default; VFX_FAMILIAR_C2PA_CERT_ROOT optional override).
+  // Concern #11 mitigation (native-binding-load resilience): server boot does
+  // NOT eagerly load c2pa-node here — the native module load is deferred to
+  // Plan 14-02's signer module on first sign attempt.
+  const c2paConfig = loadC2paConfigFromEnv();
+  if (c2paConfig) {
+    // Concern #4: log basenames ONLY, never the full resolved path.
+    console.error(
+      `vfx-familiar: C2PA signing enabled (cert ${basename(c2paConfig.certPemPath)}, key ${basename(c2paConfig.privateKeyPemPath)})`,
+    );
+  }
+
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, 'outputs', {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
     // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
@@ -200,6 +222,10 @@ async function main(): Promise<void> {
     // ships with this unset; local-dev / self-host can populate hashes by
     // setting VFX_FAMILIAR_MODELS_DIR to the local checkpoints/loras root.
     modelsDir: process.env.VFX_FAMILIAR_MODELS_DIR ?? null,
+    // Phase 14 — PROV-V-01 (D-CTX-2). NULL means signing is disabled
+    // (graceful degradation). Plan 14-02's signer wrapper is the SOLE
+    // consumer of the cert/key bytes — read lazily on first sign attempt.
+    c2paConfig,
   });
   const version = await readVersion();
 

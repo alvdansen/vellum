@@ -36,7 +36,9 @@ export type ErrorCode =
   // Phase 7 — endpoint reconciliation (D-EP-08)
   | 'COMFYUI_ENDPOINT_DRIFT'
   // Phase 10 — migrate-on-boot hardening (DEMO-01)
-  | 'MIGRATION_PENDING';
+  | 'MIGRATION_PENDING'
+  // Phase 14 — C2PA signed manifest emission (PROV-V-01)
+  | 'C2PA_CONFIG_INVALID';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
