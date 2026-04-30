@@ -25,6 +25,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { StatusPill } from '../components/StatusPill.js';
 import type { Status } from '../components/StatusPill.js';
+import { WarningPill } from '../components/WarningPill.js';
 import { JsonBlock } from '../components/JsonBlock.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { DiffDrawer } from './DiffDrawer.js';
@@ -43,9 +44,27 @@ interface ProvenanceResponse {
   breadcrumb?: unknown;
 }
 
+/**
+ * Phase 12 — DEMO-03 (D-CTX-4) divergence shape carried on the diff response
+ * envelope when version B is reproduce-lineage. `null` means either "not a
+ * reproduce-lineage diff" or "bytes match AND no warnings" — the dashboard
+ * renders nothing in that case (criterion #4).
+ *
+ * The shape is duplicated here verbatim from the engine layer's
+ * src/types/provenance.ts::ReproductionDivergence per D-WEBUI-31 (no
+ * server-tree imports under packages/dashboard/src/**).
+ */
+interface ReproductionDivergence {
+  sha256_mismatch: { parent: string; reproduction: string } | null;
+  warnings: string[];
+  parent_output_present: boolean;
+  reproduction_output_present: boolean;
+}
+
 interface DiffSummaryShape {
   summary: string;
   changes?: unknown;
+  reproduction_divergence?: ReproductionDivergence | null;
 }
 
 export interface VersionDrawerProps {
@@ -78,6 +97,36 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
       alive = false;
     };
   }, [version.id]);
+
+  // Phase 12 — DEMO-03 (D-CTX-2). Auto-fetch diff when this version is
+  // reproduce-lineage AND a priorVersion exists, so the WarningPill and
+  // side-by-side comparison block can render on drawer mount without the user
+  // having to click "View Diff". Reuses the same `diff` state slot as the
+  // "View Diff" button, so a subsequent click does not refetch (T-12-10
+  // mitigation: `diff !== null` early-return guarantees a single fetch per
+  // drawer-open). Network failures leave diff=null — pill and block do not
+  // render, which is the same UX as the bit-identical happy path.
+  useEffect(() => {
+    if (version.lineage_type !== 'reproduce') return;
+    if (!priorVersion) return;
+    if (diff !== null) return;
+    let alive = true;
+    diffVersion(priorVersion.id, version.id)
+      .then((d) => {
+        if (!alive) return;
+        setDiff(d as DiffSummaryShape);
+      })
+      .catch(() => {
+        // Graceful degradation: leave diff=null; no pill, no block.
+      });
+    return () => {
+      alive = false;
+    };
+    // `diff` intentionally NOT in the deps array — including it would retrigger
+    // the effect on every successful fetch. The `if (diff !== null) return`
+    // guard inside the body handles the re-render-with-already-loaded case.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version.id, priorVersion?.id, version.lineage_type]);
 
   async function handleViewDiff() {
     if (!priorVersion) {
@@ -119,6 +168,15 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
               {label}
             </h2>
             <StatusPill status={status} />
+            {/* Phase 12 — DEMO-03. Pill renders iff the engine attached a
+                non-null reproduction_divergence on the diff response. Hardcoded
+                ariaLabel — no user-controlled data flows here (T-12-11). */}
+            {diff?.reproduction_divergence != null && (
+              <WarningPill
+                label="non-deterministic"
+                ariaLabel="non-deterministic — outputs may differ from parent"
+              />
+            )}
           </div>
           <div class="flex items-center gap-2">
             <button
@@ -155,6 +213,48 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
                 loading="lazy"
               />
             </a>
+          </section>
+        ) : null}
+
+        {/* Phase 12 — DEMO-03. Side-by-side parent vs reproduction comparison.
+            Renders iff the engine reports both outputs are present on disk
+            (parent_output_present && reproduction_output_present). Per
+            criterion #4, when bytes match AND no warnings the engine sends
+            reproduction_divergence: null and this block does not render.
+            T-12-08 disposition: <img> srcs reuse the existing
+            /api/versions/:id/output route (same auth posture as the single-
+            output render above). */}
+        {diff?.reproduction_divergence?.parent_output_present &&
+        diff?.reproduction_divergence?.reproduction_output_present &&
+        priorVersion ? (
+          <section data-testid="reproduction-comparison">
+            <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">
+              Parent vs Reproduction
+            </h3>
+            <div class="grid grid-cols-2 gap-3">
+              <figure>
+                <img
+                  src={getOutputUrl(priorVersion.id)}
+                  alt={`Parent output (${versionLabel(priorVersion)})`}
+                  class="block h-auto w-full rounded border border-[var(--color-border)]"
+                  loading="lazy"
+                />
+                <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                  Parent ({versionLabel(priorVersion)})
+                </figcaption>
+              </figure>
+              <figure>
+                <img
+                  src={getOutputUrl(version.id)}
+                  alt={`Reproduction output (${label})`}
+                  class="block h-auto w-full rounded border border-[var(--color-border)]"
+                  loading="lazy"
+                />
+                <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                  Reproduction ({label})
+                </figcaption>
+              </figure>
+            </div>
           </section>
         ) : null}
 
