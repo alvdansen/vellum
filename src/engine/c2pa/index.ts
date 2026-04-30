@@ -74,3 +74,9 @@ export {
 // Mirrors src/engine/output-hash.ts; impure (filesystem read) but
 // architecture-pure (no MCP / native-binding / SQLite / ORM imports).
 export { hashComponentBytes, type HashOutcome } from './ingredient-hasher.js';
+
+// Phase 16 / Plan 16-01 — PROV-V-07 agent-surface primitives. Pure-async
+// reader (exporter.ts) + lazy-binding verifier (verifier.ts). Engine facade
+// methods Engine.exportManifestForVersion / verifyManifestForVersion delegate
+// here.
+export { exportManifest, type ExporterResult } from './exporter.js';
