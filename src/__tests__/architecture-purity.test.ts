@@ -305,6 +305,65 @@ describe('architecture purity', () => {
     expect(grepCount('better-sqlite3', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
   });
+
+  // ================================================================
+  // Phase 16 / Plan 16-01 — file-level purity locks for exporter.ts +
+  // verifier.ts (PROV-V-07). exporter.ts has ZERO c2pa-node imports
+  // (it just reads the embedded-manifest file bytes verbatim from disk).
+  // verifier.ts is allowed to import c2pa-node — but ONLY via lazy
+  // await import(). A static `from 'c2pa-node'` is a regression that
+  // would force eager binding load at module-evaluation time.
+  // ================================================================
+
+  it('src/engine/c2pa/exporter.ts is pure (zero c2pa-node imports — read-only manifest snapshot)', () => {
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]*['\"]c2pa-node|import[[:space:]]*\\([[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/exporter.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `c2pa-node import in exporter.ts:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/exporter.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/exporter.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/exporter.ts')).toBe(0);
+    expect(grepCount('@hono/node-server', 'src/engine/c2pa/exporter.ts')).toBe(0);
+  });
+
+  it('src/engine/c2pa/verifier.ts uses lazy c2pa-node + zero MCP/SQLite/ORM/hono imports', () => {
+    // verifier.ts is allowed to import c2pa-node — but ONLY via lazy
+    // await import. Static `from 'c2pa-node'` is a regression (would
+    // force eager binding load at module evaluation).
+    try {
+      const staticImport = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]+['\"]c2pa-node['\"]", 'src/engine/c2pa/verifier.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(
+        staticImport.trim(),
+        `verifier.ts must not statically import c2pa-node (use lazy await import):\n${staticImport}`,
+      ).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    // Confirm the lazy form IS present (defence against silent removal).
+    const lazyImport = execFileSync(
+      'grep',
+      ['-E', "import[[:space:]]*\\([[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/verifier.ts'],
+      { encoding: 'utf8' },
+    );
+    expect(lazyImport.trim()).not.toBe('');
+    // No MCP / SQLite / drizzle / hono.
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/verifier.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/verifier.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/verifier.ts')).toBe(0);
+    expect(grepCount('@hono/node-server', 'src/engine/c2pa/verifier.ts')).toBe(0);
+  });
 });
 
 // ================================================================

@@ -45,6 +45,9 @@ import {
   extractParentIngredient,
   extractComponentIngredients,
   extractInputAssertion,
+  // Phase 16 / Plan 16-01 — agent-surface types (PROV-V-07).
+  type ExporterResult,
+  type VerificationReport,
 } from './c2pa/index.js';
 import {
   SHOT_NAME_REGEX,
@@ -1221,6 +1224,66 @@ export class Engine {
     filename: string,
   ): ManifestSignedPayloadFields | null {
     return this.provenanceRepo.getLatestManifestSignedEvent(versionId, filename);
+  }
+
+  // ================================================================
+  // Phase 16 / Plan 16-01 — PROV-V-07 agent surface (export + verify).
+  // The redaction primitive (PROV-V-06) lives in Plan 16-02's
+  // Engine.redactManifestForVersion.
+  // ================================================================
+
+  /**
+   * Phase 16 — D-CTX-3 export facade. Reads the latest manifest_signed event
+   * for the version's primary output + the embedded-manifest file bytes,
+   * returns base64-encoded snapshot. Plan 16-03's version.export_manifest
+   * tool action consumes this verbatim.
+   *
+   * Throws TypedError VERSION_NOT_FOUND when the version row does not exist.
+   * Returns manifest_status='absent' when no manifest_signed event OR signed=false
+   * (graceful-fail). Returns manifest_status='unsupported_format' when the
+   * format is EXR/PSD/unknown ext.
+   *
+   * Lazy import — the exporter has zero c2pa-node dependency, but the lazy
+   * pattern keeps pipeline.ts free of static engine-c2pa load coupling.
+   */
+  async exportManifestForVersion(
+    versionId: string,
+  ): Promise<ExporterResult> {
+    const { exportManifest } = await import('./c2pa/exporter.js');
+    return await exportManifest(
+      versionId,
+      this.versionRepo,
+      this.provenanceRepo,
+      this.outputRoot,
+    );
+  }
+
+  /**
+   * Phase 16 — D-CTX-2 verify facade. Discriminated input: either a versionId
+   * (engine resolves disk bytes + mimeType internally) or a (manifestBytes,
+   * format) pair (pure-bytes verification path for redaction round-trips +
+   * agent payloads received via base64).
+   *
+   * Returns a VerificationReport. NEVER throws on c2pa-rs failures (those
+   * map to discriminated signature_status). Throws TypedError VERSION_NOT_FOUND
+   * when versionId-form input refers to a missing version.
+   */
+  async verifyManifestForVersion(
+    input: { versionId: string } | { manifestBytes: Buffer; format: string },
+  ): Promise<VerificationReport> {
+    const { verifyManifest } = await import('./c2pa/verifier.js');
+    if ('versionId' in input) {
+      return await verifyManifest({
+        versionId: input.versionId,
+        versionRepo: this.versionRepo,
+        provenanceRepo: this.provenanceRepo,
+        outputsDir: this.outputRoot,
+      });
+    }
+    return await verifyManifest({
+      manifestBytes: input.manifestBytes,
+      format: input.format,
+    });
   }
 
   /**
