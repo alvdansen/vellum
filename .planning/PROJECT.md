@@ -14,6 +14,31 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 **Live API:** ComfyUI Cloud locked at `https://cloud.comfy.org` with healthcheck path `/api/system_stats`; live-smoke verified 2/2 green back-to-back via Phase 7.
 
+## Current Milestone: v1.1 Provenance Verification (C2PA)
+
+**Goal:** Make v1.0's private provenance signed, portable, and regulator-verifiable. Close demo-surfaced reliability gaps along the way.
+
+**Driver:** EU AI Act Article 50 (effective Aug 2026) and California SB 942 (in effect Jan 2026). v1.0 captures provenance as private SQLite rows; v1.1 emits C2PA-signed manifests embedded in (or sidecar'd alongside) every generated output, with full ingredient graph, model fingerprinting, and a redaction primitive that preserves the *fact* of redaction. Industry context: SEED-001 (Matt Collie, "C2PA Content Provenance for VFX", 2026).
+
+**Target features:**
+- C2PA signed manifest emission embedded in PNG/JPEG/MP4/WebP at download time
+- Sidecar `.c2pa` for non-native-embed formats (OpenEXR et al.)
+- Explicit AI disclosure assertion (`c2pa.created` with ComfyUI as generator)
+- Model fingerprinting — SHA-256 for every checkpoint/LoRA/VAE referenced (closes the `model_hash: null` gap at `src/engine/provenance.ts:69`)
+- Ingredient graph — `parentOf`, `componentOf`, `inputTo` assertions
+- Redaction primitive — strip sensitive values while writing `c2pa.redacted` assertion
+- New MCP tool actions: `version.export_manifest` / `version.verify_manifest` (under 12-tool cap)
+- DEMO-01 — migrate-on-boot (auto-apply pending Drizzle migrations or refuse to boot)
+- DEMO-02 — recovery poller surfaces rich Cloud error detail (mirror submit-time `node_errors` extraction)
+- DEMO-03 — reproduce-divergence transparency (UI pill on reproduce-lineage when output diverges from parent)
+
+**Hot patches already landed on main during v1.0 demo (2026-04-29):**
+- `85ab50b` fix(comfyui): inject `api_key_comfy_org` for partner-API authentication
+- `ea5641c` feat(dashboard): render output image in VersionCard and VersionDrawer
+- `19d2bed` chore(scripts): interactive stage-by-stage demo runner
+
+These do not appear as v1.1 phases — they were part of the v1.0 surface that needed reliability fixes for the public drop.
+
 ## Requirements
 
 ### Validated
@@ -120,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-28 after v1.0 MVP milestone close — All 9 phases shipped (5 functional + 4 gap closure), 38/38 v1 requirements validated, audit re-audit flipped from `tech_debt` to `passed`. Next milestone candidate: v1.1 Provenance Verification (C2PA, SEED-001) — driven by EU AI Act Art. 50 + California SB 942.*
+*Last updated: 2026-04-29 — v1.1 Provenance Verification (C2PA) milestone started. v1.0 shipped 2026-04-28 with audit `passed`; demo-surfaced gaps (DEMO-01..03) folded into v1.1 alongside C2PA work (PROV-V-01..07). Driven by EU AI Act Art. 50 (effective Aug 2026) + California SB 942 (effective Jan 2026).*
