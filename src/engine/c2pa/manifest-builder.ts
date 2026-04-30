@@ -262,7 +262,7 @@ const IPTC_TRAINED_ALGORITHMIC_MEDIA =
   'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia';
 
 /**
- * Pure builder — synchronous, no I/O, no async, no calls to c2pa-node.
+ * Pure builder — synchronous, no I/O, no async, no calls to the native binding.
  * Returns a plain object suitable for `new ManifestBuilder(def)` in the
  * signer module. Calling twice with deeply-equal inputs returns deeply-
  * equal (but NOT identical-reference) outputs.
@@ -289,6 +289,182 @@ export function buildManifestDefinition(opts: BuildManifestOptions): ManifestDef
       },
     ],
   };
+}
+
+/**
+ * Phase 15 / Plan 15-02 — pure entry point that produces both:
+ *   1. A clean ManifestDefinition (no ingredients field — matches the native
+ *      binding's BaseManifestDefinition shape) carrying the c2pa.created
+ *      action (Phase 14) + vfx_familiar.input (the structured prompt + sampler
+ *      payload) + zero-or-more vfx_familiar.unavailable_ingredient entries
+ *      (one per spec whose bytes are unreachable).
+ *   2. A list of IngredientSpec records the impure signer (Plan 15-03) drives
+ *      through createIngredient + manifestBuilder.addIngredient to populate
+ *      Manifest.ingredients[] (NOT assertions[]).
+ *
+ * Ingredient flow at runtime (impure side, not this function):
+ *   const builder = new c2pa.ManifestBuilder(result.definition);
+ *   for (const spec of result.ingredientSpecs) {
+ *     if (spec.assetRef.kind === 'unavailable') continue;  // already in assertion
+ *     const storable = await c2pa.createIngredient({
+ *       asset: spec.assetRef.kind === 'buffer'
+ *         ? { buffer: spec.assetRef.buffer, mimeType: spec.assetRef.mimeType }
+ *         : { path: spec.assetRef.path, mimeType: spec.assetRef.mimeType },
+ *       title: spec.title,
+ *     });
+ *     storable.ingredient.relationship = spec.relationship === 'parentOf'
+ *       ? c2pa.Relationship.ParentOf
+ *       : c2pa.Relationship.ComponentOf;
+ *     builder.addIngredient(storable);
+ *   }
+ *   await c2pa.sign({ asset, manifest: builder, ... });
+ *
+ * Pure: zero I/O, synchronous. Idempotent (deeply-equal inputs ->
+ * deeply-equal outputs).
+ *
+ * Architectural contract: definition.assertions[] NEVER contains a
+ * c2pa.ingredient entry. The native binding's BaseManifestDefinition shape
+ * deliberately excludes the `ingredients` field — ingredients are added AFTER
+ * construction via manifestBuilder.addIngredient(storableIngredient), where
+ * storableIngredient comes from c2pa.createIngredient({asset, title, hash?}).
+ * Since createIngredient REQUIRES asset bytes (no public API exists to build
+ * an ingredient purely from a precomputed hash), unreachable specs cannot
+ * land as c2pa.ingredient entries — instead we surface them via the
+ * vfx_familiar.unavailable_ingredient vendor assertion so an independent
+ * C2PA reader sees what was attempted (ROADMAP criterion #5).
+ */
+export function buildManifestWithIngredients(
+  opts: BuildManifestWithIngredientsOptions,
+): BuildManifestResult {
+  const description = describePrimaryModel(opts.primaryModel);
+  const assertions: ManifestAssertion[] = [
+    {
+      label: 'c2pa.actions',
+      data: {
+        actions: [
+          {
+            action: 'c2pa.created',
+            digitalSourceType: IPTC_TRAINED_ALGORITHMIC_MEDIA,
+            softwareAgent: { name: 'ComfyUI', version: opts.comfyuiVersion },
+            parameters: { description },
+          },
+        ],
+      },
+    },
+    {
+      label: 'vfx_familiar.input',
+      data: opts.ingredients.inputTo,
+    },
+  ];
+
+  const ingredientSpecs: IngredientSpec[] = [];
+
+  // ── parentOf — single spec when present.
+  if (opts.ingredients.parentOf !== null) {
+    const p = opts.ingredients.parentOf;
+    const auditMetadata: Record<string, string | number | null> = {
+      version_id: p.parent_version_id,
+      lineage_type: p.lineage_type,
+      manifest_hash: p.manifest_hash,
+    };
+    const title = `Parent ${p.parent_version_id}`;
+    const assetRef = opts.ingredientAssetRefs.get('parent');
+    if (assetRef && assetRef.kind !== 'unavailable') {
+      ingredientSpecs.push({
+        relationship: 'parentOf',
+        title,
+        assetRef,
+        auditMetadata,
+      });
+    } else {
+      // assetRef missing OR unavailable -> record the dangling reference.
+      const reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' =
+        assetRef?.kind === 'unavailable'
+          ? assetRef.reason
+          : (p.parent_unavailable ?? 'parent_manifest_pending');
+      // Always also surface in ingredientSpecs (with assetRef='unavailable')
+      // so Plan 15-03's signer can skip cleanly without lookup gymnastics.
+      ingredientSpecs.push({
+        relationship: 'parentOf',
+        title,
+        assetRef: { kind: 'unavailable', reason },
+        auditMetadata,
+      });
+      assertions.push({
+        label: 'vfx_familiar.unavailable_ingredient',
+        data: {
+          relationship: 'parentOf',
+          title,
+          reason,
+          metadata: auditMetadata,
+        },
+      });
+    }
+  }
+
+  // ── componentOf — one spec per ingredient. extractComponentIngredients
+  // already returns the list sorted by node_id (Plan 15-01 contract); we
+  // preserve that order through this loop without re-sorting.
+  for (const c of opts.ingredients.componentOf) {
+    const safeFilename = stripToBasename(c.input_filename); // T-15-04
+    const auditMetadata: Record<string, string | number | null> = {
+      node_id: c.node_id,
+      role: c.role,
+      input_filename: safeFilename,
+      class_type: c.class_type,
+    };
+    const title = `${c.role} image (${safeFilename})`;
+    const assetRef = opts.ingredientAssetRefs.get(c.node_id);
+    if (assetRef && assetRef.kind !== 'unavailable') {
+      ingredientSpecs.push({
+        relationship: 'componentOf',
+        title,
+        assetRef,
+        auditMetadata,
+      });
+    } else {
+      const reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' =
+        assetRef?.kind === 'unavailable' ? assetRef.reason : 'file_not_found';
+      ingredientSpecs.push({
+        relationship: 'componentOf',
+        title,
+        assetRef: { kind: 'unavailable', reason },
+        auditMetadata,
+      });
+      assertions.push({
+        label: 'vfx_familiar.unavailable_ingredient',
+        data: {
+          relationship: 'componentOf',
+          title,
+          reason,
+          metadata: auditMetadata,
+        },
+      });
+    }
+  }
+
+  const definition: ManifestDefinition = {
+    claim_generator: `vfx-familiar/${opts.appVersion} c2pa-node/${C2PA_NODE_VERSION}`,
+    format: opts.mimeType,
+    title: `Version ${opts.versionId}`,
+    assertions,
+  };
+
+  return { definition, ingredientSpecs };
+}
+
+/**
+ * T-15-04 defence-in-depth: trust no caller, strip to basename. Pure string
+ * ops — no path module dependency to keep this module pure-string. Handles
+ * both POSIX ('/') and Windows ('\\') separators; if both appear, the later
+ * one wins (mirrors path.basename semantics on the respective platform).
+ */
+function stripToBasename(p: string): string {
+  const lastSlash = p.lastIndexOf('/');
+  const lastBackslash = p.lastIndexOf('\\');
+  const idx = Math.max(lastSlash, lastBackslash);
+  if (idx === -1) return p;
+  return p.slice(idx + 1);
 }
 
 /**

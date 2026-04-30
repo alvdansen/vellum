@@ -5,6 +5,7 @@ import {
   type ManifestDefinition,
   type PrimaryModel,
   // Phase 15 / Plan 15-02 — additive surface (Task 1: types; Task 2: function).
+  buildManifestWithIngredients,
   type BuildManifestWithIngredientsOptions,
   type IngredientAssetRef,
   type IngredientSpec,
@@ -413,5 +414,422 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
     const def = buildManifestDefinition(BASE_OPTS);
     expect(def.assertions).toHaveLength(1);
     expect(def.assertions[0]?.label).toBe('c2pa.actions');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 15 / Plan 15-02 — Task 2: buildManifestWithIngredients runtime
+// behavior. Asserts the BuildManifestResult shape, the assertions[] order,
+// the ingredientSpecs ordering, the discriminated assetRef variants, the
+// vendor-assertion emit semantics, and the T-15-04 stripToBasename defence.
+// ──────────────────────────────────────────────────────────────────────────
+
+import type {
+  ParentIngredient as ParentIngredientType,
+  ComponentIngredient as ComponentIngredientType,
+  InputAssertion as InputAssertionType,
+} from '../ingredient-extractor.js';
+
+const SAMPLE_INPUT_TO: InputAssertionType = {
+  prompt_positive: 'a serene mountain',
+  prompt_negative: 'no people',
+  sampler: { name: 'euler', scheduler: 'normal', steps: 20, cfg: 7.5, denoise: null },
+  seed: 42,
+};
+
+const SAMPLE_PARENT_REACHABLE: ParentIngredientType = {
+  parent_version_id: 'ver_v001',
+  lineage_type: 'reproduce',
+  manifest_hash: 'sha256:parentmanifesthash',
+  parent_unavailable: null,
+};
+
+const SAMPLE_PARENT_PENDING: ParentIngredientType = {
+  parent_version_id: 'ver_v001',
+  lineage_type: 'iterate',
+  manifest_hash: null,
+  parent_unavailable: 'parent_manifest_pending',
+};
+
+const SAMPLE_COMPONENT_LOADIMAGE: ComponentIngredientType = {
+  node_id: '5',
+  class_type: 'LoadImage',
+  role: 'image',
+  input_filename: 'control.png',
+};
+
+const SAMPLE_COMPONENT_CONTROLNET: ComponentIngredientType = {
+  node_id: '7',
+  class_type: 'ControlNetApplyAdvanced',
+  role: 'control',
+  input_filename: 'edges.png',
+};
+
+function buildOptsWithIngredients(overrides: {
+  parentOf?: ParentIngredientType | null;
+  componentOf?: ComponentIngredientType[];
+  inputTo?: InputAssertionType;
+  refs?: ReadonlyMap<string, IngredientAssetRef>;
+}): BuildManifestWithIngredientsOptions {
+  return {
+    versionId: 'ver_v002',
+    mimeType: 'image/png',
+    primaryModel: SAMPLE_MODEL_WITH_HASH,
+    comfyuiVersion: '0.4.2',
+    appVersion: '0.1.0',
+    ingredients: {
+      parentOf: overrides.parentOf === undefined ? null : overrides.parentOf,
+      componentOf: overrides.componentOf ?? [],
+      inputTo: overrides.inputTo ?? SAMPLE_INPUT_TO,
+    },
+    ingredientAssetRefs: overrides.refs ?? new Map(),
+  };
+}
+
+describe('Plan 15-02 Task 2 — buildManifestWithIngredients (BuildManifestResult shape)', () => {
+  it('Test 1: returns BuildManifestResult with definition + ingredientSpecs fields', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
+    expect(result).toHaveProperty('definition');
+    expect(result).toHaveProperty('ingredientSpecs');
+    expect(result.definition).toHaveProperty('assertions');
+    expect(Array.isArray(result.ingredientSpecs)).toBe(true);
+  });
+
+  it('Test 2: definition.claim_generator + format + title match Phase 14 contract', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
+    expect(result.definition.claim_generator).toBe('vfx-familiar/0.1.0 c2pa-node/0.5.26');
+    expect(result.definition.format).toBe('image/png');
+    expect(result.definition.title).toBe('Version ver_v002');
+  });
+});
+
+describe('Plan 15-02 Task 2 — c2pa.created assertion is unchanged in shape', () => {
+  it('Test 3: definition.assertions[0] is c2pa.actions with c2pa.created action carrying primary-model description', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
+    const first = result.definition.assertions[0];
+    expect(first?.label).toBe('c2pa.actions');
+    if (first?.label !== 'c2pa.actions') throw new Error('expected c2pa.actions');
+    expect(first.data.actions[0]?.action).toBe('c2pa.created');
+    expect(first.data.actions[0]?.softwareAgent.name).toBe('ComfyUI');
+    expect(first.data.actions[0]?.parameters.description).toBe(
+      'model=sd_xl_1.0.safetensors; hash=abc123def456',
+    );
+  });
+});
+
+describe('Plan 15-02 Task 2 — vfx_familiar.input assertion (T-15-01 mitigation)', () => {
+  it('Test 4: definition.assertions[1] is vfx_familiar.input with the inputTo data verbatim', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
+    const second = result.definition.assertions[1];
+    expect(second?.label).toBe('vfx_familiar.input');
+    if (second?.label !== 'vfx_familiar.input') throw new Error('expected vfx_familiar.input');
+    expect(second.data).toEqual(SAMPLE_INPUT_TO);
+  });
+
+  it('Test 5: with no ingredients, assertions are exactly [c2pa.actions, vfx_familiar.input]', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
+    expect(result.definition.assertions.map((a) => a.label)).toEqual([
+      'c2pa.actions',
+      'vfx_familiar.input',
+    ]);
+  });
+});
+
+describe('Plan 15-02 Task 2 — parentOf reachable', () => {
+  it('Test 6: parent reachable -> ingredientSpecs has 1 entry, assertions does NOT contain unavailable assertion', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['parent', { kind: 'file', path: '/abs/path/parent.png', mimeType: 'image/png' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_REACHABLE, refs }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.relationship).toBe('parentOf');
+    expect(spec.title).toBe('Parent ver_v001');
+    expect(spec.assetRef.kind).toBe('file');
+    if (spec.assetRef.kind !== 'file') throw new Error('expected file kind');
+    expect(spec.assetRef.path).toBe('/abs/path/parent.png');
+    expect(spec.auditMetadata).toEqual({
+      version_id: 'ver_v001',
+      lineage_type: 'reproduce',
+      manifest_hash: 'sha256:parentmanifesthash',
+    });
+    // No unavailable assertion when reachable.
+    expect(
+      result.definition.assertions.some((a) => a.label === 'vfx_familiar.unavailable_ingredient'),
+    ).toBe(false);
+  });
+
+  it('Test 7: parent reachable via buffer asset -> ingredientSpecs assetRef.kind === buffer', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['parent', { kind: 'buffer', buffer: Buffer.from('test'), mimeType: 'image/jpeg' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_REACHABLE, refs }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.assetRef.kind).toBe('buffer');
+    if (spec.assetRef.kind !== 'buffer') throw new Error('expected buffer kind');
+    expect(Buffer.isBuffer(spec.assetRef.buffer)).toBe(true);
+    expect(spec.assetRef.mimeType).toBe('image/jpeg');
+  });
+});
+
+describe('Plan 15-02 Task 2 — parentOf unavailable (parent_manifest_pending)', () => {
+  it('Test 8: parent_manifest_pending -> spec assetRef.kind=unavailable + vfx_familiar.unavailable_ingredient assertion emitted', () => {
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_PENDING, refs: new Map() }),
+    );
+    // Spec is recorded with assetRef='unavailable' so signer can skip cleanly.
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.relationship).toBe('parentOf');
+    expect(spec.assetRef.kind).toBe('unavailable');
+    if (spec.assetRef.kind !== 'unavailable') throw new Error('expected unavailable kind');
+    expect(spec.assetRef.reason).toBe('parent_manifest_pending');
+    // Audit assertion ALSO appears in definition.assertions.
+    const unavail = result.definition.assertions.find(
+      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+    );
+    expect(unavail).toBeDefined();
+    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
+      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    }
+    expect(unavail.data).toEqual({
+      relationship: 'parentOf',
+      title: 'Parent ver_v001',
+      reason: 'parent_manifest_pending',
+      metadata: {
+        version_id: 'ver_v001',
+        lineage_type: 'iterate',
+        manifest_hash: null,
+      },
+    });
+  });
+
+  it('Test 9: parentOf null -> ZERO parent specs and ZERO unavailable assertions for parent', () => {
+    const result = buildManifestWithIngredients(buildOptsWithIngredients({ parentOf: null }));
+    // No parent in specs.
+    expect(result.ingredientSpecs.filter((s) => s.relationship === 'parentOf')).toHaveLength(0);
+    // No unavailable assertion for parent.
+    expect(
+      result.definition.assertions.some((a) => a.label === 'vfx_familiar.unavailable_ingredient'),
+    ).toBe(false);
+  });
+});
+
+describe('Plan 15-02 Task 2 — componentOf reachable + unavailable', () => {
+  it('Test 10: component reachable (file) -> ingredientSpecs entry with relationship=componentOf and matching auditMetadata', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['5', { kind: 'file', path: '/abs/inputs/control.png', mimeType: 'image/png' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ componentOf: [SAMPLE_COMPONENT_LOADIMAGE], refs }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.relationship).toBe('componentOf');
+    expect(spec.title).toBe('image image (control.png)');
+    expect(spec.assetRef.kind).toBe('file');
+    expect(spec.auditMetadata).toEqual({
+      node_id: '5',
+      role: 'image',
+      input_filename: 'control.png',
+      class_type: 'LoadImage',
+    });
+  });
+
+  it('Test 11: component unavailable (file_not_found) -> spec assetRef.kind=unavailable + assertion emitted', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['5', { kind: 'unavailable', reason: 'file_not_found' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ componentOf: [SAMPLE_COMPONENT_LOADIMAGE], refs }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.assetRef.kind).toBe('unavailable');
+    if (spec.assetRef.kind !== 'unavailable') throw new Error('expected unavailable kind');
+    expect(spec.assetRef.reason).toBe('file_not_found');
+    const unavail = result.definition.assertions.find(
+      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+    );
+    expect(unavail).toBeDefined();
+    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
+      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    }
+    expect(unavail.data.relationship).toBe('componentOf');
+    expect(unavail.data.reason).toBe('file_not_found');
+    expect(unavail.data.metadata).toEqual({
+      node_id: '5',
+      role: 'image',
+      input_filename: 'control.png',
+      class_type: 'LoadImage',
+    });
+  });
+
+  it('Test 12: component without an entry in ingredientAssetRefs -> falls back to file_not_found unavailable', () => {
+    // Map is empty, so refs.get('5') is undefined. Builder treats this as the
+    // bytes-unreachable case (file_not_found).
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({
+        componentOf: [SAMPLE_COMPONENT_LOADIMAGE],
+        refs: new Map(),
+      }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(1);
+    const spec = result.ingredientSpecs[0]!;
+    expect(spec.assetRef.kind).toBe('unavailable');
+    if (spec.assetRef.kind !== 'unavailable') throw new Error('expected unavailable kind');
+    expect(spec.assetRef.reason).toBe('file_not_found');
+  });
+
+  it('Test 13: empty componentOf + null parentOf -> assertions length === 2 (c2pa.actions + vfx_familiar.input ONLY)', () => {
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: null, componentOf: [] }),
+    );
+    expect(result.definition.assertions).toHaveLength(2);
+    expect(result.ingredientSpecs).toHaveLength(0);
+  });
+});
+
+describe('Plan 15-02 Task 2 — ordering invariants (assertions + ingredientSpecs)', () => {
+  it('Test 14: assertions order with parent unavailable + 2 components (1 unavailable) is [c2pa.actions, vfx_familiar.input, vfx_familiar.unavailable_ingredient*]', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['5', { kind: 'file', path: '/abs/inputs/control.png', mimeType: 'image/png' }],
+      ['7', { kind: 'unavailable', reason: 'file_not_found' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({
+        parentOf: SAMPLE_PARENT_PENDING,
+        componentOf: [SAMPLE_COMPONENT_LOADIMAGE, SAMPLE_COMPONENT_CONTROLNET],
+        refs,
+      }),
+    );
+    // c2pa.actions FIRST (Phase 14 invariant), vendor assertions follow.
+    expect(result.definition.assertions.map((a) => a.label)).toEqual([
+      'c2pa.actions',
+      'vfx_familiar.input',
+      'vfx_familiar.unavailable_ingredient', // parent's unavailable (emitted first)
+      'vfx_familiar.unavailable_ingredient', // component 7 (ControlNet) unavailable
+    ]);
+  });
+
+  it('Test 15: ingredientSpecs ordering — parent at index 0, components in extractor node-id order following', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['parent', { kind: 'file', path: '/abs/parent.png', mimeType: 'image/png' }],
+      ['5', { kind: 'file', path: '/abs/control.png', mimeType: 'image/png' }],
+      ['7', { kind: 'file', path: '/abs/edges.png', mimeType: 'image/png' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({
+        parentOf: SAMPLE_PARENT_REACHABLE,
+        componentOf: [SAMPLE_COMPONENT_LOADIMAGE, SAMPLE_COMPONENT_CONTROLNET],
+        refs,
+      }),
+    );
+    expect(result.ingredientSpecs).toHaveLength(3);
+    expect(result.ingredientSpecs[0]?.relationship).toBe('parentOf');
+    expect(result.ingredientSpecs[0]?.title).toBe('Parent ver_v001');
+    expect(result.ingredientSpecs[1]?.relationship).toBe('componentOf');
+    expect(result.ingredientSpecs[1]?.title).toBe('image image (control.png)');
+    expect(result.ingredientSpecs[2]?.relationship).toBe('componentOf');
+    expect(result.ingredientSpecs[2]?.title).toBe('control image (edges.png)');
+  });
+});
+
+describe('Plan 15-02 Task 2 — architectural contract (no c2pa.ingredient in assertions[])', () => {
+  it('Test 16: definition.assertions NEVER contains a c2pa.ingredient label, even with reachable parent + components', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['parent', { kind: 'file', path: '/abs/parent.png', mimeType: 'image/png' }],
+      ['5', { kind: 'file', path: '/abs/control.png', mimeType: 'image/png' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({
+        parentOf: SAMPLE_PARENT_REACHABLE,
+        componentOf: [SAMPLE_COMPONENT_LOADIMAGE],
+        refs,
+      }),
+    );
+    // Architectural contract: ingredients flow via manifestBuilder.addIngredient
+    // at the impure signer (Plan 15-03), NOT via assertions[].
+    expect(
+      result.definition.assertions.every((a) => (a.label as string) !== 'c2pa.ingredient'),
+    ).toBe(true);
+  });
+});
+
+describe('Plan 15-02 Task 2 — T-15-04 stripToBasename defence-in-depth', () => {
+  it('Test 17: input_filename containing absolute POSIX path -> auditMetadata.input_filename is basename only', () => {
+    const componentWithAbsPath: ComponentIngredientType = {
+      node_id: '5',
+      class_type: 'LoadImage',
+      role: 'control',
+      input_filename: '/abs/path/to/control.png',
+    };
+    const refs = new Map<string, IngredientAssetRef>([
+      ['5', { kind: 'file', path: '/abs/path/to/control.png', mimeType: 'image/png' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ componentOf: [componentWithAbsPath], refs }),
+    );
+    expect(result.ingredientSpecs[0]?.auditMetadata.input_filename).toBe('control.png');
+    expect(String(result.ingredientSpecs[0]?.auditMetadata.input_filename)).not.toContain('/');
+  });
+
+  it('Test 18: input_filename containing Windows backslashes -> auditMetadata.input_filename is basename only', () => {
+    const componentWithWinPath: ComponentIngredientType = {
+      node_id: '5',
+      class_type: 'LoadImage',
+      role: 'control',
+      input_filename: 'C:\\Users\\Foo\\Pictures\\control.png',
+    };
+    const refs = new Map<string, IngredientAssetRef>([
+      ['5', { kind: 'unavailable', reason: 'file_not_found' }],
+    ]);
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({ componentOf: [componentWithWinPath], refs }),
+    );
+    expect(result.ingredientSpecs[0]?.auditMetadata.input_filename).toBe('control.png');
+    expect(String(result.ingredientSpecs[0]?.auditMetadata.input_filename)).not.toContain('\\');
+    // The unavailable assertion ALSO carries the basename only.
+    const unavail = result.definition.assertions.find(
+      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+    );
+    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
+      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    }
+    expect(unavail.data.metadata.input_filename).toBe('control.png');
+  });
+
+  it('Test 19: input_filename without any separators -> stripToBasename is identity', () => {
+    const result = buildManifestWithIngredients(
+      buildOptsWithIngredients({
+        componentOf: [SAMPLE_COMPONENT_LOADIMAGE], // input_filename: 'control.png'
+        refs: new Map([
+          ['5', { kind: 'file', path: '/abs/control.png', mimeType: 'image/png' }],
+        ]),
+      }),
+    );
+    expect(result.ingredientSpecs[0]?.auditMetadata.input_filename).toBe('control.png');
+  });
+});
+
+describe('Plan 15-02 Task 2 — purity (idempotency + no I/O)', () => {
+  it('Test 20: deeply-equal inputs produce deeply-equal outputs (idempotency)', () => {
+    const refs = new Map<string, IngredientAssetRef>([
+      ['parent', { kind: 'file', path: '/abs/parent.png', mimeType: 'image/png' }],
+    ]);
+    const a = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_REACHABLE, refs }),
+    );
+    const b = buildManifestWithIngredients(
+      buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_REACHABLE, refs }),
+    );
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+    expect(a).not.toBeInstanceOf(Promise);
   });
 });
