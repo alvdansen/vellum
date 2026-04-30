@@ -44,6 +44,37 @@ export type ManifestSignedPayloadFields = {
   status_reason: string;
   /** Detected SigningAlgorithm (Plan 14-02 Concern #1). Empty when signed=false. */
   algorithm: string;
+  /**
+   * Phase 15 (D-CTX-5) — additive. SHA-256 hex digest of the SIGNED ASSET
+   * BYTES. Used as the parentOf hash when a downstream child version
+   * reads this row to populate its own parentOf ingredient.
+   *
+   * NOTE: this is the bytewise SHA-256 of the embedded-manifest output,
+   * NOT the native binding's "labeled hash" — those are sha384-base64
+   * with a format suffix. The native binding's createIngredient at the
+   * parentOf call site computes its OWN labeled hash from the file
+   * bytes; the manifest_sha256 we record here is for our internal
+   * audit + parent lookup only.
+   *
+   * NULL when signed=false. Pre-Phase-15 rows always read undefined
+   * (TS-optional). Plan 15-03 populates this on success paths.
+   */
+  manifest_sha256?: string | null;
+  /**
+   * Phase 15 (D-CTX-5) — additive ingredient summary so audits can
+   * reconstruct what the manifest emitted without parsing the full
+   * bytes. Pre-Phase-15 rows read undefined.
+   *
+   * unavailable_count = parent_count + component_count − reachable_count;
+   * a non-zero value means at least one ingredient surfaced as a
+   * vfx_familiar.unavailable_ingredient assertion (ROADMAP criterion #5).
+   */
+  ingredients_summary?: {
+    parent_count: 0 | 1;
+    component_count: number;
+    input_assertion: boolean;
+    unavailable_count: number;
+  };
 };
 
 export type ProvenanceManifestSignedPayload = {
