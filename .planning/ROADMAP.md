@@ -130,10 +130,11 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. Manifests carry an `inputTo` assertion encoding the resolved prompt text plus the seed and the primary sampler parameters as a structured payload.
   4. A test fixture that generates v1, reproduces it as v2 (control image + LoRA), and iterates from v2 as v3 produces a v3 manifest whose ingredient graph traces back through v2 → v1, with control-image and LoRA hashes pinned at every step — verifiable by an independent C2PA reader.
   5. When an ingredient's source artifact is unreachable (e.g., control image deleted from disk after generation), the assertion records the dangling-reference state rather than silently dropping the ingredient.
-**Plans**: 3 plans
-  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
-  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
-  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
+**Plans**: 4 plans
+  - [ ] 15-01-PLAN.md — IMAGE_INPUT_CLASS_TYPES + pure ingredient extractors + ingredient hasher (engine layer + unit tests)
+  - [ ] 15-02-PLAN.md — Manifest builder extension (parentOf / componentOf / inputTo assertion shapes + backward-compat fallback)
+  - [ ] 15-03-PLAN.md — Engine.signOutput integration (read parent manifest hash + walk components + hash + manifest_signed payload extension)
+  - [ ] 15-04-PLAN.md — End-to-end fixture (v1→v2→v3 traceback) + dangling-reference test + cohort closure (PROV-V-04)
 
 ### Phase 16: Redaction & Agent Surface
 **Goal**: Close the v1.1 surface at the agent boundary. Add a redaction primitive that strips sensitive prompt/metadata values from a version's manifest while emitting a `c2pa.redacted` assertion preserving the *fact* of redaction (originals remain append-only in the `provenance` table). Add the two new `version` MCP tool actions: `export_manifest` (returns the C2PA-signed manifest) and `verify_manifest` (verifies signature + reports gaps). Tool budget stays at 6 of 12 — no new top-level tool.
@@ -179,5 +180,5 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
-| 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
+| 15. Ingredient Graph                | v1.1 | 0/4 | Planned   | - |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |

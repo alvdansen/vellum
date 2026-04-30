@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: verifying
+status: executing
 stopped_at: "Completed Plan 14-05 — Phase 14 cohort closure. 5 atomic commits (72b1e48, 85561e7, e59969a, 6bfff69, e56e5d5). 53 new root tests across 5 files: c2pa-verification (17 tests, end-to-end PNG/JPEG/MP4/WebP/TIFF round-trip via c2pa.read + Concern #8 cryptographic-binding proof + tamper detection), c2pa-dual-transport-parity (9 tests, HTTP body bytes equal direct file read), c2pa-key-leak-negative (9 tests, T-14-01/T-14-02/T-14-12 mitigation proven across stdout/stderr/tool envelopes/HTTP body/provenance JSON), c2pa-uat-mcp-tool (4 tests, real MCP SDK Client + spawned server child process), requirements-cohort-closure (14 tests, smoke for REQUIREMENTS.md + ROADMAP.md state). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (extension preservation on temp paths, without which MP4/WebP/TIFF emitted unsigned bytes silently). version.get envelope gained additive c2pa_status + c2pa_status_reason fields (agent surface). VFX_FAMILIAR_OUTPUTS_DIR env support. PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete in REQUIREMENTS.md (PROV-V-05 partially — TIFF native-embed; EXR/PSD deferred to v1.2). New 'Deferred to v1.2' section captures cryptographic sidecar / sidecar HTTP route / HSM signing / multi-CA / streaming-friendly C2PA. ROADMAP Phase 14 row 5/5 Complete (2026-04-30). Root suite 985 -> 1038 passing; pre-existing 5 v1.1-audit failures unchanged. Dashboard 88 unchanged. tsc --noEmit clean. Phase 14 ready for /gsd-verify-phase 14. Phase 15 (Ingredient Graph) unblocked."
-last_updated: "2026-04-30T13:45:44.070Z"
-last_activity: 2026-04-30
+last_updated: "2026-04-30T14:18:26.735Z"
+last_activity: 2026-04-30 -- Phase 15 execution started
 progress:
   total_phases: 7
   completed_phases: 5
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 14 — C2PA Signed Manifest Emission
+**Current focus:** Phase 15 — Ingredient Graph
 
 ## Current Position
 
-Phase: 14 (C2PA Signed Manifest Emission) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-04-30
+Phase: 15 (Ingredient Graph) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 15
+Last activity: 2026-04-30 -- Phase 15 execution started
 
 Progress: [██████████] 100%
 
