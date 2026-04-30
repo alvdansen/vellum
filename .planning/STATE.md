@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: "Completed Plan 14-01 — c2pa-node@0.5.26 pinned, C2paConfig threaded through Engine, boot-time env validation w/ realpath + allowlist guard (Concern #4), basename-only path-leak hygiene, Concern #11 native-binding-resilience grep gate, dev cert script (.c2pa-dev/ gitignored). 4 atomic commits (7f34cbb, 9f29a47, 1f4edd5, daebadc). +18 tests; root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 1/5; PROV-V-01 cohort closure NOT yet (lands in 14-04/14-05). Plan 14-02 (signer wrapper + lazy c2pa-node import + LocalSigner construction) ready to start."
-last_updated: "2026-04-30T11:55:37.797Z"
+stopped_at: "Completed Plan 14-02 — engine-layer c2pa module (src/engine/c2pa/ with format-router + manifest-builder + signer + barrel index). 4 atomic commits (58c9d4a, 5741f85, 6c2c882, 9e6ea14). Concern #1 algorithm detection via X509Certificate (ES256/384/512 + PS256/384/512 + Ed25519 + plain-RSA-fail-loud), Concern #10 RFC4514 subject parser (CN/O/fp fallback chain), Concern #11 lazy + try/catch dynamic import (cached error short-circuits). Concern #2 sidecar reduction structurally locked via TS exhaustiveness check. Runtime deviation: c2pa-node v0.5.26 tsaUrl quirk — loadSigner builds LocalSigner literal with TWO branches (property omitted when null); default 'http://timestamp.digicert.com'. End-to-end signing tests use c2pa-node bundled chain (self-signed .c2pa-dev/ rejected by c2pa-rs). +54 tests; root suite 887 -> 941 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity 22 -> 30. tsc --noEmit clean. Phase 14 cohort 2/5; PROV-V-01 cohort closure in 14-04/14-05. Plan 14-03 (engine integration: routeFormat + sign + graceful-fail) ready to start."
+last_updated: "2026-04-30T12:25:47.747Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 15
-  completed_plans: 11
-  percent: 73
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 14 (C2PA Signed Manifest Emission) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-04-30
 
-Progress: [███████░░░] 73%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [███████░░░] 73%
 | Phase 13 P02 | 7min | 2 tasks | 7 files |
 | Phase 13 P03 | 6min | 2 tasks | 5 files |
 | Phase 14 P01 | 9min | 4 tasks | 12 files |
+| Phase Phase 14 PP02 | 19min | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,7 @@ Recent decisions affecting current work:
 - [Phase 13]: [Phase 13]: Plan 13-03 closed Phase 13. ModelChange shape extended with hash_unavailable on both sides; diffModels fires on hash↔unavailable transitions; loadDiffSnapshot reads getLatestFingerprints (post-fingerprint view) instead of raw completed_event.models_json (legacy try/catch JSON.parse removed); 5 end-to-end integration tests prove criteria #1/#2/#3 + the diff boundary; 3 file-level architecture-purity assertions lock src/engine/model-fingerprint.ts as zero-MCP / zero-SQLite-driver / zero-ORM. Test count: +13 root-suite (5 diff transition + 5 integration + 3 architecture-purity). 5 pre-existing v1.1-audit failures unchanged. PROV-V-03 cohort closed; Phase 13 ready for /gsd-verify-phase 13.
 - [Phase 13]: [Phase 13]: All 5 ROADMAP success criteria have automated coverage. #1 (populated model_hash) by Plan 13-02 Test 2 + Plan 13-03 Tests 1, 4. #2 (typed model_hash_unavailable) by 13-01 reason-codes + 13-02 Test 1 + 13-03 Tests 2, 5. #3 (content-addressed) by 13-01 same-bytes + 13-03 Test 3. #4 (hot-path isolation) by 13-02 Test 4. #5 (architecture-purity) by 13-01 grep gates + 13-03 file-level vitest assertions. Phase 14 (C2PA) ready: reads getLatestFingerprints(versionId) as canonical source of model fingerprints for ingredient assertions.
 - [Phase 14]: Plan 14-01 closed Phase 14 configuration foundation. c2pa-node@0.5.26 pinned EXACTLY. C2paConfig threaded through Engine constructor as additive options.c2paConfig (default null, 42 existing pipeline tests pass byte-unchanged). loadC2paConfigFromEnv at src/utils/c2pa-config.ts mirrors validateBaseUrlFromEnv pattern: throws TypedError('C2PA_CONFIG_INVALID', ...) BEFORE Engine construction on misconfig (Phase 10 MIGRATION_PENDING parity). Concern #4 (path-traversal) mitigated by realpathSync + allowlist containment (cwd default; VFX_FAMILIAR_C2PA_CERT_ROOT override). Path-leak hygiene: error messages and boot success log emit basenames only via path.basename. Concern #11 enforced by architecture-purity grep gate: src/server.ts has ZERO static c2pa-node imports — Plan 14-02 lazy-imports in signer wrapper. Dev cert script at scripts/gen-dev-c2pa-cert.mts (ES256, .c2pa-dev/ gitignored). +18 tests (13 c2pa-config + 4 pipeline-c2pa-config + 1 arch-purity); root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. PROV-V-01 NOT yet marked complete (cohort-level).
+- [Phase ?]: [Phase 14]: Plan 14-02 closed engine-layer c2pa module foundation. src/engine/c2pa/ with 4 submodules (format-router, manifest-builder, signer, barrel index) — signer is the SOLE c2pa-node consumer (architecture-purity grep gate enforces). Concern #1 algorithm detection via X509Certificate built-ins (ES256/384/512, PS256/384/512, Ed25519; plain RSA fail-loud); Concern #10 RFC4514-aware subject parser (CN -> O -> fp: fallback); Concern #11 lazy + try/catch'd dynamic import (cached error short-circuits, no retry). Concern #2 sidecar reduction structurally locked via TypeScript exhaustiveness check (no mode 'sidecar' value). Runtime DEVIATION: c2pa-node v0.5.26 native binding requires tsaUrl ABSENT or VALID URL — TS-optional property with undefined value triggers downcast bug. Workaround: loadSigner builds LocalSigner literal with TWO branches (property omitted when caller passes null); default 'http://timestamp.digicert.com' mirrors createTestSigner. End-to-end signing tests use c2pa-node bundled cert chain (self-signed .c2pa-dev/ rejected by c2pa-rs). +54 tests; root suite 887 -> 941 passing. Pre-existing 5 v1.1-audit failures unchanged. PROV-V-01 NOT yet marked complete (cohort closure in 14-04/14-05).
 
 ### Pending Todos
 
@@ -127,8 +129,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T11:55:37.793Z
-Stopped at: Completed Plan 14-01 — c2pa-node@0.5.26 pinned, C2paConfig threaded through Engine, boot-time env validation w/ realpath + allowlist guard (Concern #4), basename-only path-leak hygiene, Concern #11 native-binding-resilience grep gate, dev cert script (.c2pa-dev/ gitignored). 4 atomic commits (7f34cbb, 9f29a47, 1f4edd5, daebadc). +18 tests; root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 1/5; PROV-V-01 cohort closure NOT yet (lands in 14-04/14-05). Plan 14-02 (signer wrapper + lazy c2pa-node import + LocalSigner construction) ready to start.
+Last session: 2026-04-30T12:25:47.742Z
+Stopped at: Completed Plan 14-02 — engine-layer c2pa module (src/engine/c2pa/ with format-router + manifest-builder + signer + barrel index). 4 atomic commits (58c9d4a, 5741f85, 6c2c882, 9e6ea14). Concern #1 algorithm detection via X509Certificate (ES256/384/512 + PS256/384/512 + Ed25519 + plain-RSA-fail-loud), Concern #10 RFC4514 subject parser (CN/O/fp fallback chain), Concern #11 lazy + try/catch dynamic import (cached error short-circuits). Concern #2 sidecar reduction structurally locked via TS exhaustiveness check. Runtime deviation: c2pa-node v0.5.26 tsaUrl quirk — loadSigner builds LocalSigner literal with TWO branches (property omitted when null); default 'http://timestamp.digicert.com'. End-to-end signing tests use c2pa-node bundled chain (self-signed .c2pa-dev/ rejected by c2pa-rs). +54 tests; root suite 887 -> 941 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity 22 -> 30. tsc --noEmit clean. Phase 14 cohort 2/5; PROV-V-01 cohort closure in 14-04/14-05. Plan 14-03 (engine integration: routeFormat + sign + graceful-fail) ready to start.
 Resume file: None
 
 **Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
