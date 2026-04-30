@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: "Completed Plan 14-05 — Phase 14 cohort closure. 5 atomic commits (72b1e48, 85561e7, e59969a, 6bfff69, e56e5d5). 53 new root tests across 5 files: c2pa-verification (17 tests, end-to-end PNG/JPEG/MP4/WebP/TIFF round-trip via c2pa.read + Concern #8 cryptographic-binding proof + tamper detection), c2pa-dual-transport-parity (9 tests, HTTP body bytes equal direct file read), c2pa-key-leak-negative (9 tests, T-14-01/T-14-02/T-14-12 mitigation proven across stdout/stderr/tool envelopes/HTTP body/provenance JSON), c2pa-uat-mcp-tool (4 tests, real MCP SDK Client + spawned server child process), requirements-cohort-closure (14 tests, smoke for REQUIREMENTS.md + ROADMAP.md state). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (extension preservation on temp paths, without which MP4/WebP/TIFF emitted unsigned bytes silently). version.get envelope gained additive c2pa_status + c2pa_status_reason fields (agent surface). VFX_FAMILIAR_OUTPUTS_DIR env support. PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete in REQUIREMENTS.md (PROV-V-05 partially — TIFF native-embed; EXR/PSD deferred to v1.2). New 'Deferred to v1.2' section captures cryptographic sidecar / sidecar HTTP route / HSM signing / multi-CA / streaming-friendly C2PA. ROADMAP Phase 14 row 5/5 Complete (2026-04-30). Root suite 985 -> 1038 passing; pre-existing 5 v1.1-audit failures unchanged. Dashboard 88 unchanged. tsc --noEmit clean. Phase 14 ready for /gsd-verify-phase 14. Phase 15 (Ingredient Graph) unblocked."
-last_updated: "2026-04-30T14:18:26.735Z"
-last_activity: 2026-04-30 -- Phase 15 execution started
+stopped_at: "Completed Plan 15-01 — Phase 15 ingredient extraction primitives. 4 atomic commits (21aaf09, 66de5f9, 6e00dcb, ab73a8c). 41 new tests (28 ingredient-extractor + 13 ingredient-hasher) + 5 v1.1 audit tests in model-extraction.test.ts + 2 file-level architecture-purity grep guards. Root suite 1048 -> 1096 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. REVISION C1/C2 IMAGE_INPUT_CLASS_TYPES audit (6 entries; model loaders excluded; disjointness invariant locked). REVISION B5 KSampler edge walk for inputTo (IA-3 test locks unreferenced-CLIPTextEncode-ignored behaviour). hashComponentBytes streaming-SHA256 mirrors output-hash.ts with discriminated outcome union. Three Rule-3 docstring-vs-grep collisions auto-fixed (mirrors Phase 13 Plan 13-01). Architecture-purity preserved: zero MCP / native-binding / SQLite / ORM imports in either new file. PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-02 (manifest builder extension) unblocked: imports new types via c2pa/index.ts barrel."
+last_updated: "2026-04-30T15:59:35.303Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_plans: 19
+  completed_plans: 16
+  percent: 84
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 15 (Ingredient Graph) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 15
-Last activity: 2026-04-30 -- Phase 15 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-04-30
 
-Progress: [██████████] 100%
+Progress: [████████░░] 84%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [██████████] 100%
 | Phase 14 P03 | 18min | 3 tasks tasks | 12 files files |
 | Phase 14 P04 | 11 | 2 tasks tasks | 10 files files |
 | Phase 14 P05 | 22min | 5 tasks tasks | 10 files files |
+| Phase 15 P01 | 19min | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 14]: Plan 14-03 closed engine integration cohort. Engine.signOutput method handles 8 outcome paths (signing_disabled, unsupported_format, cert_load_failed, native_binding_unavailable, sign_call_failed, asset_too_large_for_buffer_api, alreadySigned, success-buffer/file). Lazy signer cache + Concern #11 binding-error distinction. Concern #5 temp dir 0700/0600 with try/finally cleanup; Concern #6 BUFFER_SIGNING_MAX_BYTES (500MB) defence-in-depth at downloader pre-stat + engine cap; Concern #7 idempotency via getLatestManifestSignedEvent + alreadySigned shortcut emits ZERO events on skip; Concern #9 nanoid(8) unique partial paths. EXDEV cross-device rename fallback. T-14-12 ACCEPTED (key in heap, software-only v1.1; HSM v1.2+). v1.1 Concern #2 scope reduction structurally locked: NO sidecar field; EXR/PSD surface as unsupported_format with original file untouched. Drizzle 0006 migration adds nullable manifest_signed_json column. +33 tests; root suite 941 -> 974 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero c2pa-node imports in pipeline.ts/output-downloader.ts/provenance-repo.ts. tsc --noEmit clean. Phase 14 cohort 3/5; PROV-V-01 cohort closure in 14-04/14-05.
 - [Phase 14]: Plan 14-04 closed HTTP + dashboard surface for C2PA signing state. GET/HEAD /api/versions/:id/output sets X-C2PA-Signing-Status response header (signed | unsigned:<reason> | unknown) sourced from the Plan 14-03 manifest_signed event accessor. The HTTP layer NEVER signs — files are signed at write-time by the downloader hook (D-CTX-8 → Plan 14-03 revision); benefits preserved (dual-transport parity for free, no signing latency on hot HTTP path, simpler crash safety). v1.1 Concern #2 scope reduction LOCKED at HTTP + dashboard layer: NO sidecar route at /output.c2pa, NO sidecar download link in VersionDrawer, NO SIDECAR_EXTENSIONS dashboard duplication. T-14-10 mitigation Test 8 asserts body bytes + Content-Type + Cache-Control byte-identical to pre-Phase-14 baseline. T-14-11 XSS mitigation: 3 defence layers (known-codes translation map + character-class sanitization filter, Preact text-node interpolation, NO dangerouslySetInnerHTML). +41 tests (root 974 → 985 [+11]; dashboard 58 → 88 [+30]); pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 4/5; PROV-V-01 closure in Plan 14-05.
 - [Phase 14]: Plan 14-05 closed Phase 14 with full verification cohort. 5 test files (+53 root tests, 985 -> 1038), Concern #8 cryptographic-binding closed via two-leg proof (clean validation_status when reading unmodified bytes + tamper test produces dataHash.mismatch URL referencing c2pa.assertions/c2pa.hash.data). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (temp files now preserve filename extension so c2pa-rs's BMFF/RIFF/TIFF asset handlers select correctly). version.get response envelope gained additive c2pa_status + c2pa_status_reason fields. Wire-level UAT honors MEMORY.md feedback_dont_punt_on_tests via real MCP SDK Client + spawned server child process. PROV-V-01/02/05 cohort closure with v1.2 deferred items recorded. Phase 14 cohort 5/5; ready for /gsd-verify-phase 14.
+- [Phase ?]: [Phase 15]: Plan 15-01 closed extraction primitives. IMAGE_INPUT_CLASS_TYPES audited per REVISION C1/C2 (6 entries: LoadImage, LoadImageMask, VAEEncode, VAEEncodeForInpaint, ControlNetApply, ControlNetApplyAdvanced; model loaders deliberately excluded; disjointness vs LOADER_CLASS_TYPES locked by test). REVISION B5 KSampler edge walk shipped — prompt_positive/negative resolved by following positive/negative as [node_id, output_index] tuples to CLIPTextEncode-class ancestors; IA-3 test ('unreferenced CLIPTextEncode is ignored') locks the behaviour. extractParentIngredient + extractComponentIngredients + extractInputAssertion (pure) + hashComponentBytes (impure streaming-SHA256 mirroring output-hash.ts WR-02 with discriminated HashOutcome union). 41 new tests + 5 v1.1 audit + 2 file-level architecture-purity guards. Root suite 1048 -> 1096 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero MCP / native-binding / SQLite / ORM imports in either new file. Three Rule-3 docstring-vs-grep collisions auto-fixed (mirrors Phase 13 Plan 13-01 pattern). PROV-V-04 NOT marked complete — cohort closure happens in Plan 15-04 after manifest builder extension (15-02), engine integration (15-03), and end-to-end fixture (15-04).
 
 ### Pending Todos
 
@@ -135,8 +137,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T13:45:44.067Z
-Stopped at: Completed Plan 14-05 — Phase 14 cohort closure. 5 atomic commits (72b1e48, 85561e7, e59969a, 6bfff69, e56e5d5). 53 new root tests across 5 files: c2pa-verification (17 tests, end-to-end PNG/JPEG/MP4/WebP/TIFF round-trip via c2pa.read + Concern #8 cryptographic-binding proof + tamper detection), c2pa-dual-transport-parity (9 tests, HTTP body bytes equal direct file read), c2pa-key-leak-negative (9 tests, T-14-01/T-14-02/T-14-12 mitigation proven across stdout/stderr/tool envelopes/HTTP body/provenance JSON), c2pa-uat-mcp-tool (4 tests, real MCP SDK Client + spawned server child process), requirements-cohort-closure (14 tests, smoke for REQUIREMENTS.md + ROADMAP.md state). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (extension preservation on temp paths, without which MP4/WebP/TIFF emitted unsigned bytes silently). version.get envelope gained additive c2pa_status + c2pa_status_reason fields (agent surface). VFX_FAMILIAR_OUTPUTS_DIR env support. PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete in REQUIREMENTS.md (PROV-V-05 partially — TIFF native-embed; EXR/PSD deferred to v1.2). New 'Deferred to v1.2' section captures cryptographic sidecar / sidecar HTTP route / HSM signing / multi-CA / streaming-friendly C2PA. ROADMAP Phase 14 row 5/5 Complete (2026-04-30). Root suite 985 -> 1038 passing; pre-existing 5 v1.1-audit failures unchanged. Dashboard 88 unchanged. tsc --noEmit clean. Phase 14 ready for /gsd-verify-phase 14. Phase 15 (Ingredient Graph) unblocked.
+Last session: 2026-04-30T15:59:35.300Z
+Stopped at: Completed Plan 15-01 — Phase 15 ingredient extraction primitives. 4 atomic commits (21aaf09, 66de5f9, 6e00dcb, ab73a8c). 41 new tests (28 ingredient-extractor + 13 ingredient-hasher) + 5 v1.1 audit tests in model-extraction.test.ts + 2 file-level architecture-purity grep guards. Root suite 1048 -> 1096 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. REVISION C1/C2 IMAGE_INPUT_CLASS_TYPES audit (6 entries; model loaders excluded; disjointness invariant locked). REVISION B5 KSampler edge walk for inputTo (IA-3 test locks unreferenced-CLIPTextEncode-ignored behaviour). hashComponentBytes streaming-SHA256 mirrors output-hash.ts with discriminated outcome union. Three Rule-3 docstring-vs-grep collisions auto-fixed (mirrors Phase 13 Plan 13-01). Architecture-purity preserved: zero MCP / native-binding / SQLite / ORM imports in either new file. PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-02 (manifest builder extension) unblocked: imports new types via c2pa/index.ts barrel.
 Resume file: None
 
 **Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
