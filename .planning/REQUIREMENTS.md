@@ -12,7 +12,7 @@ Each requirement maps to a single roadmap phase. Coarse-grained where appropriat
 
 - [ ] **PROV-V-01**: Server emits a signed C2PA manifest embedded in supported output formats (PNG, JPEG, MP4, WebP) at the moment the version's output is downloaded — both via the dashboard streaming route (`/api/versions/:id/output`) and the direct file path the engine writes to disk.
 - [ ] **PROV-V-02**: Manifest includes an explicit AI-origin disclosure assertion (`c2pa.created` action assertion with ComfyUI as the generator tool and the workflow's primary model surfaced as the digitalSourceType / softwareAgent).
-- [ ] **PROV-V-03**: Every model referenced in the resolved prompt blob (checkpoints, LoRAs, VAEs, ControlNet weights, refiners) has a SHA-256 fingerprint captured in the version's `models_json`. Fingerprints flow into the C2PA manifest as ingredient assertions. Closes the documented `model_hash: null` gap at `src/engine/provenance.ts:69`.
+- [x] **PROV-V-03**: Every model referenced in the resolved prompt blob (checkpoints, LoRAs, VAEs, ControlNet weights, refiners) has a SHA-256 fingerprint captured in the version's `models_json`. Fingerprints flow into the C2PA manifest as ingredient assertions. Closes the documented `model_hash: null` gap at `src/engine/provenance.ts:69`.
 - [ ] **PROV-V-04**: Manifest emits an ingredient graph composed of three assertion types: `parentOf` (lineage — reproduce/iterate parents), `componentOf` (prompt-referenced control images, reference images, IP-Adapter inputs from non-loader nodes), `inputTo` (the prompt text + key parameters). Each ingredient is linked by hash to its source artifact when available.
 - [ ] **PROV-V-05**: For output formats not on C2PA's native-embed list (OpenEXR, EXR sequences, raw PSD/TIFF stacks, etc.), the engine writes a sidecar `.c2pa` manifest file alongside the output, named `<output>.c2pa`. The dashboard surfaces both the original file and the sidecar manifest.
 - [ ] **PROV-V-06**: A redaction primitive lets a tool caller (or dashboard user) strip sensitive prompt/metadata values from a version's manifest while writing a `c2pa.redacted` assertion that preserves the *fact* of redaction. The original signed manifest stays append-only in `provenance`; redaction emits a new derived manifest.
@@ -49,7 +49,7 @@ Carried forward from v1.0 archive — deferred past v1.1 unless explicitly pulle
 |-------------|-------|--------|
 | PROV-V-01 | Phase 14 | Pending |
 | PROV-V-02 | Phase 14 | Pending |
-| PROV-V-03 | Phase 13 | Pending |
+| PROV-V-03 | Phase 13 | Complete |
 | PROV-V-04 | Phase 15 | Pending |
 | PROV-V-05 | Phase 14 | Pending |
 | PROV-V-06 | Phase 16 | Pending |

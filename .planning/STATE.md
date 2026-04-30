@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
-stopped_at: "Completed Plan 13-02 — Engine.fingerprintModelsForVersion + GenerationEngine fingerprintHook + VFX_FAMILIAR_MODELS_DIR threading + 14 new tests (8 provenance-repo + 6 pipeline-fingerprint integration). Append-only invariant preserved (sibling 'models_fingerprinted' event, no UPDATE on completed row). Hot-path isolation (criterion #4) proven by integration test. Root suite 856 passing (842 baseline + 14 new); 5 pre-existing v1.1-audit failures unchanged. Phase 13 cohort 2/3; ready to start Plan 13-03 (diff-side parity + integration tests + file-level architecture-purity assertion + PROV-V-03 cohort-level requirement closure)."
-last_updated: "2026-04-30T10:21:27.470Z"
-last_activity: 2026-04-30 -- Plan 13-02 complete (Phase 13 cohort 2/3)
+status: verifying
+stopped_at: Completed Plan 13-03 — diff-side parity (ModelChange shape extension, diffModels hash↔unavailable transitions, loadDiffSnapshot reads getLatestFingerprints) + 5 end-to-end integration tests + 3 file-level architecture-purity assertions for src/engine/model-fingerprint.ts. PROV-V-03 marked complete in REQUIREMENTS.md (cohort-level closure). Phase 13 cohort 3/3; root suite 868 passing; 5 pre-existing v1.1-audit failures unchanged. Phase 13 ready for /gsd-verify-phase 13. Phase 14 (C2PA Signed Manifest Emission) next.
+last_updated: "2026-04-30T10:35:10.703Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 13 (Model Fingerprinting) — EXECUTING
 Plan: 3 of 3 (Plans 13-01 + 13-02 complete; ready to start Plan 13-03)
-Status: Ready to execute
-Last activity: 2026-04-30 -- Plan 13-02 complete (Phase 13 cohort 2/3)
+Status: Phase complete — ready for verification
+Last activity: 2026-04-30
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [█████████░] 90%
 | Phase 12 P02 | 6min | 2 tasks | 5 files |
 | Phase 13 P01 | 7min | 3 tasks | 6 files |
 | Phase 13 P02 | 7min | 2 tasks | 7 files |
+| Phase 13 P03 | 6min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Recent decisions affecting current work:
 - [Phase 13]: Plan 13-01 closed the data-shape + helper foundation for PROV-V-03. ModelRef gains `model_hash_unavailable: string | null` (D-CTX-1) — additive required-but-nullable so persisted models_json carries typed unavailable reasons (D-CTX-5: `models_dir_not_configured` / `file_not_found` / `file_unreadable` / `unsupported_class_type`). MODEL_DIR_BY_CLASS exported (9 entries, lockstep with LOADER_CLASS_TYPES, locked by a passing test). `fingerprintModel` async helper at `src/engine/model-fingerprint.ts` streams SHA-256 via createReadStream + createHash, mirrors output-hash.ts WR-02 (path-traversal in modelName degrades to `file_not_found`, no disk read), retries 3 attempts with 1s/2s sleeps for non-ENOENT I/O errors. Architecture-purity preserved at the helper boundary — zero MCP / SQLite-driver / ORM imports (grep gates clean). +18 root-suite tests (824 → 842 passing); 5 pre-existing failures unchanged. Phase 13 cohort 1/3; PROV-V-03 closure happens in 13-03 (after 13-02 wires fingerprinter into completion path + 13-03 adds diff parity + integration tests + file-level architecture-purity assertion).
 - [Phase 13]: One Rule-3 deviation auto-fixed in Plan 13-01 — the plan's own `<action>` block instructed a docstring containing the literal strings 'better-sqlite3' and 'drizzle-orm', and the same plan's `<verify>` block required `grep -E 'better-sqlite3|drizzle-orm'` to return ZERO matches. Rephrased the docstring as 'zero SQLite-driver imports, zero ORM imports' (same intent, no literal package-name strings) so the gate passes cleanly. Bundled into the Task 2 commit per Rule 3 scope-boundary.
 - [Phase 13]: Plan 13-02 wired Plan 13-01's fingerprintModel into the completion path via the D-CTX-3-recommended sibling 'models_fingerprinted' provenance event. Append-only invariant on src/store/provenance-repo.ts preserved (literal grep this.db.update|this.db.delete still returns ZERO). T-13-07 mitigation asserted by a regression test that re-fetches the original 'completed' row by id after appendModelsFingerprintedEvent and asserts byte-equality on every field. Engine.fingerprintModelsForVersion is idempotent (events scan, returns early on existing fingerprinted event) so the boot-time recovery path is O(N) reads + 0 hashes for already-done rows. Hot-path isolation (criterion #4) proven by the GenerationEngine.downloadAndPersist hook: fires synchronously, receiver wraps async work in 'void X.catch(...)', test asserts zero fingerprinted events at the moment getGenerationStatus returns 'completed'. NO Drizzle migration added — the event_type column has no CHECK constraint, so the union extension is purely TS-level. ROADMAP success criteria #1 + #4 closed at the integration boundary; PROV-V-03 cohort closure happens in 13-03.
+- [Phase 13]: [Phase 13]: Plan 13-03 closed Phase 13. ModelChange shape extended with hash_unavailable on both sides; diffModels fires on hash↔unavailable transitions; loadDiffSnapshot reads getLatestFingerprints (post-fingerprint view) instead of raw completed_event.models_json (legacy try/catch JSON.parse removed); 5 end-to-end integration tests prove criteria #1/#2/#3 + the diff boundary; 3 file-level architecture-purity assertions lock src/engine/model-fingerprint.ts as zero-MCP / zero-SQLite-driver / zero-ORM. Test count: +13 root-suite (5 diff transition + 5 integration + 3 architecture-purity). 5 pre-existing v1.1-audit failures unchanged. PROV-V-03 cohort closed; Phase 13 ready for /gsd-verify-phase 13.
+- [Phase 13]: [Phase 13]: All 5 ROADMAP success criteria have automated coverage. #1 (populated model_hash) by Plan 13-02 Test 2 + Plan 13-03 Tests 1, 4. #2 (typed model_hash_unavailable) by 13-01 reason-codes + 13-02 Test 1 + 13-03 Tests 2, 5. #3 (content-addressed) by 13-01 same-bytes + 13-03 Test 3. #4 (hot-path isolation) by 13-02 Test 4. #5 (architecture-purity) by 13-01 grep gates + 13-03 file-level vitest assertions. Phase 14 (C2PA) ready: reads getLatestFingerprints(versionId) as canonical source of model fingerprints for ingredient assertions.
 
 ### Pending Todos
 
@@ -122,8 +125,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T10:21:27.466Z
-Stopped at: Completed Plan 13-02 — Engine.fingerprintModelsForVersion + GenerationEngine fingerprintHook + VFX_FAMILIAR_MODELS_DIR threading + 14 new tests (8 provenance-repo + 6 pipeline-fingerprint integration). Append-only invariant preserved (sibling 'models_fingerprinted' event, no UPDATE on completed row). Hot-path isolation (criterion #4) proven by integration test. Root suite 856 passing (842 baseline + 14 new); 5 pre-existing v1.1-audit failures unchanged. Phase 13 cohort 2/3; ready to start Plan 13-03 (diff-side parity + integration tests + file-level architecture-purity assertion + PROV-V-03 cohort-level requirement closure).
+Last session: 2026-04-30T10:35:10.699Z
+Stopped at: Completed Plan 13-03 — diff-side parity (ModelChange shape extension, diffModels hash↔unavailable transitions, loadDiffSnapshot reads getLatestFingerprints) + 5 end-to-end integration tests + 3 file-level architecture-purity assertions for src/engine/model-fingerprint.ts. PROV-V-03 marked complete in REQUIREMENTS.md (cohort-level closure). Phase 13 cohort 3/3; root suite 868 passing; 5 pre-existing v1.1-audit failures unchanged. Phase 13 ready for /gsd-verify-phase 13. Phase 14 (C2PA Signed Manifest Emission) next.
 Resume file: None
 
 **Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
