@@ -26,10 +26,17 @@ import { useState, useEffect } from 'preact/hooks';
 import { StatusPill } from '../components/StatusPill.js';
 import type { Status } from '../components/StatusPill.js';
 import { WarningPill } from '../components/WarningPill.js';
+import { C2paBadge } from '../components/C2paBadge.js';
 import { JsonBlock } from '../components/JsonBlock.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { DiffDrawer } from './DiffDrawer.js';
-import { getProvenance, diffVersion, getOutputUrl } from '../lib/api.js';
+import {
+  getProvenance,
+  diffVersion,
+  getOutputUrl,
+  getC2paStatus,
+} from '../lib/api.js';
+import type { C2paStatus } from '../lib/api.js';
 import type { Version } from '../types/entities.js';
 import { versionLabel, normalizeStatus } from '../lib/shape.js';
 
@@ -78,6 +85,12 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
   const [provenance, setProvenance] = useState<Array<Record<string, unknown>>>([]);
   const [diff, setDiff] = useState<DiffSummaryShape | null>(null);
   const [showDiff, setShowDiff] = useState(false);
+  // Phase 14 Plan 04 Task 2 — C2PA signing status for the version's primary
+  // output. Default { status: 'unknown' } so the badge renders 'C2PA: pending'
+  // immediately on mount and updates once the HEAD response lands. Network
+  // errors leave it at 'unknown' (getC2paStatus never throws — defence in
+  // depth).
+  const [c2paStatus, setC2paStatus] = useState<C2paStatus>({ status: 'unknown' });
 
   useEffect(() => {
     // Lazy-load provenance on version change. Swallow errors into empty list
@@ -92,6 +105,27 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
       })
       .catch(() => {
         if (alive) setProvenance([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [version.id]);
+
+  // Phase 14 Plan 04 Task 2 — auto-fetch C2PA signing status via HEAD on the
+  // output route. The HEAD is lightweight (no body); the route reads the
+  // latest manifest_signed event written by Plan 14-03's downloader hook.
+  // getC2paStatus never throws (defence in depth) — it collapses network /
+  // parse failures to { status: 'unknown' }, so the badge always renders.
+  useEffect(() => {
+    let alive = true;
+    getC2paStatus(version.id)
+      .then((s) => {
+        if (alive) setC2paStatus(s);
+      })
+      .catch(() => {
+        // getC2paStatus is documented as never-throwing, but defence in depth
+        // — leave c2paStatus at its current value.
+        if (alive) setC2paStatus({ status: 'unknown' });
       });
     return () => {
       alive = false;
@@ -213,6 +247,14 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
                 loading="lazy"
               />
             </a>
+            {/* Phase 14 Plan 04 Task 2 — C2PA signing badge. Reads status via
+                HEAD on the output route (X-C2PA-Signing-Status header) so no
+                additional bytes are transferred. v1.1 has NO sidecar download
+                link (Concern #2 scope reduction); v1.2 will add one when
+                c2pa-node exposes a real sidecar API. */}
+            <div class="mt-2 flex items-center gap-2">
+              <C2paBadge status={c2paStatus} />
+            </div>
           </section>
         ) : null}
 

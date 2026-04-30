@@ -193,6 +193,64 @@ export function getOutputUrl(versionId: string): string {
 }
 
 // ================================================================
+// Phase 14 Plan 04 Task 2 — C2PA signing-status surfacing
+// ================================================================
+
+/**
+ * Discriminated union returned by `getC2paStatus`. The C2paBadge component
+ * pattern-matches on `status` to render the badge text + color.
+ *
+ *   - signed   — manifest_signed event has signed=true
+ *   - unsigned — signed=false (with a reason string from the engine enum)
+ *   - unknown  — no event recorded yet, or network/parse error (defence in
+ *                depth: never throws; the badge always renders SOMETHING)
+ */
+export type C2paStatus =
+  | { status: 'signed' }
+  | { status: 'unsigned'; reason: string }
+  | { status: 'unknown' };
+
+/**
+ * Phase 14 Plan 04 — fetch the C2PA signing status for a version's primary
+ * output by issuing a HEAD request to /api/versions/:id/output and reading
+ * the X-C2PA-Signing-Status response header. The HEAD is lightweight (no
+ * body transfer); the engine NEVER signs at request time so this is a pure
+ * read of the latest manifest_signed event.
+ *
+ * Header value mapping (from src/http/dashboard-routes.ts Plan 14-04 Task 1):
+ *   - 'signed'                                 -> { status: 'signed' }
+ *   - 'unsigned:<reason>'                      -> { status: 'unsigned', reason }
+ *   - 'unknown' OR missing OR fetch-throw      -> { status: 'unknown' }
+ *
+ * Defence in depth: the helper never throws — network errors, missing
+ * headers, and malformed values all collapse to { status: 'unknown' } so the
+ * C2paBadge always has something to render.
+ */
+export async function getC2paStatus(versionId: string): Promise<C2paStatus> {
+  try {
+    const res = await fetch(
+      `${BASE}/api/versions/${encodeURIComponent(versionId)}/output`,
+      { method: 'HEAD' },
+    );
+    const header = res.headers.get('X-C2PA-Signing-Status');
+    if (!header) return { status: 'unknown' };
+    if (header === 'signed') return { status: 'signed' };
+    if (header === 'unknown') return { status: 'unknown' };
+    if (header.startsWith('unsigned:')) {
+      const reason = header.slice('unsigned:'.length);
+      // Empty reason after 'unsigned:' is a malformed header — degrade to
+      // 'unsigned' with empty reason (the C2paBadge sanitizes/translates
+      // unknown reasons via its translation map + character-class filter).
+      return { status: 'unsigned', reason };
+    }
+    return { status: 'unknown' };
+  } catch {
+    // Network error / CORS / aborted — never throw to the caller.
+    return { status: 'unknown' };
+  }
+}
+
+// ================================================================
 // Version mutations (14)
 // ================================================================
 
