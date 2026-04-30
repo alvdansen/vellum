@@ -15,3 +15,5 @@ coverage/
 outputs/
 # Phase 5: dashboard workspace node_modules (defensive — workspaces hoist to root, but cover both)
 packages/dashboard/node_modules/
+# Demo runner state — captures workspace/version ids between stage runs (local-only)
+.demo-state.json
