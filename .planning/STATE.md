@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: "Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked."
-last_updated: "2026-04-30T17:30:57.122Z"
-last_activity: 2026-04-30 -- Phase 16 execution started
+stopped_at: "Completed Plan 16-01 — Phase 16 Wave 1 (exporter + verifier engine modules). 3 atomic commits (6a1231d Task 1 exporter, 7706a48 Task 2 verifier + arch-purity centralization, ecf15d0 Task 3 Engine facade + arch-purity file-level locks). 46 new tests across 4 files: 16 exporter + 22 verifier + 6 facade + 2 arch-purity. Root suite 1190 -> 1236 passing; 4 pre-existing v1.1-audit failures unchanged; tsc --noEmit clean. ExporterResult shape locked at engine boundary (3-state discriminated union); VerificationReport shape locked (5-state discriminated signature_status union + 4 array fields, flat). Engine.exportManifestForVersion + Engine.verifyManifestForVersion lazy-import facades land. D-PLAN-1 through D-PLAN-5 all implemented as designed; D-CTX-7 architecture-purity allowed-set assertion replaces brittle single-element deepEqual. PROV-V-07 NOT marked complete (cohort closure in Plan 16-03). Plans 16-02 (redaction) + 16-03 (tool surface) unblocked. Run /gsd-execute-phase 16-redaction-and-agent-surface to continue with Plan 16-02."
+last_updated: "2026-04-30T19:15:34.919Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
+  total_plans: 24
+  completed_plans: 20
+  percent: 83
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 16 (Redaction & Agent Surface) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 16
-Last activity: 2026-04-30 -- Phase 16 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-04-30
 
-Progress: [██████████] 100%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [██████████] 100%
 | Phase 15 PP02 | 9min | 2 tasks | 3 files |
 | Phase 15 P03 | 22min | 5 tasks | 9 files |
 | Phase 15 P04 | 13min | 5 tasks | 5 files |
+| Phase 16 P01 | 13min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: Plan 15-01 closed extraction primitives. IMAGE_INPUT_CLASS_TYPES audited per REVISION C1/C2 (6 entries: LoadImage, LoadImageMask, VAEEncode, VAEEncodeForInpaint, ControlNetApply, ControlNetApplyAdvanced; model loaders deliberately excluded; disjointness vs LOADER_CLASS_TYPES locked by test). REVISION B5 KSampler edge walk shipped — prompt_positive/negative resolved by following positive/negative as [node_id, output_index] tuples to CLIPTextEncode-class ancestors; IA-3 test ('unreferenced CLIPTextEncode is ignored') locks the behaviour. extractParentIngredient + extractComponentIngredients + extractInputAssertion (pure) + hashComponentBytes (impure streaming-SHA256 mirroring output-hash.ts WR-02 with discriminated HashOutcome union). 41 new tests + 5 v1.1 audit + 2 file-level architecture-purity guards. Root suite 1048 -> 1096 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero MCP / native-binding / SQLite / ORM imports in either new file. Three Rule-3 docstring-vs-grep collisions auto-fixed (mirrors Phase 13 Plan 13-01 pattern). PROV-V-04 NOT marked complete — cohort closure happens in Plan 15-04 after manifest builder extension (15-02), engine integration (15-03), and end-to-end fixture (15-04).
 - [Phase ?]: [Phase 15]: Plan 15-02 closed manifest builder extension. New buildManifestWithIngredients pure entry point returns BuildManifestResult { definition, ingredientSpecs }; Phase 14 buildManifestDefinition unchanged byte-equal. ManifestDefinition.assertions broadened to discriminated union; Phase 14 literal narrows in. Architectural contract locked by Test 16: definition.assertions[] NEVER carries c2pa.ingredient — that is Plan 15-03's territory via manifestBuilder.addIngredient. Two-channel record for unavailable ingredients (ingredientSpecs assetRef='unavailable' + vfx_familiar.unavailable_ingredient assertion). T-15-04 stripToBasename defence-in-depth (Tests 17, 18). 30 new tests; root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. Two Rule deviations auto-fixed (Rule 1 narrowing helper; Rule 3 docstring rephrasing). PROV-V-04 cohort closure in Plan 15-04. Plan 15-03 unblocked.
 - [Phase ?]: [Phase 15]: Plan 15-04 closed Phase 15 cohort. End-to-end traceback test + dangling-reference test prove ingredient-graph behavior at the manifest read-back layer. PROV-V-04 marked complete (3 places). ROADMAP Phase 15 row Complete 2026-04-30. 18 new tests; root 1157 -> 1175 passing; pre-existing 5 failures unchanged. 4 Rule deviations auto-fixed during Task 1 GREEN. Phase 15 4/4 plans complete; ready for /gsd-verify-phase 15.
+- [Phase ?]: [Phase 16]: Plan 16-01 closed PROV-V-07 engine half. Pure-async exportManifest + lazy-c2pa-node verifyManifest + Engine facade methods. D-CTX-7 architecture-purity allowed-set assertion replaces single-element deepEqual. ZERO MCP/SQLite/ORM imports across both new modules. 5 Rule-3 deviations auto-fixed (VersionRepo getById -> getVersion + docstring-vs-grep collision recurring pattern + implicit-any from c2pa-node index signatures + arch-purity assertion bundling order + INTERNAL_ERROR added to ErrorCode union). 46 new tests; root suite 1190 -> 1236 passing; pre-existing 4 v1.1-audit failures unchanged. PROV-V-07 NOT marked complete (cohort closure in Plan 16-03 after tool surface wires through). Plans 16-02 (redaction) + 16-03 (tool surface) UNBLOCKED.
 
 ### Pending Todos
 
@@ -142,8 +144,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T17:09:56.897Z
-Stopped at: Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked.
+Last session: 2026-04-30T19:15:34.916Z
+Stopped at: Completed Plan 16-01 — Phase 16 Wave 1 (exporter + verifier engine modules). 3 atomic commits (6a1231d Task 1 exporter, 7706a48 Task 2 verifier + arch-purity centralization, ecf15d0 Task 3 Engine facade + arch-purity file-level locks). 46 new tests across 4 files: 16 exporter + 22 verifier + 6 facade + 2 arch-purity. Root suite 1190 -> 1236 passing; 4 pre-existing v1.1-audit failures unchanged; tsc --noEmit clean. ExporterResult shape locked at engine boundary (3-state discriminated union); VerificationReport shape locked (5-state discriminated signature_status union + 4 array fields, flat). Engine.exportManifestForVersion + Engine.verifyManifestForVersion lazy-import facades land. D-PLAN-1 through D-PLAN-5 all implemented as designed; D-CTX-7 architecture-purity allowed-set assertion replaces brittle single-element deepEqual. PROV-V-07 NOT marked complete (cohort closure in Plan 16-03). Plans 16-02 (redaction) + 16-03 (tool surface) unblocked. Run /gsd-execute-phase 16-redaction-and-agent-surface to continue with Plan 16-02.
 Resume file: None
 
 **Planned Phase:** Phase 15 — Ingredient Graph (in progress, 2/4 plans). Run `/gsd-execute-phase 15-ingredient-graph` to continue with Plan 15-03.

@@ -181,4 +181,4 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
 | 15. Ingredient Graph                | v1.1 | 4/4 | Complete   | 2026-04-30 |
-| 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
+| 16. Redaction & Agent Surface       | v1.1 | 1/5 | In Progress|  |
