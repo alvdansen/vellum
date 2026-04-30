@@ -116,7 +116,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   - [x] 14-01-PLAN.md — Dependency + env config + dev cert helper
   - [x] 14-02-PLAN.md — C2PA module: manifest builder + signer wrapper + format router
   - [x] 14-03-PLAN.md — Engine integration: embed/sidecar emitter + provenance event
-  - [ ] 14-04-PLAN.md — HTTP route integration + dashboard sidecar surface
+  - [x] 14-04-PLAN.md — HTTP route integration + dashboard sidecar surface
   - [ ] 14-05-PLAN.md — Verification + parity + key-leak negative tests
 **UI hint**: yes
 
@@ -178,6 +178,6 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
-| 14. C2PA Signed Manifest Emission   | v1.1 | 3/5 | In Progress|  |
+| 14. C2PA Signed Manifest Emission   | v1.1 | 4/5 | In Progress|  |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
