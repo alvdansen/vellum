@@ -78,6 +78,24 @@ describe('architecture purity', () => {
   it('src/store/metadata-repo.ts has zero imports from @modelcontextprotocol/sdk (D-ASST-26)', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/store/metadata-repo.ts')).toBe(0);
   });
+
+  // Phase 13 additions — PROV-V-03. The new model-fingerprint helper is an
+  // engine-layer pure file (zero MCP / DB / HTTP imports). The directory-
+  // wide `src/engine/` guard at line 34 already covers it transitively;
+  // file-level assertions fire in isolation if someone adds an MCP import
+  // to one specific file — cheaper to debug than the directory-wide fail.
+
+  it('src/engine/model-fingerprint.ts has zero imports from @modelcontextprotocol/sdk (PROV-V-03)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/model-fingerprint.ts')).toBe(0);
+  });
+
+  it('src/engine/model-fingerprint.ts has zero imports from better-sqlite3 (PROV-V-03)', () => {
+    expect(grepCount('better-sqlite3', 'src/engine/model-fingerprint.ts')).toBe(0);
+  });
+
+  it('src/engine/model-fingerprint.ts has zero imports from drizzle-orm (PROV-V-03)', () => {
+    expect(grepCount('drizzle-orm', 'src/engine/model-fingerprint.ts')).toBe(0);
+  });
 });
 
 // ================================================================

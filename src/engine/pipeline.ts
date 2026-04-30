@@ -619,14 +619,12 @@ export class Engine {
     const prompt_json = completed?.prompt_json
       ? (JSON.parse(completed.prompt_json) as Record<string, unknown>)
       : null;
-    let models: ModelRef[] | null = null;
-    if (completed?.models_json) {
-      try {
-        models = JSON.parse(completed.models_json) as ModelRef[];
-      } catch {
-        models = null;
-      }
-    }
+    // Phase 13 — PROV-V-03. Prefer the latest fingerprinted models so diff
+    // sees populated hashes after the background fingerprinter ran. Falls
+    // through to completed_event.models_json (legacy / pre-fingerprint state)
+    // when no 'models_fingerprinted' event exists yet. Returns null on
+    // malformed JSON in either source — diff degrades gracefully.
+    const models: ModelRef[] | null = this.provenanceRepo.getLatestFingerprints(versionId);
     let outputCount = 0;
     if (v.outputs_json) {
       try {
