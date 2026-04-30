@@ -195,6 +195,11 @@ async function main(): Promise<void> {
     : undefined;
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, 'outputs', {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
+    // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
+    // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
+    // ships with this unset; local-dev / self-host can populate hashes by
+    // setting VFX_FAMILIAR_MODELS_DIR to the local checkpoints/loras root.
+    modelsDir: process.env.VFX_FAMILIAR_MODELS_DIR ?? null,
   });
   const version = await readVersion();
 

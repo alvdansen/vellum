@@ -13,6 +13,7 @@ import { ProvenanceWriter } from './provenance.js';
 import { AssetsEngine } from './assets.js';
 import { diffVersions as pureDiffVersions, buildReproductionDivergence } from './diff.js';
 import { computeOutputSha256 } from './output-hash.js';
+import { fingerprintModel } from './model-fingerprint.js';
 import { TypedError } from './errors.js';
 import { createEngineEmitter, type EngineEmitter } from './events.js';
 import { downloadOutput } from './output-downloader.js';
@@ -94,6 +95,11 @@ export class Engine {
    * so the HTTP layer can resolve output file paths against it via
    * EngineForDashboard structural Pick (Plan 06-03 / gap_closure WR-01). */
   public readonly outputRoot: string;
+  /** Phase 13 — PROV-V-03 (D-CTX-2). Optional models root for SHA-256
+   *  fingerprinting at completion. NULL in production (ComfyUI Cloud has
+   *  no local model files) → every entry records 'models_dir_not_configured'
+   *  per D-CTX-5. Set via VFX_FAMILIAR_MODELS_DIR env var in src/server.ts. */
+  private readonly modelsDir: string | null;
 
   constructor(
     db: BaseDb,
@@ -102,12 +108,13 @@ export class Engine {
     private provenanceRepo: ProvenanceRepo,
     private client: ComfyUIClient | null = null,
     outputRoot: string = 'outputs',
-    options: { maxConcurrentPollers?: number } = {},
+    options: { maxConcurrentPollers?: number; modelsDir?: string | null } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
     // at runtime, but the class-level type omits $client. Plan 04-02 pattern.
     this.db = db as Db;
     this.outputRoot = outputRoot;
+    this.modelsDir = options.modelsDir ?? null;
     this.events = createEngineEmitter();
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
@@ -120,6 +127,19 @@ export class Engine {
       this.breadcrumb,
       outputRoot,
       { maxConcurrentPollers: options.maxConcurrentPollers },
+      // Phase 13 — fire-and-forget hook delegates to the async background
+      // fingerprinter. The hook itself returns synchronously (returns a void
+      // expression of a Promise.catch) so GenerationEngine.downloadAndPersist
+      // is never delayed by hash work (criterion #4). Background errors are
+      // logged via console.error in the .catch() — never re-thrown.
+      (versionId: string) => {
+        void this.fingerprintModelsForVersion(versionId).catch((err) => {
+          console.error(
+            `vfx-familiar: background fingerprint failed for ${versionId}:`,
+            (err as Error).message,
+          );
+        });
+      },
     );
     // Phase 4 asset wiring — repos constructed internally so callers don't
     // shoulder the layering. Engine owns asset-repo construction (D-ASST-27).
@@ -661,6 +681,81 @@ export class Engine {
       at: this.nowIso(),
     });
     return result;
+  }
+
+  // ================================================================
+  // PHASE 13 — MODEL FINGERPRINTING (PROV-V-03)
+  // ================================================================
+
+  /**
+   * Phase 13 — PROV-V-03. Fingerprint every loader-resolved model on the
+   * completed prompt blob, persist as a sibling 'models_fingerprinted'
+   * event (append-only — never UPDATEs the original 'completed' row).
+   *
+   * Idempotent (D-CTX `Claude's Discretion` clause): if a fingerprinted
+   * event already exists for this version, returns immediately. Used by
+   * crash-recovery on boot — re-running on an already-fingerprinted row
+   * is a cheap no-op (events scan only, no hashing).
+   *
+   * Production / ComfyUI Cloud reality: when this.modelsDir is null,
+   * every entry records `model_hash_unavailable: 'models_dir_not_configured'`
+   * per D-CTX-5. Local-dev / self-host paths populate `model_hash` for
+   * any model resolvable under the configured root.
+   *
+   * Background path: called from a `void`-fired callback at the
+   * GenerationEngine.downloadAndPersist completion site. Errors are
+   * logged via console.error in the caller's `.catch(...)` — never thrown
+   * upward into the generation hot path (criterion #4).
+   */
+  async fingerprintModelsForVersion(versionId: string): Promise<void> {
+    // Idempotency check — read events directly so we don't trigger the
+    // fall-through-to-completed branch in getLatestFingerprints.
+    const events = this.provenanceRepo.getEventsForVersion(versionId);
+    const alreadyFingerprinted = events.some(
+      (e) => e.event_type === 'models_fingerprinted',
+    );
+    if (alreadyFingerprinted) return;
+
+    const source = this.provenanceRepo.getLatestFingerprints(versionId);
+    if (!source) return; // pre-Phase-13 row or no completed event yet — skip
+    if (source.length === 0) {
+      // Empty models array — still record an explicit fingerprinted event
+      // so the idempotency check above sees the work as done. Phase 14
+      // can then rely on "fingerprinted event exists" as the signal that
+      // the background path ran for this version.
+      this.provenanceRepo.appendModelsFingerprintedEvent(versionId, []);
+      return;
+    }
+
+    const fingerprinted: ModelRef[] = await Promise.all(
+      source.map(async (m) => {
+        const result = await fingerprintModel(
+          this.modelsDir,
+          m.class_type,
+          m.model_name,
+        );
+        // Discriminated-union narrowing — exactly one of the two fields
+        // is non-null per D-CTX-1.
+        if ('model_hash' in result) {
+          return {
+            node_id: m.node_id,
+            class_type: m.class_type,
+            model_name: m.model_name,
+            model_hash: result.model_hash,
+            model_hash_unavailable: null,
+          };
+        }
+        return {
+          node_id: m.node_id,
+          class_type: m.class_type,
+          model_name: m.model_name,
+          model_hash: null,
+          model_hash_unavailable: result.model_hash_unavailable,
+        };
+      }),
+    );
+
+    this.provenanceRepo.appendModelsFingerprintedEvent(versionId, fingerprinted);
   }
 
   // ================================================================

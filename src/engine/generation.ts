@@ -75,6 +75,13 @@ export class GenerationEngine {
     private breadcrumb: BreadcrumbResolver,
     private outputRoot: string = 'outputs',
     options: { maxConcurrentPollers?: number } = {},
+    /** Phase 13 — PROV-V-03. Optional fire-and-forget hook fired from
+     *  downloadAndPersist immediately AFTER writeCompletedEvent + markCompleted
+     *  in the success branch only (failed-download branch never fires it).
+     *  Synchronous: receiver MUST `void` any async work — must not delay the
+     *  generation hot path (criterion #4). Engine.pipeline binds this to
+     *  fingerprintModelsForVersion at construction time. */
+    private fingerprintHook?: (versionId: string) => void,
   ) {
     const cap = options.maxConcurrentPollers ?? DEFAULT_MAX_CONCURRENT_POLLERS;
     // Clamp to a sane range: at least 1, at most 20 (Pro tier × 4 buffer).
@@ -457,6 +464,20 @@ export class GenerationEngine {
     const outputsJson = JSON.stringify(stored);
     this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson);
     this.versions.markCompleted(row.id, outputsJson);
+    // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
+    // the synchronous completion writes return. The receiver
+    // (Engine.fingerprintModelsForVersion via the bound callback in
+    // pipeline.ts) wraps async work in `void X.catch(...)` so this call
+    // returns synchronously — the generation hot path is NOT delayed.
+    // Synchronous throws here are logged but never break the completion path.
+    try {
+      this.fingerprintHook?.(row.id);
+    } catch (err) {
+      console.error(
+        `vfx-familiar: fingerprint hook synchronous error for ${row.id}:`,
+        (err as Error).message,
+      );
+    }
   }
 
   /**
