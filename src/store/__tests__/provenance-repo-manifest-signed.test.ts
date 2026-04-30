@@ -11,7 +11,7 @@ import '../../test-utils/matchers.js';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
 import { HierarchyRepo } from '../hierarchy-repo.js';
 import { VersionRepo } from '../version-repo.js';
-import { ProvenanceRepo } from '../provenance-repo.js';
+import { ProvenanceRepo, MANIFEST_SIGNED_LOOKUP_LIMIT } from '../provenance-repo.js';
 import type {
   ManifestSignedPayloadFields,
   ProvenanceManifestSignedPayload,
@@ -312,5 +312,63 @@ describe('Phase 14 (PROV-V-01) — manifest_signed sibling event', () => {
 
   test('Test 9 — getLatestManifestSignedEvent returns null when no manifest_signed event exists', () => {
     expect(repo.getLatestManifestSignedEvent(versionId, 'never.png')).toBeNull();
+  });
+
+  test('Test 10 (MR-02 fix) — getLatestManifestSignedEvent uses a bounded scan; LIMIT is enforced', () => {
+    // Sanity: the exported constant is the scan budget.
+    expect(MANIFEST_SIGNED_LOOKUP_LIMIT).toBeGreaterThan(0);
+
+    // Source-level guard: provenance-repo.ts must call .limit(MANIFEST_SIGNED_LOOKUP_LIMIT)
+    // on the getLatestManifestSignedEvent query. Lightweight regression
+    // signal — a developer who removes the LIMIT (re-introducing the
+    // unbounded full scan) trips this assertion immediately.
+    const repoSrc = readFileSync('src/store/provenance-repo.ts', 'utf-8');
+    expect(repoSrc).toMatch(/\.limit\(MANIFEST_SIGNED_LOOKUP_LIMIT\)/);
+    // Also assert the lookup query orders newest-first so the LIMIT is
+    // semantically correct (latest events kept, oldest pruned).
+    expect(repoSrc).toMatch(/orderBy\(desc\(provenance\.timestamp\)\)/);
+  });
+
+  test('Test 11 (MR-02 fix) — bounded scan still returns the LATEST matching filename within budget', async () => {
+    // Insert two events for the target filename — the second one is the
+    // "latest" we expect the function to return.
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'target.png',
+      format: 'image/png',
+      signed: false,
+      cert_subject_summary: '',
+      signed_at: '2026-04-30T12:00:00Z',
+      status_reason: 'cert_load_failed',
+      algorithm: '',
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    repo.appendManifestSignedEvent(versionId, {
+      filename: 'target.png',
+      format: 'image/png',
+      signed: true,
+      cert_subject_summary: 'CN=latest',
+      signed_at: '2026-04-30T12:00:30Z',
+      status_reason: '',
+      algorithm: 'es256',
+    });
+    // Now stuff in 5 unrelated events; LIMIT 50 keeps everything in scope
+    // for the typical case so the latest target.png event is the success.
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 2));
+      repo.appendManifestSignedEvent(versionId, {
+        filename: `noise-${i}.png`,
+        format: 'image/png',
+        signed: true,
+        cert_subject_summary: 'CN=noise',
+        signed_at: `2026-04-30T12:01:${10 + i}Z`,
+        status_reason: '',
+        algorithm: 'es256',
+      });
+    }
+
+    const latest = repo.getLatestManifestSignedEvent(versionId, 'target.png');
+    expect(latest).not.toBeNull();
+    expect(latest!.signed).toBe(true);
+    expect(latest!.cert_subject_summary).toBe('CN=latest');
   });
 });

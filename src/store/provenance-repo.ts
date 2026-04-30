@@ -13,6 +13,16 @@ import { TypedError } from '../engine/errors.js';
 type Db = BetterSQLite3Database<typeof schema>;
 
 /**
+ * Phase 14 fix MR-02: bound the manifest_signed event scan so a long-lived
+ * version with many signed/skipped retries can't push the lookup into O(N)
+ * territory. The newest-first ORDER BY timestamp DESC means the latest
+ * matching event is overwhelmingly within the first 1-2 rows; 50 is the
+ * pathological-budget ceiling. Exported for tests so a regression that drops
+ * the LIMIT shows up immediately.
+ */
+export const MANIFEST_SIGNED_LOOKUP_LIMIT = 50;
+
+/**
  * Detect SQLite unique-constraint violations. Duplicated verbatim from
  * version-repo.ts and hierarchy-repo.ts (see 02-PATTERNS.md — intentional
  * duplication keeps repo files independent with no cross-repo coupling).
@@ -206,7 +216,17 @@ export class ProvenanceRepo {
    *  (Plan 14-04). Filters in-memory rather than via JSON path expressions —
    *  the per-version event count is small (a handful of events per version),
    *  so a full scan-and-decode is cheap and avoids relying on SQLite's
-   *  json_extract availability across builds. */
+   *  json_extract availability across builds.
+   *
+   *  Phase 14 fix MR-02: bounded scan via LIMIT MANIFEST_SIGNED_LOOKUP_LIMIT.
+   *  The existing `idx_provenance_version_time` (version_id, timestamp) index
+   *  covers the WHERE + ORDER BY, and SQLite walks the index in reverse for
+   *  the DESC order. The newest-first ordering means the matching filename is
+   *  overwhelmingly within the first 1-2 rows; capping at 50 prevents the
+   *  recovery-poller multi-attempt scenario from O(N) scanning across all
+   *  signed/skipped events for a long-lived version. Versions emitting more
+   *  than MANIFEST_SIGNED_LOOKUP_LIMIT events for a single filename are
+   *  considered pathological — diagnostic flag, not a normal operating state. */
   getLatestManifestSignedEvent(
     versionId: string,
     filename: string,
@@ -218,6 +238,7 @@ export class ProvenanceRepo {
         and(eq(provenance.version_id, versionId), eq(provenance.event_type, 'manifest_signed')),
       )
       .orderBy(desc(provenance.timestamp))
+      .limit(MANIFEST_SIGNED_LOOKUP_LIMIT)
       .all() as ProvenanceEvent[];
     for (const row of rows) {
       if (!row.manifest_signed_json) continue;
