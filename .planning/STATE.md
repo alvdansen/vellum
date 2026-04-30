@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
-stopped_at: Completed Plan 10-02 — runMigrations() wired into openDb(); clean-DB no-op proven; Plan 10-03 ready for stale-DB failure-path test
-last_updated: "2026-04-30T07:35:52.981Z"
+status: verifying
+stopped_at: Completed Plan 10-03 — DEMO-01 cohort complete; Phase 10 ready for verification (3/3 plans done, 4/4 ROADMAP success criteria covered, 767 passing)
+last_updated: "2026-04-30T07:44:31.334Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 10 (Migrate-on-boot Hardening) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [███████░░░] 67%
 *Updated after each plan completion*
 | Phase 10 P01 | 6min | 2 tasks | 3 files |
 | Phase 10 P02 | 3min | 2 tasks | 3 files |
+| Phase 10 P03 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 10]: DEMO-01 NOT marked complete in REQUIREMENTS.md after Plan 10-01. The requirement is cohort-level (engine foundation in 10-01, boot-path wiring in 10-02, fixture test in 10-03). Mark complete after Plan 10-03.
 - [Phase 10]: Plan 10-02 wired runMigrations() into openDb() with DM-02-parity close-before-throw on MIGRATION_PENDING. Both stdio and --http transports inherit the typed-error surface via the single src/server.ts:154 call site. ROADMAP success criterion #4 (clean-DB no-op) proven by 4-assertion regression test. DEMO-01 cohort 2/3 done; mark requirement complete after Plan 10-03.
 - [Phase 10]: runMigrations() promoted to schema-polymorphic generic during Plan 10-02 wiring (Rule 3 fix). Plan 10-01's no-schema-only signature did not accept the typed BetterSQLite3Database<typeof schema> at the openDb() call site. Single signature change in src/store/migrate.ts; no behavioral change to the migrator-invocation path or TypedError wrap.
+- [Phase 10]: Plan 10-03 closed the DEMO-01 cohort with 7 failure-path assertions across 3 describe blocks. vi.mock injection of a synthetic drizzle-migrator failure proves the typed-error envelope (code + filename + SQL-text + remediation hint) and a local engine-constructor vi.fn() spy proves openDb() bails before any post-openDb code runs (engineConstructorSpy never invoked). DEMO-01 marked complete in REQUIREMENTS.md (cohort-level requirement). Phase 10 ready for verifier.
+- [Phase 10]: All four ROADMAP success criteria for migrate-on-boot hardening have automated coverage. #1 (atomic apply before transports) + #4 (clean-DB no-op) from Plans 10-01/10-02. #2 (typed MIGRATION_PENDING with filename + hint) + #3 (test fires before tool registration) from Plan 10-03. Architecture-purity preserved across all three plans — store-layer migration helpers stay zero-MCP, proven by file-level grep guard in src/__tests__/architecture-purity.test.ts.
 
 ### Pending Todos
 
@@ -102,8 +105,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T07:35:52.978Z
-Stopped at: Completed Plan 10-02 — runMigrations() wired into openDb(); clean-DB no-op proven; Plan 10-03 ready for stale-DB failure-path test
+Last session: 2026-04-30T07:44:31.331Z
+Stopped at: Completed Plan 10-03 — DEMO-01 cohort complete; Phase 10 ready for verification (3/3 plans done, 4/4 ROADMAP success criteria covered, 767 passing)
 Resume file: None
 
 **Planned Phase:** Phase 10 — Migrate-on-boot Hardening. Run `/gsd-plan-phase 10` to derive plans.

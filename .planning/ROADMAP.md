@@ -36,7 +36,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 
 **Milestone Goal:** Make every generated output carry a regulator-verifiable C2PA-signed manifest with AI-origin disclosure, ingredient graph, and full model fingerprinting — exposed at the agent boundary via `version.export_manifest` / `version.verify_manifest`. Close three v1.0-demo-surfaced reliability gaps along the way.
 
-- [ ] **Phase 10: Migrate-on-boot Hardening** — Server runs pending Drizzle migrations on boot or refuses to boot with a typed `MIGRATION_PENDING` error.
+- [x] **Phase 10: Migrate-on-boot Hardening** — Server runs pending Drizzle migrations on boot or refuses to boot with a typed `MIGRATION_PENDING` error. (completed 2026-04-30)
 - [ ] **Phase 11: Recovery Poller Error Detail** — Async terminal failures surface ComfyUI Cloud `node_errors` instead of collapsing to `"ComfyUI reported failed"`.
 - [ ] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge.
 - [ ] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`.
@@ -58,7 +58,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 **Plans**: 3 plans
   - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
   - [x] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
-  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
+  - [x] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 11: Recovery Poller Error Detail
 **Goal**: Make async terminal-failure provenance match submit-time fidelity. Today the recovery poller collapses every terminal failure to `"ComfyUI reported failed"`; the submit path already extracts `node_errors` via `extractFirstNodeError(...)`. Mirror the submit pattern in the recovery poller so failed-version provenance carries the actionable Cloud detail.
@@ -71,7 +71,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. When `node_errors` is absent or unparseable, the path falls back gracefully to the generic `"ComfyUI reported failed"` string with no thrown error.
 **Plans**: 3 plans
   - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
-  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [x] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
   - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 12: Reproduce Divergence Transparency
@@ -84,7 +84,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. `version.diff` (engine + tool path) optionally includes a `reproduction_divergence` field carrying the SHA-256 mismatch detail and any partner-API non-determinism warnings.
   4. A reproduce-lineage version whose output IS bit-identical to its parent shows no divergence pill and no comparison block — the UI signal is unambiguous.
 **Plans**: 3 plans
-  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
   - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
   - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 **UI hint**: yes
@@ -174,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 7. ComfyUI Endpoint Reconciliation  | v1.0 | 8/8 | Complete | 2026-04-24 |
 | 8. Documentation Attribution Backfill | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
-| 10. Migrate-on-boot Hardening       | v1.1 | 2/3 | In Progress|  |
+| 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 11. Recovery Poller Error Detail    | v1.1 | 0/TBD | Not started | - |
 | 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
