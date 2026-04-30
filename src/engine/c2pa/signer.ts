@@ -34,6 +34,7 @@ import { readFile } from 'node:fs/promises';
 import { X509Certificate } from 'node:crypto';
 import { TypedError } from '../errors.js';
 import type { ManifestDefinition } from './manifest-builder.js';
+import type { BuildManifestResult, IngredientSpec } from './manifest-builder.js';
 
 // c2pa-node native binding — loaded lazily (Concern #11).
 type C2paNodeModule = typeof import('c2pa-node');
@@ -410,5 +411,160 @@ export async function signEmbedFile(
       `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
       'Caller should degrade gracefully (skip + log) per D-CTX-9.',
     );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 15 / Plan 15-03 — ingredient-aware signers.
+// ──────────────────────────────────────────────────────────────────────────
+//
+// signer.ts is STILL the only file in src/ that imports the native binding.
+// These new entry points drive createIngredient + manifestBuilder.addIngredient
+// for each spec where assetRef.kind !== 'unavailable' BEFORE calling sign().
+// Specs with assetRef.kind === 'unavailable' are skipped here — their audit
+// trail lives in result.definition.assertions[] as a
+// vfx_familiar.unavailable_ingredient custom assertion (emitted by
+// buildManifestWithIngredients in Plan 15-02).
+
+/**
+ * Phase 15 — sign + embed manifest into a buffer asset (JPEG / PNG only),
+ * threading IngredientSpec[] through the native binding's createIngredient +
+ * manifestBuilder.addIngredient API before sign.
+ *
+ * For each spec with assetRef.kind !== 'unavailable':
+ *   1. Calls signer.c2pa.createIngredient({ asset, title }) — the native
+ *      binding computes its own labeled SHA (sha384-base64 by default) and
+ *      produces a StorableIngredient.
+ *   2. Sets storable.ingredient.relationship to the matching Relationship
+ *      enum value (ParentOf | ComponentOf).
+ *   3. Calls manifestBuilder.addIngredient(storable).
+ *
+ * Specs with assetRef.kind === 'unavailable' are SKIPPED — their audit
+ * trail lives in definition.assertions as vfx_familiar.unavailable_ingredient
+ * (emitted by buildManifestWithIngredients in Plan 15-02).
+ *
+ * Throws TypedError('C2PA_SIGNING_FAILED', ...) on signer rejection — same
+ * contract as signEmbedBuffer.
+ */
+export async function signEmbedBufferWithIngredients(
+  buffer: Buffer,
+  mimeType: string,
+  result: BuildManifestResult,
+  signer: LoadedSigner,
+): Promise<Buffer> {
+  if (!BUFFER_API_MIMETYPES.has(mimeType)) {
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `Buffer-API signing not supported for ${mimeType} — use signEmbedFileWithIngredients instead`,
+      'The native binding v0.5.x supports buffer signing only for image/jpeg + image/png. MP4/WebP/TIFF must use the file-path API.',
+    );
+  }
+  const c2paNode = await ensureC2paNode();
+  const builder = new c2paNode.ManifestBuilder(result.definition as never);
+  await addIngredientsToBuilder(c2paNode, signer, builder, result.ingredientSpecs);
+  try {
+    const signResult = await signer.c2pa.sign({
+      asset: { buffer, mimeType },
+      manifest: builder,
+      thumbnail: false,
+    });
+    return signResult.signedAsset.buffer;
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (return original bytes) per D-CTX-9.',
+    );
+  }
+}
+
+/**
+ * Phase 15 — sign + embed manifest into a file asset (MP4 / WebP / TIFF /
+ * JPEG / PNG file form), threading IngredientSpec[] through the native
+ * binding's createIngredient + manifestBuilder.addIngredient API before sign.
+ *
+ * Writes signed bytes to destPath. Same call-site contract as signEmbedFile.
+ */
+export async function signEmbedFileWithIngredients(
+  srcPath: string,
+  destPath: string,
+  mimeType: string,
+  result: BuildManifestResult,
+  signer: LoadedSigner,
+): Promise<void> {
+  const c2paNode = await ensureC2paNode();
+  const builder = new c2paNode.ManifestBuilder(result.definition as never);
+  await addIngredientsToBuilder(c2paNode, signer, builder, result.ingredientSpecs);
+  try {
+    await signer.c2pa.sign({
+      asset: { path: srcPath, mimeType },
+      manifest: builder,
+      thumbnail: false,
+      options: { outputPath: destPath },
+    });
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (skip + log) per D-CTX-9.',
+    );
+  }
+}
+
+/**
+ * Phase 15 — drive the native binding's createIngredient + addIngredient for
+ * each spec. Specs with assetRef.kind === 'unavailable' are skipped — those
+ * are recorded as vfx_familiar.unavailable_ingredient custom assertions
+ * inside result.definition.assertions (emitted by
+ * buildManifestWithIngredients).
+ *
+ * Each createIngredient call streams the asset bytes through c2pa-rs to
+ * compute its own labeled SHA. We do NOT supply a precomputed hash — the
+ * native binding API requires the asset bytes regardless.
+ *
+ * Plan 15-03 RUNTIME DEVIATION (Rule 1 — broken API surface):
+ *   The native binding v0.5.26 declares `export enum Relationship` in
+ *   dist/js-src/types.d.ts, but NO matching dist/js-src/types.js file ships
+ *   in the published tarball — `index.js` re-exports neither types.d.ts nor
+ *   the Relationship symbol. At runtime, `c2paNode.Relationship` is therefore
+ *   `undefined`. The relationship VALUES are pure strings — 'parentOf' /
+ *   'componentOf' — and the typed `Ingredient.relationship` field accepts
+ *   that same union (relationship?: Relationship). We assign the literal
+ *   strings directly and cast through the enum's string-union type to keep
+ *   the structural compatibility check honest.
+ *
+ *   The `_c2paNode` parameter remains in the signature so future versions
+ *   that DO ship the enum at runtime can be picked up by replacing the
+ *   literal-string assignment with `c2paNode.Relationship.ParentOf` etc.
+ */
+async function addIngredientsToBuilder(
+  _c2paNode: typeof import('c2pa-node'),
+  signer: LoadedSigner,
+  builder: import('c2pa-node').ManifestBuilder,
+  specs: IngredientSpec[],
+): Promise<void> {
+  for (const spec of specs) {
+    if (spec.assetRef.kind === 'unavailable') continue;
+    const asset: import('c2pa-node').Asset =
+      spec.assetRef.kind === 'buffer'
+        ? { buffer: spec.assetRef.buffer, mimeType: spec.assetRef.mimeType }
+        : { path: spec.assetRef.path, mimeType: spec.assetRef.mimeType };
+    // signer.c2pa is a `C2pa` (ReturnType<createSign> & { createIngredient }).
+    const storable = await signer.c2pa.createIngredient({
+      asset,
+      title: spec.title,
+      // No `hash` override — the native binding computes its labeled SHA
+      // from the asset bytes. The manifest_signed event still records OUR
+      // bytewise sha256 of the signed output (Plan 15-03 Engine.signOutput);
+      // per-ingredient labeled hashes belong to the native binding's domain.
+    });
+    // Literal string values per the Relationship enum declaration in
+    // dist/js-src/types.d.ts (no runtime export — see deviation note above).
+    const relValue = spec.relationship === 'parentOf' ? 'parentOf' : 'componentOf';
+    storable.ingredient.relationship =
+      relValue as import('c2pa-node').types.Relationship;
+    builder.addIngredient(storable);
   }
 }

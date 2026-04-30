@@ -38,8 +38,18 @@ export {
   signEmbedBuffer,
   signEmbedFile,
   isC2paNodeAvailable,
+  // Phase 15 / Plan 15-03 — ingredient-aware entry points. Drive the native
+  // binding's createIngredient + manifestBuilder.addIngredient for each spec
+  // before sign. Architecture-purity preserved: signer.ts is STILL the only
+  // file in src/ that imports the native binding.
+  signEmbedBufferWithIngredients,
+  signEmbedFileWithIngredients,
   type LoadedSigner,
 } from './signer.js';
+
+// Phase 15 / Plan 15-03 — re-export buildManifestWithIngredients so engine
+// callers (pipeline.ts) only need the c2pa barrel for the full flow.
+export { buildManifestWithIngredients } from './manifest-builder.js';
 
 export { BUFFER_SIGNING_MAX_BYTES } from './constants.js';
 
