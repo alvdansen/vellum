@@ -57,7 +57,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. Running the server against a clean (already-current) DB is a no-op on the migration path — no spurious migration apply, no lock contention with WAL.
 **Plans**: 3 plans
   - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
-  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [x] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
   - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 11: Recovery Poller Error Detail
@@ -70,7 +70,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. Existing failed-version dashboard cards render the new actionable error string verbatim — no field renaming, no UI rework.
   4. When `node_errors` is absent or unparseable, the path falls back gracefully to the generic `"ComfyUI reported failed"` string with no thrown error.
 **Plans**: 3 plans
-  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [x] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
   - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
   - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
@@ -174,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 7. ComfyUI Endpoint Reconciliation  | v1.0 | 8/8 | Complete | 2026-04-24 |
 | 8. Documentation Attribution Backfill | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
-| 10. Migrate-on-boot Hardening       | v1.1 | 1/3 | In Progress|  |
+| 10. Migrate-on-boot Hardening       | v1.1 | 2/3 | In Progress|  |
 | 11. Recovery Poller Error Detail    | v1.1 | 0/TBD | Not started | - |
 | 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
