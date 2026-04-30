@@ -215,7 +215,13 @@ async function main(): Promise<void> {
     );
   }
 
-  const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, 'outputs', {
+  // Phase 14 Plan 14-05 — outputs root is configurable via
+  // VFX_FAMILIAR_OUTPUTS_DIR for ops + multi-tenant deployments. Default
+  // 'outputs' relative to cwd (D-WEBUI-26 stable download root pattern).
+  // Tests rely on this to redirect outputs to a temp dir. Mirrors the
+  // VFX_FAMILIAR_MODELS_DIR convention.
+  const outputsDir = process.env.VFX_FAMILIAR_OUTPUTS_DIR ?? 'outputs';
+  const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
     // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
     // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)

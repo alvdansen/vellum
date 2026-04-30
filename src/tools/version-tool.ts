@@ -82,12 +82,36 @@ const VersionInputSchema = z.discriminatedUnion('action', [
  * so the `...result.entity` spread carries `tags: string[]` and
  * `metadata: Array<{key, value}>` through automatically. Body is unchanged
  * from Phase 3 — only the type annotation widens to VersionWithAssets.
+ *
+ * Phase 14 Plan 14-05 — additive non-breaking c2pa_status field surfacing
+ * the latest manifest_signed event for the version's first output (the
+ * dashboard-stable download path). Three states (mirroring the
+ * X-C2PA-Signing-Status HTTP header):
+ *   - 'signed'   — manifest_signed event has signed=true
+ *   - 'unsigned' — manifest_signed event has signed=false (carries
+ *                  c2pa_status_reason)
+ *   - 'unknown'  — no manifest_signed event recorded yet (legacy version,
+ *                  pre-Phase-14, or download still in progress)
+ *
+ * The field is computed by reading outputs[0].filename (the first stored
+ * filename) + calling engine.getC2paStatusForVersion(versionId, filename).
+ * If outputs are empty or filename is unparseable, c2pa_status is 'unknown'.
+ *
+ * No new MCP top-level tool — this is purely a non-breaking envelope
+ * extension on the version.get response.
  */
-function shapeVersionEntity(result: {
-  entity: VersionWithAssets;
-  breadcrumb: Breadcrumb;
-}): {
-  entity: VersionWithAssets & { version_label: string };
+function shapeVersionEntity(
+  result: {
+    entity: VersionWithAssets;
+    breadcrumb: Breadcrumb;
+  },
+  c2paStatus: { c2pa_status: 'signed' | 'unsigned' | 'unknown'; c2pa_status_reason: string | null },
+): {
+  entity: VersionWithAssets & {
+    version_label: string;
+    c2pa_status: 'signed' | 'unsigned' | 'unknown';
+    c2pa_status_reason: string | null;
+  };
   breadcrumb: Breadcrumb['entries'];
   breadcrumb_text: string;
 } {
@@ -95,9 +119,40 @@ function shapeVersionEntity(result: {
     entity: {
       ...result.entity,
       version_label: versionLabel(result.entity.version_number),
+      c2pa_status: c2paStatus.c2pa_status,
+      c2pa_status_reason: c2paStatus.c2pa_status_reason,
     },
     breadcrumb: result.breadcrumb.entries,
     breadcrumb_text: result.breadcrumb.text,
+  };
+}
+
+/**
+ * Phase 14 Plan 14-05 — resolve c2pa_status for the version's first output.
+ * Returns 'unknown' when outputs_json is empty, malformed, or no
+ * manifest_signed event exists for the (versionId, filename) pair.
+ */
+function resolveC2paStatus(
+  engine: Engine,
+  versionId: string,
+  outputsJson: string | null,
+): { c2pa_status: 'signed' | 'unsigned' | 'unknown'; c2pa_status_reason: string | null } {
+  if (!outputsJson) return { c2pa_status: 'unknown', c2pa_status_reason: null };
+  let parsed: Array<{ filename?: string }> = [];
+  try {
+    const maybe = JSON.parse(outputsJson);
+    parsed = Array.isArray(maybe) ? (maybe as Array<{ filename?: string }>) : [];
+  } catch {
+    return { c2pa_status: 'unknown', c2pa_status_reason: null };
+  }
+  const filename = parsed[0]?.filename;
+  if (!filename) return { c2pa_status: 'unknown', c2pa_status_reason: null };
+  const status = engine.getC2paStatusForVersion(versionId, filename);
+  if (status === null) return { c2pa_status: 'unknown', c2pa_status_reason: null };
+  if (status.signed) return { c2pa_status: 'signed', c2pa_status_reason: null };
+  return {
+    c2pa_status: 'unsigned',
+    c2pa_status_reason: status.status_reason || 'unknown',
   };
 }
 
@@ -199,8 +254,15 @@ export function registerVersion(server: McpServer, engine: Engine) {
       try {
         const input = VersionInputSchema.parse(rawInput);
         switch (input.action) {
-          case 'get':
-            return toolOk(shapeVersionEntity(engine.getVersion(input.version_id)));
+          case 'get': {
+            const versionResult = engine.getVersion(input.version_id);
+            const c2paStatus = resolveC2paStatus(
+              engine,
+              versionResult.entity.id,
+              versionResult.entity.outputs_json,
+            );
+            return toolOk(shapeVersionEntity(versionResult, c2paStatus));
+          }
           case 'list':
             return toolOk(
               shapeList(
