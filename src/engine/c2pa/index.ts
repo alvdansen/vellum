@@ -27,6 +27,10 @@ export {
 
 export {
   routeFormat,
+  // Phase 15 WR-02 — supported-MIME helper used by Engine.signOutput's
+  // ingredient asset-ref resolution to avoid passing 'application/octet-stream'
+  // (which c2pa-rs rejects) for unclassifiable extensions.
+  getMimeForExtensionOrNull,
   type FormatRoute,
   EMBED_BUFFER_FORMATS,
   EMBED_FILE_FORMATS,

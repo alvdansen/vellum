@@ -493,6 +493,50 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     expect(/from\s+['"]c2pa-node/.test(extractor)).toBe(false);
     expect(/from\s+['"]c2pa-node/.test(hasher)).toBe(false);
   });
+
+  it('Test E11 (WR-02 regression): component with unrecognized extension → vfx_familiar.unavailable_ingredient (NOT crash via octet-stream)', async () => {
+    // Phase 15 WR-02 regression: pre-fix, when a component image had an
+    // extension that routeFormat could not classify, the asset ref was
+    // built with mimeType='application/octet-stream'. c2pa-rs dispatches
+    // asset handlers by MIME type and would reject octet-stream inside
+    // addIngredientsToBuilder, propagating as C2PA_SIGNING_FAILED /
+    // status_reason='sign_call_failed' — defeating the defensive intent.
+    //
+    // Post-fix: getMimeForExtensionOrNull returns null for unclassifiable
+    // extensions; pipeline routes the ingredient to unavailable with reason
+    // 'mime_type_unsupported'. The manifest signs cleanly with the
+    // dangling-reference recorded via vfx_familiar.unavailable_ingredient.
+    const promptBlob = {
+      '5': { class_type: 'LoadImage', inputs: { image: 'mystery.xyz' } },
+    };
+    const versionId = seedCompletedVersion(ctx, { promptBlob, seed: null });
+    // Pre-write the file with the unrecognized extension so ENOENT is NOT
+    // the failure mode — the MIME check fires BEFORE the stat. This proves
+    // the MIME-type routing is the gate, not file presence.
+    const verDir = pth.join(ctx.outputsDir, versionId);
+    mkdirSync(verDir, { recursive: true });
+    writeFileSync(pth.join(verDir, 'mystery.xyz'), Buffer.from([0xde, 0xad, 0xbe, 0xef]));
+    const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
+    // The sign MUST succeed (no crash). Pre-fix this would have failed
+    // with status_reason='sign_call_failed'.
+    expect(result.signed).not.toBeNull();
+    const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
+    expect(payload).not.toBeNull();
+    expect(payload!.signed).toBe(true);
+    // The unsupported component lands in unavailable_count, NOT in
+    // manifest.ingredients[].
+    const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
+    expect(manifest!.ingredients.find((i) => i.relationship === 'componentOf')).toBeUndefined();
+    const unavail = manifest!.assertions.find(
+      (a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'),
+    );
+    expect(unavail).toBeDefined();
+    const unavailData = unavail!.data as { reason?: string; relationship?: string };
+    expect(unavailData.reason).toBe('mime_type_unsupported');
+    expect(unavailData.relationship).toBe('componentOf');
+    expect(payload!.ingredients_summary?.component_count).toBe(1);
+    expect(payload!.ingredients_summary?.unavailable_count).toBe(1);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

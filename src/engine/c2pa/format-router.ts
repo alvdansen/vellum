@@ -100,3 +100,33 @@ export function routeFormat(filename: string): FormatRoute {
   }
   return { mode: 'unsupported', reason: 'unknown-extension' };
 }
+
+/**
+ * Phase 15 WR-02 — supported-MIME helper for the ingredient asset-ref path.
+ *
+ * Returns the c2pa-rs-supported MIME type for the filename's extension, or
+ * `null` if the extension is unknown OR routes to a format that c2pa-rs has
+ * no native handler for (EXR / PSD). Pipeline's parent/component asset-ref
+ * resolution checks for null and routes the ingredient to
+ * `vfx_familiar.unavailable_ingredient` with reason `mime_type_unsupported`,
+ * rather than falling through to `application/octet-stream` which c2pa-rs
+ * would reject inside `addIngredientsToBuilder`.
+ *
+ * Why null for native-handler-missing (EXR/PSD): c2pa-rs has no asset
+ * handler for these formats, so passing their MIME type to createIngredient
+ * would still fail. Treating them as unavailable matches the
+ * sign-time signal Plan 14-03 already uses for the SIGNING asset
+ * (status_reason='unsupported_format' on the version itself).
+ *
+ * Pure function — no I/O. Mirrors routeFormat's case-insensitive lookup.
+ */
+export function getMimeForExtensionOrNull(filename: string): string | null {
+  const dot = filename.lastIndexOf('.');
+  if (dot < 0) return null;
+  const ext = filename.slice(dot).toLowerCase();
+  if (ext in BUFFER_TABLE) return BUFFER_TABLE[ext]!;
+  if (ext in FILE_TABLE) return FILE_TABLE[ext]!;
+  // EXR/PSD route to NATIVE_HANDLER_MISSING_TABLE — c2pa-rs cannot ingest
+  // them as ingredient bytes either, so treat as unsupported here.
+  return null;
+}

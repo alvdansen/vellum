@@ -146,7 +146,18 @@ export interface VendorUnavailableIngredientAssertion {
   data: {
     relationship: 'parentOf' | 'componentOf';
     title: string;
-    reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending';
+    /**
+     * Phase 15 reason codes:
+     *  - 'file_not_found'           — ENOENT (no file at the resolved path).
+     *  - 'file_unreadable'          — non-ENOENT fs error (perm / I/O).
+     *  - 'parent_manifest_pending'  — parent has no manifest_signed event yet.
+     *  - 'mime_type_unsupported'    — file exists but routeFormat returns no
+     *    mimeType (extension absent from format-router's tables). Phase 15
+     *    WR-02 fix — pre-fix this fell through to 'application/octet-stream'
+     *    which c2pa-rs rejects in createIngredient. Now we route it to
+     *    unavailable so the manifest still signs cleanly with a clear audit.
+     */
+    reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' | 'mime_type_unsupported';
     metadata: Record<string, string | number | null>;
   };
 }
@@ -197,7 +208,16 @@ export interface BuildManifestWithIngredientsOptions extends BuildManifestOption
 export type IngredientAssetRef =
   | { kind: 'buffer'; buffer: Buffer; mimeType: string }
   | { kind: 'file'; path: string; mimeType: string }
-  | { kind: 'unavailable'; reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' };
+  | {
+      kind: 'unavailable';
+      // Mirror of VendorUnavailableIngredientAssertion.data.reason — keep in
+      // sync. Phase 15 WR-02 added 'mime_type_unsupported'.
+      reason:
+        | 'file_not_found'
+        | 'file_unreadable'
+        | 'parent_manifest_pending'
+        | 'mime_type_unsupported';
+    };
 
 /**
  * Phase 15 — recipe for one ingredient the impure signer should drive through
@@ -378,7 +398,11 @@ export function buildManifestWithIngredients(
       });
     } else {
       // assetRef missing OR unavailable -> record the dangling reference.
-      const reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' =
+      const reason:
+        | 'file_not_found'
+        | 'file_unreadable'
+        | 'parent_manifest_pending'
+        | 'mime_type_unsupported' =
         assetRef?.kind === 'unavailable'
           ? assetRef.reason
           : (p.parent_unavailable ?? 'parent_manifest_pending');
@@ -423,7 +447,11 @@ export function buildManifestWithIngredients(
         auditMetadata,
       });
     } else {
-      const reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' =
+      const reason:
+        | 'file_not_found'
+        | 'file_unreadable'
+        | 'parent_manifest_pending'
+        | 'mime_type_unsupported' =
         assetRef?.kind === 'unavailable' ? assetRef.reason : 'file_not_found';
       ingredientSpecs.push({
         relationship: 'componentOf',

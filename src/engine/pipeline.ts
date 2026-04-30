@@ -29,6 +29,8 @@ import {
   BUFFER_SIGNING_MAX_BYTES,
   loadSigner,
   routeFormat,
+  // Phase 15 WR-02 — supported-MIME helper for ingredient asset refs.
+  getMimeForExtensionOrNull,
   signEmbedBuffer,
   signEmbedFile,
   // Phase 15 / Plan 15-03 — ingredient-aware signers.
@@ -1418,18 +1420,32 @@ export class Engine {
         if (parentFilename === null) {
           ingredientAssetRefs.set('parent', { kind: 'unavailable', reason: 'file_not_found' });
         } else {
-          const parentRoute = routeFormat(parentFilename);
-          const parentMime = parentRoute.mimeType ?? 'application/octet-stream';
-          const parentPath = nodepath.join(this.outputRoot, parentOf.parent_version_id, parentFilename);
-          try {
-            await stat(parentPath);
-            ingredientAssetRefs.set('parent', { kind: 'file', path: parentPath, mimeType: parentMime });
-          } catch (err) {
-            const code = (err as NodeJS.ErrnoException).code;
+          // Phase 15 WR-02 — when routeFormat cannot classify the parent's
+          // extension, do NOT fall back to 'application/octet-stream'.
+          // c2pa-rs dispatches asset handlers by MIME type and rejects
+          // octet-stream inside addIngredientsToBuilder, which would propagate
+          // as C2PA_SIGNING_FAILED / status_reason='sign_call_failed'. Routing
+          // to unavailable lets the manifest still sign cleanly with a clear
+          // audit (vfx_familiar.unavailable_ingredient + reason
+          // 'mime_type_unsupported').
+          const parentMime = getMimeForExtensionOrNull(parentFilename);
+          if (parentMime === null) {
             ingredientAssetRefs.set('parent', {
               kind: 'unavailable',
-              reason: code === 'ENOENT' ? 'file_not_found' : 'file_unreadable',
+              reason: 'mime_type_unsupported',
             });
+          } else {
+            const parentPath = nodepath.join(this.outputRoot, parentOf.parent_version_id, parentFilename);
+            try {
+              await stat(parentPath);
+              ingredientAssetRefs.set('parent', { kind: 'file', path: parentPath, mimeType: parentMime });
+            } catch (err) {
+              const code = (err as NodeJS.ErrnoException).code;
+              ingredientAssetRefs.set('parent', {
+                kind: 'unavailable',
+                reason: code === 'ENOENT' ? 'file_not_found' : 'file_unreadable',
+              });
+            }
           }
         }
       }
@@ -1452,11 +1468,20 @@ export class Engine {
         continue;
       }
       const safe = nodepath.basename(fname);
+      // Phase 15 WR-02 — same defence-in-depth as parent path: do NOT fall
+      // through to 'application/octet-stream' for unclassifiable extensions
+      // (c2pa-rs would reject inside addIngredientsToBuilder).
+      const compMime = getMimeForExtensionOrNull(safe);
+      if (compMime === null) {
+        ingredientAssetRefs.set(c.node_id, {
+          kind: 'unavailable',
+          reason: 'mime_type_unsupported',
+        });
+        continue;
+      }
       const fullPath = nodepath.join(this.outputRoot, versionId, safe);
       try {
         await stat(fullPath);
-        const compRoute = routeFormat(safe);
-        const compMime = compRoute.mimeType ?? 'application/octet-stream';
         ingredientAssetRefs.set(c.node_id, { kind: 'file', path: fullPath, mimeType: compMime });
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;

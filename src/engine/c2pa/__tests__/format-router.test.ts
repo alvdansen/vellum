@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   routeFormat,
+  getMimeForExtensionOrNull,
   EMBED_BUFFER_FORMATS,
   EMBED_FILE_FORMATS,
   UNSUPPORTED_NATIVE_FORMATS,
@@ -157,5 +158,69 @@ describe('routeFormat — exported tables + discriminated-union exhaustiveness',
     expect(
       exhaustive({ mode: 'unsupported', reason: 'unknown-extension' }),
     ).toBe('unsupported');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 15 WR-02 — getMimeForExtensionOrNull (ingredient asset-ref helper).
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('getMimeForExtensionOrNull — supported MIMEs (PNG/JPEG/MP4/WebP/TIFF)', () => {
+  it('Test 15: PNG -> image/png', () => {
+    expect(getMimeForExtensionOrNull('output.png')).toBe('image/png');
+  });
+
+  it('Test 16: JPG -> image/jpeg', () => {
+    expect(getMimeForExtensionOrNull('photo.jpg')).toBe('image/jpeg');
+  });
+
+  it('Test 17: JPEG -> image/jpeg (alias)', () => {
+    expect(getMimeForExtensionOrNull('photo.jpeg')).toBe('image/jpeg');
+  });
+
+  it('Test 18: MP4 -> video/mp4', () => {
+    expect(getMimeForExtensionOrNull('video.mp4')).toBe('video/mp4');
+  });
+
+  it('Test 19: WebP -> image/webp', () => {
+    expect(getMimeForExtensionOrNull('image.webp')).toBe('image/webp');
+  });
+
+  it('Test 20: TIFF -> image/tiff', () => {
+    expect(getMimeForExtensionOrNull('archive.tiff')).toBe('image/tiff');
+  });
+
+  it('Test 21: case-insensitive extension matching (mirror of routeFormat)', () => {
+    expect(getMimeForExtensionOrNull('OUTPUT.PNG')).toBe('image/png');
+    expect(getMimeForExtensionOrNull('Photo.JPG')).toBe('image/jpeg');
+  });
+});
+
+describe('getMimeForExtensionOrNull — null returns (Phase 15 WR-02 contract)', () => {
+  it('Test 22: unknown extension -> null (NOT octet-stream)', () => {
+    // Phase 15 WR-02 — pre-fix this fell through to 'application/octet-stream'
+    // which c2pa-rs rejects in createIngredient. Now returns null so the
+    // caller routes to vfx_familiar.unavailable_ingredient with reason
+    // 'mime_type_unsupported'.
+    expect(getMimeForExtensionOrNull('mystery.xyz')).toBeNull();
+  });
+
+  it('Test 23: no extension -> null', () => {
+    expect(getMimeForExtensionOrNull('no_extension')).toBeNull();
+  });
+
+  it('Test 24: empty string -> null', () => {
+    expect(getMimeForExtensionOrNull('')).toBeNull();
+  });
+
+  it('Test 25: EXR (native-handler-missing) -> null — c2pa-rs cannot ingest EXR ingredients either', () => {
+    // EXR has a MIME (image/x-exr) but c2pa-rs has no handler. Treat as
+    // unsupported here so the ingredient lands as unavailable rather than
+    // failing inside createIngredient.
+    expect(getMimeForExtensionOrNull('frame.exr')).toBeNull();
+  });
+
+  it('Test 26: PSD (native-handler-missing) -> null — c2pa-rs cannot ingest PSD ingredients either', () => {
+    expect(getMimeForExtensionOrNull('layered.psd')).toBeNull();
   });
 });
