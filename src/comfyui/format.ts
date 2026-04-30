@@ -121,3 +121,37 @@ export function extractFirstNodeError(nodeErrors: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * Flatten any ComfyUI Cloud error payload to a single human-readable string.
+ * Single source of truth for the three-branch flatten chain (DEMO-02).
+ *
+ * Branches (in order):
+ *   1. If `error` is an object with a populated `.node_errors` payload that
+ *      extractFirstNodeError can flatten, return that flattened string.
+ *   2. Else if `error` is a non-empty string, return it verbatim.
+ *   3. Else return the literal "ComfyUI reported failed" — preserves the IT-10
+ *      cancelled-status contract and the v1.0 dashboard fallback rendering.
+ *
+ * Always returns a non-empty string. Never throws. Never returns null.
+ *
+ * Used by:
+ *   - src/comfyui/client.ts (submit-time 4xx branch)
+ *   - src/engine/generation.ts (status / recovery-poller failed branch)
+ *
+ * Closes the duplicated extraction shape between those two call sites
+ * (DEMO-02; ROADMAP Phase 11 success criterion #2).
+ */
+export function flattenComfyError(error: unknown): string {
+  // Branch 1: object with .node_errors → try extractFirstNodeError.
+  if (error !== null && typeof error === 'object' && !Array.isArray(error)) {
+    const nodeErrors = (error as { node_errors?: unknown }).node_errors;
+    const flat = extractFirstNodeError(nodeErrors);
+    if (flat !== null) return flat;
+    // Fall through if .node_errors is missing or unparseable.
+  }
+  // Branch 2: non-empty string verbatim.
+  if (typeof error === 'string' && error.length > 0) return error;
+  // Branch 3: fallback. IT-10 contract — this exact literal must remain.
+  return 'ComfyUI reported failed';
+}
