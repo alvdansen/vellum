@@ -468,6 +468,7 @@ describe('C2PA key-leak negative — T-14-12 payload schema regression guard (Te
     // This is a regression guard — if a future change adds a field for raw
     // key material, this test fails.
     const expectedKeys = new Set([
+      // Phase 14 fields.
       'filename',
       'format',
       'signed',
@@ -475,6 +476,19 @@ describe('C2PA key-leak negative — T-14-12 payload schema regression guard (Te
       'signed_at',
       'status_reason',
       'algorithm',
+      // Phase 15 (D-CTX-5) additive fields — TS-optional, do NOT carry key
+      // material (manifest_sha256 is the bytewise SHA-256 of the SIGNED OUTPUT
+      // bytes, used for parentOf lookup; ingredients_summary is a counts-only
+      // audit summary — no asset bytes, no signing material).
+      'manifest_sha256',
+      'ingredients_summary',
+      // Nested ingredients_summary field names — picked up by the regex that
+      // walks the body. None carry key material; all are integer counts or
+      // a boolean flag.
+      'parent_count',
+      'component_count',
+      'input_assertion',
+      'unavailable_count',
     ]);
     // Read the type definition from src/types/provenance.ts.
     const typeFile = await readFile(resolve('src/types/provenance.ts'), 'utf8');

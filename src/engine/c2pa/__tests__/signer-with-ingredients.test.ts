@@ -32,9 +32,12 @@ const TINY_PNG = Buffer.from(
 );
 
 // Tiny 2x2 alternate PNG fixture — distinct bytes from TINY_PNG so c2pa-rs
-// does not deduplicate ingredients sharing the same labeled hash.
+// does not deduplicate ingredients sharing the same labeled hash. Generated
+// via Node zlib (proper 2x2 RGBA + valid IDAT chunk + IEND) so it parses
+// cleanly through c2pa-rs's PNG handler in BOTH the createIngredient
+// (file-asset) and signing-asset roles.
 const ALT_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR42mP8//8/AyMDAxMDFAAAJgAB/kCxN0wAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGP4z8DwHwyBNBgAAEnICff5q7YNAAAAAElFTkSuQmCC',
   'base64',
 );
 

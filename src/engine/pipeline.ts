@@ -1,4 +1,6 @@
-import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import * as nodepath from 'node:path';
 import { nanoid } from 'nanoid';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
@@ -22,14 +24,25 @@ import { createEngineEmitter, type EngineEmitter } from './events.js';
 import { downloadOutput } from './output-downloader.js';
 import {
   buildManifestDefinition,
+  // Phase 15 / Plan 15-03 — ingredients-aware manifest builder.
+  buildManifestWithIngredients,
   BUFFER_SIGNING_MAX_BYTES,
   loadSigner,
   routeFormat,
   signEmbedBuffer,
   signEmbedFile,
+  // Phase 15 / Plan 15-03 — ingredient-aware signers.
+  signEmbedBufferWithIngredients,
+  signEmbedFileWithIngredients,
   type LoadedSigner,
   type ManifestDefinition,
   type PrimaryModel,
+  type BuildManifestResult,
+  type IngredientAssetRef,
+  // Phase 15 / Plan 15-01 — pure ingredient extractors + hasher.
+  extractParentIngredient,
+  extractComponentIngredients,
+  extractInputAssertion,
 } from './c2pa/index.js';
 import {
   SHOT_NAME_REGEX,
@@ -120,6 +133,59 @@ function derivePrimaryModel(models: ModelRef[] | null): PrimaryModel | null {
   };
 }
 
+/**
+ * Phase 15 — stream-hash a file's SHA-256 without loading bytes into memory.
+ * Used by Engine._signOutputInner's embed-file branch when the signed bytes
+ * land on disk (signedToPath) rather than in memory (signed Buffer).
+ * Returns null on read failure — caller persists null in manifest_signed.
+ */
+async function streamSha256(filePath: string): Promise<string | null> {
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const hash = createHash('sha256');
+      const stream = createReadStream(filePath);
+      stream.on('error', reject);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Phase 15 — count ingredients_summary fields from a BuildManifestResult.
+ * unavailable_count = number of vfx_familiar.unavailable_ingredient
+ * assertions emitted (parent + components combined). Lockstep with
+ * buildManifestWithIngredients (Plan 15-02): every spec lands in
+ * ingredientSpecs[]; specs with assetRef.kind='unavailable' also have a
+ * matching vfx_familiar.unavailable_ingredient assertion in
+ * definition.assertions[] (the audit channel).
+ */
+function summariseIngredientsFromResult(
+  result: BuildManifestResult,
+): {
+  parent_count: 0 | 1;
+  component_count: number;
+  input_assertion: boolean;
+  unavailable_count: number;
+} {
+  let parent_count: 0 | 1 = 0;
+  let component_count = 0;
+  let unavailable_count = 0;
+  for (const spec of result.ingredientSpecs) {
+    if (spec.relationship === 'parentOf') parent_count = 1;
+    else component_count += 1;
+    if (spec.assetRef.kind === 'unavailable') unavailable_count += 1;
+  }
+  return {
+    parent_count,
+    component_count,
+    input_assertion: true,
+    unavailable_count,
+  };
+}
+
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
   items: WithBreadcrumb<T>[];
@@ -184,6 +250,23 @@ export class Engine {
     code: 'cert_load_failed' | 'native_binding_unavailable';
     message: string;
   } | null = null;
+  /**
+   * Phase 15 (B4 mitigation) — per-version sign mutex. Concurrent signOutput
+   * calls on the SAME versionId coalesce to a single in-flight Promise; the
+   * second caller awaits the first's result. Different versions remain
+   * parallel — the map is keyed on versionId.
+   *
+   * Cleared on settle (try/finally). The mutex is in-process only — multi-
+   * process coordination is out-of-scope for v1.1 (single-server design).
+   *
+   * Threat model: T-15-06 — bounded growth. Each entry lives until the
+   * promise settles. Recovery-poller storms cannot leak entries; settle
+   * cleanup is unconditional.
+   */
+  private readonly signMutex = new Map<
+    string,
+    Promise<{ signed: Buffer | null; signedToPath: string | null; alreadySigned?: boolean }>
+  >();
 
   constructor(
     db: BaseDb,
@@ -892,6 +975,29 @@ export class Engine {
     signedToPath: string | null;
     alreadySigned?: boolean;
   }> {
+    // Phase 15 / B4 — coalesce concurrent same-version sign calls. Lock at
+    // the versionId level (not (versionId, filename)) — concurrent signs for
+    // the same version across different filenames are pathological and
+    // we'd rather serialise them than race.
+    const inflight = this.signMutex.get(versionId);
+    if (inflight !== undefined) {
+      return await inflight;
+    }
+    const promise = this._signOutputInner(versionId, filename, input);
+    this.signMutex.set(versionId, promise);
+    try {
+      return await promise;
+    } finally {
+      // Clear the mutex entry on settle — both success and failure paths.
+      this.signMutex.delete(versionId);
+    }
+  }
+
+  private async _signOutputInner(
+    versionId: string,
+    filename: string,
+    input: { bytes: Buffer } | { filePath: string },
+  ): Promise<{ signed: Buffer | null; signedToPath: string | null; alreadySigned?: boolean }> {
     const signedAt = new Date().toISOString();
 
     // Concern #7 — idempotency on re-sign. Read the latest manifest_signed
@@ -951,20 +1057,50 @@ export class Engine {
     }
     const signer = signerOrCode.signer;
 
-    // Path 4: build manifest definition. Primary model derived from the
-    // latest fingerprints (Phase 13). NULL fingerprints -> "model=unknown;
-    // hash_unavailable=no_models_recorded" via describePrimaryModel.
+    // Path 4: build manifest definition + ingredients (Phase 15). Primary
+    // model derived from the latest fingerprints (Phase 13). NULL
+    // fingerprints -> "model=unknown; hash_unavailable=no_models_recorded".
     const fingerprints = this.provenanceRepo.getLatestFingerprints(versionId);
     const primaryModel = derivePrimaryModel(fingerprints);
-    const manifestDef = buildManifestDefinition({
-      versionId,
-      mimeType: route.mimeType,
-      primaryModel,
-      comfyuiVersion: null,
-      appVersion: APP_VERSION,
-    });
 
-    // Path 5: route to embed-buffer or embed-file.
+    // Resolve ingredients (parent + components + inputTo + asset refs).
+    const built = await this.buildManifestForVersion(
+      versionId,
+      filename,
+      route.mimeType,
+      primaryModel,
+    );
+    let manifestForSigning: BuildManifestResult;
+    let ingredientsSummary: {
+      parent_count: 0 | 1;
+      component_count: number;
+      input_assertion: boolean;
+      unavailable_count: number;
+    };
+    if (built !== null) {
+      manifestForSigning = built;
+      ingredientsSummary = summariseIngredientsFromResult(built);
+    } else {
+      // No completed event — Phase 14 single-c2pa.created shape, no ingredients.
+      manifestForSigning = {
+        definition: buildManifestDefinition({
+          versionId,
+          mimeType: route.mimeType,
+          primaryModel,
+          comfyuiVersion: null,
+          appVersion: APP_VERSION,
+        }),
+        ingredientSpecs: [],
+      };
+      ingredientsSummary = {
+        parent_count: 0,
+        component_count: 0,
+        input_assertion: false,
+        unavailable_count: 0,
+      };
+    }
+
+    // Path 5: route to embed-buffer or embed-file with ingredient-aware signers.
     try {
       if (route.mode === 'embed-buffer') {
         // Concern #6 — pre-stat / size-cap. If caller passed bytes, check
@@ -982,7 +1118,13 @@ export class Engine {
           });
           return { signed: null, signedToPath: null };
         }
-        const signedBytes = await signEmbedBuffer(bytes, route.mimeType, manifestDef, signer);
+        const signedBytes = await signEmbedBufferWithIngredients(
+          bytes,
+          route.mimeType,
+          manifestForSigning,
+          signer,
+        );
+        const manifestSha256 = createHash('sha256').update(signedBytes).digest('hex');
         this.provenanceRepo.appendManifestSignedEvent(versionId, {
           filename,
           format: route.mimeType,
@@ -991,24 +1133,32 @@ export class Engine {
           signed_at: signedAt,
           status_reason: '',
           algorithm: signer.algorithm,
+          manifest_sha256: manifestSha256,
+          ingredients_summary: ingredientsSummary,
         });
         return { signed: signedBytes, signedToPath: null };
       }
       // mode === 'embed-file' — MP4 / WebP / TIFF. Drive c2pa-node's file API
-      // via signViaTempFiles which manages the temp dir + 0700/0600 modes
-      // + nanoid-suffixed unique partial paths (Concerns #5 and #9). The
-      // filename's extension MUST be preserved on the temp paths so c2pa-rs
-      // selects the correct asset handler (BMFF for .mp4, RIFF for .webp,
-      // TIFF for .tif/.tiff). Without the extension, c2pa-rs silently emits
-      // unsigned output (a Rule 1 silent-failure bug discovered Plan 14-05).
-      const result = await this.signViaTempFiles(
+      // via signViaTempFilesWithIngredients which manages the temp dir +
+      // 0700/0600 modes + nanoid-suffixed unique partial paths (Concerns #5
+      // and #9). The filename's extension MUST be preserved on the temp paths
+      // so c2pa-rs selects the correct asset handler (BMFF for .mp4, RIFF for
+      // .webp, TIFF for .tif/.tiff). Without the extension, c2pa-rs silently
+      // emits unsigned output (a Rule 1 silent-failure bug discovered Plan 14-05).
+      const result = await this.signViaTempFilesWithIngredients(
         versionId,
         input,
         filename,
         route.mimeType,
-        manifestDef,
+        manifestForSigning,
         signer,
       );
+      let manifestSha256: string | null = null;
+      if (result.signed) {
+        manifestSha256 = createHash('sha256').update(result.signed).digest('hex');
+      } else if (result.signedToPath) {
+        manifestSha256 = await streamSha256(result.signedToPath);
+      }
       this.provenanceRepo.appendManifestSignedEvent(versionId, {
         filename,
         format: route.mimeType,
@@ -1017,6 +1167,8 @@ export class Engine {
         signed_at: signedAt,
         status_reason: '',
         algorithm: signer.algorithm,
+        manifest_sha256: manifestSha256,
+        ingredients_summary: ingredientsSummary,
       });
       return result;
     } catch (err) {
@@ -1170,6 +1322,209 @@ export class Engine {
   ): Promise<Buffer> {
     if ('bytes' in input) return input.bytes;
     return await readFile(input.filePath);
+  }
+
+  /**
+   * Phase 15 (D-CTX-3 / D-CTX-4 / D-CTX-6) — derive ingredients + asset
+   * refs for a version, then call buildManifestWithIngredients.
+   *
+   * Returns null when there is no completed event yet (no prompt blob to
+   * walk) — the caller falls back to the Phase 14 single-c2pa.created shape.
+   *
+   * Asset-ref resolution policy:
+   *   - parentOf:    look up parent's outputs_json, take parsed[0]?.filename
+   *                  (B3 — StoredOutput shape verified), check
+   *                  outputRoot/<parentId>/<parentFilename> existence + mime
+   *                  via routeFormat. If reachable, assetRef={kind:'file',
+   *                  path, mimeType}. If parent's manifest_signed has
+   *                  signed=false OR no manifest_signed event exists,
+   *                  assetRef={kind:'unavailable', reason:'parent_manifest_pending'}.
+   *                  If file missing, assetRef={kind:'unavailable',
+   *                  reason:'file_not_found'}.
+   *   - componentOf: walk extractComponentIngredients results; for each,
+   *                  check outputRoot/<versionId>/<input_filename> via
+   *                  stat(). Map present → assetRef={kind:'file', path,
+   *                  mimeType derived via filename ext}; map missing →
+   *                  assetRef={kind:'unavailable', reason}.
+   *
+   * Hot-path safety: bounded by the prompt blob's IMAGE_INPUT_CLASS_TYPES
+   * count (typically <= 5). Each component lookup is one stat() call.
+   */
+  private async buildManifestForVersion(
+    versionId: string,
+    _filename: string,
+    mimeType: string,
+    primaryModel: PrimaryModel | null,
+  ): Promise<BuildManifestResult | null> {
+    const version = this.versionRepo.getVersion(versionId);
+    if (!version) return null;
+    const completed = this.provenanceRepo.getLatestCompletedEvent(versionId);
+    if (!completed?.prompt_json) return null;
+
+    let promptBlob: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(completed.prompt_json) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      promptBlob = parsed as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+
+    // parentOf — extractor delegates parent-hash lookup to a callback.
+    const parentOf = extractParentIngredient(version, (parentId) => {
+      const parentFilename = this.getStoredFilenameForVersion(parentId);
+      if (parentFilename === null) return null;
+      const event = this.provenanceRepo.getLatestManifestSignedEvent(parentId, parentFilename);
+      if (!event || event.signed !== true || !event.manifest_sha256) return null;
+      return event.manifest_sha256;
+    });
+
+    const componentOf = extractComponentIngredients(promptBlob);
+    const inputTo = extractInputAssertion(promptBlob, completed.seed ?? null);
+
+    // Build asset-ref map.
+    const ingredientAssetRefs = new Map<string, IngredientAssetRef>();
+
+    // Parent asset ref.
+    if (parentOf !== null) {
+      if (parentOf.parent_unavailable !== null) {
+        ingredientAssetRefs.set('parent', {
+          kind: 'unavailable',
+          reason: parentOf.parent_unavailable,
+        });
+      } else {
+        // Parent manifest_signed signaled a successful sign; locate the file.
+        const parentFilename = this.getStoredFilenameForVersion(parentOf.parent_version_id);
+        if (parentFilename === null) {
+          ingredientAssetRefs.set('parent', { kind: 'unavailable', reason: 'file_not_found' });
+        } else {
+          const parentRoute = routeFormat(parentFilename);
+          const parentMime = parentRoute.mimeType ?? 'application/octet-stream';
+          const parentPath = nodepath.join(this.outputRoot, parentOf.parent_version_id, parentFilename);
+          try {
+            await stat(parentPath);
+            ingredientAssetRefs.set('parent', { kind: 'file', path: parentPath, mimeType: parentMime });
+          } catch (err) {
+            const code = (err as NodeJS.ErrnoException).code;
+            ingredientAssetRefs.set('parent', {
+              kind: 'unavailable',
+              reason: code === 'ENOENT' ? 'file_not_found' : 'file_unreadable',
+            });
+          }
+        }
+      }
+    }
+
+    // Component asset refs — file-based for c2pa-node createIngredient.
+    // (We rely on c2pa-rs's broader format support for ingredient assets;
+    // the buffer-API constraint applies only to the SIGNING asset.)
+    for (const c of componentOf) {
+      // Defensive — same path-traversal guard as hashComponentBytes.
+      const fname = c.input_filename;
+      if (
+        fname.length === 0 ||
+        fname.includes('..') ||
+        fname.includes('/') ||
+        fname.includes('\\') ||
+        fname.includes('\0')
+      ) {
+        ingredientAssetRefs.set(c.node_id, { kind: 'unavailable', reason: 'file_not_found' });
+        continue;
+      }
+      const safe = nodepath.basename(fname);
+      const fullPath = nodepath.join(this.outputRoot, versionId, safe);
+      try {
+        await stat(fullPath);
+        const compRoute = routeFormat(safe);
+        const compMime = compRoute.mimeType ?? 'application/octet-stream';
+        ingredientAssetRefs.set(c.node_id, { kind: 'file', path: fullPath, mimeType: compMime });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        ingredientAssetRefs.set(c.node_id, {
+          kind: 'unavailable',
+          reason: code === 'ENOENT' ? 'file_not_found' : 'file_unreadable',
+        });
+      }
+    }
+
+    return buildManifestWithIngredients({
+      versionId,
+      mimeType,
+      primaryModel,
+      comfyuiVersion: null,
+      appVersion: APP_VERSION,
+      ingredients: { parentOf, componentOf, inputTo },
+      ingredientAssetRefs,
+    });
+  }
+
+  /**
+   * Phase 15 / B3 — extract a parent's first stored filename from its
+   * outputs_json. StoredOutput shape (src/comfyui/types.ts):
+   * { filename, path, url, content_type, size_bytes }. parsed[0]?.filename
+   * is the canonical primary output filename. Mirrors the lineage-tree
+   * filename helper at ~line 692 of this file (firstStoredFilename, now
+   * promoted to a separately-named accessor for the Phase 15 ingredient
+   * resolution path so the Plan 15-03 grep gate locks it explicitly).
+   *
+   * Marked private but reachable via the typed-cast escape hatch the
+   * Phase 14 c2paConfig wiring tests already use (see
+   * pipeline-c2pa-config.test.ts Test 3) so the B3 unit-test in
+   * pipeline-c2pa-ingredients.test.ts can prove the round-trip.
+   */
+  private getStoredFilenameForVersion(versionId: string): string | null {
+    const v = this.versionRepo.getVersion(versionId);
+    if (!v?.outputs_json) return null;
+    try {
+      const parsed = JSON.parse(v.outputs_json) as Array<{ filename?: string }>;
+      if (!Array.isArray(parsed)) return null;
+      return parsed[0]?.filename ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Phase 15 — mirror of signViaTempFiles for the ingredients-aware embed-file
+   * branch. Same try/finally cleanup. Same temp dir + 0700/0600 modes +
+   * nanoid-suffixed partial paths. Differs only in calling
+   * signEmbedFileWithIngredients (which threads BuildManifestResult through
+   * the createIngredient + addIngredient API) instead of signEmbedFile.
+   */
+  private async signViaTempFilesWithIngredients(
+    versionId: string,
+    input: { bytes: Buffer } | { filePath: string },
+    filename: string,
+    mimeType: string,
+    result: BuildManifestResult,
+    signer: LoadedSigner,
+  ): Promise<{ signed: Buffer | null; signedToPath: string | null }> {
+    const tmpRoot = nodepath.join(this.outputRoot, '.tmp-c2pa', versionId);
+    await mkdir(tmpRoot, { mode: 0o700, recursive: true });
+    const suffix = nanoid(8);
+    const ext = nodepath.extname(filename);
+    const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}${ext}`);
+    const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}${ext}`);
+    let usedSrcTemp = false;
+    try {
+      if ('bytes' in input) {
+        await writeFile(srcTempPath, input.bytes, { mode: 0o600 });
+        usedSrcTemp = true;
+        await signEmbedFileWithIngredients(srcTempPath, destTempPath, mimeType, result, signer);
+        const signedBytes = await readFile(destTempPath);
+        return { signed: signedBytes, signedToPath: null };
+      }
+      // filePath input — skip src temp; sign caller's file directly.
+      await signEmbedFileWithIngredients(input.filePath, destTempPath, mimeType, result, signer);
+      return { signed: null, signedToPath: destTempPath };
+    } finally {
+      if (usedSrcTemp) {
+        await rm(srcTempPath, { force: true });
+      }
+      if ('bytes' in input) {
+        await rm(destTempPath, { force: true });
+      }
+    }
   }
 
   // ================================================================
