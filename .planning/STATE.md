@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
+status: verifying
 stopped_at: Completed 16-04-PLAN.md
-last_updated: "2026-04-30T20:10:42.634Z"
+last_updated: "2026-04-30T20:38:08.710Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 24
-  completed_plans: 23
-  percent: 96
+  completed_plans: 24
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 16 (Redaction & Agent Surface) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [██████████] 96%
 | Phase 16 P02 | 80min | - tasks | - files |
 | Phase 16 P02 | 80min | 2 tasks | 9 files |
 | Phase Phase 16 PP04 | 14min | 2 tasks tasks | 3 files files |
+| Phase 16 P05 | 22min | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,7 @@ Recent decisions affecting current work:
 - [Phase 16]: Plan 16-03: two new agent-surface tool actions (export_manifest + verify_manifest) wired through Plan 16-01 facade with discriminated input + 100MB payload-size cap (T-16-17) + dual-transport parity guarantee
 - [Phase ?]: [Phase 16]: Plan 16-02 closed PROV-V-06 redaction primitive. Pure applyRedactionPolicy + buildRedactedManifestDefinition helpers + lazy-binding redactManifestForVersionImpl + Engine.redactManifestForVersion facade. C-04 unified assetWriterMutex (FIFO-serializing) wraps signOutput AND redactManifestForVersion; preserves Phase 14/15 idempotent-retry coalescing. C-01 recursive redactValue() preserves nested structure with sentinel leaves. D-CTX-1 scope locked: ACTIVE manifest only — parent chain + asset binary out-of-scope (deferred v1.2). 6 new ErrorCodes. 31 new tests; root +32 net new; tsc clean. PROV-V-06 cohort closed.
 - [Phase Phase 16]: [Phase 16]: Plan 16-04 closed redact_manifest agent-surface action. Tool layer extension pattern: discriminated z.union arm + envelope shaper + switch case + inputSchema enum extension; ZERO logic inline; engine facade dispatch only (mirror Plan 16-03). Action count grows from 6 to 7 (top-level tool count remains 7 of 12 cap). Architecture-purity preserved: ZERO c2pa-node imports in version-tool.ts. D-CTX-1 wire-level invariant locked at THREE layers across Phase 16: helper (16-02 Test 12), integration (16-02 Test 17), WIRE (this plan Tests 2 + 11 — c2pa.read on bytes returned over stdio + HTTP + multi-encoding scan over active-manifest projection). Append-only contract verified at wire boundary (Test 14 direct SQLite read before/after). C-08 byte-equal round-trip + 3-way equivalence + multi-entry policy ordering documented (unit Tests 21-23). Defence-in-depth Zod caps: redaction_policy <=32 entries x <=1024 chars per entry. Verbatim error code passthrough: 5 engine TypedError codes flow through toolError unchanged. 4 Rule deviations auto-fixed (3 Rule 3 blocking + 1 Rule 1 bug — all direct consequences of plan-execution boundary issues; no scope creep). Test count: +37 root tests (1306 -> 1343 passing); pre-existing 4 v1.1-audit failures unchanged. PROV-V-06 wire-level surface complete pending Plan 16-05 cohort closure.
+- [Phase ?]: [Phase 16]: Plan 16-05 closed Phase 16 + milestone v1.1 with three-test-layer cohort closure (E2E + wire-level UAT + smoke script). 22 new root tests (+10 E2E + +12 wire-level UAT) — 1343 -> 1365 passing. Pre-existing 4 v1.1-audit failures unchanged. Rule 1 fix to Plan 16-02 redaction.ts D-PLAN-2-5 not_found prefix in audit-row redacted_fields. Three v1.2 candidates captured in deferred-items.md (deferred-ingredient-mirror, shared wire-UAT test util refactor, redaction-of-redaction multi-step). PROV-V-06 + PROV-V-07 marked Complete; ROADMAP milestone v1.1 SHIPPED 2026-04-30.
 
 ### Pending Todos
 
@@ -151,7 +153,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T20:10:00.418Z
+Last session: 2026-04-30T20:38:00.447Z
 Stopped at: Completed 16-04-PLAN.md
 Resume file: None
 
