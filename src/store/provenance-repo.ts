@@ -122,10 +122,11 @@ export class ProvenanceRepo {
     return rows[0] ?? null;
   }
 
-  /** Phase 13 — PROV-V-03. Append-only sibling event carrying the
-   *  background-fingerprinted models. Caller (Engine.fingerprintModelsForVersion)
-   *  guarantees idempotency by checking for an existing event first. The
-   *  original 'completed' event row stays byte-identical (T-13-07 mitigation). */
+  /** Phase 13 — PROV-V-03. `appendModelsFingerprintedEvent` writes an
+   *  append-only sibling event carrying the background-fingerprinted models.
+   *  Caller (Engine.fingerprintModelsForVersion) guarantees idempotency by
+   *  checking for an existing event first. The original 'completed' event
+   *  row stays byte-identical (T-13-07 mitigation). */
   appendModelsFingerprintedEvent(versionId: string, models: ModelRef[]): ProvenanceEvent {
     return this.insertEvent(versionId, {
       event_type: 'models_fingerprinted',
@@ -133,13 +134,13 @@ export class ProvenanceRepo {
     });
   }
 
-  /** Phase 13 — PROV-V-03. Returns the latest fingerprinted ModelRef[] for a
-   *  version, falling back to the latest 'completed' event's models_json when
-   *  the fingerprinter has not yet run. Returns null when neither source
-   *  yields a parseable array (legacy / malformed / pre-Phase-13 rows).
-   *  T-13-12 mitigation: catches JSON.parse / non-array errors so downstream
-   *  consumers (Phase 14 C2PA manifest) get a clean null signal rather than a
-   *  partially-parsed object. */
+  /** Phase 13 — PROV-V-03. `getLatestFingerprints` returns the latest
+   *  fingerprinted ModelRef[] for a version, falling back to the latest
+   *  'completed' event's models_json when the fingerprinter has not yet run.
+   *  Returns null when neither source yields a parseable array (legacy /
+   *  malformed / pre-Phase-13 rows). T-13-12 mitigation: catches JSON.parse
+   *  / non-array errors so downstream consumers (Phase 14 C2PA manifest) get
+   *  a clean null signal rather than a partially-parsed object. */
   getLatestFingerprints(versionId: string): ModelRef[] | null {
     const fingerprinted = this.db
       .select()
