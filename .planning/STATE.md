@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: verifying
-stopped_at: Completed Plan 12-02 — dashboard cohort for DEMO-03 (WarningPill + VersionDrawer auto-fetch + side-by-side comparison). Phase 12 fully complete (2/2). DEMO-03 marked complete in REQUIREMENTS.md. Root suite 817 passing / 5 pre-existing failing / 3 skipped (unchanged); dashboard suite 47 → 58 (+11). Phase 12 ready for /gsd-verify-phase 12.
-last_updated: "2026-04-30T09:24:49.212Z"
-last_activity: 2026-04-30
+status: executing
+stopped_at: Completed Plan 13-01 — ModelRef + MODEL_DIR_BY_CLASS + fingerprintModel helper. 17 unit tests cover success / 4 reason codes (D-CTX-5) / retry-then-file_unreadable / 7 path-traversal cases. Root suite 824 → 842 passing (+18); 5 pre-existing failing unchanged; 3 skipped unchanged. Architecture-purity preserved at the helper boundary. Phase 13 cohort 1/3; ready to start Plan 13-02 (wire fingerprinter into completion path + sibling models_fingerprinted provenance event).
+last_updated: "2026-04-30T10:06:20.613Z"
+last_activity: 2026-04-30 -- Plan 13-01 complete (Phase 13 cohort 1/3)
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 10
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 12 — Reproduce Divergence Transparency
+**Current focus:** Phase 13 — Model Fingerprinting
 
 ## Current Position
 
-Phase: 12 (Reproduce Divergence Transparency) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-04-30
+Phase: 13 (Model Fingerprinting) — EXECUTING
+Plan: 2 of 3 (Plan 13-01 complete; ready to start Plan 13-02)
+Status: Ready to execute
+Last activity: 2026-04-30 -- Plan 13-01 complete (Phase 13 cohort 1/3)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100%
 | Phase 11 P02 | 6min | 2 tasks | 2 files |
 | Phase 12 P01 | 17min | 3 tasks | 17 files |
 | Phase 12 P02 | 6min | 2 tasks | 5 files |
+| Phase 13 P01 | 7min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 12]: Plan 12-01 closed engine-layer cohort for DEMO-03. ReproductionDivergence interface (D-CTX-4) + buildReproductionDivergence pure helper + computeOutputSha256 streaming hash + migration 0005 + Engine.diffVersions async-conversion + GenerationEngine.reproduceVersion warning persistence. Architecture-purity preserved across all 4 touched engine files. ROADMAP success criteria #3 + #4 closed at engine + tool boundary; criteria #1 + #2 land in Plan 12-02 (dashboard).
 - [Phase 12]: Plan 12-02 closed dashboard cohort for DEMO-03. WarningPill component (43 lines) bound to existing --color-status-running token (no new design tokens) + Version.lineage_type extension + VersionDrawer auto-fetch effect + WarningPill conditional render + side-by-side parent-vs-reproduction comparison block. Auto-fetch effect deps array deliberately excludes diff (T-12-10 mitigation: body guard handles re-render-with-already-loaded case). ReproductionDivergence interface duplicated dashboard-side per D-WEBUI-31. 11 new tests (5 WarningPill + 6 VersionDrawer integration). DEMO-03 cohort 2/2 closed; marked complete in REQUIREMENTS.md.
 - [Phase 12]: All four ROADMAP success criteria for reproduce divergence transparency have automated coverage. #1 (pill on warnings OR sha256 mismatch) + #2 (side-by-side comparison block when both outputs on disk) closed by Plan 12-02 dashboard cohort. #3 (engine + tool emits reproduction_divergence) + #4 (bit-identical reproduction → null → no UI signal) closed by Plan 12-01 engine cohort and confirmed by Plan 12-02 dashboard render guards. Architecture-purity preserved (engine layer zero-MCP, dashboard zero-server-import). Phase 12 ready for /gsd-verify-phase 12.
+- [Phase 13]: Plan 13-01 closed the data-shape + helper foundation for PROV-V-03. ModelRef gains `model_hash_unavailable: string | null` (D-CTX-1) — additive required-but-nullable so persisted models_json carries typed unavailable reasons (D-CTX-5: `models_dir_not_configured` / `file_not_found` / `file_unreadable` / `unsupported_class_type`). MODEL_DIR_BY_CLASS exported (9 entries, lockstep with LOADER_CLASS_TYPES, locked by a passing test). `fingerprintModel` async helper at `src/engine/model-fingerprint.ts` streams SHA-256 via createReadStream + createHash, mirrors output-hash.ts WR-02 (path-traversal in modelName degrades to `file_not_found`, no disk read), retries 3 attempts with 1s/2s sleeps for non-ENOENT I/O errors. Architecture-purity preserved at the helper boundary — zero MCP / SQLite-driver / ORM imports (grep gates clean). +18 root-suite tests (824 → 842 passing); 5 pre-existing failures unchanged. Phase 13 cohort 1/3; PROV-V-03 closure happens in 13-03 (after 13-02 wires fingerprinter into completion path + 13-03 adds diff parity + integration tests + file-level architecture-purity assertion).
+- [Phase 13]: One Rule-3 deviation auto-fixed in Plan 13-01 — the plan's own `<action>` block instructed a docstring containing the literal strings 'better-sqlite3' and 'drizzle-orm', and the same plan's `<verify>` block required `grep -E 'better-sqlite3|drizzle-orm'` to return ZERO matches. Rephrased the docstring as 'zero SQLite-driver imports, zero ORM imports' (same intent, no literal package-name strings) so the gate passes cleanly. Bundled into the Task 2 commit per Rule 3 scope-boundary.
 
 ### Pending Todos
 
@@ -117,8 +120,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T09:24:49.209Z
-Stopped at: Completed Plan 12-02 — dashboard cohort for DEMO-03 (WarningPill + VersionDrawer auto-fetch + side-by-side comparison). Phase 12 fully complete (2/2). DEMO-03 marked complete in REQUIREMENTS.md. Root suite 817 passing / 5 pre-existing failing / 3 skipped (unchanged); dashboard suite 47 → 58 (+11). Phase 12 ready for /gsd-verify-phase 12.
+Last session: 2026-04-30T10:05:41.749Z
+Stopped at: Completed Plan 13-01 — ModelRef + MODEL_DIR_BY_CLASS + fingerprintModel helper. 17 unit tests cover success / 4 reason codes (D-CTX-5) / retry-then-file_unreadable / 7 path-traversal cases. Root suite 824 → 842 passing (+18); 5 pre-existing failing unchanged; 3 skipped unchanged. Architecture-purity preserved at the helper boundary. Phase 13 cohort 1/3; ready to start Plan 13-02 (wire fingerprinter into completion path + sibling models_fingerprinted provenance event).
 Resume file: None
 
-**Planned Phase:** Phase 12 — Reproduce Divergence Transparency (complete, 2/2 plans). Run `gsd-verify-phase 12` next.
+**Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
