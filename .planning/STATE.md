@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: "Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper for Phase 14 tests after union broadening; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked."
-last_updated: "2026-04-30T16:15:24.681Z"
+stopped_at: "Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked."
+last_updated: "2026-04-30T16:49:32.619Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 15 (Ingredient Graph) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-04-30
 
-Progress: [█████████░] 89%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [█████████░] 89%
 | Phase 14 P05 | 22min | 5 tasks tasks | 10 files files |
 | Phase 15 P01 | 19min | 4 tasks | 7 files |
 | Phase 15 PP02 | 9min | 2 tasks | 3 files |
+| Phase 15 P03 | 22min | 5 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -139,7 +140,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T16:15:24.678Z
+Last session: 2026-04-30T16:49:32.615Z
 Stopped at: Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked.
 Resume file: None
 
