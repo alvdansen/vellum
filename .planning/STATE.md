@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: verifying
-stopped_at: Completed 16-04-PLAN.md
-last_updated: "2026-04-30T20:38:08.710Z"
+stopped_at: Completed 16-05-PLAN.md (milestone v1.1 SHIPPED)
+last_updated: "2026-04-30T20:38:38.502Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
@@ -153,8 +153,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T20:38:00.447Z
-Stopped at: Completed 16-04-PLAN.md
-Resume file: None
+Last session: 2026-04-30T20:38:38.498Z
+Stopped at: Completed 16-05-PLAN.md (milestone v1.1 SHIPPED)
+Resume file: 
 
 **Planned Phase:** Phase 15 — Ingredient Graph (in progress, 2/4 plans). Run `/gsd-execute-phase 15-ingredient-graph` to continue with Plan 15-03.
