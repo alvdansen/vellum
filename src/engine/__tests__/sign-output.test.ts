@@ -514,3 +514,296 @@ describe('Engine.signOutput — Concern #5 temp file cleanup on signing failure'
     expect(payload!.format).toBe('video/mp4');
   });
 });
+
+// ============================================================================
+// Plan 14-03 Task 3 — output-downloader.signFileInPlace integration tests.
+// ============================================================================
+
+import { downloadOutput } from '../output-downloader.js';
+import { writeFile, readFile, stat } from 'node:fs/promises';
+
+/**
+ * Build a minimal ComfyUIClient stub whose downloadToPath writes the
+ * TINY_PNG fixture (a real 1x1 transparent PNG that c2pa-node can sign).
+ * The standard FakeComfyUIClient writes a 4-byte truncated PNG header which
+ * c2pa-rs rejects, so the integration tests need a signable fixture.
+ */
+function makeClientStubWithRealPng(destBytes: Buffer = TINY_PNG): {
+  client: ComfyUIClient;
+  writes: Array<{ filename: string; destPath: string }>;
+} {
+  const writes: Array<{ filename: string; destPath: string }> = [];
+  const client = {
+    downloadToPath: async (
+      filename: string,
+      _opts: { subfolder?: string; type?: string },
+      destPath: string,
+    ): Promise<{ path: string; url: string; contentType: string; sizeBytes: number }> => {
+      writes.push({ filename, destPath });
+      await writeFile(destPath, destBytes);
+      return {
+        path: destPath,
+        url: `https://test/${filename}`,
+        contentType: 'image/png',
+        sizeBytes: destBytes.byteLength,
+      };
+    },
+  } as unknown as ComfyUIClient;
+  return { client, writes };
+}
+
+/**
+ * Plan 14-03 Task 3 — output-downloader.ts integration with engine.signOutput.
+ *
+ * Covers:
+ *  - Test D1: PNG file is REPLACED in place after signing (bit-different)
+ *  - Test D4: EXR file is UNCHANGED (NO sidecar files written — Concern #2)
+ *  - Test D5: c2paConfig=null leaves file as original Cloud bytes
+ *  - Test D6: Concern #9 — atomic mkstemp -> rename via UNIQUE partial paths
+ *  - Test D7: Concern #6 — pre-stat picks filePath-input over bytes-input
+ *             when size > BUFFER_SIGNING_MAX_BYTES
+ *  - Test D8: Concern #7 — second download hits alreadySigned, no re-write
+ *  - Test D9: engine.signOutput throw is caught (defence-in-depth D-CTX-9)
+ *  - Test D11: cross-device rename fallback (EXDEV -> copy + unlink)
+ */
+
+describe('output-downloader signing hook (Plan 14-03 Task 3)', () => {
+  let ctx: Ctx;
+  afterEach(async () => {
+    if (ctx) await ctx.cleanup();
+  });
+
+  test('Test D1 — c2paConfig configured + PNG: file at destPath is REPLACED with signed bytes (bit-different)', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    const filename = 'ComfyUI_00001_.png';
+    // Use a signable PNG fixture (1x1 transparent) so c2pa-rs accepts it.
+    const { client } = makeClientStubWithRealPng();
+    const result = await downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    expect(result).not.toBeNull();
+    const buf = await readFile(result!);
+    // Signed PNG must be larger than the original 1x1 PNG fixture.
+    expect(buf.byteLength).toBeGreaterThan(TINY_PNG.byteLength);
+    const payload = readManifestSignedPayload(ctx, ctx.versionId, filename);
+    expect(payload!.signed).toBe(true);
+    expect(payload!.format).toBe('image/png');
+  });
+
+  test('Test D4 — EXR is UNCHANGED on disk (NO sidecar derivation — Concern #2)', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    const filename = 'depth.exr';
+    const result = await downloadOutput(
+      ctx.fake as unknown as ComfyUIClient,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    expect(result).not.toBeNull();
+    const buf = await readFile(result!);
+    // FakeComfyUIClient writes 4 bytes (PNG header) — but the file extension
+    // is .exr so the format-router returns 'unsupported'. The downloader
+    // must leave the bytes UNCHANGED on disk.
+    expect(buf.byteLength).toBe(4);
+    expect(buf[0]).toBe(0x89); // PNG magic byte 1 (fake's bytes)
+    // Verify NO sidecar files written.
+    const dir = pth.join(ctx.outputsDir, ctx.versionId);
+    const entries = await fsp.readdir(dir);
+    // Only the original file should exist; NO `.c2pa-manifest`, `.c2pa.json`,
+    // `<filename>.c2pa-signed.*` partial files, etc.
+    const sidecars = entries.filter((e) => e !== filename);
+    expect(sidecars).toEqual([]);
+    // Provenance event documents the unsupported_format outcome.
+    const payload = readManifestSignedPayload(ctx, ctx.versionId, filename);
+    expect(payload!.signed).toBe(false);
+    expect(payload!.status_reason).toBe('unsupported_format');
+    expect(payload!.format).toBe('image/x-exr');
+  });
+
+  test('Test D5 — c2paConfig=null leaves file as original Cloud bytes verbatim, no signing-related disk writes', async () => {
+    ctx = await setupEngine({ c2paConfig: null });
+    const filename = 'plain.png';
+    const result = await downloadOutput(
+      ctx.fake as unknown as ComfyUIClient,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    expect(result).not.toBeNull();
+    const buf = await readFile(result!);
+    expect(buf.byteLength).toBe(4);
+    expect(buf[0]).toBe(0x89); // PNG magic byte 1 (fake's bytes)
+    expect(buf[1]).toBe(0x50); // 'P'
+    // Provenance event documents signing_disabled.
+    const payload = readManifestSignedPayload(ctx, ctx.versionId, filename);
+    expect(payload!.signed).toBe(false);
+    expect(payload!.status_reason).toBe('signing_disabled');
+  });
+
+  test('Test D6 — Concern #9 — UNIQUE partial path scheme prevents concurrent-writer collision', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    // Drive two parallel downloads of the SAME version + SAME filename to
+    // exercise the partial-path uniqueness. The downloader's partial-path
+    // generation MUST be unique (nanoid(8) suffix) so concurrent invocations
+    // cannot collide. Real PNG fixture so c2pa-rs accepts the asset.
+    const filename = 'race.png';
+    const { client } = makeClientStubWithRealPng();
+    const dl1 = downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    const dl2 = downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    const [r1, r2] = await Promise.all([dl1, dl2]);
+    expect(r1).not.toBeNull();
+    expect(r2).not.toBeNull();
+    // Verify NO orphan partial files left behind (.c2pa-signed.<id>.partial).
+    const dir = pth.join(ctx.outputsDir, ctx.versionId);
+    const entries = await fsp.readdir(dir);
+    const partials = entries.filter((e) => e.includes('.c2pa-signed.'));
+    expect(partials).toHaveLength(0);
+  });
+
+  test('Test D7 — Concern #6: pre-stat smoke — normal-size PNG goes through bytes-input + signs successfully', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    // Pre-stat smoke: a normal-size PNG must take the bytes-input branch
+    // (st.size <= BUFFER_SIGNING_MAX_BYTES). The full oversized-file branch
+    // is exercised by Test 10 in the unit suite (Concern #6 OOM guard).
+    // Real oversized-file streaming via filePath-input would require a
+    // 500 MB+ disk write which is impractical in unit tests; the unit
+    // test asserts the buffer-cap short-circuit deterministically.
+    const filename = 'normal.png';
+    const { client } = makeClientStubWithRealPng();
+    const result = await downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    expect(result).not.toBeNull();
+    const stOut = await stat(result!);
+    expect(stOut.size).toBeGreaterThan(TINY_PNG.byteLength);
+    const payload = readManifestSignedPayload(ctx, ctx.versionId, filename);
+    expect(payload!.signed).toBe(true);
+  });
+
+  test('Test D8 — Concern #7: second download hits alreadySigned guard, no duplicate event', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    const filename = 'idempotent.png';
+    const { client } = makeClientStubWithRealPng();
+
+    // First download — signs successfully.
+    await downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    const eventCountAfterFirst = countManifestSignedEventsFor(
+      ctx,
+      ctx.versionId,
+      filename,
+    );
+    expect(eventCountAfterFirst).toBe(1);
+    const payloadAfterFirst = readManifestSignedPayload(ctx, ctx.versionId, filename);
+    expect(payloadAfterFirst!.signed).toBe(true);
+
+    // Second download — must hit alreadySigned guard inside engine.signOutput
+    // and emit ZERO additional manifest_signed events (Concern #7 explicit
+    // no-event-on-skip, avoids log spam from recovery-poller retries).
+    await downloadOutput(
+      client,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    const eventCountAfterSecond = countManifestSignedEventsFor(
+      ctx,
+      ctx.versionId,
+      filename,
+    );
+    expect(eventCountAfterSecond).toBe(1);
+  });
+
+  test('Test D9 — engine.signOutput throwing is caught + logged; original file remains intact (D-CTX-9)', async () => {
+    ctx = await setupEngine({ c2paConfig: REAL_C2PA_CONFIG });
+    // Spy on engine.signOutput and force it to throw — the downloader's
+    // own try/catch must handle it without re-throwing or mutating the file.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const original = ctx.engine.signOutput.bind(ctx.engine);
+    vi.spyOn(ctx.engine, 'signOutput').mockImplementation(async () => {
+      throw new Error('synthesized engine throw');
+    });
+
+    const filename = 'defence.png';
+    const result = await downloadOutput(
+      ctx.fake as unknown as ComfyUIClient,
+      ctx.versionId,
+      ctx.outputsDir,
+      filename,
+      {},
+      ctx.engine,
+    );
+    expect(result).not.toBeNull();
+    const buf = await readFile(result!);
+    expect(buf.byteLength).toBe(4); // unchanged (original Cloud bytes)
+    expect(errSpy).toHaveBeenCalled();
+    const loggedStr = errSpy.mock.calls.flat().map(String).join(' ');
+    expect(loggedStr).toContain('synthesized engine throw');
+
+    vi.restoreAllMocks();
+    // Restore engine.signOutput for cleanup.
+    void original;
+  });
+
+  test('Test D11 — cross-device rename fallback (EXDEV) source code asserts copy + unlink fallback', async () => {
+    // ESM limitation: cannot vi.spyOn node:fs/promises.rename — module
+    // namespace is non-configurable. Instead, assert the fallback via
+    // file-level grep on output-downloader.ts. The runtime path is
+    // covered by Plan 14-05 verification on a real cross-device deployment
+    // (e.g., outputsDir on tmpfs vs .tmp-c2pa on host disk — Linux only).
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/engine/output-downloader.ts', 'utf-8');
+    // Source must contain the EXDEV branch + copyFile + unlink fallback.
+    expect(src).toMatch(/EXDEV/);
+    expect(src).toMatch(/copyFile/);
+    expect(src).toMatch(/unlink/);
+    // Both the catch + fallback flow must be in renameWithFallback.
+    expect(src).toMatch(/renameWithFallback/);
+    // Sanity — the function definition must wrap fs.rename in try/catch
+    // with the EXDEV branch falling through to copyFile + unlink.
+    const renameWithFallbackBlock =
+      src.match(/async\s+function\s+renameWithFallback[\s\S]+?^}/m)?.[0] ?? '';
+    expect(renameWithFallbackBlock.length).toBeGreaterThan(0);
+    expect(renameWithFallbackBlock).toMatch(/try\s*\{[\s\S]+?await rename/);
+    expect(renameWithFallbackBlock).toMatch(/catch[\s\S]+?EXDEV/);
+    expect(renameWithFallbackBlock).toMatch(/copyFile/);
+    expect(renameWithFallbackBlock).toMatch(/unlink/);
+  });
+});
+

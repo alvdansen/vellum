@@ -491,9 +491,17 @@ export class Engine {
           // Fire-and-forget — explicit catch silences any late rejection the
           // helper may surface (the helper already catches internally, but
           // .catch(() => {}) is belt-and-suspenders per the plan contract).
-          void downloadOutput(this.client, result.entity.id, this.outputRoot, firstFilename).catch(
-            () => {},
-          );
+          // Phase 14 — pass `this` so the downloader's signing hook can call
+          // engine.signOutput post-download. Structural Pick (EngineForC2pa)
+          // means the downloader sees only the signOutput method surface.
+          void downloadOutput(
+            this.client,
+            result.entity.id,
+            this.outputRoot,
+            firstFilename,
+            {},
+            this,
+          ).catch(() => {});
         }
       } catch {
         // outputs_json malformed — non-fatal. Dashboard renders placeholder.
