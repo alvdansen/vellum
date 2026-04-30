@@ -758,6 +758,17 @@ export async function redactManifestForVersionImpl(
     }
 
     // Append NEW manifest_signed event with redacted=true.
+    // D-PLAN-2-5 (Plan 16-02): the audit row's redacted_fields surfaces BOTH
+    // matched paths (verbatim) AND not-found paths (prefixed `not_found:`) so
+    // the trail records every redaction *attempt*. Without the not_found
+    // entries, an "all paths missed" redaction would write an event row with
+    // an empty redacted_fields[] — indistinguishable from a successful redact
+    // of zero fields. The prefix preserves the soft-warning semantic at the
+    // audit boundary; programmatic readers can still split on the prefix.
+    const auditRedactedFields: string[] = [
+      ...applied.redactedFields,
+      ...applied.notFound.map((p) => `not_found:${p}`),
+    ];
     const newPayload: ManifestSignedPayloadFields = {
       filename,
       format: route.mimeType,
@@ -767,7 +778,7 @@ export async function redactManifestForVersionImpl(
       status_reason: '',
       algorithm: String(signer.algorithm),
       redacted: true,
-      redacted_fields: applied.redactedFields,
+      redacted_fields: auditRedactedFields,
     };
     // C-06 fix: if the DB insert throws, do NOT return RedactionResult
     // (caller would believe redaction succeeded but no audit row exists).
