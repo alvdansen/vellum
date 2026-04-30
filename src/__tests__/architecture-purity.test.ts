@@ -163,12 +163,35 @@ describe('architecture purity', () => {
     expect(grepCount('@hono/node-server', 'src/engine/c2pa/')).toBe(0);
   });
 
-  it('c2pa-node imports are centralized in src/engine/c2pa/signer.ts ONLY (Concern #11)', () => {
+  it('c2pa-node imports are centralized in the allowed engine/c2pa importers (Concern #11 + D-CTX-7)', () => {
     // Robust regex per LOW review note — covers BOTH static `from 'c2pa-node'`
     // imports AND dynamic `import('c2pa-node')` calls; handles single-quote,
     // double-quote, any whitespace between `from`/`import(` and the quote.
     // Excludes the __tests__ directories (test cases may include the
     // string in mocks / docstrings without violating the boundary).
+    //
+    // Phase 16 / Plan 16-01 (D-CTX-7) — the ALLOWED set of importers expanded
+    // beyond a single signer.ts file. exporter.ts is reserved for future use
+    // (it does NOT actually import c2pa-node — present-bytes are returned
+    // verbatim from disk), but the slot is allowed so a future extension that
+    // legitimately needs the binding can join without a separate test edit.
+    // verifier.ts uses lazy await import('c2pa-node'). Plan 16-02 may extend
+    // to redaction.ts when redaction integrates with the native binding.
+    //
+    // Two-layer assertion:
+    //   (a) Subset check — every actual importer is in the allowed set
+    //       (no rogue importer outside src/engine/c2pa/).
+    //   (b) SET-equality on the actual importers (sorted-array deepEqual).
+    //       Prevents a silent regression where signer.ts or verifier.ts is
+    //       removed from the importer set unexpectedly. exporter.ts is in
+    //       the allowed-set but NOT in the actual-set (it does not import
+    //       c2pa-node); the set-equality assertion below uses the actual
+    //       set, which currently contains signer.ts + verifier.ts.
+    const allowedC2paNodeImporters = new Set<string>([
+      'src/engine/c2pa/signer.ts',
+      'src/engine/c2pa/exporter.ts', // D-CTX-7 reserves the slot
+      'src/engine/c2pa/verifier.ts', // Plan 16-01 — lazy import('c2pa-node')
+    ]);
     let out = '';
     try {
       out = execFileSync(
@@ -186,17 +209,23 @@ describe('architecture purity', () => {
       // No matches at all — file count == 0 — also a violation (signer
       // SHOULD import c2pa-node lazily). Caught below.
     }
-    const files = out
-      ? out
-          .trim()
-          .split('\n')
-          .filter(Boolean)
-      : [];
+    const files = out ? out.trim().split('\n').filter(Boolean) : [];
     const nonTestFiles = files.filter((f) => !f.includes('__tests__/'));
+    // (a) Subset check — no rogue importer outside the allowed set.
+    const violations = nonTestFiles.filter((f) => !allowedC2paNodeImporters.has(f));
     expect(
-      nonTestFiles,
-      `c2pa-node imports outside src/engine/c2pa/signer.ts:\n${nonTestFiles.join('\n')}`,
-    ).toEqual(['src/engine/c2pa/signer.ts']);
+      violations,
+      `c2pa-node imports outside the allowed list:\n${violations.join('\n')}`,
+    ).toEqual([]);
+    // (b) SET-equality on the ACTUAL importers (sorted-array deepEqual).
+    // exporter.ts intentionally NOT in this list — it does not import
+    // c2pa-node; the allowed-set above merely RESERVES the slot per D-CTX-7.
+    // Plan 16-02 may add redaction.ts here when redaction goes live.
+    const expectedActualImporters = [
+      'src/engine/c2pa/signer.ts',
+      'src/engine/c2pa/verifier.ts',
+    ].sort();
+    expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
   });
 
   it('src/engine/c2pa/manifest-builder.ts is pure (zero c2pa-node imports)', () => {

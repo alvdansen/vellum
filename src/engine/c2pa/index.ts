@@ -80,3 +80,8 @@ export { hashComponentBytes, type HashOutcome } from './ingredient-hasher.js';
 // methods Engine.exportManifestForVersion / verifyManifestForVersion delegate
 // here.
 export { exportManifest, type ExporterResult } from './exporter.js';
+export {
+  verifyManifest,
+  type VerificationReport,
+  type VerifyManifestInput,
+} from './verifier.js';
