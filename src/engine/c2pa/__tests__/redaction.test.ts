@@ -347,7 +347,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
 
   it('Test 15c (C-05 hardening) — NUL byte rejected', () => {
     try {
-      applyRedactionPolicy(makeManifest(), ['foo bar'], STUB_NOW);
+      applyRedactionPolicy(makeManifest(), [`foo${String.fromCharCode(0)}bar`], STUB_NOW);
       expect.fail('expected throw');
     } catch (err) {
       expect((err as TypedError).code).toBe('REDACT_POLICY_INVALID');
@@ -356,7 +356,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
 
   it('Test 15d (C-05 hardening) — Unicode bidi override (U+202A) rejected', () => {
     try {
-      applyRedactionPolicy(makeManifest(), ['foo‪bar'], STUB_NOW);
+      applyRedactionPolicy(makeManifest(), [`foo${String.fromCodePoint(0x202A)}bar`], STUB_NOW);
       expect.fail('expected throw');
     } catch (err) {
       expect((err as TypedError).code).toBe('REDACT_POLICY_INVALID');

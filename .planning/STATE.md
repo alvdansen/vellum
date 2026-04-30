@@ -4,14 +4,14 @@ milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
 stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-04-30T19:34:13.007Z"
+last_updated: "2026-04-30T19:46:41.896Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 24
-  completed_plans: 21
-  percent: 88
+  completed_plans: 22
+  percent: 92
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 16 (Redaction & Agent Surface) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-04-30
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -80,6 +80,8 @@ Progress: [█████████░] 88%
 | Phase 15 P04 | 13min | 5 tasks | 5 files |
 | Phase 16 P01 | 13min | 3 tasks | 9 files |
 | Phase 16 P03 | 11min | 2 tasks | 3 files |
+| Phase 16 P02 | 80min | - tasks | - files |
+| Phase 16 P02 | 80min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -127,6 +129,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: Plan 15-04 closed Phase 15 cohort. End-to-end traceback test + dangling-reference test prove ingredient-graph behavior at the manifest read-back layer. PROV-V-04 marked complete (3 places). ROADMAP Phase 15 row Complete 2026-04-30. 18 new tests; root 1157 -> 1175 passing; pre-existing 5 failures unchanged. 4 Rule deviations auto-fixed during Task 1 GREEN. Phase 15 4/4 plans complete; ready for /gsd-verify-phase 15.
 - [Phase ?]: [Phase 16]: Plan 16-01 closed PROV-V-07 engine half. Pure-async exportManifest + lazy-c2pa-node verifyManifest + Engine facade methods. D-CTX-7 architecture-purity allowed-set assertion replaces single-element deepEqual. ZERO MCP/SQLite/ORM imports across both new modules. 5 Rule-3 deviations auto-fixed (VersionRepo getById -> getVersion + docstring-vs-grep collision recurring pattern + implicit-any from c2pa-node index signatures + arch-purity assertion bundling order + INTERNAL_ERROR added to ErrorCode union). 46 new tests; root suite 1190 -> 1236 passing; pre-existing 4 v1.1-audit failures unchanged. PROV-V-07 NOT marked complete (cohort closure in Plan 16-03 after tool surface wires through). Plans 16-02 (redaction) + 16-03 (tool surface) UNBLOCKED.
 - [Phase 16]: Plan 16-03: two new agent-surface tool actions (export_manifest + verify_manifest) wired through Plan 16-01 facade with discriminated input + 100MB payload-size cap (T-16-17) + dual-transport parity guarantee
+- [Phase ?]: [Phase 16]: Plan 16-02 closed PROV-V-06 redaction primitive. Pure applyRedactionPolicy + buildRedactedManifestDefinition helpers + lazy-binding redactManifestForVersionImpl + Engine.redactManifestForVersion facade. C-04 unified assetWriterMutex (FIFO-serializing) wraps signOutput AND redactManifestForVersion; preserves Phase 14/15 idempotent-retry coalescing. C-01 recursive redactValue() preserves nested structure with sentinel leaves. D-CTX-1 scope locked: ACTIVE manifest only — parent chain + asset binary out-of-scope (deferred v1.2). 6 new ErrorCodes. 31 new tests; root +32 net new; tsc clean. PROV-V-06 cohort closed.
 
 ### Pending Todos
 
@@ -146,7 +149,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T19:34:13.004Z
+Last session: 2026-04-30T19:46:41.893Z
 Stopped at: Completed 16-03-PLAN.md
 Resume file: None
 

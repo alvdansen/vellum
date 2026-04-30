@@ -188,7 +188,7 @@ function validatePolicy(policy: readonly string[]): void {
     // C-05 hardening: reject NUL bytes, Unicode bidi overrides, CR/LF, % < > ;
     // BEFORE the traversal/regex checks. These chars have no legitimate
     // place in a structural path DSL.
-    // Bidi overrides (Trojan-Source class ‪-‮ + ⁦-⁩):
+    // Bidi overrides (Trojan-Source class — codepoint ranges U+202A-U+202E + U+2066-U+2069):
     //   LRE/RLE/PDF + LRI/RLI/FSI/PDI.
     // eslint-disable-next-line no-control-regex
     const FORBIDDEN_CHARS_RE = new RegExp("[\u0000\r\n\u202A-\u202E\u2066-\u2069%<>;]");
