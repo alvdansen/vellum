@@ -41,6 +41,7 @@ import type {
   ScopeFilter,
   MetadataKV,
 } from '../types/assets.js';
+import type { C2paConfig } from '../types/c2pa.js';
 
 /**
  * Widened Db type — drizzle() factory returns `BetterSQLite3Database<T> & { $client: Database }`,
@@ -100,6 +101,13 @@ export class Engine {
    *  no local model files) → every entry records 'models_dir_not_configured'
    *  per D-CTX-5. Set via VFX_FAMILIAR_MODELS_DIR env var in src/server.ts. */
   private readonly modelsDir: string | null;
+  /** Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Optional C2PA
+   *  signing config. NULL means signing is disabled — graceful degradation
+   *  per D-CTX-2: download paths return original bytes unchanged. Both paths
+   *  on the C2paConfig are post-realpath, post-allowlist absolute paths
+   *  validated at boot by src/utils/c2pa-config.ts. NEVER read here — the
+   *  signer wrapper (Plan 14-02) is the SOLE consumer of the file bytes. */
+  private readonly c2paConfig: C2paConfig | null;
 
   constructor(
     db: BaseDb,
@@ -108,13 +116,18 @@ export class Engine {
     private provenanceRepo: ProvenanceRepo,
     private client: ComfyUIClient | null = null,
     outputRoot: string = 'outputs',
-    options: { maxConcurrentPollers?: number; modelsDir?: string | null } = {},
+    options: {
+      maxConcurrentPollers?: number;
+      modelsDir?: string | null;
+      c2paConfig?: C2paConfig | null;
+    } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
     // at runtime, but the class-level type omits $client. Plan 04-02 pattern.
     this.db = db as Db;
     this.outputRoot = outputRoot;
     this.modelsDir = options.modelsDir ?? null;
+    this.c2paConfig = options.c2paConfig ?? null;
     this.events = createEngineEmitter();
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
