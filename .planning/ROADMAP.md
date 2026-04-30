@@ -55,7 +55,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   2. If migration application fails, the server exits non-zero with a `MIGRATION_PENDING`-typed error message naming the failed migration file and the suggested remediation.
   3. A unit test boots the server against a deliberately-stale DB fixture and asserts the `MIGRATION_PENDING` typed error path fires before any tool registration.
   4. Running the server against a clean (already-current) DB is a no-op on the migration path — no spurious migration apply, no lock contention with WAL.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 11: Recovery Poller Error Detail
 **Goal**: Make async terminal-failure provenance match submit-time fidelity. Today the recovery poller collapses every terminal failure to `"ComfyUI reported failed"`; the submit path already extracts `node_errors` via `extractFirstNodeError(...)`. Mirror the submit pattern in the recovery poller so failed-version provenance carries the actionable Cloud detail.
@@ -66,7 +69,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   2. The submit-time and recovery-poller error-extraction paths share a single helper (`extractFirstNodeError` or equivalent), proven by a same-fixture test that asserts both paths produce identical extracted detail.
   3. Existing failed-version dashboard cards render the new actionable error string verbatim — no field renaming, no UI rework.
   4. When `node_errors` is absent or unparseable, the path falls back gracefully to the generic `"ComfyUI reported failed"` string with no thrown error.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 12: Reproduce Divergence Transparency
 **Goal**: When a reproduce-lineage output diverges from its parent (because the partner-API model is non-deterministic, or because a SHA-256 of v3's output differs from v4's despite verbatim prompt replay), surface that divergence in the UI rather than silently shipping a "reproduction" that isn't bit-identical.
@@ -77,7 +83,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   2. The version drawer surfaces a side-by-side "parent vs reproduction" image comparison block when both outputs exist on disk.
   3. `version.diff` (engine + tool path) optionally includes a `reproduction_divergence` field carrying the SHA-256 mismatch detail and any partner-API non-determinism warnings.
   4. A reproduce-lineage version whose output IS bit-identical to its parent shows no divergence pill and no comparison block — the UI signal is unambiguous.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 **UI hint**: yes
 
 ### Phase 13: Model Fingerprinting
@@ -90,7 +99,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. Fingerprint capture is content-addressed: identical model bytes across two versions yield identical hashes (proven by a fixture test using a stable test model file).
   4. Fingerprinting does not block the generation hot path — hashes are computed and persisted on a background path that retries on transient I/O errors.
   5. The architecture-purity test continues to pass: model fingerprinting lives in the engine layer, with zero MCP/tool/HTTP imports.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 14: C2PA Signed Manifest Emission
 **Goal**: Embed a signed C2PA manifest in every generated output at download time, with an explicit AI-origin disclosure assertion (`c2pa.created` + ComfyUI as generator). For formats not on C2PA's native-embed list, write a sidecar `.c2pa` file alongside the output. This phase establishes the manifest emission scaffolding that Phase 15's ingredient graph and Phase 16's redaction primitive build on.
@@ -102,7 +114,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. For OpenEXR / EXR sequences / PSD / TIFF outputs, the engine writes a sidecar `.c2pa` file at `<output>.c2pa` and the dashboard surfaces both the original artifact and the sidecar manifest as distinct downloadable resources.
   4. The signing path uses a single configured local C2PA cert (no HSM, no federated trust roots — explicit v1.1 scope per REQUIREMENTS Out-of-Scope table); private key never logged, never returned in any tool envelope, never echoed to stdout.
   5. Dual-transport parity holds: stdio and Streamable HTTP paths both emit identical manifests for the same version (verified by an integration test that downloads via both transports and bit-compares the manifest bytes).
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 **UI hint**: yes
 
 ### Phase 15: Ingredient Graph
@@ -115,7 +130,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. Manifests carry an `inputTo` assertion encoding the resolved prompt text plus the seed and the primary sampler parameters as a structured payload.
   4. A test fixture that generates v1, reproduces it as v2 (control image + LoRA), and iterates from v2 as v3 produces a v3 manifest whose ingredient graph traces back through v2 → v1, with control-image and LoRA hashes pinned at every step — verifiable by an independent C2PA reader.
   5. When an ingredient's source artifact is unreachable (e.g., control image deleted from disk after generation), the assertion records the dangling-reference state rather than silently dropping the ingredient.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ### Phase 16: Redaction & Agent Surface
 **Goal**: Close the v1.1 surface at the agent boundary. Add a redaction primitive that strips sensitive prompt/metadata values from a version's manifest while emitting a `c2pa.redacted` assertion preserving the *fact* of redaction (originals remain append-only in the `provenance` table). Add the two new `version` MCP tool actions: `export_manifest` (returns the C2PA-signed manifest) and `verify_manifest` (verifies signature + reports gaps). Tool budget stays at 6 of 12 — no new top-level tool.
@@ -128,7 +146,10 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. The architecture-purity test passes: redaction logic and manifest export/verify live in the engine layer; the `version` tool is a thin Zod-validated entry point with no engine logic inline. Tool count stays at 6 (no new top-level tool registration).
   5. The discriminated-union schema for the `version` tool extends cleanly: `export_manifest` and `verify_manifest` round-trip through stdio AND Streamable HTTP transports identically (parity test green).
   6. The cross-cutting `phase-attribution.test.ts` and `validation-flags.test.ts` guards remain green; the architecture-purity test gains explicit assertions blocking C2PA SDK imports outside `src/engine/c2pa/`.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
+  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
+  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
 
 ## Future Milestones
 
@@ -153,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 7. ComfyUI Endpoint Reconciliation  | v1.0 | 8/8 | Complete | 2026-04-24 |
 | 8. Documentation Attribution Backfill | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
-| 10. Migrate-on-boot Hardening       | v1.1 | 0/TBD | Not started | - |
+| 10. Migrate-on-boot Hardening       | v1.1 | 0/3 | Not started | - |
 | 11. Recovery Poller Error Detail    | v1.1 | 0/TBD | Not started | - |
 | 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
