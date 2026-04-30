@@ -1,3 +1,6 @@
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import * as nodepath from 'node:path';
+import { nanoid } from 'nanoid';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { Database as SqliteClient } from 'better-sqlite3';
 import type * as schema from '../store/schema.js';
@@ -18,6 +21,16 @@ import { TypedError } from './errors.js';
 import { createEngineEmitter, type EngineEmitter } from './events.js';
 import { downloadOutput } from './output-downloader.js';
 import {
+  buildManifestDefinition,
+  loadSigner,
+  routeFormat,
+  signEmbedBuffer,
+  signEmbedFile,
+  type LoadedSigner,
+  type ManifestDefinition,
+  type PrimaryModel,
+} from './c2pa/index.js';
+import {
   SHOT_NAME_REGEX,
   type Workspace,
   type Project,
@@ -32,6 +45,7 @@ import type {
   DiffSnapshot,
   DiffResponse,
   ReproductionDivergence,
+  ManifestSignedPayloadFields,
   ModelRef,
   IterateOverride,
 } from '../types/provenance.js';
@@ -53,6 +67,64 @@ import type { C2paConfig } from '../types/c2pa.js';
  */
 type BaseDb = BetterSQLite3Database<typeof schema>;
 type Db = BaseDb & { $client: SqliteClient };
+
+/**
+ * Phase 14 — Concern #6 mitigation. The c2pa-node buffer-API path reads the
+ * full asset bytes into a Node Buffer. For oversized assets that crosses the
+ * V8 heap limit and risks an OOM. Pre-stat at the call site (output-downloader)
+ * AND defence-in-depth here: signOutput refuses to drive embed-buffer when
+ * input bytes exceed this cap and emits a typed manifest_signed event with
+ * status_reason='asset_too_large_for_buffer_api'.
+ *
+ * 500 MB matches the existing DEFAULT_DOWNLOAD_MAX_BYTES cap in the ComfyUI
+ * client (T-5-03) — outputs larger than 500 MB are already rejected at the
+ * download boundary, so this constant is the upper bound a downloader can
+ * realistically pass through. The file-API path (MP4 / WebP / TIFF) streams
+ * via c2pa-rs and does NOT need the cap.
+ */
+export const BUFFER_SIGNING_MAX_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Phase 14 — Plan 14-02 manifest-builder claim_generator includes the
+ * vfx-familiar app version. Read from package.json once at module load to
+ * keep the signOutput hot path allocation-free. Mirrors the appVersion field
+ * surfaced via the buildManifestDefinition contract.
+ *
+ * Pinned-string fallback ('0.1.0') guarantees the manifest_signed event
+ * still records a populated algorithm + cert summary even on environments
+ * where package.json is unreadable (e.g., minified bundles in the future).
+ */
+const APP_VERSION = '0.1.0';
+
+/**
+ * Phase 14 — Plan 14-03 helper. Selects a single PrimaryModel from the latest
+ * fingerprinted models for a version + maps the Phase 13 ModelRef shape
+ * (with the discriminated `model_hash` / `model_hash_unavailable` fields)
+ * onto the c2pa manifest-builder PrimaryModel union.
+ *
+ * Pure function — no I/O. Returns NULL when the input is null or empty,
+ * which the manifest-builder describes as
+ * "model=unknown; hash_unavailable=no_models_recorded".
+ *
+ * Picks the FIRST entry in the array as primary. v1.1 ships a single
+ * primary model assertion; multi-model assertion graphs land in Phase 15
+ * (PROV-V-04 ingredient graph).
+ */
+function derivePrimaryModel(models: ModelRef[] | null): PrimaryModel | null {
+  if (!models || models.length === 0) return null;
+  const m = models[0]!;
+  if (m.model_hash !== null) {
+    return { name: m.model_name, hash: m.model_hash };
+  }
+  // Hash absent — surface the typed unavailable reason. NULL / empty
+  // unavailable falls back to a stable string so the manifest description
+  // is never empty.
+  return {
+    name: m.model_name,
+    hash: null,
+    unavailable: m.model_hash_unavailable ?? 'fingerprint_pending',
+  };
+}
 
 type WithBreadcrumb<T> = T & Breadcrumb;
 type ListResult<T> = {
@@ -108,6 +180,16 @@ export class Engine {
    *  validated at boot by src/utils/c2pa-config.ts. NEVER read here — the
    *  signer wrapper (Plan 14-02) is the SOLE consumer of the file bytes. */
   private readonly c2paConfig: C2paConfig | null;
+  /** Phase 14 — Plan 14-03 lazy-load cache. The c2pa-node native binding +
+   *  cert/key are loaded ONCE per process on the first signOutput call. The
+   *  cache holds either the loaded signer OR a typed errorCode (cert_load_failed
+   *  vs native_binding_unavailable per Concern #11). Reset only via a process
+   *  restart — the load is monotonic. */
+  private signerCache: { signer: LoadedSigner } | null = null;
+  private signerLoadFailedReason: {
+    code: 'cert_load_failed' | 'native_binding_unavailable';
+    message: string;
+  } | null = null;
 
   constructor(
     db: BaseDb,
@@ -767,6 +849,309 @@ export class Engine {
     );
 
     this.provenanceRepo.appendModelsFingerprintedEvent(versionId, fingerprinted);
+  }
+
+  // ================================================================
+  // PHASE 14 — C2PA SIGNING (PROV-V-01 / PROV-V-02 / PROV-V-05)
+  // ================================================================
+
+  /**
+   * Phase 14 — PROV-V-01. Sign one output for a version. Always fires a
+   * manifest_signed provenance event (success OR failure path). EXCEPTION:
+   * the alreadySigned short-circuit (Concern #7) emits zero events to avoid
+   * log spam from recovery-poller retries.
+   *
+   * Two input modes:
+   *   - bytes: Buffer  -> sign via buffer-API (PNG/JPEG) OR temp-file API
+   *                        (MP4/WebP/TIFF, src temp written from bytes).
+   *                        Returns the signed bytes as `signed: Buffer`.
+   *   - filePath: string -> sign via file-API directly (no full buffer load).
+   *                        Returns `signedToPath: <dest temp path>`. The
+   *                        CALLER (output-downloader.signFileInPlace) is
+   *                        responsible for renaming the dest temp into place
+   *                        AND unlinking it after the rename. signOutput's
+   *                        try/finally cleans the SRC temp regardless.
+   *
+   * Failure modes (D-CTX-9 graceful — never throws upward):
+   *   - signing disabled (no c2paConfig)            -> status_reason='signing_disabled'
+   *   - unsupported format (EXR/PSD/unknown)        -> status_reason='unsupported_format'
+   *   - cert load failed                            -> status_reason='cert_load_failed'
+   *   - native binding unavailable (Concern #11)    -> status_reason='native_binding_unavailable'
+   *   - sign call threw (corrupted asset, etc.)     -> status_reason='sign_call_failed'
+   *   - bytes oversized for buffer API (Concern #6) -> status_reason='asset_too_large_for_buffer_api'
+   *   - already signed (Concern #7)                 -> { ..., alreadySigned: true } + zero events
+   */
+  async signOutput(
+    versionId: string,
+    filename: string,
+    input: { bytes: Buffer } | { filePath: string },
+  ): Promise<{
+    signed: Buffer | null;
+    signedToPath: string | null;
+    alreadySigned?: boolean;
+  }> {
+    const signedAt = new Date().toISOString();
+
+    // Concern #7 — idempotency on re-sign. Read the latest manifest_signed
+    // event for this version+filename pair. If the prior event was a SUCCESS,
+    // skip the re-sign + return alreadySigned. Re-trying after a signed=false
+    // (skip / fail) IS allowed — that's the desired behavior when transient
+    // cert misconfig is fixed.
+    const prior = this.provenanceRepo.getLatestManifestSignedEvent(versionId, filename);
+    if (prior && prior.signed === true) {
+      return { signed: null, signedToPath: null, alreadySigned: true };
+    }
+
+    // Path 1: signing disabled — c2paConfig is null.
+    if (this.c2paConfig === null) {
+      this.provenanceRepo.appendManifestSignedEvent(versionId, {
+        filename,
+        format: '',
+        signed: false,
+        cert_subject_summary: '',
+        signed_at: signedAt,
+        status_reason: 'signing_disabled',
+        algorithm: '',
+      });
+      return { signed: null, signedToPath: null };
+    }
+
+    // Path 2: format routing.
+    const route = routeFormat(filename);
+    if (route.mode === 'unsupported') {
+      this.provenanceRepo.appendManifestSignedEvent(versionId, {
+        filename,
+        // For native-handler-missing (EXR/PSD) the router returns a mimeType;
+        // for unknown extensions it does NOT. Surface '' rather than 'undefined'.
+        format: route.mimeType ?? '',
+        signed: false,
+        cert_subject_summary: '',
+        signed_at: signedAt,
+        status_reason: 'unsupported_format',
+        algorithm: '',
+      });
+      return { signed: null, signedToPath: null };
+    }
+
+    // Path 3: lazy signer load.
+    const signerOrCode = await this.getOrLoadSigner();
+    if ('errorCode' in signerOrCode) {
+      this.provenanceRepo.appendManifestSignedEvent(versionId, {
+        filename,
+        format: route.mimeType,
+        signed: false,
+        cert_subject_summary: '',
+        signed_at: signedAt,
+        status_reason: signerOrCode.errorCode,
+        algorithm: '',
+      });
+      return { signed: null, signedToPath: null };
+    }
+    const signer = signerOrCode.signer;
+
+    // Path 4: build manifest definition. Primary model derived from the
+    // latest fingerprints (Phase 13). NULL fingerprints -> "model=unknown;
+    // hash_unavailable=no_models_recorded" via describePrimaryModel.
+    const fingerprints = this.provenanceRepo.getLatestFingerprints(versionId);
+    const primaryModel = derivePrimaryModel(fingerprints);
+    const manifestDef = buildManifestDefinition({
+      versionId,
+      mimeType: route.mimeType,
+      primaryModel,
+      comfyuiVersion: null,
+      appVersion: APP_VERSION,
+    });
+
+    // Path 5: route to embed-buffer or embed-file.
+    try {
+      if (route.mode === 'embed-buffer') {
+        // Concern #6 — pre-stat / size-cap. If caller passed bytes, check
+        // the buffer length. If caller passed filePath, stat the file.
+        const bytes = await this.resolveBufferInput(input);
+        if (bytes.length > BUFFER_SIGNING_MAX_BYTES) {
+          this.provenanceRepo.appendManifestSignedEvent(versionId, {
+            filename,
+            format: route.mimeType,
+            signed: false,
+            cert_subject_summary: signer.certSubjectSummary,
+            signed_at: signedAt,
+            status_reason: 'asset_too_large_for_buffer_api',
+            algorithm: signer.algorithm,
+          });
+          return { signed: null, signedToPath: null };
+        }
+        const signedBytes = await signEmbedBuffer(bytes, route.mimeType, manifestDef, signer);
+        this.provenanceRepo.appendManifestSignedEvent(versionId, {
+          filename,
+          format: route.mimeType,
+          signed: true,
+          cert_subject_summary: signer.certSubjectSummary,
+          signed_at: signedAt,
+          status_reason: '',
+          algorithm: signer.algorithm,
+        });
+        return { signed: signedBytes, signedToPath: null };
+      }
+      // mode === 'embed-file' — MP4 / WebP / TIFF. Drive c2pa-node's file API
+      // via signViaTempFiles which manages the temp dir + 0700/0600 modes
+      // + nanoid-suffixed unique partial paths (Concerns #5 and #9).
+      const result = await this.signViaTempFiles(
+        versionId,
+        input,
+        route.mimeType,
+        manifestDef,
+        signer,
+      );
+      this.provenanceRepo.appendManifestSignedEvent(versionId, {
+        filename,
+        format: route.mimeType,
+        signed: true,
+        cert_subject_summary: signer.certSubjectSummary,
+        signed_at: signedAt,
+        status_reason: '',
+        algorithm: signer.algorithm,
+      });
+      return result;
+    } catch (err) {
+      console.error(
+        `vfx-familiar: C2PA signing failed for ${versionId}/${filename}: ${(err as Error).message}`,
+      );
+      this.provenanceRepo.appendManifestSignedEvent(versionId, {
+        filename,
+        format: route.mimeType,
+        signed: false,
+        cert_subject_summary: signer.certSubjectSummary,
+        signed_at: signedAt,
+        status_reason: 'sign_call_failed',
+        algorithm: signer.algorithm,
+      });
+      return { signed: null, signedToPath: null };
+    }
+  }
+
+  /**
+   * Phase 14 — read accessor for the HTTP layer (Plan 14-04). Returns the
+   * latest manifest_signed event payload for a (versionId, filename) pair,
+   * or null. The HTTP route uses this to populate the X-C2PA-Signing-Status
+   * header on serve.
+   */
+  getC2paStatusForVersion(
+    versionId: string,
+    filename: string,
+  ): ManifestSignedPayloadFields | null {
+    return this.provenanceRepo.getLatestManifestSignedEvent(versionId, filename);
+  }
+
+  /**
+   * Lazy-load the signer + native binding ONCE per process. Distinguishes
+   * 'cert_load_failed' from 'native_binding_unavailable' by inspecting the
+   * thrown error message — Plan 14-02's signer.ts wraps the native binding
+   * load failure with a unique substring ('c2pa-node native binding
+   * unavailable') so we can map it precisely.
+   *
+   * Caches both success and failure; subsequent calls short-circuit. Reset
+   * only via process restart (the load is monotonic — re-attempting on the
+   * same broken environment is a waste of time).
+   */
+  private async getOrLoadSigner(): Promise<
+    { signer: LoadedSigner } | { errorCode: 'cert_load_failed' | 'native_binding_unavailable' }
+  > {
+    if (this.signerCache !== null) return { signer: this.signerCache.signer };
+    if (this.signerLoadFailedReason !== null) {
+      return { errorCode: this.signerLoadFailedReason.code };
+    }
+    if (this.c2paConfig === null) return { errorCode: 'cert_load_failed' };
+
+    try {
+      const signer = await loadSigner(
+        this.c2paConfig.certPemPath,
+        this.c2paConfig.privateKeyPemPath,
+      );
+      this.signerCache = { signer };
+      return { signer };
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      const code: 'cert_load_failed' | 'native_binding_unavailable' = msg.includes(
+        'c2pa-node native binding unavailable',
+      )
+        ? 'native_binding_unavailable'
+        : 'cert_load_failed';
+      this.signerLoadFailedReason = { code, message: msg };
+      console.error(`vfx-familiar: C2PA signer load failed (${code}): ${msg}`);
+      return { errorCode: code };
+    }
+  }
+
+  /**
+   * Concern #5 + #9 — temp file orchestration for the file-API signing path.
+   *
+   *   Layout:  <outputsDir>/.tmp-c2pa/<versionId>/{src,dest}-<nanoid8>
+   *   Modes:   dir 0700, files 0600 (POSIX-only — Windows ignores mode bits)
+   *   Unique:  nanoid(8) suffix per call avoids concurrent-writer collision
+   *   Cleanup: try/finally unlinks the SRC temp regardless. The DEST temp is
+   *            either consumed (read into Buffer for the bytes-input path) OR
+   *            handed to the caller via signedToPath (filePath-input path);
+   *            in the latter case the caller must rename + unlink it.
+   *
+   * Two branches:
+   *   - bytes input:    write src temp from bytes -> signEmbedFile(src, dest)
+   *                      -> read dest into Buffer -> return { signed }
+   *   - filePath input: skip src temp (caller's path is the src) -> signEmbedFile
+   *                      (caller's path, dest temp) -> return { signedToPath: dest }
+   */
+  private async signViaTempFiles(
+    versionId: string,
+    input: { bytes: Buffer } | { filePath: string },
+    mimeType: string,
+    manifestDef: ManifestDefinition,
+    signer: LoadedSigner,
+  ): Promise<{ signed: Buffer | null; signedToPath: string | null }> {
+    const tmpRoot = nodepath.join(this.outputRoot, '.tmp-c2pa', versionId);
+    await mkdir(tmpRoot, { mode: 0o700, recursive: true });
+    const suffix = nanoid(8);
+    const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}`);
+    const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}`);
+    let usedSrcTemp = false;
+    try {
+      if ('bytes' in input) {
+        await writeFile(srcTempPath, input.bytes, { mode: 0o600 });
+        usedSrcTemp = true;
+        await signEmbedFile(srcTempPath, destTempPath, mimeType, manifestDef, signer);
+        const signedBytes = await readFile(destTempPath);
+        return { signed: signedBytes, signedToPath: null };
+      }
+      // filePath input — skip src temp; sign caller's file directly.
+      await signEmbedFile(input.filePath, destTempPath, mimeType, manifestDef, signer);
+      return { signed: null, signedToPath: destTempPath };
+    } finally {
+      // Concern #5 — unconditional src cleanup. force:true makes the unlink
+      // a no-op when the file does not exist (e.g., write threw before we
+      // got here, or filePath input branch never wrote a src temp).
+      if (usedSrcTemp) {
+        await rm(srcTempPath, { force: true });
+      }
+      // For the bytes-input branch, dest was already read into Buffer —
+      // unlink it so the temp dir stays clean.
+      if ('bytes' in input) {
+        await rm(destTempPath, { force: true });
+      }
+      // For the filePath branch, dest is handed back to the caller; do NOT
+      // unlink here. The caller (output-downloader.signFileInPlace) renames
+      // it into place + unlinks any leftover.
+    }
+  }
+
+  /**
+   * Concern #6 — pre-stat / size-cap helper. For bytes input this is a
+   * trivial pass-through. For filePath input we read the bytes (the
+   * embed-buffer path requires bytes; the embed-file path streams via
+   * signEmbedFile + does NOT call this helper).
+   */
+  private async resolveBufferInput(
+    input: { bytes: Buffer } | { filePath: string },
+  ): Promise<Buffer> {
+    if ('bytes' in input) return input.bytes;
+    return await readFile(input.filePath);
   }
 
   // ================================================================
