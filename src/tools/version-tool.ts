@@ -63,11 +63,84 @@ const ProvenanceInput = z.object({
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
 });
 
-const VersionInputSchema = z.discriminatedUnion('action', [
+/**
+ * Phase 16 / Plan 16-03 (D-PLAN-3-5 + C-05 hardening): max base64-encoded
+ * manifest bytes accepted by `verify_manifest`. Pre-revision was 700 MB
+ * (mirror of BUFFER_SIGNING_MAX_BYTES 500 MB + 33% base64 overhead) — too
+ * lenient for the verify path. The verify payload is metadata, not asset
+ * bytes; capping at 100 MB still admits any plausible JUMBF size while
+ * protecting against pathological DoS (T-16-17 mitigation). Hono bodyLimit
+ * MUST be ≥100 MB so HTTP transport doesn't reject before Zod runs.
+ */
+const MAX_VERIFY_BYTES_BASE64 = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * Phase 16 / Plan 16-03 (D-CTX-4) — `export_manifest` input. Returns the
+ * C2PA-signed manifest for any version_id in a structured envelope per
+ * D-PROV-08. Heavy payload (full manifest bytes base64-encoded inline) —
+ * the agent surface design goal is "calls return data inline, not via
+ * secondary URL fetches".
+ */
+const ExportManifestInput = z.object({
+  action: z.literal('export_manifest'),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
+});
+
+/**
+ * Phase 16 / Plan 16-03 (D-CTX-4 + D-PLAN-3-2) — `verify_manifest` input.
+ * Discriminated by FIELD presence: either {version_id} OR
+ * {manifest_bytes_base64, format}. Engine resolves disk bytes + mimeType
+ * for the version-id form (Plan 16-01 verifier.ts handles); the bytes form
+ * skips the disk read (used by agent payloads received via base64 OR
+ * redaction round-trip tests).
+ *
+ * D-PLAN-3-5: bytes form has a length cap to prevent oversized payloads.
+ * D-PLAN-3-4: bytes form yields breadcrumb=null in the envelope (engine
+ * has no version_id to resolve from).
+ *
+ * Both arms share `action: z.literal('verify_manifest')` — Zod's
+ * discriminatedUnion REQUIRES unique action literals across arms, so we
+ * compose this as a plain z.union() and embed the two arms directly into
+ * the top-level VersionInputSchema below (also as a z.union, not a
+ * discriminatedUnion — see VersionInputSchema comment).
+ */
+const VerifyManifestByVersionInput = z.object({
+  action: z.literal('verify_manifest'),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH),
+});
+
+const VerifyManifestByBytesInput = z.object({
+  action: z.literal('verify_manifest'),
+  manifest_bytes_base64: z.string().min(1).max(MAX_VERIFY_BYTES_BASE64),
+  format: z.string().min(1).max(64),
+});
+
+/**
+ * Phase 16 / Plan 16-03 — top-level version input.
+ *
+ * Note: this WAS a `z.discriminatedUnion('action', [...])` until Phase 16
+ * added the two `verify_manifest` arms. Zod's discriminatedUnion REQUIRES
+ * unique discriminator literals across all arms, so we widened to a plain
+ * z.union(). Runtime parse behavior is identical: each arm has unique
+ * required fields (version_id vs manifest_bytes_base64+format) so callers
+ * pass exactly one shape; first-matching-arm semantics resolve any
+ * ambiguity in declaration order (version_id arm wins when both are
+ * present — covered by Test 8 in version-tool-export-verify.test.ts).
+ *
+ * Trade-off (tracked in deferred-items.md): without a discriminator
+ * literal, JSON-Schema generation emits `anyOf` without a `discriminator`
+ * field, which makes the published MCP `tools/list` schema slightly less
+ * useful for clients that auto-pick the right arm. v1.2 may switch to
+ * hand-written inputSchema OR Zod v4 discriminatedUnion-with-fallback.
+ */
+const VersionInputSchema = z.union([
   GetInput,
   ListInput,
   DiffInput,
   ProvenanceInput,
+  ExportManifestInput,
+  VerifyManifestByVersionInput,
+  VerifyManifestByBytesInput,
 ]);
 
 /**
@@ -205,6 +278,78 @@ function shapeDiffEnvelope(
 }
 
 /**
+ * Phase 16 / Plan 16-03 (D-PROV-08) — envelope shaper for `export_manifest`.
+ * Reads ExporterResult (Plan 16-01) verbatim + resolves breadcrumb via
+ * engine.getVersion. Carries the FULL manifest bytes inline (base64) per
+ * Plan 16-01's D-PLAN-4 — agent calls return data inline, not via
+ * secondary URL fetches.
+ */
+function shapeExportManifestEnvelope(
+  versionId: string,
+  result: import('../engine/c2pa/exporter.js').ExporterResult,
+  breadcrumb: Breadcrumb,
+): {
+  version_id: string;
+  format: string;
+  signed_at: string | null;
+  manifest_bytes_base64: string | null;
+  manifest_status: 'present' | 'absent' | 'unsupported_format';
+  cert_subject: string | null;
+  ingredients_summary:
+    | { parent_count: 0 | 1; component_count: number; input_assertion: boolean; unavailable_count: number }
+    | null;
+  breadcrumb: Breadcrumb['entries'];
+  breadcrumb_text: string;
+} {
+  return {
+    version_id: versionId,
+    format: result.format,
+    signed_at: result.signed_at,
+    manifest_bytes_base64: result.manifest_bytes_base64,
+    manifest_status: result.manifest_status,
+    cert_subject: result.cert_subject,
+    ingredients_summary: result.ingredients_summary,
+    breadcrumb: breadcrumb.entries,
+    breadcrumb_text: breadcrumb.text,
+  };
+}
+
+/**
+ * Phase 16 / Plan 16-03 (D-PROV-08) — envelope shaper for `verify_manifest`.
+ * Spreads VerificationReport verbatim + a (possibly-null) breadcrumb.
+ *
+ * D-PLAN-3-4: breadcrumb is NULL when caller invoked via the bytes form
+ * (the engine has nothing to resolve from). The version-id form passes a
+ * resolved Breadcrumb; the bytes form passes null.
+ */
+function shapeVerifyManifestEnvelope(
+  report: import('../engine/c2pa/verifier.js').VerificationReport,
+  breadcrumb: Breadcrumb | null,
+): {
+  valid: boolean;
+  signature_status: import('../engine/c2pa/verifier.js').VerificationReport['signature_status'];
+  matched_assertions: string[];
+  gaps: string[];
+  failures: Array<{ assertion: string; reason: string }>;
+  cert_subject: string | null;
+  signed_at: string | null;
+  breadcrumb: Breadcrumb['entries'] | null;
+  breadcrumb_text: string | null;
+} {
+  return {
+    valid: report.valid,
+    signature_status: report.signature_status,
+    matched_assertions: report.matched_assertions,
+    gaps: report.gaps,
+    failures: report.failures,
+    cert_subject: report.cert_subject,
+    signed_at: report.signed_at,
+    breadcrumb: breadcrumb ? breadcrumb.entries : null,
+    breadcrumb_text: breadcrumb ? breadcrumb.text : null,
+  };
+}
+
+/**
  * Register the `version` MCP tool (D-PROV-07).
  *
  * Thin Zod-validated delegator (D-33 / architecture-purity): every action
@@ -231,12 +376,20 @@ export function registerVersion(server: McpServer, engine: Engine) {
         'get (cheap metadata for a version_id — always includes inline tags: string[] (alphabetical) and metadata: Array<{key, value}> (by-key); lineage_type/parent_version_id included), ' +
         'list (paginated versions for a shot_id, ordered version_number DESC; optional include_tags and include_metadata boolean flags default false to keep default payload cheap), ' +
         'diff (same-shot structured comparison between two completed/failed versions — returns summary + changes{params, models, seed, workflow, metadata}), ' +
-        'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in; tags/metadata are NOT in the event stream per D-ASST-21). ' +
+        'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in; tags/metadata are NOT in the event stream per D-ASST-21), ' +
+        // Phase 16 / Plan 16-03 (D-CTX-4) — two new agent-surface actions.
+        'export_manifest (returns the C2PA-signed manifest for a version_id in a structured envelope: {version_id, format, signed_at, manifest_bytes_base64, manifest_status: \'present\'|\'absent\'|\'unsupported_format\', cert_subject, ingredients_summary, breadcrumb} per D-PROV-08), ' +
+        'verify_manifest (verifies a C2PA manifest against the configured trust root — accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form). ' +
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).
       inputSchema: {
-        action: z.enum(['get', 'list', 'diff', 'provenance']),
+        action: z.enum([
+          'get', 'list', 'diff', 'provenance',
+          // Phase 16 / Plan 16-03 (D-CTX-4) — two new actions; tools/list
+          // surfaces them in the published JSON-Schema.
+          'export_manifest', 'verify_manifest',
+        ]),
         version_id: z.string().optional(),
         shot_id: z.string().optional(),
         version_a: z.string().optional(),
@@ -248,6 +401,11 @@ export function registerVersion(server: McpServer, engine: Engine) {
         // handler drops them for get/diff/provenance).
         include_tags: z.boolean().optional(),
         include_metadata: z.boolean().optional(),
+        // Phase 16 / Plan 16-03 — verify_manifest by-bytes form. Both fields
+        // are optional at the ZodRawShape layer; the inner z.union arms
+        // require them together.
+        manifest_bytes_base64: z.string().optional(),
+        format: z.string().optional(),
       },
     },
     async (rawInput) => {
@@ -278,6 +436,38 @@ export function registerVersion(server: McpServer, engine: Engine) {
             );
           case 'provenance':
             return toolOk(shapeProvenanceEnvelope(engine.getProvenance(input.version_id)));
+          // Phase 16 / Plan 16-03 (D-CTX-4) — two new agent-surface actions.
+          case 'export_manifest': {
+            const result = await engine.exportManifestForVersion(input.version_id);
+            // breadcrumb resolved via engine.getVersion (same as 'get' action).
+            // VERSION_NOT_FOUND would have already thrown from
+            // exportManifestForVersion; if the version exists, getVersion
+            // succeeds. Track in deferred-items.md if any reviewer flags the
+            // double-call — v1.2 may add a getVersionWithBreadcrumb accessor.
+            const versionResult = engine.getVersion(input.version_id);
+            return toolOk(
+              shapeExportManifestEnvelope(input.version_id, result, versionResult.breadcrumb),
+            );
+          }
+          case 'verify_manifest': {
+            // Discriminate by FIELD presence (D-PLAN-3-2). 'version_id' in
+            // input matches VerifyManifestByVersionInput; otherwise it's
+            // VerifyManifestByBytesInput.
+            if ('version_id' in input) {
+              const report = await engine.verifyManifestForVersion({
+                versionId: input.version_id,
+              });
+              const versionResult = engine.getVersion(input.version_id);
+              return toolOk(shapeVerifyManifestEnvelope(report, versionResult.breadcrumb));
+            }
+            // Bytes form — D-PLAN-3-4 breadcrumb is null.
+            const buffer = Buffer.from(input.manifest_bytes_base64, 'base64');
+            const report = await engine.verifyManifestForVersion({
+              manifestBytes: buffer,
+              format: input.format,
+            });
+            return toolOk(shapeVerifyManifestEnvelope(report, null));
+          }
           default: {
             const _exhaustive: never = input;
             throw new TypedError(
