@@ -1,6 +1,6 @@
 // Phase 14 — PROV-V-02 (D-CTX-4). Pure manifest-definition builder.
 //
-// Returns a c2pa-node-compatible ManifestBuilder input describing a single
+// Returns a native-binding-compatible ManifestBuilder input describing a single
 // `c2pa.created` assertion that names ComfyUI as the software agent and the
 // primary workflow model in the action's parameters.description.
 //
@@ -11,9 +11,31 @@
 // of the model file path as the prompt blob recorded it), not absolute
 // filesystem paths.
 //
-// Architecture-purity: zero external imports — pure-function module. zero
-// MCP / DB / ORM / HTTP / c2pa-node imports. The output shape matches what
-// `new ManifestBuilder(def)` accepts in the signer module.
+// Architecture-purity: zero external imports at runtime — pure-function module.
+// zero MCP / DB / ORM / HTTP / native-c2pa-binding imports. The output shape
+// matches what `new ManifestBuilder(def)` accepts in the signer module.
+//
+// Phase 15 / Plan 15-02 (D-CTX-3) — additive surface:
+//   - buildManifestWithIngredients(opts): BuildManifestResult — produces a
+//     clean ManifestDefinition (no ingredients field; matches the native
+//     binding's BaseManifestDefinition shape) + IngredientSpec[] for the
+//     impure signer to drive through createIngredient + addIngredient at
+//     sign time.
+//   - The Phase 14 buildManifestDefinition entry point is UNCHANGED — legacy
+//     callers compile + execute byte-equal. Only the assertions[] union is
+//     broadened to a SUPERTYPE; the Phase 14 c2pa.actions shape narrows in.
+//   - vfx_familiar.input + vfx_familiar.unavailable_ingredient are vendor-
+//     namespaced custom assertions emitted via assertions[] (legitimate use
+//     of the array — c2pa.ingredient is NOT in the union: ingredients flow
+//     through manifestBuilder.addIngredient at the impure layer).
+//
+// Type-only import below is erased at runtime — preserves architecture-purity
+// grep gates that scan for the native-binding / SQLite-driver / ORM packages.
+import type {
+  ParentIngredient,
+  ComponentIngredient,
+  InputAssertion,
+} from './ingredient-extractor.js';
 
 /**
  * Inputs to buildManifestDefinition. All fields are required (use null for
@@ -50,29 +72,183 @@ export type PrimaryModel =
   | { name: string; hash: null; unavailable: string };
 
 /**
- * Verbatim shape consumed by c2pa-node's ManifestBuilder constructor. Plain
- * JSON-serializable object — no class instances, no Buffers, no Promises.
+ * Verbatim shape consumed by the native binding's ManifestBuilder constructor.
+ * Plain JSON-serializable object — no class instances, no Buffers, no Promises.
  *
- * NOTE: c2pa-node's ManifestDefinition type accepts additional optional
- * fields (vendor, label, claim_generator_info, etc.) that v1.1 does not
- * populate. The narrower shape declared here is a safe SUBTYPE — passing it
- * to `new ManifestBuilder(def as never)` in the signer module is sound.
+ * NOTE: The native binding's ManifestDefinition type accepts additional
+ * optional fields (vendor, label, claim_generator_info, etc.) that v1.1 does
+ * not populate. The narrower shape declared here is a safe SUBTYPE — passing
+ * it to `new ManifestBuilder(def as never)` in the signer module is sound.
+ *
+ * Phase 15 broadening: assertions[] became a union (ManifestAssertion) so the
+ * Phase 14 c2pa.actions shape COEXISTS with the new vendor assertions. Phase
+ * 14's literal narrows in (CreatedActionAssertion is a member of the union),
+ * so legacy code compiles byte-unchanged.
  */
 export interface ManifestDefinition {
   claim_generator: string;
   format: string;
   title: string;
-  assertions: Array<{
-    label: 'c2pa.actions';
-    data: {
-      actions: Array<{
-        action: 'c2pa.created';
-        digitalSourceType: string;
-        softwareAgent: { name: string; version: string | null };
-        parameters: { description: string };
-      }>;
-    };
-  }>;
+  assertions: ManifestAssertion[];
+}
+
+/**
+ * Phase 15 / Plan 15-02 — discriminated union over the assertion labels v1.1
+ * emits in the pure manifest definition. NOTE: c2pa.ingredient is NOT in this
+ * union — ingredients flow through the native binding's manifestBuilder.addIngredient
+ * call at the impure signer (Plan 15-03), NOT through assertions[]. The
+ * BaseManifestDefinition shape the binding's ManifestBuilder constructor accepts
+ * deliberately excludes the `ingredients` field for that reason.
+ */
+export type ManifestAssertion =
+  | CreatedActionAssertion
+  | VendorInputAssertion
+  | VendorUnavailableIngredientAssertion;
+
+/**
+ * Phase 14 c2pa.actions assertion carrying the c2pa.created action — ComfyUI
+ * software agent + AI-origin digitalSourceType + primary-model description.
+ */
+export interface CreatedActionAssertion {
+  label: 'c2pa.actions';
+  data: {
+    actions: Array<{
+      action: 'c2pa.created';
+      digitalSourceType: string;
+      softwareAgent: { name: string; version: string | null };
+      parameters: { description: string };
+    }>;
+  };
+}
+
+/**
+ * Phase 15 — vendor-namespaced custom assertion carrying the structured input
+ * payload (prompt text + sampler params + seed). T-15-01 mitigation: the data
+ * shape is the InputAssertion type from Plan 15-01 (capped, structured) — never
+ * the workflow_json verbatim.
+ */
+export interface VendorInputAssertion {
+  label: 'vfx_familiar.input';
+  data: InputAssertion;
+}
+
+/**
+ * Phase 15 — vendor-namespaced custom assertion recording an ingredient whose
+ * bytes were unreachable at sign time. ROADMAP criterion #5 requires the
+ * dangling reference to be recorded (NOT silently dropped). Since the native
+ * binding's createIngredient REQUIRES asset bytes (no API exists to construct
+ * an ingredient from a precomputed hash alone), unreachable specs cannot land
+ * as c2pa.ingredient entries — instead we surface them via this vendor
+ * assertion so an independent C2PA reader sees what was attempted.
+ */
+export interface VendorUnavailableIngredientAssertion {
+  label: 'vfx_familiar.unavailable_ingredient';
+  data: {
+    relationship: 'parentOf' | 'componentOf';
+    title: string;
+    reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending';
+    metadata: Record<string, string | number | null>;
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 15 / Plan 15-02 — buildManifestWithIngredients additive surface.
+// ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 15 (D-CTX-3) — input shape for buildManifestWithIngredients. Extends
+ * BuildManifestOptions with the ingredient triple (already resolved by Plan
+ * 15-03's Engine.buildIngredientsForVersion). This shape does NOT include
+ * hashes — the native binding computes its own labeled SHA when
+ * createIngredient is called at the impure signer layer.
+ */
+export interface BuildManifestWithIngredientsOptions extends BuildManifestOptions {
+  ingredients: {
+    parentOf: ParentIngredient | null;
+    componentOf: ComponentIngredient[];
+    inputTo: InputAssertion;
+  };
+  /**
+   * Asset references for the ingredient bytes — provided by the impure caller
+   * (Plan 15-03 Engine.signOutput) which has access to the filesystem. The
+   * pure builder uses these to decide which spec is reachable (drives
+   * createIngredient at sign time) vs unreachable (records via
+   * vfx_familiar.unavailable_ingredient).
+   *
+   * Map keyed by:
+   *   - parentOf:    'parent' (single)
+   *   - componentOf: ComponentIngredient.node_id
+   */
+  ingredientAssetRefs: ReadonlyMap<string, IngredientAssetRef>;
+}
+
+/**
+ * Phase 15 — discriminated reference to ingredient asset bytes. The impure
+ * caller produces this map; the pure builder doesn't open files.
+ *
+ * - 'buffer': in-memory bytes + mimeType (image/jpeg / image/png shape). The
+ *   native binding's createIngredient accepts BufferAsset for these MIME types.
+ * - 'file':   absolute path + mimeType. createIngredient accepts FileAsset for
+ *   any format the underlying c2pa-rs has a handler for.
+ * - 'unavailable': bytes could not be loaded; the typed reason is surfaced in
+ *   the vfx_familiar.unavailable_ingredient assertion so the audit trail
+ *   records what was attempted (ROADMAP criterion #5).
+ */
+export type IngredientAssetRef =
+  | { kind: 'buffer'; buffer: Buffer; mimeType: string }
+  | { kind: 'file'; path: string; mimeType: string }
+  | { kind: 'unavailable'; reason: 'file_not_found' | 'file_unreadable' | 'parent_manifest_pending' };
+
+/**
+ * Phase 15 — recipe for one ingredient the impure signer should drive through
+ * createIngredient + manifestBuilder.addIngredient.
+ *
+ * The signer:
+ *   1. Inspects assetRef.kind. If 'unavailable' — skip createIngredient and
+ *      let the vfx_familiar.unavailable_ingredient assertion (in
+ *      BuildManifestResult.definition.assertions[]) carry the audit trail.
+ *   2. For 'buffer' or 'file' — calls createIngredient({asset, title}) with
+ *      that AssetRef (let the native binding compute its own labeled hash).
+ *   3. Sets the returned StorableIngredient.ingredient.relationship to
+ *      Relationship.ParentOf or Relationship.ComponentOf (matches
+ *      spec.relationship verbatim).
+ *   4. Calls manifestBuilder.addIngredient(storable).
+ *
+ * The IngredientSpec is the contract — it carries everything the signer needs
+ * without requiring the signer to know about ParentIngredient /
+ * ComponentIngredient internals.
+ */
+export interface IngredientSpec {
+  /** Maps to the native binding's Relationship enum. */
+  relationship: 'parentOf' | 'componentOf';
+  /** Human-readable title surfaced as the ingredient's title field. */
+  title: string;
+  /** Asset reference — the impure caller resolves this from disk / DB. */
+  assetRef: IngredientAssetRef;
+  /**
+   * Audit metadata the impure signer ignores at sign time but the pure
+   * builder mirrors into the vfx_familiar.unavailable_ingredient assertion
+   * when assetRef.kind === 'unavailable'. Carries version_id / lineage_type
+   * for parents, node_id / role / filename for components.
+   */
+  auditMetadata: Record<string, string | number | null>;
+}
+
+/**
+ * Phase 15 — output of buildManifestWithIngredients.
+ *
+ * - definition: clean BaseManifestDefinition-compatible shape (Phase 14
+ *   c2pa.created assertion + vfx_familiar.input + zero-or-more
+ *   vfx_familiar.unavailable_ingredient — NO c2pa.ingredient entries). This
+ *   is what the impure signer hands to `new ManifestBuilder(def)`.
+ * - ingredientSpecs: recipe list (parent + each component) the signer feeds
+ *   to createIngredient + addIngredient. The signer skips entries whose
+ *   assetRef.kind === 'unavailable' (the audit trail is already in the
+ *   definition's vfx_familiar.unavailable_ingredient assertion).
+ */
+export interface BuildManifestResult {
+  definition: ManifestDefinition;
+  ingredientSpecs: IngredientSpec[];
 }
 
 /**

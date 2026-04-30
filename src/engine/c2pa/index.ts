@@ -12,6 +12,17 @@ export {
   type BuildManifestOptions,
   type ManifestDefinition,
   type PrimaryModel,
+  // Phase 15 / Plan 15-02 — additive types (BuildManifestResult surface) and
+  // discriminated assertion union. Plan 15-03 (Engine.signOutput) consumes
+  // these from the barrel.
+  type ManifestAssertion,
+  type CreatedActionAssertion,
+  type VendorInputAssertion,
+  type VendorUnavailableIngredientAssertion,
+  type BuildManifestWithIngredientsOptions,
+  type IngredientAssetRef,
+  type IngredientSpec,
+  type BuildManifestResult,
 } from './manifest-builder.js';
 
 export {
