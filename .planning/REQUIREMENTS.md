@@ -10,11 +10,11 @@ Each requirement maps to a single roadmap phase. Coarse-grained where appropriat
 
 ### Provenance Verification (C2PA core)
 
-- [ ] **PROV-V-01**: Server emits a signed C2PA manifest embedded in supported output formats (PNG, JPEG, MP4, WebP) at the moment the version's output is downloaded — both via the dashboard streaming route (`/api/versions/:id/output`) and the direct file path the engine writes to disk.
-- [ ] **PROV-V-02**: Manifest includes an explicit AI-origin disclosure assertion (`c2pa.created` action assertion with ComfyUI as the generator tool and the workflow's primary model surfaced as the digitalSourceType / softwareAgent).
+- [x] **PROV-V-01**: Server emits a signed C2PA manifest embedded in supported output formats (PNG, JPEG, MP4, WebP) at the moment the version's output is downloaded — both via the dashboard streaming route (`/api/versions/:id/output`) and the direct file path the engine writes to disk. *(Phase 14 complete 2026-04-30. TIFF added as bonus native-embed format. Concern #8 cryptographic-binding closed: every signed manifest carries a c2pa.hash.data — or c2pa.hash.bmff for MP4 — assertion that c2pa-rs verifies against the asset bytes.)*
+- [x] **PROV-V-02**: Manifest includes an explicit AI-origin disclosure assertion (`c2pa.created` action assertion with ComfyUI as the generator tool and the workflow's primary model surfaced as the digitalSourceType / softwareAgent). *(Phase 14 complete 2026-04-30.)*
 - [x] **PROV-V-03**: Every model referenced in the resolved prompt blob (checkpoints, LoRAs, VAEs, ControlNet weights, refiners) has a SHA-256 fingerprint captured in the version's `models_json`. Fingerprints flow into the C2PA manifest as ingredient assertions. Closes the documented `model_hash: null` gap at `src/engine/provenance.ts:69`.
 - [ ] **PROV-V-04**: Manifest emits an ingredient graph composed of three assertion types: `parentOf` (lineage — reproduce/iterate parents), `componentOf` (prompt-referenced control images, reference images, IP-Adapter inputs from non-loader nodes), `inputTo` (the prompt text + key parameters). Each ingredient is linked by hash to its source artifact when available.
-- [ ] **PROV-V-05**: For output formats not on C2PA's native-embed list (OpenEXR, EXR sequences, raw PSD/TIFF stacks, etc.), the engine writes a sidecar `.c2pa` manifest file alongside the output, named `<output>.c2pa`. The dashboard surfaces both the original file and the sidecar manifest.
+- [x] **PROV-V-05**: For output formats not on C2PA's native-embed list (OpenEXR, EXR sequences, raw PSD/TIFF stacks, etc.), the engine writes a sidecar `.c2pa` manifest file alongside the output, named `<output>.c2pa`. The dashboard surfaces both the original file and the sidecar manifest. *(Phase 14 PARTIALLY COMPLETE 2026-04-30. v1.1 ships native-embed signing for TIFF (the spec assumed sidecar; native-embed via c2pa-node's file API is BETTER). EXR/PSD remain unsigned — c2pa-node v0.5.26 has no public sidecar API and no native handler; producing pseudo-sidecars by signing placeholders is cryptographically invalid. Tracked as v1.2 deferred under "Cryptographic sidecar manifests" — see Deferred to v1.2 below. Concern #2 scope reduction.)*
 - [ ] **PROV-V-06**: A redaction primitive lets a tool caller (or dashboard user) strip sensitive prompt/metadata values from a version's manifest while writing a `c2pa.redacted` assertion that preserves the *fact* of redaction. The original signed manifest stays append-only in `provenance`; redaction emits a new derived manifest.
 - [ ] **PROV-V-07**: New MCP tool actions on the existing `version` tool: `version.export_manifest` (returns the C2PA-signed manifest for a version) and `version.verify_manifest` (verifies a manifest's signature and reports gaps). Tool budget stays under the 12-tool cap — no new top-level tool, just two new actions on `version`.
 
@@ -43,15 +43,25 @@ Carried forward from v1.0 archive — deferred past v1.1 unless explicitly pulle
 | Cross-shot or cross-project manifest aggregation | Per-version manifests are sufficient for the regulatory ask |
 | Watermarking (visible AI marker overlay) | C2PA cryptographic signing is the regulatory-grade primitive; watermarking is a separate channel |
 
+## Deferred to v1.2
+
+These items were scoped out of v1.1 during Phase 14 plan-review (Concerns #2 + T-14-12 follow-ups) and are tracked here for the v1.2 milestone:
+
+- **Cryptographic sidecar manifests for EXR / PSD / unsupported formats.** Phase 14 v1.1 ships native-embed signing only for PNG / JPEG / MP4 / WebP / TIFF. EXR / PSD have no c2pa-rs handler, and c2pa-node v0.5.26 has no public sidecar API (`signEmbeddable` / `sign_no_embed` / equivalent). Pseudo-sidecars produced by signing a placeholder PNG are cryptographically invalid (the data hash binds to the placeholder, not the EXR being labeled). v1.2 will add cryptographic sidecar support pending: (a) c2pa-node exposing `signEmbeddable` / `sign_no_embed` in its JS API, OR (b) vfx-familiar binding directly to c2pa-rs. Tracked from Phase 14 plan-checker Concern #2.
+- **Sidecar HTTP route + dashboard download link.** `GET /api/versions/:id/output.c2pa` returning sidecar bytes (HTTP 404 on miss, HTTP 200 + `application/c2pa` Content-Type on hit), plus a dashboard sidecar download link below the C2paBadge when status is `unsigned:unsupported_format` AND a real sidecar exists. Removed from v1.1 (Plan 14-04 revision) because no underlying mechanism exists. Reintroduce when the cryptographic sidecar API ships. Add the `isSidecarMode` helper guarded by an extension-table parity test (engine `SIDECAR_FORMATS` ↔ dashboard `SIDECAR_EXTENSIONS`).
+- **HSM / hardware-key signing.** Phase 14 v1.1 keeps the private key in process heap (T-14-12 — accept disposition documented in 14-03-PLAN). v1.2 will add support for PKCS#11 / network-attached HSMs / cloud KMS so the private key never enters Node's heap.
+- **Multi-CA / federated trust roots.** v1.1 ships single configured local cert. v1.2 expands trust root management for production deployments that issue certs through internal CA chains.
+- **Streaming-friendly C2PA for live video.** v1.1 covers final-render outputs only.
+
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-V-01 | Phase 14 | Pending |
-| PROV-V-02 | Phase 14 | Pending |
+| PROV-V-01 | Phase 14 | Complete (Phase 14, 2026-04-30) |
+| PROV-V-02 | Phase 14 | Complete (Phase 14, 2026-04-30) |
 | PROV-V-03 | Phase 13 | Complete |
 | PROV-V-04 | Phase 15 | Pending |
-| PROV-V-05 | Phase 14 | Pending |
+| PROV-V-05 | Phase 14 | Partially Complete (Phase 14, 2026-04-30 — TIFF native-embed; EXR/PSD cryptographic sidecar deferred to v1.2) |
 | PROV-V-06 | Phase 16 | Pending |
 | PROV-V-07 | Phase 16 | Pending |
 | DEMO-01   | Phase 10 | Complete |
@@ -65,3 +75,12 @@ Carried forward from v1.0 archive — deferred past v1.1 unless explicitly pulle
 
 ---
 *Requirements defined: 2026-04-29 — v1.1 Provenance Verification (C2PA) milestone start. Hot patches `85ab50b`, `ea5641c`, `19d2bed` already on `main` and not re-planned here. Traceability filled by roadmapper 2026-04-30: 7 phases (10-16), full coverage.*
+
+*Updated 2026-04-30: PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete (Phase 14 cohort closure).
+ROADMAP success criterion #1 (PNG/JPEG/MP4/WebP/TIFF signed manifests verifiable) — closed by Plans 14-02/14-03 + verified by Plan 14-05 c2pa-verification.test.ts (incl. Concern #8 c2pa.hash.data assertion proof + tamper detection).
+Criterion #2 (c2pa.created with ComfyUI softwareAgent + trainedAlgorithmicMedia digitalSourceType) — closed by Plan 14-02 manifest-builder + verified by Plan 14-05 Tests 11-13.
+Criterion #3 (sidecar .c2pa for EXR/PSD/TIFF + dashboard surface) — PARTIAL CLOSURE for v1.1: TIFF gets native-embed signing (the spec assumed sidecar, but native-embed via the c2pa-node file API is BETTER). EXR/PSD deferred to v1.2 cryptographic-sidecar follow-up. Dashboard surface in v1.1 is the C2paBadge (not a download link; v1.2 adds the link).
+Criterion #4 (single configured local cert; key never logged or surfaced) — closed by Plans 14-01/14-02 + verified by Plan 14-05 c2pa-key-leak-negative.test.ts (9 tests, zero key-byte appearances across stdout / stderr / tool envelopes / HTTP body / provenance JSON).
+Criterion #5 (dual-transport parity) — closed by architectural choice in Plan 14-03 (signing at write-time, not read-time) + verified by Plan 14-05 c2pa-dual-transport-parity.test.ts (8 parity tests, byte-identical bodies across HTTP route + direct file read).
+Phase 14 cohort 5/5 plans complete; root suite 985 → 1024 passing (+39); pre-existing 5 failures unchanged.
+v1.2 deferred items recorded in the Deferred to v1.2 section above (cryptographic sidecar API, EXR/PSD support, sidecar HTTP route + dashboard link, HSM signing, multi-CA federated trust).*

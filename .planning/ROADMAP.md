@@ -40,7 +40,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 - [x] **Phase 11: Recovery Poller Error Detail** — Async terminal failures surface ComfyUI Cloud `node_errors` instead of collapsing to `"ComfyUI reported failed"`. (completed 2026-04-30)
 - [x] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge. (completed 2026-04-30)
 - [x] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`. (completed 2026-04-30)
-- [ ] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP at download with explicit AI-origin disclosure; sidecar `.c2pa` for non-embed formats (EXR, PSD, TIFF).
+- [x] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP/TIFF at download with explicit AI-origin disclosure; EXR/PSD remain unsigned (v1.2 cryptographic-sidecar follow-up). (completed 2026-04-30)
 - [ ] **Phase 15: Ingredient Graph** — Manifest carries `parentOf` / `componentOf` / `inputTo` assertions linking lineage parents, control/reference images, and prompt parameters by hash.
 - [ ] **Phase 16: Redaction & Agent Surface** — Redaction primitive emits a derived manifest with `c2pa.redacted` assertion (originals stay append-only); two new `version` tool actions: `export_manifest` and `verify_manifest`.
 
@@ -117,7 +117,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   - [x] 14-02-PLAN.md — C2PA module: manifest builder + signer wrapper + format router
   - [x] 14-03-PLAN.md — Engine integration: embed/sidecar emitter + provenance event
   - [x] 14-04-PLAN.md — HTTP route integration + dashboard sidecar surface
-  - [ ] 14-05-PLAN.md — Verification + parity + key-leak negative tests
+  - [x] 14-05-PLAN.md — Verification + parity + key-leak negative tests
 **UI hint**: yes
 
 ### Phase 15: Ingredient Graph
@@ -178,6 +178,6 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
-| 14. C2PA Signed Manifest Emission   | v1.1 | 4/5 | In Progress|  |
+| 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
