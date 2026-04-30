@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-04-30T19:46:41.896Z"
+stopped_at: Completed 16-04-PLAN.md
+last_updated: "2026-04-30T20:10:42.634Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 24
-  completed_plans: 22
-  percent: 92
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 16 (Redaction & Agent Surface) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-04-30
 
-Progress: [█████████░] 92%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [█████████░] 92%
 | Phase 16 P03 | 11min | 2 tasks | 3 files |
 | Phase 16 P02 | 80min | - tasks | - files |
 | Phase 16 P02 | 80min | 2 tasks | 9 files |
+| Phase Phase 16 PP04 | 14min | 2 tasks tasks | 3 files files |
 
 ## Accumulated Context
 
@@ -130,6 +131,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 16]: Plan 16-01 closed PROV-V-07 engine half. Pure-async exportManifest + lazy-c2pa-node verifyManifest + Engine facade methods. D-CTX-7 architecture-purity allowed-set assertion replaces single-element deepEqual. ZERO MCP/SQLite/ORM imports across both new modules. 5 Rule-3 deviations auto-fixed (VersionRepo getById -> getVersion + docstring-vs-grep collision recurring pattern + implicit-any from c2pa-node index signatures + arch-purity assertion bundling order + INTERNAL_ERROR added to ErrorCode union). 46 new tests; root suite 1190 -> 1236 passing; pre-existing 4 v1.1-audit failures unchanged. PROV-V-07 NOT marked complete (cohort closure in Plan 16-03 after tool surface wires through). Plans 16-02 (redaction) + 16-03 (tool surface) UNBLOCKED.
 - [Phase 16]: Plan 16-03: two new agent-surface tool actions (export_manifest + verify_manifest) wired through Plan 16-01 facade with discriminated input + 100MB payload-size cap (T-16-17) + dual-transport parity guarantee
 - [Phase ?]: [Phase 16]: Plan 16-02 closed PROV-V-06 redaction primitive. Pure applyRedactionPolicy + buildRedactedManifestDefinition helpers + lazy-binding redactManifestForVersionImpl + Engine.redactManifestForVersion facade. C-04 unified assetWriterMutex (FIFO-serializing) wraps signOutput AND redactManifestForVersion; preserves Phase 14/15 idempotent-retry coalescing. C-01 recursive redactValue() preserves nested structure with sentinel leaves. D-CTX-1 scope locked: ACTIVE manifest only — parent chain + asset binary out-of-scope (deferred v1.2). 6 new ErrorCodes. 31 new tests; root +32 net new; tsc clean. PROV-V-06 cohort closed.
+- [Phase Phase 16]: [Phase 16]: Plan 16-04 closed redact_manifest agent-surface action. Tool layer extension pattern: discriminated z.union arm + envelope shaper + switch case + inputSchema enum extension; ZERO logic inline; engine facade dispatch only (mirror Plan 16-03). Action count grows from 6 to 7 (top-level tool count remains 7 of 12 cap). Architecture-purity preserved: ZERO c2pa-node imports in version-tool.ts. D-CTX-1 wire-level invariant locked at THREE layers across Phase 16: helper (16-02 Test 12), integration (16-02 Test 17), WIRE (this plan Tests 2 + 11 — c2pa.read on bytes returned over stdio + HTTP + multi-encoding scan over active-manifest projection). Append-only contract verified at wire boundary (Test 14 direct SQLite read before/after). C-08 byte-equal round-trip + 3-way equivalence + multi-entry policy ordering documented (unit Tests 21-23). Defence-in-depth Zod caps: redaction_policy <=32 entries x <=1024 chars per entry. Verbatim error code passthrough: 5 engine TypedError codes flow through toolError unchanged. 4 Rule deviations auto-fixed (3 Rule 3 blocking + 1 Rule 1 bug — all direct consequences of plan-execution boundary issues; no scope creep). Test count: +37 root tests (1306 -> 1343 passing); pre-existing 4 v1.1-audit failures unchanged. PROV-V-06 wire-level surface complete pending Plan 16-05 cohort closure.
 
 ### Pending Todos
 
@@ -149,8 +151,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T19:46:41.893Z
-Stopped at: Completed 16-03-PLAN.md
+Last session: 2026-04-30T20:10:00.418Z
+Stopped at: Completed 16-04-PLAN.md
 Resume file: None
 
 **Planned Phase:** Phase 15 — Ingredient Graph (in progress, 2/4 plans). Run `/gsd-execute-phase 15-ingredient-graph` to continue with Plan 15-03.
