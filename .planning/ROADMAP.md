@@ -113,7 +113,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. The signing path uses a single configured local C2PA cert (no HSM, no federated trust roots — explicit v1.1 scope per REQUIREMENTS Out-of-Scope table); private key never logged, never returned in any tool envelope, never echoed to stdout.
   5. Dual-transport parity holds: stdio and Streamable HTTP paths both emit identical manifests for the same version (verified by an integration test that downloads via both transports and bit-compares the manifest bytes).
 **Plans**: 5 plans
-  - [ ] 14-01-PLAN.md — Dependency + env config + dev cert helper
+  - [x] 14-01-PLAN.md — Dependency + env config + dev cert helper
   - [ ] 14-02-PLAN.md — C2PA module: manifest builder + signer wrapper + format router
   - [ ] 14-03-PLAN.md — Engine integration: embed/sidecar emitter + provenance event
   - [ ] 14-04-PLAN.md — HTTP route integration + dashboard sidecar surface
@@ -178,6 +178,6 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
-| 14. C2PA Signed Manifest Emission   | v1.1 | 0/5 | Not started | - |
+| 14. C2PA Signed Manifest Emission   | v1.1 | 1/5 | In Progress|  |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |

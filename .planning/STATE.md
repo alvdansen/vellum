@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: Completed Plan 13-03 — diff-side parity (ModelChange shape extension, diffModels hash↔unavailable transitions, loadDiffSnapshot reads getLatestFingerprints) + 5 end-to-end integration tests + 3 file-level architecture-purity assertions for src/engine/model-fingerprint.ts. PROV-V-03 marked complete in REQUIREMENTS.md (cohort-level closure). Phase 13 cohort 3/3; root suite 868 passing; 5 pre-existing v1.1-audit failures unchanged. Phase 13 ready for /gsd-verify-phase 13. Phase 14 (C2PA Signed Manifest Emission) next.
-last_updated: "2026-04-30T10:45:10.052Z"
-last_activity: 2026-04-30 -- Phase 14 execution started
+stopped_at: "Completed Plan 14-01 — c2pa-node@0.5.26 pinned, C2paConfig threaded through Engine, boot-time env validation w/ realpath + allowlist guard (Concern #4), basename-only path-leak hygiene, Concern #11 native-binding-resilience grep gate, dev cert script (.c2pa-dev/ gitignored). 4 atomic commits (7f34cbb, 9f29a47, 1f4edd5, daebadc). +18 tests; root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 1/5; PROV-V-01 cohort closure NOT yet (lands in 14-04/14-05). Plan 14-02 (signer wrapper + lazy c2pa-node import + LocalSigner construction) ready to start."
+last_updated: "2026-04-30T11:55:37.797Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_plans: 15
+  completed_plans: 11
+  percent: 73
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 14 (C2PA Signed Manifest Emission) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 14
-Last activity: 2026-04-30 -- Phase 14 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-04-30
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 73%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [██████████] 100%
 | Phase 13 P01 | 7min | 3 tasks | 6 files |
 | Phase 13 P02 | 7min | 2 tasks | 7 files |
 | Phase 13 P03 | 6min | 2 tasks | 5 files |
+| Phase 14 P01 | 9min | 4 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,7 @@ Recent decisions affecting current work:
 - [Phase 13]: Plan 13-02 wired Plan 13-01's fingerprintModel into the completion path via the D-CTX-3-recommended sibling 'models_fingerprinted' provenance event. Append-only invariant on src/store/provenance-repo.ts preserved (literal grep this.db.update|this.db.delete still returns ZERO). T-13-07 mitigation asserted by a regression test that re-fetches the original 'completed' row by id after appendModelsFingerprintedEvent and asserts byte-equality on every field. Engine.fingerprintModelsForVersion is idempotent (events scan, returns early on existing fingerprinted event) so the boot-time recovery path is O(N) reads + 0 hashes for already-done rows. Hot-path isolation (criterion #4) proven by the GenerationEngine.downloadAndPersist hook: fires synchronously, receiver wraps async work in 'void X.catch(...)', test asserts zero fingerprinted events at the moment getGenerationStatus returns 'completed'. NO Drizzle migration added — the event_type column has no CHECK constraint, so the union extension is purely TS-level. ROADMAP success criteria #1 + #4 closed at the integration boundary; PROV-V-03 cohort closure happens in 13-03.
 - [Phase 13]: [Phase 13]: Plan 13-03 closed Phase 13. ModelChange shape extended with hash_unavailable on both sides; diffModels fires on hash↔unavailable transitions; loadDiffSnapshot reads getLatestFingerprints (post-fingerprint view) instead of raw completed_event.models_json (legacy try/catch JSON.parse removed); 5 end-to-end integration tests prove criteria #1/#2/#3 + the diff boundary; 3 file-level architecture-purity assertions lock src/engine/model-fingerprint.ts as zero-MCP / zero-SQLite-driver / zero-ORM. Test count: +13 root-suite (5 diff transition + 5 integration + 3 architecture-purity). 5 pre-existing v1.1-audit failures unchanged. PROV-V-03 cohort closed; Phase 13 ready for /gsd-verify-phase 13.
 - [Phase 13]: [Phase 13]: All 5 ROADMAP success criteria have automated coverage. #1 (populated model_hash) by Plan 13-02 Test 2 + Plan 13-03 Tests 1, 4. #2 (typed model_hash_unavailable) by 13-01 reason-codes + 13-02 Test 1 + 13-03 Tests 2, 5. #3 (content-addressed) by 13-01 same-bytes + 13-03 Test 3. #4 (hot-path isolation) by 13-02 Test 4. #5 (architecture-purity) by 13-01 grep gates + 13-03 file-level vitest assertions. Phase 14 (C2PA) ready: reads getLatestFingerprints(versionId) as canonical source of model fingerprints for ingredient assertions.
+- [Phase 14]: Plan 14-01 closed Phase 14 configuration foundation. c2pa-node@0.5.26 pinned EXACTLY. C2paConfig threaded through Engine constructor as additive options.c2paConfig (default null, 42 existing pipeline tests pass byte-unchanged). loadC2paConfigFromEnv at src/utils/c2pa-config.ts mirrors validateBaseUrlFromEnv pattern: throws TypedError('C2PA_CONFIG_INVALID', ...) BEFORE Engine construction on misconfig (Phase 10 MIGRATION_PENDING parity). Concern #4 (path-traversal) mitigated by realpathSync + allowlist containment (cwd default; VFX_FAMILIAR_C2PA_CERT_ROOT override). Path-leak hygiene: error messages and boot success log emit basenames only via path.basename. Concern #11 enforced by architecture-purity grep gate: src/server.ts has ZERO static c2pa-node imports — Plan 14-02 lazy-imports in signer wrapper. Dev cert script at scripts/gen-dev-c2pa-cert.mts (ES256, .c2pa-dev/ gitignored). +18 tests (13 c2pa-config + 4 pipeline-c2pa-config + 1 arch-purity); root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. PROV-V-01 NOT yet marked complete (cohort-level).
 
 ### Pending Todos
 
@@ -125,8 +127,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T10:35:10.699Z
-Stopped at: Completed Plan 13-03 — diff-side parity (ModelChange shape extension, diffModels hash↔unavailable transitions, loadDiffSnapshot reads getLatestFingerprints) + 5 end-to-end integration tests + 3 file-level architecture-purity assertions for src/engine/model-fingerprint.ts. PROV-V-03 marked complete in REQUIREMENTS.md (cohort-level closure). Phase 13 cohort 3/3; root suite 868 passing; 5 pre-existing v1.1-audit failures unchanged. Phase 13 ready for /gsd-verify-phase 13. Phase 14 (C2PA Signed Manifest Emission) next.
+Last session: 2026-04-30T11:55:37.793Z
+Stopped at: Completed Plan 14-01 — c2pa-node@0.5.26 pinned, C2paConfig threaded through Engine, boot-time env validation w/ realpath + allowlist guard (Concern #4), basename-only path-leak hygiene, Concern #11 native-binding-resilience grep gate, dev cert script (.c2pa-dev/ gitignored). 4 atomic commits (7f34cbb, 9f29a47, 1f4edd5, daebadc). +18 tests; root suite 869 → 887; pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 1/5; PROV-V-01 cohort closure NOT yet (lands in 14-04/14-05). Plan 14-02 (signer wrapper + lazy c2pa-node import + LocalSigner construction) ready to start.
 Resume file: None
 
 **Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
