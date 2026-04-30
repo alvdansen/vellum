@@ -45,25 +45,23 @@ Carried forward from v1.0 archive — deferred past v1.1 unless explicitly pulle
 
 ## Traceability
 
-(Filled by the roadmapper after phase derivation.)
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-V-01 | TBD | Pending |
-| PROV-V-02 | TBD | Pending |
-| PROV-V-03 | TBD | Pending |
-| PROV-V-04 | TBD | Pending |
-| PROV-V-05 | TBD | Pending |
-| PROV-V-06 | TBD | Pending |
-| PROV-V-07 | TBD | Pending |
-| DEMO-01   | TBD | Pending |
-| DEMO-02   | TBD | Pending |
-| DEMO-03   | TBD | Pending |
+| PROV-V-01 | Phase 14 | Pending |
+| PROV-V-02 | Phase 14 | Pending |
+| PROV-V-03 | Phase 13 | Pending |
+| PROV-V-04 | Phase 15 | Pending |
+| PROV-V-05 | Phase 14 | Pending |
+| PROV-V-06 | Phase 16 | Pending |
+| PROV-V-07 | Phase 16 | Pending |
+| DEMO-01   | Phase 10 | Pending |
+| DEMO-02   | Phase 11 | Pending |
+| DEMO-03   | Phase 12 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 10 total (7 PROV-V + 3 DEMO)
-- Mapped to phases: TBD
-- Unmapped: 0 (target)
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-29 — v1.1 Provenance Verification (C2PA) milestone start. Hot patches `85ab50b`, `ea5641c`, `19d2bed` already on `main` and not re-planned here.*
+*Requirements defined: 2026-04-29 — v1.1 Provenance Verification (C2PA) milestone start. Hot patches `85ab50b`, `ea5641c`, `19d2bed` already on `main` and not re-planned here. Traceability filled by roadmapper 2026-04-30: 7 phases (10-16), full coverage.*
