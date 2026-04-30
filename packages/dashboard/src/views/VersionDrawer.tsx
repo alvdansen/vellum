@@ -28,7 +28,7 @@ import type { Status } from '../components/StatusPill.js';
 import { JsonBlock } from '../components/JsonBlock.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { DiffDrawer } from './DiffDrawer.js';
-import { getProvenance, diffVersion } from '../lib/api.js';
+import { getProvenance, diffVersion, getOutputUrl } from '../lib/api.js';
 import type { Version } from '../types/entities.js';
 import { versionLabel, normalizeStatus } from '../lib/shape.js';
 
@@ -138,6 +138,25 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
             </button>
           </div>
         </header>
+
+        {status === 'complete' ? (
+          <section>
+            <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Output</h3>
+            <a
+              href={getOutputUrl(version.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)]"
+            >
+              <img
+                src={getOutputUrl(version.id)}
+                alt={`Output for ${label}`}
+                class="block h-auto w-full"
+                loading="lazy"
+              />
+            </a>
+          </section>
+        ) : null}
 
         <section>
           <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Timeline</h3>

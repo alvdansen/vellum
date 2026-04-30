@@ -18,6 +18,7 @@
 
 import { StatusPill } from './StatusPill.js';
 import type { Status } from './StatusPill.js';
+import { getOutputUrl } from '../lib/api.js';
 
 /**
  * Minimal version shape needed by this card. The full Version record (from
@@ -42,13 +43,21 @@ export function VersionCard({ version, isSelected, onSelect }: VersionCardProps)
       type="button"
       onClick={() => onSelect(version.id)}
       aria-pressed={isSelected}
-      class={`w-full rounded p-2 text-left transition-colors ${
+      class={`w-full overflow-hidden rounded text-left transition-colors ${
         isSelected
-          ? 'bg-[var(--color-accent)] text-[var(--color-bg)]'
-          : 'text-[var(--color-fg)] hover:bg-[var(--color-surface)]'
+          ? 'ring-2 ring-[var(--color-accent)]'
+          : 'hover:bg-[var(--color-surface)]'
       }`}
     >
-      <div class="flex items-center justify-between gap-2">
+      {version.status === 'complete' ? (
+        <img
+          src={getOutputUrl(version.id)}
+          alt={`Output for ${version.label}`}
+          class="block aspect-video w-full object-cover"
+          loading="lazy"
+        />
+      ) : null}
+      <div class={`flex items-center justify-between gap-2 p-2 ${isSelected ? 'bg-[var(--color-accent)] text-[var(--color-bg)]' : 'text-[var(--color-fg)]'}`}>
         <span class="version-label truncate text-sm font-normal">
           {version.label}
         </span>
