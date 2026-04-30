@@ -18,7 +18,7 @@ import {
  *    handles direct-filename and edge-tuple field shapes)
  *  - extractInputAssertion (T-15-01; REVISION B5 KSampler edge walk)
  *
- * Architecture-purity: zero MCP / c2pa-node / better-sqlite3 / drizzle-orm
+ * Architecture-purity: zero MCP / native-binding / SQLite-driver / ORM
  * imports — locked by file-level grep gate in architecture-purity.test.ts.
  */
 

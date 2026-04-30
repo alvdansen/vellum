@@ -235,6 +235,47 @@ describe('architecture purity', () => {
     expect(grepCount('better-sqlite3', 'src/engine/c2pa/format-router.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/c2pa/format-router.ts')).toBe(0);
   });
+
+  // Phase 15 / Plan 15-01 — file-level purity locks for the new ingredient
+  // primitives. Mirrors manifest-builder.ts + format-router.ts shape above.
+  // These two files are the parsing + hashing half of PROV-V-04; they MUST
+  // stay pure (no native-binding) so they can run inside the test harness
+  // and CI matrix without the c2pa-node native binary. Plan 15-02 extends
+  // manifest-builder.ts (still pure) and Plan 15-03 wires both into
+  // Engine.signOutput at the impure boundary.
+  it('src/engine/c2pa/ingredient-extractor.ts is pure (zero c2pa-node imports)', () => {
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/ingredient-extractor.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `c2pa-node import in ingredient-extractor.ts:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/ingredient-extractor.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/ingredient-extractor.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/ingredient-extractor.ts')).toBe(0);
+  });
+
+  it('src/engine/c2pa/ingredient-hasher.ts is pure (zero c2pa-node imports)', () => {
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/ingredient-hasher.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `c2pa-node import in ingredient-hasher.ts:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
+  });
 });
 
 // ================================================================
