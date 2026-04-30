@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { extractModels, LOADER_CLASS_TYPES, MODEL_DIR_BY_CLASS } from '../provenance.js';
+import {
+  extractModels,
+  LOADER_CLASS_TYPES,
+  MODEL_DIR_BY_CLASS,
+  IMAGE_INPUT_CLASS_TYPES,
+  IMAGE_FIELD_BY_CLASS,
+} from '../provenance.js';
 
 const CASES: Array<{
   label: string;
@@ -115,5 +121,72 @@ describe('MODEL_DIR_BY_CLASS coverage of LOADER_CLASS_TYPES (Phase 13 D-CTX-2)',
     // before fingerprintModel falls into the defensive 'unsupported_class_type'
     // path in production.
     expect(Object.keys(MODEL_DIR_BY_CLASS).sort()).toEqual([...LOADER_CLASS_TYPES].sort());
+  });
+});
+
+describe('IMAGE_INPUT_CLASS_TYPES + IMAGE_FIELD_BY_CLASS (Phase 15 D-CTX-1; v1.1 audit per Plan 15-01 REVISION C1/C2)', () => {
+  test('IMAGE_INPUT_CLASS_TYPES contains exactly the v1.1 audit list (six entries)', () => {
+    // REVISION C1/C2 — per the plan's <c1c2_audit_v1.1> section, these are
+    // the canonical image-input nodes whose 'image' / 'pixels' field carries
+    // a user-supplied image filename or upstream-edge tuple. Locked here so
+    // any v1.2 audit additions surface as a deliberate test edit.
+    expect([...IMAGE_INPUT_CLASS_TYPES].sort()).toEqual([
+      'ControlNetApply',
+      'ControlNetApplyAdvanced',
+      'LoadImage',
+      'LoadImageMask',
+      'VAEEncode',
+      'VAEEncodeForInpaint',
+    ]);
+  });
+
+  test('IMAGE_INPUT_CLASS_TYPES does NOT contain model loaders (REVISION C1/C2)', () => {
+    // IPAdapterModelLoader + CLIPVisionLoader are MODEL LOADERS — they
+    // consume on-disk model files via *_file inputs, NOT user-supplied
+    // image bytes. They belong on the LOADER side (Phase 13 fingerprinting
+    // domain), NOT in this set.
+    expect(IMAGE_INPUT_CLASS_TYPES.has('IPAdapterModelLoader')).toBe(false);
+    expect(IMAGE_INPUT_CLASS_TYPES.has('CLIPVisionLoader')).toBe(false);
+  });
+
+  test('IMAGE_FIELD_BY_CLASS maps every IMAGE_INPUT_CLASS_TYPES entry to a non-empty string[]', () => {
+    for (const classType of IMAGE_INPUT_CLASS_TYPES) {
+      const fields = IMAGE_FIELD_BY_CLASS[classType];
+      expect(fields, `IMAGE_FIELD_BY_CLASS['${classType}'] should be defined`).toBeDefined();
+      expect(Array.isArray(fields)).toBe(true);
+      expect(fields!.length).toBeGreaterThan(0);
+      for (const f of fields!) {
+        expect(typeof f).toBe('string');
+        expect(f.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('IMAGE_FIELD_BY_CLASS uses image for filename-bearing nodes; pixels for edge-tuple nodes', () => {
+    // LoadImage / LoadImageMask / ControlNetApply* take their image as a
+    // STRING filename in the 'image' field. VAEEncode / VAEEncodeForInpaint
+    // take an EDGE TUPLE [node_id, output_index] in the 'pixels' field —
+    // extractor walks the edge to the upstream LoadImage*-class node.
+    expect(IMAGE_FIELD_BY_CLASS.LoadImage).toEqual(['image']);
+    expect(IMAGE_FIELD_BY_CLASS.LoadImageMask).toEqual(['image']);
+    expect(IMAGE_FIELD_BY_CLASS.ControlNetApply).toEqual(['image']);
+    expect(IMAGE_FIELD_BY_CLASS.ControlNetApplyAdvanced).toEqual(['image']);
+    expect(IMAGE_FIELD_BY_CLASS.VAEEncode).toEqual(['pixels']);
+    expect(IMAGE_FIELD_BY_CLASS.VAEEncodeForInpaint).toEqual(['pixels']);
+  });
+
+  test('IMAGE_INPUT_CLASS_TYPES and LOADER_CLASS_TYPES are DISJOINT (architecture invariant)', () => {
+    // Disjointness lock: a class_type in BOTH sets means we have ambiguous
+    // domain boundaries (Phase 13 model fingerprinting vs Phase 15
+    // ingredient hashing). The test surfaces the regression at compile-fail
+    // time, before any prompt walk emits double-counted entries.
+    const loaders = new Set(LOADER_CLASS_TYPES);
+    for (const c of IMAGE_INPUT_CLASS_TYPES) {
+      expect(loaders.has(c), `class_type '${c}' must NOT be in both sets`).toBe(false);
+    }
+    const images = new Set(IMAGE_INPUT_CLASS_TYPES);
+    for (const c of LOADER_CLASS_TYPES) {
+      expect(images.has(c), `class_type '${c}' must NOT be in both sets`).toBe(false);
+    }
   });
 });

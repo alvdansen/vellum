@@ -22,6 +22,52 @@ export const KSAMPLER_CLASS_TYPES: ReadonlySet<string> = new Set([
   'SamplerCustomAdvanced',
 ]);
 
+/** Phase 15 (D-CTX-1; v1.1 audit per Plan 15-01 REVISION C1/C2) — non-loader
+ *  image-input class types. Used by extractComponentIngredients to walk the
+ *  resolved prompt blob for control / mask / img2img / inpaint images that
+ *  should appear as c2pa.ingredient {relationship: 'componentOf'}
+ *  assertions. Disjoint from LOADER_CLASS_TYPES — loader nodes resolve model
+ *  files (Phase 13 fingerprinting); image-input nodes consume image bytes.
+ *
+ *  v1.1 NOT included (deferred to v1.2 audit): pack-shipped IP-Adapter
+ *  node variants (~12 forms in the IP-Adapter Plus pack). A defensive audit
+ *  against the installed pack source is out-of-scope for v1.1.
+ *
+ *  v1.1 NOT included (deliberately moved to LOADER side): the IP-Adapter
+ *  model-loader and CLIP-Vision-loader classes — both consume model files
+ *  from disk, not image bytes. They belong on the Phase 13 fingerprinting
+ *  domain, not here. */
+export const IMAGE_INPUT_CLASS_TYPES: ReadonlySet<string> = new Set([
+  'LoadImage',
+  'LoadImageMask',
+  'VAEEncode',
+  'VAEEncodeForInpaint',
+  'ControlNetApply',
+  'ControlNetApplyAdvanced',
+]);
+
+/** Phase 15 (D-CTX-1; v1.1 audit per Plan 15-01 REVISION C1/C2) — per
+ *  IMAGE_INPUT_CLASS_TYPES class, the canonical input field name(s).
+ *  Mirrors MODEL_FIELD_BY_CLASS.
+ *
+ *  Two field-shape kinds:
+ *  - 'image' (LoadImage / LoadImageMask / ControlNetApply*) — a STRING
+ *    filename. extractComponentIngredients reads it directly.
+ *  - 'pixels' (VAEEncode / VAEEncodeForInpaint) — an EDGE TUPLE
+ *    [source_node_id, output_index]. extractComponentIngredients follows
+ *    the edge back to the upstream LoadImage* node and uses THAT node's
+ *    filename. When the upstream is not a recognised filename-bearing
+ *    node, the entry is silently skipped (procedurally-generated images
+ *    have no canonical filename to record). */
+export const IMAGE_FIELD_BY_CLASS: Record<string, string[]> = {
+  LoadImage:               ['image'],
+  LoadImageMask:           ['image'],
+  VAEEncode:               ['pixels'],
+  VAEEncodeForInpaint:     ['pixels'],
+  ControlNetApply:         ['image'],
+  ControlNetApplyAdvanced: ['image'],
+};
+
 /** Per class_type, the canonical input field name(s) for the model file. */
 export const MODEL_FIELD_BY_CLASS: Record<string, string[]> = {
   CheckpointLoader: ['ckpt_name'],
