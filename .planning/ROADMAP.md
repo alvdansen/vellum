@@ -70,7 +70,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   3. Existing failed-version dashboard cards render the new actionable error string verbatim — no field renaming, no UI rework.
   4. When `node_errors` is absent or unparseable, the path falls back gracefully to the generic `"ComfyUI reported failed"` string with no thrown error.
 **Plans**: 2 plans
-  - [ ] 11-01-PLAN.md — flattenComfyError helper + dual call-site refactor (helper + unit tests)
+  - [x] 11-01-PLAN.md — flattenComfyError helper + dual call-site refactor (helper + unit tests)
   - [ ] 11-02-PLAN.md — Same-fixture parity test (helper + submit-path + status-path)
 
 ### Phase 12: Reproduce Divergence Transparency
@@ -174,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 8. Documentation Attribution Backfill | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
 | 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
-| 11. Recovery Poller Error Detail    | v1.1 | 0/2 | Not started | - |
+| 11. Recovery Poller Error Detail    | v1.1 | 1/2 | In Progress|  |
 | 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 0/TBD | Not started | - |

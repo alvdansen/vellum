@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
 status: executing
-stopped_at: Completed Plan 10-03 — DEMO-01 cohort complete; Phase 10 ready for verification (3/3 plans done, 4/4 ROADMAP success criteria covered, 767 passing)
-last_updated: "2026-04-30T08:04:46.768Z"
-last_activity: 2026-04-30 -- Phase 11 execution started
+stopped_at: Completed Plan 11-01 — flattenComfyError helper + dual call-site refactor; DEMO-02 helper-level closure (parity test still pending in Plan 11-02). 783 passing / 5 pre-existing failing / 3 skipped.
+last_updated: "2026-04-30T08:12:30.497Z"
+last_activity: 2026-04-30 -- Plan 11-01 complete; Plan 11-02 next
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 ## Current Position
 
 Phase: 11 (Recovery Poller Error Detail) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 11
-Last activity: 2026-04-30 -- Phase 11 execution started
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-30
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | Phase 10 P01 | 6min | 2 tasks | 3 files |
 | Phase 10 P02 | 3min | 2 tasks | 3 files |
 | Phase 10 P03 | 2min | 1 tasks | 1 files |
+| Phase 11 P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 10]: runMigrations() promoted to schema-polymorphic generic during Plan 10-02 wiring (Rule 3 fix). Plan 10-01's no-schema-only signature did not accept the typed BetterSQLite3Database<typeof schema> at the openDb() call site. Single signature change in src/store/migrate.ts; no behavioral change to the migrator-invocation path or TypedError wrap.
 - [Phase 10]: Plan 10-03 closed the DEMO-01 cohort with 7 failure-path assertions across 3 describe blocks. vi.mock injection of a synthetic drizzle-migrator failure proves the typed-error envelope (code + filename + SQL-text + remediation hint) and a local engine-constructor vi.fn() spy proves openDb() bails before any post-openDb code runs (engineConstructorSpy never invoked). DEMO-01 marked complete in REQUIREMENTS.md (cohort-level requirement). Phase 10 ready for verifier.
 - [Phase 10]: All four ROADMAP success criteria for migrate-on-boot hardening have automated coverage. #1 (atomic apply before transports) + #4 (clean-DB no-op) from Plans 10-01/10-02. #2 (typed MIGRATION_PENDING with filename + hint) + #3 (test fires before tool registration) from Plan 10-03. Architecture-purity preserved across all three plans — store-layer migration helpers stay zero-MCP, proven by file-level grep guard in src/__tests__/architecture-purity.test.ts.
+- [Phase 11]: Plan 11-01 introduced flattenComfyError(error: unknown): string in src/comfyui/format.ts as the single source of truth for the 3-branch ComfyUI error flatten chain (node_errors / string / 'ComfyUI reported failed' fallback). Both submit-time (src/comfyui/client.ts:436) and recovery-poller (src/engine/generation.ts:207) call sites delegate to it. extractFirstNodeError stays unchanged as the underlying primitive. IT-10 cancelled-status contract preserved. Architecture-purity preserved. Helper-level closure of ROADMAP success criteria 1-4; integration-level parity proof comes in Plan 11-02.
+- [Phase 11]: DEMO-02 NOT marked complete in REQUIREMENTS.md after Plan 11-01. The requirement is cohort-level (helper + dual call-site refactor in 11-01, byte-for-byte same-fixture parity test in 11-02). Mark complete after Plan 11-02.
 
 ### Pending Todos
 
@@ -105,8 +108,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T07:44:31.331Z
-Stopped at: Completed Plan 10-03 — DEMO-01 cohort complete; Phase 10 ready for verification (3/3 plans done, 4/4 ROADMAP success criteria covered, 767 passing)
+Last session: 2026-04-30T08:12:24.444Z
+Stopped at: Completed Plan 11-01 — flattenComfyError helper + dual call-site refactor; DEMO-02 helper-level closure (parity test still pending in Plan 11-02). 783 passing / 5 pre-existing failing / 3 skipped.
 Resume file: None
 
-**Planned Phase:** Phase 10 — Migrate-on-boot Hardening. Run `/gsd-plan-phase 10` to derive plans.
+**Planned Phase:** Phase 11 — Recovery Poller Error Detail. Plan 11-02 ready (`gsd-execute-plan 11-02`).
