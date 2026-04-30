@@ -132,7 +132,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   5. When an ingredient's source artifact is unreachable (e.g., control image deleted from disk after generation), the assertion records the dangling-reference state rather than silently dropping the ingredient.
 **Plans**: 4 plans
   - [x] 15-01-PLAN.md — IMAGE_INPUT_CLASS_TYPES + pure ingredient extractors + ingredient hasher (engine layer + unit tests)
-  - [ ] 15-02-PLAN.md — Manifest builder extension (parentOf / componentOf / inputTo assertion shapes + backward-compat fallback)
+  - [x] 15-02-PLAN.md — Manifest builder extension (parentOf / componentOf / inputTo assertion shapes + backward-compat fallback)
   - [ ] 15-03-PLAN.md — Engine.signOutput integration (read parent manifest hash + walk components + hash + manifest_signed payload extension)
   - [ ] 15-04-PLAN.md — End-to-end fixture (v1→v2→v3 traceback) + dangling-reference test + cohort closure (PROV-V-04)
 
@@ -180,5 +180,5 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
-| 15. Ingredient Graph                | v1.1 | 1/4 | In Progress|  |
+| 15. Ingredient Graph                | v1.1 | 2/4 | In Progress|  |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
