@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
-stopped_at: Completed Plan 11-01 — flattenComfyError helper + dual call-site refactor; DEMO-02 helper-level closure (parity test still pending in Plan 11-02). 783 passing / 5 pre-existing failing / 3 skipped.
-last_updated: "2026-04-30T08:12:30.497Z"
-last_activity: 2026-04-30 -- Plan 11-01 complete; Plan 11-02 next
+status: verifying
+stopped_at: Completed Plan 11-02 — same-fixture parity test (14 named test cases / 4 fixtures × 3 arms + cross-arm sweep + IT-10 cross-check). DEMO-02 cohort closed; Phase 11 ready for /gsd-verify-phase. 797 passing / 5 pre-existing failing / 3 skipped.
+last_updated: "2026-04-30T08:26:26.633Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 11 (Recovery Poller Error Detail) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 80%
 | Phase 10 P02 | 3min | 2 tasks | 3 files |
 | Phase 10 P03 | 2min | 1 tasks | 1 files |
 | Phase 11 P01 | 5min | 2 tasks | 4 files |
+| Phase 11 P02 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,9 @@ Recent decisions affecting current work:
 - [Phase 10]: All four ROADMAP success criteria for migrate-on-boot hardening have automated coverage. #1 (atomic apply before transports) + #4 (clean-DB no-op) from Plans 10-01/10-02. #2 (typed MIGRATION_PENDING with filename + hint) + #3 (test fires before tool registration) from Plan 10-03. Architecture-purity preserved across all three plans — store-layer migration helpers stay zero-MCP, proven by file-level grep guard in src/__tests__/architecture-purity.test.ts.
 - [Phase 11]: Plan 11-01 introduced flattenComfyError(error: unknown): string in src/comfyui/format.ts as the single source of truth for the 3-branch ComfyUI error flatten chain (node_errors / string / 'ComfyUI reported failed' fallback). Both submit-time (src/comfyui/client.ts:436) and recovery-poller (src/engine/generation.ts:207) call sites delegate to it. extractFirstNodeError stays unchanged as the underlying primitive. IT-10 cancelled-status contract preserved. Architecture-purity preserved. Helper-level closure of ROADMAP success criteria 1-4; integration-level parity proof comes in Plan 11-02.
 - [Phase 11]: DEMO-02 NOT marked complete in REQUIREMENTS.md after Plan 11-01. The requirement is cohort-level (helper + dual call-site refactor in 11-01, byte-for-byte same-fixture parity test in 11-02). Mark complete after Plan 11-02.
+- [Phase 11]: Plan 11-02 added same-fixture parity test at src/comfyui/__tests__/error-extraction-parity.test.ts (354 lines, 14 named test cases). Drives 4 Cloud-shaped error fixtures (node_errors object, value_not_in_list, bare string, IT-10 missing-error fallback) through 3 paths (helper / submit / status) and asserts byte-equal output. Cross-arm sweep + IT-10 cross-check provide structural guard against future drift between submit-time and recovery-poller error-extraction call sites. ROADMAP Phase 11 success criterion #2 closed at integration boundary.
+- [Phase 11]: FakeComfyUIClient gained additive cannedFailedError escape-hatch (default null preserves legacy { node_errors: cannedNodeErrors } wrap) plus OMIT_ERROR sentinel symbol. Purely opt-in — every pre-existing failed-workflow test continues to behave byte-for-byte unchanged (46/46 generation.test.ts passing). FakeScenario union, default cannedNodeErrors fixture, and all other scenarios untouched. Threat T-11-06 mitigation honoured.
+- [Phase 11]: DEMO-02 marked complete in REQUIREMENTS.md after Plan 11-02. Cohort-level closure: 11-01 added flattenComfyError helper + dual call-site refactor, 11-02 added the byte-for-byte same-fixture parity test. ROADMAP success criteria #1 (recovery poller surfaces actionable detail), #2 (single helper proven), #3 (no field rename / UI rework), and #4 (graceful fallback when node_errors absent) all provably closed. Phase 11 ready for /gsd-verify-phase 11.
 
 ### Pending Todos
 
@@ -108,8 +112,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T08:12:24.444Z
-Stopped at: Completed Plan 11-01 — flattenComfyError helper + dual call-site refactor; DEMO-02 helper-level closure (parity test still pending in Plan 11-02). 783 passing / 5 pre-existing failing / 3 skipped.
+Last session: 2026-04-30T08:26:10.766Z
+Stopped at: Completed Plan 11-02 — same-fixture parity test (14 named test cases / 4 fixtures × 3 arms + cross-arm sweep + IT-10 cross-check). DEMO-02 cohort closed; Phase 11 ready for /gsd-verify-phase. 797 passing / 5 pre-existing failing / 3 skipped.
 Resume file: None
 
-**Planned Phase:** Phase 11 — Recovery Poller Error Detail. Plan 11-02 ready (`gsd-execute-plan 11-02`).
+**Planned Phase:** Phase 11 — Recovery Poller Error Detail (complete). Run `gsd-verify-phase 11` next.

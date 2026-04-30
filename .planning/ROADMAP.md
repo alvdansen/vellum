@@ -37,7 +37,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 **Milestone Goal:** Make every generated output carry a regulator-verifiable C2PA-signed manifest with AI-origin disclosure, ingredient graph, and full model fingerprinting — exposed at the agent boundary via `version.export_manifest` / `version.verify_manifest`. Close three v1.0-demo-surfaced reliability gaps along the way.
 
 - [x] **Phase 10: Migrate-on-boot Hardening** — Server runs pending Drizzle migrations on boot or refuses to boot with a typed `MIGRATION_PENDING` error. (completed 2026-04-30)
-- [ ] **Phase 11: Recovery Poller Error Detail** — Async terminal failures surface ComfyUI Cloud `node_errors` instead of collapsing to `"ComfyUI reported failed"`.
+- [x] **Phase 11: Recovery Poller Error Detail** — Async terminal failures surface ComfyUI Cloud `node_errors` instead of collapsing to `"ComfyUI reported failed"`. (completed 2026-04-30)
 - [ ] **Phase 12: Reproduce Divergence Transparency** — Dashboard renders a non-determinism pill + side-by-side parent-vs-reproduction comparison when reproduce-lineage outputs diverge.
 - [ ] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`.
 - [ ] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP at download with explicit AI-origin disclosure; sidecar `.c2pa` for non-embed formats (EXR, PSD, TIFF).
@@ -71,7 +71,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. When `node_errors` is absent or unparseable, the path falls back gracefully to the generic `"ComfyUI reported failed"` string with no thrown error.
 **Plans**: 2 plans
   - [x] 11-01-PLAN.md — flattenComfyError helper + dual call-site refactor (helper + unit tests)
-  - [ ] 11-02-PLAN.md — Same-fixture parity test (helper + submit-path + status-path)
+  - [x] 11-02-PLAN.md — Same-fixture parity test (helper + submit-path + status-path)
 
 ### Phase 12: Reproduce Divergence Transparency
 **Goal**: When a reproduce-lineage output diverges from its parent (because the partner-API model is non-deterministic, or because a SHA-256 of v3's output differs from v4's despite verbatim prompt replay), surface that divergence in the UI rather than silently shipping a "reproduction" that isn't bit-identical.
@@ -174,7 +174,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 8. Documentation Attribution Backfill | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 9. Nyquist Wave 0 Closure           | v1.0 | 1/1 | Complete | 2026-04-28 |
 | 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
-| 11. Recovery Poller Error Detail    | v1.1 | 1/2 | In Progress|  |
+| 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 12. Reproduce Divergence Transparency | v1.1 | 0/TBD | Not started | - |
 | 13. Model Fingerprinting            | v1.1 | 0/TBD | Not started | - |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 0/TBD | Not started | - |
