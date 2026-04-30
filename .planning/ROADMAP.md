@@ -9,7 +9,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 1-9 (shipped 2026-04-28). Full archive: `milestones/v1.0-ROADMAP.md`, `milestones/v1.0-REQUIREMENTS.md`, `milestones/v1.0-MILESTONE-AUDIT.md`.
-- 🚧 **v1.1 Provenance Verification (C2PA)** — Phases 10-16 (in progress). 7 phases, 10 requirements (7 PROV-V + 3 DEMO), 0 new top-level MCP tools (`version` gets two new actions, tool budget stays at 6 of 12 cap).
+- ✅ **v1.1 Provenance Verification (C2PA)** — Phases 10-16 (shipped 2026-04-30). 7 phases, 10 requirements (7 PROV-V + 3 DEMO), 0 new top-level MCP tools (`version` gets THREE new actions per Phase 16 — export_manifest + verify_manifest + redact_manifest, tool budget stays at 7 of 12 cap).
 
 ## Phases
 
@@ -32,7 +32,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 
 </details>
 
-### 🚧 v1.1 Provenance Verification (C2PA) — In Progress
+### ✅ v1.1 Provenance Verification (C2PA) — SHIPPED 2026-04-30
 
 **Milestone Goal:** Make every generated output carry a regulator-verifiable C2PA-signed manifest with AI-origin disclosure, ingredient graph, and full model fingerprinting — exposed at the agent boundary via `version.export_manifest` / `version.verify_manifest`. Close three v1.0-demo-surfaced reliability gaps along the way.
 
@@ -42,7 +42,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
 - [x] **Phase 13: Model Fingerprinting** — Every model in the resolved prompt blob gets a SHA-256 fingerprint captured in `models_json`; closes the `model_hash: null` gap at `src/engine/provenance.ts:69`. (completed 2026-04-30)
 - [x] **Phase 14: C2PA Signed Manifest Emission** — Signed manifests embedded in PNG/JPEG/MP4/WebP/TIFF at download with explicit AI-origin disclosure; EXR/PSD remain unsigned (v1.2 cryptographic-sidecar follow-up). (completed 2026-04-30)
 - [x] **Phase 15: Ingredient Graph** — Manifest carries `parentOf` / `componentOf` ingredients (via c2pa-node's manifestBuilder.addIngredient — surfaces on manifest.ingredients[]) + `inputTo` vendor assertion linking lineage parents, control/reference images, and prompt parameters by hash. (completed 2026-04-30)
-- [ ] **Phase 16: Redaction & Agent Surface** — Redaction primitive emits a derived manifest with `c2pa.redacted` assertion (originals stay append-only); two new `version` tool actions: `export_manifest` and `verify_manifest`.
+- [x] **Phase 16: Redaction & Agent Surface** — Redaction primitive emits a derived manifest with `vfx_familiar.redacted` vendor assertion (originals stay append-only — D-CTX-5); THREE new `version` tool actions: `export_manifest`, `verify_manifest`, `redact_manifest`. Architecture-purity allowed-set extended to 4 c2pa-node importers (signer + exporter + verifier + redaction). Wire-level dual-transport parity (stdio + HTTP) verified. (completed 2026-04-30)
 
 ## Phase Details
 
@@ -147,10 +147,12 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   4. The architecture-purity test passes: redaction logic and manifest export/verify live in the engine layer; the `version` tool is a thin Zod-validated entry point with no engine logic inline. Tool count stays at 6 (no new top-level tool registration).
   5. The discriminated-union schema for the `version` tool extends cleanly: `export_manifest` and `verify_manifest` round-trip through stdio AND Streamable HTTP transports identically (parity test green).
   6. The cross-cutting `phase-attribution.test.ts` and `validation-flags.test.ts` guards remain green; the architecture-purity test gains explicit assertions blocking C2PA SDK imports outside `src/engine/c2pa/`.
-**Plans**: 3 plans
-  - [ ] 10-01-PLAN.md — Add MIGRATION_PENDING ErrorCode + create runMigrations() helper (engine layer)
-  - [ ] 10-02-PLAN.md — Wire runMigrations() into openDb() boot path + clean-DB no-op test
-  - [ ] 10-03-PLAN.md — Stale-DB / migration-failure test (typed error fires before tool registration)
+**Plans**: 5 plans
+  - [x] 16-01-PLAN.md — Engine modules: exporter.ts + verifier.ts + Engine facade methods + architecture-purity allowed-set extension (PROV-V-07 wave 1)
+  - [x] 16-02-PLAN.md — Engine module: redaction.ts (pure helpers + integration helper with lazy c2pa-node + per-version sign mutex) + ManifestSignedPayloadFields extension + appendManifestSignedRedactedEvent + 3 new ErrorCode values (PROV-V-06 engine wave 2)
+  - [x] 16-03-PLAN.md — Tool surface: version.export_manifest + version.verify_manifest action handlers + Zod schemas + dual-transport parity tests (PROV-V-07 wire-level)
+  - [x] 16-04-PLAN.md — Tool surface: version.redact_manifest action handler + Zod schema + dual-transport parity + D-CTX-1 wire-level invariant verification (PROV-V-06 wire-level)
+  - [x] 16-05-PLAN.md — E2E + wire-level UAT + verify-phase16-uat.mts smoke + cohort closure (PROV-V-06 + PROV-V-07 + milestone v1.1 indicator)
 
 ## Future Milestones
 
@@ -181,4 +183,4 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 13. Model Fingerprinting            | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 5/5 | Complete   | 2026-04-30 |
 | 15. Ingredient Graph                | v1.1 | 4/4 | Complete   | 2026-04-30 |
-| 16. Redaction & Agent Surface       | v1.1 | 4/5 | In Progress|  |
+| 16. Redaction & Agent Surface       | v1.1 | 5/5 | Complete   | 2026-04-30 |
