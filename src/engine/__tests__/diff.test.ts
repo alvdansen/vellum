@@ -90,14 +90,26 @@ describe('diffVersions (D-PROV-15..D-PROV-20)', () => {
       a: snap({
         prompt_json: wf,
         models_json: [
-          { node_id: '4', class_type: 'CheckpointLoaderSimple', model_name: 'A.safetensors', model_hash: null },
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'A.safetensors',
+            model_hash: null,
+            model_hash_unavailable: null,
+          },
         ],
       }),
       b: snap({
         version_id: 'ver_b',
         prompt_json: wf,
         models_json: [
-          { node_id: '4', class_type: 'CheckpointLoaderSimple', model_name: 'B.safetensors', model_hash: null },
+          {
+            node_id: '4',
+            class_type: 'CheckpointLoaderSimple',
+            model_name: 'B.safetensors',
+            model_hash: null,
+            model_hash_unavailable: null,
+          },
         ],
       }),
     });

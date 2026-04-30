@@ -35,6 +35,25 @@ export const MODEL_FIELD_BY_CLASS: Record<string, string[]> = {
   StyleModelLoader: ['style_model_name'],
 };
 
+/** Phase 13 (D-CTX-2). Per loader class_type, the canonical models-subdir
+ *  under VFX_FAMILIAR_MODELS_DIR — `MODEL_DIR_BY_CLASS` mirrors the structure
+ *  of `MODEL_FIELD_BY_CLASS` above; every key in LOADER_CLASS_TYPES MUST
+ *  appear here so fingerprintModel never falls into the
+ *  `unsupported_class_type` defensive path for a recognised loader. The
+ *  lockstep invariant is locked by a test in
+ *  src/engine/__tests__/model-extraction.test.ts. */
+export const MODEL_DIR_BY_CLASS: Record<string, string> = {
+  CheckpointLoader: 'checkpoints',
+  CheckpointLoaderSimple: 'checkpoints',
+  LoraLoader: 'loras',
+  LoraLoaderModelOnly: 'loras',
+  VAELoader: 'vae',
+  UNETLoader: 'unet',
+  CLIPLoader: 'clip',
+  ControlNetLoader: 'controlnet',
+  StyleModelLoader: 'style_models',
+};
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
@@ -66,7 +85,13 @@ export function extractModels(promptBlob: Record<string, unknown>): ModelRef[] {
     const fields = MODEL_FIELD_BY_CLASS[classType] ?? [];
     const modelName = pickModelName(inputs, fields);
     if (modelName === null) continue;
-    out.push({ node_id: nodeId, class_type: classType, model_name: modelName, model_hash: null });
+    out.push({
+      node_id: nodeId,
+      class_type: classType,
+      model_name: modelName,
+      model_hash: null,
+      model_hash_unavailable: null,
+    });
   }
   out.sort((a, b) => {
     const na = Number(a.node_id);

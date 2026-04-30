@@ -20,12 +20,17 @@ export interface ProvenanceEvent {
   timestamp: number;              // epoch ms
 }
 
-/** D-PROV-06: one entry per ComfyUI loader node. */
+/** D-PROV-06 + Phase 13 (D-CTX-1): one entry per ComfyUI loader node.
+ *  Exactly one of `model_hash` / `model_hash_unavailable` is non-null
+ *  after Phase 13 fingerprinting completes; both null means
+ *  fingerprint-pending (background path has not yet run). Pure extraction
+ *  in src/engine/provenance.ts emits both as null. */
 export interface ModelRef {
   node_id: string;
   class_type: string;
   model_name: string;
-  model_hash: string | null;      // null in Phase 3 (checksums deferred)
+  model_hash: string | null;             // populated by Phase 13 fingerprinter on success
+  model_hash_unavailable: string | null; // populated by Phase 13 fingerprinter when bytes unreadable; reason codes per D-CTX-5
 }
 
 /** D-PROV-13: per-node override payload for generation.iterate. */

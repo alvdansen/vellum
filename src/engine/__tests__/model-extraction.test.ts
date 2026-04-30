@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { extractModels } from '../provenance.js';
+import { extractModels, LOADER_CLASS_TYPES, MODEL_DIR_BY_CLASS } from '../provenance.js';
 
 const CASES: Array<{
   label: string;
@@ -82,11 +82,14 @@ describe('extractModels (D-PROV-06)', () => {
     expect(actual).toEqual(expected);
   });
 
-  test('all ModelRef entries have model_hash: null (checksums deferred)', () => {
+  test('all ModelRef entries have model_hash AND model_hash_unavailable null on the pure path', () => {
+    // D-CTX-1: pure extraction emits both fields null. Phase 13 fingerprinter
+    // (impure) populates exactly one of them after async I/O completes.
     const refs = extractModels({
       '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'x' } },
     });
     expect(refs[0]!.model_hash).toBeNull();
+    expect(refs[0]!.model_hash_unavailable).toBeNull();
   });
 
   test('CLIPLoader falls through to clip_name1 when clip_name missing', () => {
@@ -94,7 +97,23 @@ describe('extractModels (D-PROV-06)', () => {
       '6': { class_type: 'CLIPLoader', inputs: { clip_name1: 'clip_g.safetensors' } },
     });
     expect(refs).toEqual([
-      { node_id: '6', class_type: 'CLIPLoader', model_name: 'clip_g.safetensors', model_hash: null },
+      {
+        node_id: '6',
+        class_type: 'CLIPLoader',
+        model_name: 'clip_g.safetensors',
+        model_hash: null,
+        model_hash_unavailable: null,
+      },
     ]);
+  });
+});
+
+describe('MODEL_DIR_BY_CLASS coverage of LOADER_CLASS_TYPES (Phase 13 D-CTX-2)', () => {
+  test('every LOADER_CLASS_TYPES member is a key of MODEL_DIR_BY_CLASS (lockstep invariant)', () => {
+    // Locks the lockstep invariant: a future class_type added to
+    // LOADER_CLASS_TYPES without a MODEL_DIR_BY_CLASS entry surfaces here
+    // before fingerprintModel falls into the defensive 'unsupported_class_type'
+    // path in production.
+    expect(Object.keys(MODEL_DIR_BY_CLASS).sort()).toEqual([...LOADER_CLASS_TYPES].sort());
   });
 });
