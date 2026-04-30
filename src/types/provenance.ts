@@ -2,8 +2,53 @@
 // ZERO imports — canonical type source consumed by engine, store, and tools.
 // Refs: D-PROV-02 (ProvenanceEvent), D-PROV-15 (DiffResponse), D-PROV-33 (LineageType).
 
-export type ProvenanceEventType = 'submitted' | 'completed' | 'failed' | 'models_fingerprinted';
+export type ProvenanceEventType =
+  | 'submitted'
+  | 'completed'
+  | 'failed'
+  | 'models_fingerprinted'
+  | 'manifest_signed';
 export type LineageType = 'reproduce' | 'iterate';
+
+/**
+ * Phase 14 — PROV-V-01 (D-CTX-7). Sibling event written by Engine.signOutput
+ * AFTER the 'completed' event + after 'models_fingerprinted'. Carries the
+ * outcome of the signing attempt. NEVER carries key material — only the
+ * cert subject summary derived from the cert's public DN (Plan 14-02
+ * loadSigner with RFC4514-safe parser per Concern #10).
+ *
+ * v1.1 scope (Concern #2): NO `sidecar` field — c2pa-node v0.5.26 has no
+ * sidecar API. EXR/PSD surface as signed=false / status_reason='unsupported_format'
+ * with the original file untouched on disk. v1.2 deferred items in
+ * REQUIREMENTS.md cover cryptographic-sidecar support pending c2pa-node API
+ * additions OR direct c2pa-rs FFI binding.
+ *
+ * Append-only: ProvenanceRepo's `appendManifestSignedEvent` INSERTs a new
+ * row; it never updates the original 'completed' or 'models_fingerprinted'
+ * rows. T-14-09 mitigation parity with T-13-07.
+ */
+export type ManifestSignedPayloadFields = {
+  /** Output filename (basename only — outputs may have multiple files per version). */
+  filename: string;
+  /** MIME type that was signed (image/png, video/mp4, image/tiff, etc.). Empty when signing skipped. */
+  format: string;
+  /** True when signing succeeded; false when signer was disabled, format unsupported, or signing threw (D-CTX-9 graceful-fail). */
+  signed: boolean;
+  /** Short DN summary (CN/O) from the cert. NEVER public-key bytes, NEVER private-key bytes. Empty when signed=false. */
+  cert_subject_summary: string;
+  /** ISO-8601 timestamp recorded by Engine.signOutput. */
+  signed_at: string;
+  /** Reason code when signed=false. Empty when signed=true. One of:
+   *  'signing_disabled' | 'unsupported_format' | 'sign_call_failed' |
+   *  'cert_load_failed' | 'asset_too_large_for_buffer_api' | 'native_binding_unavailable'. */
+  status_reason: string;
+  /** Detected SigningAlgorithm (Plan 14-02 Concern #1). Empty when signed=false. */
+  algorithm: string;
+};
+
+export type ProvenanceManifestSignedPayload = {
+  event_type: 'manifest_signed';
+} & ManifestSignedPayloadFields;
 
 /** D-PROV-02 + Phase 13: one row per (version, event). Append-only — repo
  *  has no UPDATE/DELETE. Phase 13 adds the 'models_fingerprinted' event
@@ -20,6 +65,10 @@ export interface ProvenanceEvent {
   outputs_json: string | null;    // populated on 'completed' — mirrors versions.outputs_json at event time
   error_code: string | null;      // populated on 'failed'
   error_message: string | null;   // populated on 'failed'
+  /** Phase 14 — PROV-V-01. Populated on 'manifest_signed' rows ONLY; carries
+   *  the JSON-encoded ManifestSignedPayloadFields. Pre-Phase-14 rows always
+   *  read NULL here (migration 0006 added the column as nullable). */
+  manifest_signed_json: string | null;
   timestamp: number;              // epoch ms
 }
 

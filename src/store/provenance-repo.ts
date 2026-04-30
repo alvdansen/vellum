@@ -2,7 +2,11 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { provenance } from './schema.js';
-import type { ModelRef, ProvenanceEvent } from '../types/provenance.js';
+import type {
+  ManifestSignedPayloadFields,
+  ModelRef,
+  ProvenanceEvent,
+} from '../types/provenance.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
 
@@ -48,11 +52,21 @@ export type ProvenanceFailedPayload = { error_code: string; error_message: strin
  *  'completed' event. */
 export type ProvenanceModelsFingerprintedPayload = { models_json: string };
 
+/** Phase 14 — PROV-V-01. Sibling event written by Engine.signOutput AFTER
+ *  the 'completed' event + 'models_fingerprinted'. Carries the JSON-encoded
+ *  ManifestSignedPayloadFields in a nullable manifest_signed_json column
+ *  (migration 0006). Append-only: never updates earlier rows. v1.1 scope
+ *  (Concern #2): NO `sidecar` field. */
+export type ProvenanceManifestSignedRowPayload = {
+  manifest_signed_json: string;
+};
+
 export type ProvenanceEventPayload =
   | ({ event_type: 'submitted' } & ProvenanceSubmittedPayload)
   | ({ event_type: 'completed' } & ProvenanceCompletedPayload)
   | ({ event_type: 'failed' } & ProvenanceFailedPayload)
-  | ({ event_type: 'models_fingerprinted' } & ProvenanceModelsFingerprintedPayload);
+  | ({ event_type: 'models_fingerprinted' } & ProvenanceModelsFingerprintedPayload)
+  | ({ event_type: 'manifest_signed' } & ProvenanceManifestSignedRowPayload);
 
 export class ProvenanceRepo {
   constructor(private db: Db) {}
@@ -76,6 +90,10 @@ export class ProvenanceRepo {
       outputs_json: payload.event_type === 'completed' ? payload.outputs_json : null,
       error_code: payload.event_type === 'failed' ? payload.error_code : null,
       error_message: payload.event_type === 'failed' ? payload.error_message : null,
+      // Phase 14 — PROV-V-01. The 'manifest_signed' event_type carries its
+      // payload in the new manifest_signed_json column (migration 0006).
+      manifest_signed_json:
+        payload.event_type === 'manifest_signed' ? payload.manifest_signed_json : null,
       timestamp: Date.now(),
     };
     try {
@@ -160,5 +178,59 @@ export class ProvenanceRepo {
     } catch {
       return null;
     }
+  }
+
+  /** Phase 14 — PROV-V-01. `appendManifestSignedEvent` writes an
+   *  append-only sibling event carrying the outcome of an Engine.signOutput
+   *  call. Mirrors Phase 13's appendModelsFingerprintedEvent shape exactly.
+   *  Uses the new manifest_signed_json column (migration 0006). NEVER carries
+   *  key material — only the cert subject summary derived from the cert's
+   *  public DN (Plan 14-02 loadSigner with RFC4514-safe parser).
+   *
+   *  v1.1 scope (Concern #2): NO `sidecar` field — c2pa-node v0.5.26 has no
+   *  sidecar API. EXR/PSD surface as signed=false / status_reason='unsupported_format'
+   *  with the original file untouched on disk. */
+  appendManifestSignedEvent(
+    versionId: string,
+    payload: ManifestSignedPayloadFields,
+  ): ProvenanceEvent {
+    return this.insertEvent(versionId, {
+      event_type: 'manifest_signed',
+      manifest_signed_json: JSON.stringify(payload),
+    });
+  }
+
+  /** Phase 14 — PROV-V-01. Returns the most recent manifest_signed event for
+   *  a version+filename pair, or null. Used by Engine.signOutput's idempotency
+   *  guard (Concern #7) and by the HTTP layer's X-C2PA-Signing-Status header
+   *  (Plan 14-04). Filters in-memory rather than via JSON path expressions —
+   *  the per-version event count is small (a handful of events per version),
+   *  so a full scan-and-decode is cheap and avoids relying on SQLite's
+   *  json_extract availability across builds. */
+  getLatestManifestSignedEvent(
+    versionId: string,
+    filename: string,
+  ): ManifestSignedPayloadFields | null {
+    const rows = this.db
+      .select()
+      .from(provenance)
+      .where(
+        and(eq(provenance.version_id, versionId), eq(provenance.event_type, 'manifest_signed')),
+      )
+      .orderBy(desc(provenance.timestamp))
+      .all() as ProvenanceEvent[];
+    for (const row of rows) {
+      if (!row.manifest_signed_json) continue;
+      try {
+        const parsed = JSON.parse(row.manifest_signed_json) as ManifestSignedPayloadFields;
+        if (parsed.filename === filename) return parsed;
+      } catch {
+        // Malformed payload — skip and keep walking newer-to-older. T-13-12
+        // mitigation parity: callers see a clean null signal rather than a
+        // partially-parsed object.
+        continue;
+      }
+    }
+    return null;
   }
 }

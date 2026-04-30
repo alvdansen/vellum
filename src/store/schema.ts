@@ -122,6 +122,12 @@ export const provenance = sqliteTable('provenance', {
   outputs_json: text('outputs_json'),
   error_code: text('error_code'),
   error_message: text('error_message'),
+  // Phase 14 addition — PROV-V-01. Nullable JSON-encoded payload of the
+  // 'manifest_signed' event_type added by Plan 14-03. Pre-Phase-14 rows
+  // read NULL here. Added by drizzle migrator via
+  // 0006_phase14_manifest_signed_event.sql; SCHEMA_DDL above intentionally
+  // does NOT declare this column — matches the Phase 2/3/12 additive split.
+  manifest_signed_json: text('manifest_signed_json'),
   timestamp: integer('timestamp').notNull(),
 }, (t) => ({
   // D-PROV-35: two-column index supports both "all events for version in order"

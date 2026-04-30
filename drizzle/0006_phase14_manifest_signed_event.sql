@@ -1,0 +1,15 @@
+-- IDM-03: ROLLBACK NOT SUPPORTED.
+--
+-- Phase 14 (PROV-V-01) — append a nullable `manifest_signed_json` column to
+-- `provenance` carrying the per-event JSON payload of the new
+-- 'manifest_signed' event_type (Plan 14-03 Task 1, Concern #2 scope reduction
+-- — no `sidecar` field). The event_type column has no CHECK constraint
+-- (per Phase 13 SUMMARY) so 'manifest_signed' is purely TS-level
+-- discrimination. Pre-Phase-14 rows read NULL here.
+--
+-- Append-only invariant preserved — ProvenanceRepo continues to expose
+-- only INSERTs through the new appendManifestSignedEvent method, mirroring
+-- Phase 13's appendModelsFingerprintedEvent. Architecture-purity guard
+-- (no this.db.update / this.db.delete in src/store/provenance-repo.ts)
+-- continues to pass.
+ALTER TABLE `provenance` ADD `manifest_signed_json` text;

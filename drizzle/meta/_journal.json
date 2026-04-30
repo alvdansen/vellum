@@ -36,6 +36,13 @@
       "when": 1777539083746,
       "tag": "0005_phase12_reproduction_warnings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777552207000,
+      "tag": "0006_phase14_manifest_signed_event",
+      "breakpoints": true
     }
   ]
 }
