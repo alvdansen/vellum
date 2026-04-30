@@ -34,7 +34,9 @@ export type ErrorCode =
   // Phase 5 — web dashboard (D-WEBUI-34)
   | 'OUTPUT_UNAVAILABLE'
   // Phase 7 — endpoint reconciliation (D-EP-08)
-  | 'COMFYUI_ENDPOINT_DRIFT';
+  | 'COMFYUI_ENDPOINT_DRIFT'
+  // Phase 10 — migrate-on-boot hardening (DEMO-01)
+  | 'MIGRATION_PENDING';
 
 /**
  * Typed engine error. Every error thrown below the tool boundary is a TypedError.
