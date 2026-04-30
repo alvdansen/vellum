@@ -4,6 +4,7 @@ import {
   isApiFormat,
   validateWorkflowFormat,
   extractFirstNodeError,
+  flattenComfyError,
 } from '../format.js';
 import '../../test-utils/matchers.js';
 
@@ -108,4 +109,92 @@ describe('extractFirstNodeError (D-GEN-27)', () => {
       expect(extractFirstNodeError(v)).toBeNull();
     },
   );
+});
+
+describe('flattenComfyError (DEMO-02 — single source of truth for the 3-branch chain)', () => {
+  test('node_errors object with first-actionable error → "Node <id> (<class_type>): <msg>"', () => {
+    const out = flattenComfyError({
+      node_errors: {
+        '3': {
+          errors: [{ message: 'Unauthorized: Please login first' }],
+          class_type: 'KSampler',
+        },
+      },
+    });
+    expect(out).toBe('Node 3 (KSampler): Unauthorized: Please login first');
+  });
+
+  test('node_errors object with value_not_in_list shape → flattened verbatim', () => {
+    const out = flattenComfyError({
+      node_errors: {
+        '5': {
+          errors: [{ message: "value_not_in_list: ckpt_name 'X' not in []" }],
+          class_type: 'CheckpointLoaderSimple',
+        },
+      },
+    });
+    expect(out).toBe(
+      "Node 5 (CheckpointLoaderSimple): value_not_in_list: ckpt_name 'X' not in []",
+    );
+  });
+
+  test('object with empty node_errors falls through to fallback', () => {
+    expect(flattenComfyError({ node_errors: {} })).toBe('ComfyUI reported failed');
+  });
+
+  test('object with errors[] empty falls through to fallback', () => {
+    expect(
+      flattenComfyError({ node_errors: { '3': { errors: [], class_type: 'KSampler' } } }),
+    ).toBe('ComfyUI reported failed');
+  });
+
+  test('non-empty string passes through verbatim', () => {
+    expect(flattenComfyError('Cloud bored, retry later')).toBe('Cloud bored, retry later');
+  });
+
+  test('Unauthorized string passes through verbatim', () => {
+    expect(flattenComfyError('Unauthorized: Please login first')).toBe(
+      'Unauthorized: Please login first',
+    );
+  });
+
+  test.each([undefined, null, '', 42, true, [], {}, { error: 'nested-but-no-node_errors' }])(
+    'non-flattenable input → "ComfyUI reported failed": %j',
+    (v) => {
+      expect(flattenComfyError(v)).toBe('ComfyUI reported failed');
+    },
+  );
+
+  test('IT-10 contract: cancelled-status (undefined error) emits exact literal', () => {
+    // Regression guard for src/engine/__tests__/generation.test.ts:308.
+    // The fake's cancelled-status scenario returns { status: 'cancelled' } with
+    // no .error field — remote.error is undefined when this helper runs.
+    expect(flattenComfyError(undefined)).toBe('ComfyUI reported failed');
+  });
+
+  test('property: never throws, always returns non-empty string', () => {
+    const inputs: unknown[] = [
+      undefined,
+      null,
+      '',
+      0,
+      -1,
+      NaN,
+      Infinity,
+      true,
+      false,
+      [],
+      {},
+      'hello',
+      { node_errors: null },
+      { node_errors: undefined },
+      { node_errors: 'oops' },
+      new Error('boom'),
+    ];
+    for (const input of inputs) {
+      const out = flattenComfyError(input);
+      expect(typeof out).toBe('string');
+      expect(out.length).toBeGreaterThan(0);
+    }
+  });
 });
