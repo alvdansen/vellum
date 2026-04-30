@@ -48,4 +48,12 @@ export interface Version {
   created_at?: string;
   tags?: string[];
   metadata?: Array<{ key: string }>;
+  /**
+   * Phase 12 — DEMO-03. Lineage marker for reproduce/iterate paths. Optional +
+   * nullable: legacy rows (pre-Phase-3) and originals (from generation.submit)
+   * carry null/undefined. The dashboard branches on this in VersionDrawer to
+   * decide whether to auto-fetch the diff response (which carries the
+   * reproduction_divergence signal) on drawer mount.
+   */
+  lineage_type?: 'reproduce' | 'iterate' | null;
 }
