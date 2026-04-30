@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: verifying
+status: executing
 stopped_at: "Completed Plan 15-02 — Phase 15 manifest builder extension. 2 atomic commits (c961b74, 19e94ac). 30 new tests in manifest-builder.test.ts (10 type-shape + 20 behavior); root suite 1096 -> 1126 passing; pre-existing 5 v1.1-audit failures unchanged. tsc --noEmit clean. New buildManifestWithIngredients pure entry point + 8 new exported types (BuildManifestResult, IngredientSpec, IngredientAssetRef, ManifestAssertion union + 4 union members + Options shape). Phase 14 buildManifestDefinition UNCHANGED — backward-compat invariant locked by Type Test 10 + Tests 1-12 of Phase 14 suite. Architectural contract: definition.assertions[] NEVER contains c2pa.ingredient — ingredients flow via manifestBuilder.addIngredient at Plan 15-03's impure signer. T-15-04 stripToBasename defence-in-depth (Tests 17, 18) lock. Two Rule deviations auto-fixed (Rule 1 pickCreatedAction narrowing helper; Rule 3 docstring rephrasing per recurring Phase 13/15-01 pattern). PROV-V-04 NOT marked complete — cohort closure in Plan 15-04. Plan 15-03 (Engine.signOutput integration) unblocked."
-last_updated: "2026-04-30T17:10:01.929Z"
-last_activity: 2026-04-30
+last_updated: "2026-04-30T17:30:57.122Z"
+last_activity: 2026-04-30 -- Phase 16 execution started
 progress:
   total_phases: 7
   completed_phases: 6
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 15 — Ingredient Graph
+**Current focus:** Phase 16 — Redaction & Agent Surface
 
 ## Current Position
 
-Phase: 15 (Ingredient Graph) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-04-30
+Phase: 16 (Redaction & Agent Surface) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 16
+Last activity: 2026-04-30 -- Phase 16 execution started
 
 Progress: [██████████] 100%
 
