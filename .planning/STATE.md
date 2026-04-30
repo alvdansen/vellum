@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Provenance Verification
-status: executing
-stopped_at: "Completed Plan 14-04 — HTTP X-C2PA-Signing-Status header + dashboard C2paBadge. 5 atomic commits (6b5c97b, b437a80, 60216a1, 9b37100, 19b98c8). GET/HEAD /api/versions/:id/output sets X-C2PA-Signing-Status response header sourced from Plan 14-03's manifest_signed event accessor. HTTP layer NEVER signs (signing-at-write-time per Plan 14-03 revision). v1.1 Concern #2 scope reduction LOCKED at HTTP + dashboard layer: NO sidecar route, NO sidecar dashboard link, NO SIDECAR_EXTENSIONS dashboard duplication. C2paBadge component (3 states: signed green / unsigned red with 6 reason translation / unknown muted). getC2paStatus helper (HEAD-based, never throws). T-14-10 mitigation enforced (Test 8 byte-identical baseline). T-14-11 XSS mitigation via 3 defence layers (translation map + character-class sanitization + Preact text-node interpolation). +41 tests; root 974 → 985 (+11); dashboard 58 → 88 (+30); pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero c2pa-node imports in dashboard-routes.ts. tsc --noEmit clean both root + dashboard. Dashboard build clean. Phase 14 cohort 4/5; Plan 14-05 (end-to-end demo + verification fixture + key-leak negative tests + REQUIREMENTS cohort closure) ready to start."
-last_updated: "2026-04-30T13:11:26.009Z"
+status: verifying
+stopped_at: "Completed Plan 14-05 — Phase 14 cohort closure. 5 atomic commits (72b1e48, 85561e7, e59969a, 6bfff69, e56e5d5). 53 new root tests across 5 files: c2pa-verification (17 tests, end-to-end PNG/JPEG/MP4/WebP/TIFF round-trip via c2pa.read + Concern #8 cryptographic-binding proof + tamper detection), c2pa-dual-transport-parity (9 tests, HTTP body bytes equal direct file read), c2pa-key-leak-negative (9 tests, T-14-01/T-14-02/T-14-12 mitigation proven across stdout/stderr/tool envelopes/HTTP body/provenance JSON), c2pa-uat-mcp-tool (4 tests, real MCP SDK Client + spawned server child process), requirements-cohort-closure (14 tests, smoke for REQUIREMENTS.md + ROADMAP.md state). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (extension preservation on temp paths, without which MP4/WebP/TIFF emitted unsigned bytes silently). version.get envelope gained additive c2pa_status + c2pa_status_reason fields (agent surface). VFX_FAMILIAR_OUTPUTS_DIR env support. PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete in REQUIREMENTS.md (PROV-V-05 partially — TIFF native-embed; EXR/PSD deferred to v1.2). New 'Deferred to v1.2' section captures cryptographic sidecar / sidecar HTTP route / HSM signing / multi-CA / streaming-friendly C2PA. ROADMAP Phase 14 row 5/5 Complete (2026-04-30). Root suite 985 -> 1038 passing; pre-existing 5 v1.1-audit failures unchanged. Dashboard 88 unchanged. tsc --noEmit clean. Phase 14 ready for /gsd-verify-phase 14. Phase 15 (Ingredient Graph) unblocked."
+last_updated: "2026-04-30T13:45:44.070Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 Phase: 14 (C2PA Signed Manifest Emission) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 93%
 | Phase Phase 14 PP02 | 19min | 4 tasks | 11 files |
 | Phase 14 P03 | 18min | 3 tasks tasks | 12 files files |
 | Phase 14 P04 | 11 | 2 tasks tasks | 10 files files |
+| Phase 14 P05 | 22min | 5 tasks tasks | 10 files files |
 
 ## Accumulated Context
 
@@ -114,6 +115,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 14]: Plan 14-02 closed engine-layer c2pa module foundation. src/engine/c2pa/ with 4 submodules (format-router, manifest-builder, signer, barrel index) — signer is the SOLE c2pa-node consumer (architecture-purity grep gate enforces). Concern #1 algorithm detection via X509Certificate built-ins (ES256/384/512, PS256/384/512, Ed25519; plain RSA fail-loud); Concern #10 RFC4514-aware subject parser (CN -> O -> fp: fallback); Concern #11 lazy + try/catch'd dynamic import (cached error short-circuits, no retry). Concern #2 sidecar reduction structurally locked via TypeScript exhaustiveness check (no mode 'sidecar' value). Runtime DEVIATION: c2pa-node v0.5.26 native binding requires tsaUrl ABSENT or VALID URL — TS-optional property with undefined value triggers downcast bug. Workaround: loadSigner builds LocalSigner literal with TWO branches (property omitted when caller passes null); default 'http://timestamp.digicert.com' mirrors createTestSigner. End-to-end signing tests use c2pa-node bundled cert chain (self-signed .c2pa-dev/ rejected by c2pa-rs). +54 tests; root suite 887 -> 941 passing. Pre-existing 5 v1.1-audit failures unchanged. PROV-V-01 NOT yet marked complete (cohort closure in 14-04/14-05).
 - [Phase ?]: [Phase 14]: Plan 14-03 closed engine integration cohort. Engine.signOutput method handles 8 outcome paths (signing_disabled, unsupported_format, cert_load_failed, native_binding_unavailable, sign_call_failed, asset_too_large_for_buffer_api, alreadySigned, success-buffer/file). Lazy signer cache + Concern #11 binding-error distinction. Concern #5 temp dir 0700/0600 with try/finally cleanup; Concern #6 BUFFER_SIGNING_MAX_BYTES (500MB) defence-in-depth at downloader pre-stat + engine cap; Concern #7 idempotency via getLatestManifestSignedEvent + alreadySigned shortcut emits ZERO events on skip; Concern #9 nanoid(8) unique partial paths. EXDEV cross-device rename fallback. T-14-12 ACCEPTED (key in heap, software-only v1.1; HSM v1.2+). v1.1 Concern #2 scope reduction structurally locked: NO sidecar field; EXR/PSD surface as unsupported_format with original file untouched. Drizzle 0006 migration adds nullable manifest_signed_json column. +33 tests; root suite 941 -> 974 passing; pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero c2pa-node imports in pipeline.ts/output-downloader.ts/provenance-repo.ts. tsc --noEmit clean. Phase 14 cohort 3/5; PROV-V-01 cohort closure in 14-04/14-05.
 - [Phase 14]: Plan 14-04 closed HTTP + dashboard surface for C2PA signing state. GET/HEAD /api/versions/:id/output sets X-C2PA-Signing-Status response header (signed | unsigned:<reason> | unknown) sourced from the Plan 14-03 manifest_signed event accessor. The HTTP layer NEVER signs — files are signed at write-time by the downloader hook (D-CTX-8 → Plan 14-03 revision); benefits preserved (dual-transport parity for free, no signing latency on hot HTTP path, simpler crash safety). v1.1 Concern #2 scope reduction LOCKED at HTTP + dashboard layer: NO sidecar route at /output.c2pa, NO sidecar download link in VersionDrawer, NO SIDECAR_EXTENSIONS dashboard duplication. T-14-10 mitigation Test 8 asserts body bytes + Content-Type + Cache-Control byte-identical to pre-Phase-14 baseline. T-14-11 XSS mitigation: 3 defence layers (known-codes translation map + character-class sanitization filter, Preact text-node interpolation, NO dangerouslySetInnerHTML). +41 tests (root 974 → 985 [+11]; dashboard 58 → 88 [+30]); pre-existing 5 v1.1-audit failures unchanged. Phase 14 cohort 4/5; PROV-V-01 closure in Plan 14-05.
+- [Phase 14]: Plan 14-05 closed Phase 14 with full verification cohort. 5 test files (+53 root tests, 985 -> 1038), Concern #8 cryptographic-binding closed via two-leg proof (clean validation_status when reading unmodified bytes + tamper test produces dataHash.mismatch URL referencing c2pa.assertions/c2pa.hash.data). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (temp files now preserve filename extension so c2pa-rs's BMFF/RIFF/TIFF asset handlers select correctly). version.get response envelope gained additive c2pa_status + c2pa_status_reason fields. Wire-level UAT honors MEMORY.md feedback_dont_punt_on_tests via real MCP SDK Client + spawned server child process. PROV-V-01/02/05 cohort closure with v1.2 deferred items recorded. Phase 14 cohort 5/5; ready for /gsd-verify-phase 14.
 
 ### Pending Todos
 
@@ -133,8 +135,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T13:11:26.006Z
-Stopped at: Completed Plan 14-04 — HTTP X-C2PA-Signing-Status header + dashboard C2paBadge. 5 atomic commits (6b5c97b, b437a80, 60216a1, 9b37100, 19b98c8). GET/HEAD /api/versions/:id/output sets X-C2PA-Signing-Status response header sourced from Plan 14-03's manifest_signed event accessor. HTTP layer NEVER signs (signing-at-write-time per Plan 14-03 revision). v1.1 Concern #2 scope reduction LOCKED at HTTP + dashboard layer: NO sidecar route, NO sidecar dashboard link, NO SIDECAR_EXTENSIONS dashboard duplication. C2paBadge component (3 states: signed green / unsigned red with 6 reason translation / unknown muted). getC2paStatus helper (HEAD-based, never throws). T-14-10 mitigation enforced (Test 8 byte-identical baseline). T-14-11 XSS mitigation via 3 defence layers (translation map + character-class sanitization + Preact text-node interpolation). +41 tests; root 974 → 985 (+11); dashboard 58 → 88 (+30); pre-existing 5 v1.1-audit failures unchanged. Architecture-purity preserved: zero c2pa-node imports in dashboard-routes.ts. tsc --noEmit clean both root + dashboard. Dashboard build clean. Phase 14 cohort 4/5; Plan 14-05 (end-to-end demo + verification fixture + key-leak negative tests + REQUIREMENTS cohort closure) ready to start.
+Last session: 2026-04-30T13:45:44.067Z
+Stopped at: Completed Plan 14-05 — Phase 14 cohort closure. 5 atomic commits (72b1e48, 85561e7, e59969a, 6bfff69, e56e5d5). 53 new root tests across 5 files: c2pa-verification (17 tests, end-to-end PNG/JPEG/MP4/WebP/TIFF round-trip via c2pa.read + Concern #8 cryptographic-binding proof + tamper detection), c2pa-dual-transport-parity (9 tests, HTTP body bytes equal direct file read), c2pa-key-leak-negative (9 tests, T-14-01/T-14-02/T-14-12 mitigation proven across stdout/stderr/tool envelopes/HTTP body/provenance JSON), c2pa-uat-mcp-tool (4 tests, real MCP SDK Client + spawned server child process), requirements-cohort-closure (14 tests, smoke for REQUIREMENTS.md + ROADMAP.md state). Rule 1 silent-failure bug fixed in Engine.signViaTempFiles (extension preservation on temp paths, without which MP4/WebP/TIFF emitted unsigned bytes silently). version.get envelope gained additive c2pa_status + c2pa_status_reason fields (agent surface). VFX_FAMILIAR_OUTPUTS_DIR env support. PROV-V-01 + PROV-V-02 + PROV-V-05 marked complete in REQUIREMENTS.md (PROV-V-05 partially — TIFF native-embed; EXR/PSD deferred to v1.2). New 'Deferred to v1.2' section captures cryptographic sidecar / sidecar HTTP route / HSM signing / multi-CA / streaming-friendly C2PA. ROADMAP Phase 14 row 5/5 Complete (2026-04-30). Root suite 985 -> 1038 passing; pre-existing 5 v1.1-audit failures unchanged. Dashboard 88 unchanged. tsc --noEmit clean. Phase 14 ready for /gsd-verify-phase 14. Phase 15 (Ingredient Graph) unblocked.
 Resume file: None
 
 **Planned Phase:** Phase 13 — Model Fingerprinting (in progress, 1/3 plans). Run `/gsd-execute-phase 13-model-fingerprinting` to continue with Plan 13-02.
