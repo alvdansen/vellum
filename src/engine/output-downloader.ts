@@ -25,8 +25,8 @@
 //
 // Architecture-purity invariants (D-WEBUI-31):
 //  - Zero MCP SDK imports (enforced by architecture-purity.test.ts substring grep).
-//  - Zero imports from hono or any HTTP-server layer.
-//  - Zero direct imports from c2pa-node (Plan 14-03 Concern #11 boundary).
+//  - Zero imports from any HTTP-server layer.
+//  - Zero direct imports from the C2PA native binding (Plan 14-03 Concern #11 boundary).
 //  - Only imports: node:fs/promises, node:path, ComfyUIClient type, nanoid.
 
 import {
