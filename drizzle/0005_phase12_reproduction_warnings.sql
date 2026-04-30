@@ -1,0 +1,11 @@
+-- IDM-03: ROLLBACK NOT SUPPORTED.
+--
+-- Phase 12 (DEMO-03) — reproduce divergence transparency. Adds a single
+-- nullable text column to `versions` that stores the JSON-encoded
+-- reproduction_warnings array returned by engine.reproduceVersion.
+-- Persisted at version-row INSERT time so warnings survive across reads
+-- and are available to version.diff at any time. NULL on legacy rows
+-- semantically equals "no warnings recorded" (D-CTX-5).
+-- Old code tolerates this because nothing reads the column yet (the
+-- engine read path lands in this same plan).
+ALTER TABLE `versions` ADD `reproduction_warnings_json` text;

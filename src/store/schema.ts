@@ -86,6 +86,12 @@ export const versions = sqliteTable('versions', {
   // Phase 3 additions — D-PROV-33 (nullable). Added by the drizzle migrator
   // via 0003_phase3_provenance.sql; NULL marks originals from generation.submit.
   lineage_type: text('lineage_type'),
+  // Phase 12 addition — DEMO-03 (D-CTX-5). Nullable JSON-encoded array of
+  // reproduction warnings (e.g., partner-API non-determinism flags) returned
+  // by engine.reproduceVersion. NULL on legacy rows semantically equals
+  // "no warnings recorded". Added by drizzle migrator via
+  // 0005_phase12_reproduction_warnings.sql.
+  reproduction_warnings_json: text('reproduction_warnings_json'),
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
   // Supports listPendingVersions() — called at every server boot by the recovery

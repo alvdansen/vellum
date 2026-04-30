@@ -26,7 +26,7 @@ function cleanup(dbPath: string): void {
   }
 }
 
-const EXPECTED_MIGRATIONS = 4; // 0001..0004 — same constant as migrate.test.ts
+const EXPECTED_MIGRATIONS = 5; // 0001..0005 — same constant as migrate.test.ts
 
 describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
   let dbPath: string;

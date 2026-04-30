@@ -65,6 +65,9 @@ export interface Version {
   outputs_json: string | null;
   // Phase 3 additions — D-PROV-33 (nullable).
   lineage_type: 'reproduce' | 'iterate' | null;
+  // Phase 12 addition — DEMO-03 (D-CTX-5). JSON-encoded string[] persisted
+  // at engine.reproduceVersion time. NULL on legacy rows.
+  reproduction_warnings_json: string | null;
 }
 
 export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot' | 'version';

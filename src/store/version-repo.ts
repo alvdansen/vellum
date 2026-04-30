@@ -105,6 +105,10 @@ export class VersionRepo {
         // Written at INSERT time for reproduce/iterate via the `lineage` param —
         // NEVER via follow-up UPDATE (LANDMINE #8).
         lineage_type: lineage?.lineage_type ?? null,
+        // Phase 12 addition — DEMO-03 (D-CTX-5). NULL on insert; populated by
+        // engine.reproduceVersion via VersionRepo.setReproductionWarnings
+        // immediately after the row INSERT for reproduce-lineage versions.
+        reproduction_warnings_json: null,
       };
       tx.insert(versions).values(row).run();
       return row;
