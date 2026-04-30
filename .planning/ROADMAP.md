@@ -99,7 +99,7 @@ See `milestones/v1.0-ROADMAP.md` for full phase details and `milestones/v1.0-MIL
   5. The architecture-purity test continues to pass: model fingerprinting lives in the engine layer, with zero MCP/tool/HTTP imports.
 **Plans**: 3 plans
   - [x] 13-01-PLAN.md — ModelRef extension + MODEL_DIR_BY_CLASS + fingerprintModel helper (engine layer + unit tests)
-  - [ ] 13-02-PLAN.md — Wire fingerprinter into completion path + sibling models_fingerprinted provenance event (idempotent, non-blocking)
+  - [x] 13-02-PLAN.md — Wire fingerprinter into completion path + sibling models_fingerprinted provenance event (idempotent, non-blocking)
   - [ ] 13-03-PLAN.md — Diff-side parity (model_hash_unavailable transitions) + end-to-end integration tests + file-level architecture-purity assertion
 
 ### Phase 14: C2PA Signed Manifest Emission
@@ -175,7 +175,7 @@ Phases execute in numeric order: 10 → 11 → 12 → 13 → 14 → 15 → 16. P
 | 10. Migrate-on-boot Hardening       | v1.1 | 3/3 | Complete   | 2026-04-30 |
 | 11. Recovery Poller Error Detail    | v1.1 | 2/2 | Complete   | 2026-04-30 |
 | 12. Reproduce Divergence Transparency | v1.1 | 2/2 | Complete   | 2026-04-30 |
-| 13. Model Fingerprinting            | v1.1 | 1/3 | In Progress|  |
+| 13. Model Fingerprinting            | v1.1 | 2/3 | In Progress|  |
 | 14. C2PA Signed Manifest Emission   | v1.1 | 0/TBD | Not started | - |
 | 15. Ingredient Graph                | v1.1 | 0/TBD | Not started | - |
 | 16. Redaction & Agent Surface       | v1.1 | 0/TBD | Not started | - |
