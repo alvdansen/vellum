@@ -96,6 +96,31 @@ describe('architecture purity', () => {
   it('src/engine/model-fingerprint.ts has zero imports from drizzle-orm (PROV-V-03)', () => {
     expect(grepCount('drizzle-orm', 'src/engine/model-fingerprint.ts')).toBe(0);
   });
+
+  // Phase 14 additions — PROV-V-01 / Concern #11. The c2pa-node native binding
+  // load is deferred to Plan 14-02's signer module (lazy on first sign attempt).
+  // Server boot MUST succeed even when the prebuilt N-API binary is missing or
+  // mismatched on the host platform — so src/server.ts has ZERO static imports
+  // of c2pa-node. The only consumers are scripts/gen-dev-c2pa-cert.mts (dev-
+  // only, opt-in) and Plan 14-02's signer wrapper (lazy import). This grep
+  // gate is the structural guard against accidentally re-introducing an eager
+  // boot-path dependency.
+  it('src/server.ts has zero static imports from c2pa-node (Concern #11 — boot resilience)', () => {
+    // Use grep -E with a regex tolerant to whitespace + either quote style.
+    // `from\s+['"]c2pa-node['"]` matches any `from 'c2pa-node'` or `from "c2pa-node"`
+    // import shape. Avoids the fragility of a literal-string match.
+    try {
+      const out = execFileSync('grep', ['-E', "from[[:space:]]+['\"]c2pa-node['\"]", 'src/server.ts'], {
+        encoding: 'utf8',
+      });
+      // grep exits 0 when matches found — that's a violation
+      expect(out.trim(), `static c2pa-node import found in src/server.ts:\n${out}`).toBe('');
+    } catch (err) {
+      // grep exits 1 when no matches — that's the GREEN state we want
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+  });
 });
 
 // ================================================================
