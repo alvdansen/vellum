@@ -92,7 +92,7 @@ const BASE = DEFAULT_COMFYUI_API_BASE;
 const KEY = 'sk-test-fake';
 
 describe('ComfyUIClient.submit', () => {
-  test('POST /api/prompt with X-API-Key and {prompt: workflow} body returns {prompt_id}', async () => {
+  test('POST /api/prompt with X-API-Key and {prompt, extra_data} body returns {prompt_id}', async () => {
     let capturedInit: RequestInit | undefined;
     let capturedUrl: URL | string | Request | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
@@ -109,7 +109,34 @@ describe('ComfyUIClient.submit', () => {
     expect(u.origin).toBe(BASE);
     expect((capturedInit!.headers as Record<string, string>)['X-API-Key']).toBe(KEY);
     const body = JSON.parse(capturedInit!.body as string);
-    expect(body).toEqual({ prompt: { '1': { class_type: 'KSampler', inputs: {} } } });
+    expect(body).toEqual({
+      prompt: { '1': { class_type: 'KSampler', inputs: {} } },
+      extra_data: { api_key_comfy_org: KEY },
+    });
+  });
+
+  test('extra_data.api_key_comfy_org is injected so partner-API nodes (Gemini, Kling, ...) authenticate', async () => {
+    // Regression guard: without this field, partner / API nodes throw
+    // "Unauthorized: Please login first to use this node" at execution time.
+    // Per https://docs.comfy.org/development/comfyui-server/api-key-integration
+    let capturedBody: unknown = null;
+    const client = new ComfyUIClient(KEY, BASE, {
+      fetchImpl: mockFetch(async (_url, init) => {
+        capturedBody = JSON.parse(init!.body as string);
+        return jsonResponse(200, { prompt_id: 'partner-ok' });
+      }),
+    });
+    await client.submit({
+      '1': {
+        class_type: 'GeminiImage2Node',
+        inputs: { prompt: 'test', model: 'gemini-3-pro-image-preview', seed: 0 },
+      },
+    });
+    expect((capturedBody as { extra_data?: Record<string, unknown> }).extra_data).toBeDefined();
+    expect(
+      (capturedBody as { extra_data: { api_key_comfy_org?: string } }).extra_data
+        .api_key_comfy_org,
+    ).toBe(KEY);
   });
 
   test('429 surfaces COMFYUI_RATE_LIMITED with tier hint', async () => {

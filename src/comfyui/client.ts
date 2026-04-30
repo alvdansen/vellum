@@ -372,7 +372,14 @@ export class ComfyUIClient {
     // reset to null on failure so a later submit can retry after an .env edit.
     // Throws COMFYUI_ENDPOINT_DRIFT (surfaces via tool envelope per D-GEN-41).
     await this.ensureEndpointHealthy();
-    const body: SubmitRequest = { prompt: workflowJson };
+    // Partner / API nodes (GeminiImage2Node, Kling, Grok, ElevenLabs…) check
+    // extra_data.api_key_comfy_org for the user's authentication. Without it
+    // the node throws "Unauthorized: Please login first to use this node."
+    // Per https://docs.comfy.org/development/comfyui-server/api-key-integration
+    const body: SubmitRequest = {
+      prompt: workflowJson,
+      extra_data: { api_key_comfy_org: this.apiKey },
+    };
     const url = new URL('/api/prompt', this.base);
     let res: Response;
     try {
