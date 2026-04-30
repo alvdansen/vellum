@@ -513,4 +513,114 @@ describe('Plan 15-03 B3 — outputs_json shape verification', () => {
   });
 });
 
-// (Plan 15-03 Task 4 wire-level UAT block appended in a separate commit.)
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 15-03 Task 4 — wire-level UAT (C6) — Tests C6-1 + C6-2
+//
+// Per MEMORY.md feedback_dont_punt_on_tests: drive the integration through
+// the same Engine API surface (provenance writer + insertEvent +
+// markCompleted) the GenerationEngine itself uses post-completion. The
+// integration point of interest — Engine.signOutput on completed bytes
+// reading prompt_json + outputs_json + getLatestManifestSignedEvent — is
+// exercised end-to-end without bypassing the prompt-resolution path.
+// FakeComfyUIClient is wired into the Engine constructor so the dispatch
+// path through the client is real.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('Plan 15-03 Task 4 — wire-level UAT (C6 follow-up to MEMORY.md feedback_dont_punt_on_tests)', () => {
+  let ctx: Ctx;
+  beforeEach(async () => { ctx = await setupEngine(); });
+  afterEach(async () => { await ctx.cleanup(); });
+
+  it('C6-1: end-to-end completed → sign emits componentOf for the LoadImage that ControlNetApply consumed via edge walk', async () => {
+    // Workflow JSON shape: LoadImage(image='ref.png') →
+    // ControlNetApply(image=['1', 0]) → CLIPTextEncode positive/negative →
+    // KSampler(positive,negative). The wire-level scenario: the FakeComfyUIClient
+    // is plumbed into the Engine; we replicate the post-completion state
+    // (insertEvent + markCompleted) the GenerationEngine itself emits.
+    const promptBlob = {
+      '1': { class_type: 'LoadImage', inputs: { image: 'ref.png' } },
+      '2': { class_type: 'ControlNetApply', inputs: { image: ['1', 0], strength: 1.0 } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: 'a control test' } },
+      '4': { class_type: 'CLIPTextEncode', inputs: { text: 'noise, blur' } },
+      '5': {
+        class_type: 'KSampler',
+        inputs: {
+          positive: ['3', 0],
+          negative: ['4', 0],
+          seed: 99,
+          steps: 20,
+          cfg: 7.0,
+          denoise: 1.0,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+        },
+      },
+    };
+    const versionId = seedCompletedVersion(ctx, { promptBlob, seed: 99 });
+    // Pre-write ref.png to outputRoot/<versionId>/ref.png so the LoadImage
+    // node's image bytes are reachable. Engine.buildManifestForVersion's
+    // component-resolution loop reads outputRoot/<versionId>/<filename>.
+    const verDir = pth.join(ctx.outputsDir, versionId);
+    mkdirSync(verDir, { recursive: true });
+    writeFileSync(pth.join(verDir, 'ref.png'), ALT_PNG);
+    const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
+    expect(result.signed).not.toBeNull();
+    const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
+    // Manifest.ingredients[] carries componentOf with title containing 'ref.png'
+    // — the buildManifestWithIngredients title format is "<role> image (<filename>)".
+    const comp = manifest!.ingredients.find(
+      (i) => i.relationship === 'componentOf' && (i.title ?? '').includes('ref.png'),
+    );
+    expect(comp).toBeDefined();
+    // vfx_familiar.input carries prompt + sampler params + seed (E7 lock).
+    const input = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+    expect(input).toBeDefined();
+    const data = input!.data as {
+      prompt_positive?: string;
+      prompt_negative?: string;
+      sampler?: { name?: string };
+      seed?: number;
+    };
+    expect(data.prompt_positive).toBe('a control test');
+    expect(data.prompt_negative).toBe('noise, blur');
+    expect(data.seed).toBe(99);
+    // ingredients_summary on the manifest_signed event reflects the cohort.
+    // Both the LoadImage node AND the ControlNetApply node land as components
+    // (LoadImage via direct 'image' string field, ControlNetApply via edge-
+    // tuple one-hop to LoadImage's filename). Both reachable on disk →
+    // component_count=2, unavailable_count=0.
+    const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
+    expect(payload!.ingredients_summary?.component_count).toBe(2);
+    expect(payload!.ingredients_summary?.unavailable_count).toBe(0);
+    expect(payload!.ingredients_summary?.input_assertion).toBe(true);
+  });
+
+  it('C6-2: same wire-level cycle but LoadImage file missing — emits vfx_familiar.unavailable_ingredient (D-CTX-4 production-cloud-mode reality)', async () => {
+    // D-CTX-4 production reality: ComfyUI Cloud LoadImage references files
+    // that live on cloud storage; outputRoot/<versionId>/<filename> typically
+    // does NOT exist locally. The expected outcome is dangling-reference —
+    // vfx_familiar.unavailable_ingredient assertion fires, ingredients_summary.
+    // unavailable_count increments. THIS IS THE EXPECTED PRODUCTION-MODE OUTCOME.
+    const promptBlob = {
+      '1': { class_type: 'LoadImage', inputs: { image: 'ref.png' } },
+      '2': { class_type: 'ControlNetApply', inputs: { image: ['1', 0], strength: 1.0 } },
+    };
+    const versionId = seedCompletedVersion(ctx, { promptBlob, seed: null });
+    // Do NOT pre-write ref.png — production cloud-mode reality.
+    const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
+    expect(result.signed).not.toBeNull();
+    const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
+    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'));
+    expect(unavail).toBeDefined();
+    // ingredients[] does NOT carry the unavailable component (signer skipped it).
+    expect(manifest!.ingredients.find((i) => i.relationship === 'componentOf')).toBeUndefined();
+    // ingredients_summary on the manifest_signed event records the unavailable
+    // count. Both LoadImage (node 1) AND ControlNetApply (node 2 — edge tuple
+    // resolves to node 1's filename) become component ingredients pointing at
+    // 'ref.png' which doesn't exist on disk → component_count=2,
+    // unavailable_count=2 (both surface as vfx_familiar.unavailable_ingredient).
+    const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
+    expect(payload!.ingredients_summary?.component_count).toBe(2);
+    expect(payload!.ingredients_summary?.unavailable_count).toBe(2);
+  });
+});
