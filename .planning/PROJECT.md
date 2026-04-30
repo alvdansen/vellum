@@ -18,9 +18,28 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 **Live API:** ComfyUI Cloud locked at `https://cloud.comfy.org` with healthcheck path `/api/system_stats`; live-smoke verified 2/2 green via Phase 7.
 
-## Next Milestone Goals (v1.2 Candidate)
+## Current Milestone: v1.2 Visual & Conversational Dashboard
 
-**Theme:** C2PA Hardening + cloud-mode parity.
+**Goal:** Make the VFX Familiar dashboard a visual-first experience for VFX artists — replace text-heavy node listings with thumbnails on Project/Shot Asset cards, add smart sorting (latest-first by default) in the folder dropdown structure, and replace the raw "summary lists nodes" with an AI-written conversational summary that reads like a Supervisor or Lead describing what was made and how.
+
+**Driver:** Direct VFX artist feedback (Timothy Paul Bielec, 2026-04-30): "VFX artists are very visual learners (no surprise huh?) so if you could feature thumbnails for the Project or Shot Asset below, that would be very helpful. Also different sorting options so you can pull up latest generations quickly in the dropdown folder structure would be neat. It would be really cool if the 'Summary' didn't just list the nodes, but instead provided an intelligent summary of the asset and the workflow that was used to make it. Make it feel conversational like a Supervisor or Lead wrote it."
+
+**Target features:**
+1. **Thumbnails on Project/Shot Asset cards** — every asset card in the side list and main grid surfaces the rendered output thumbnail (lazy-loaded, fallback for in-progress/missing). The list view stays — thumbnails augment, not replace.
+2. **Sortable dropdown folder structure** — folder/asset pickers default to "latest first" with toggleable sort options (date created, version number, name, modified). State preserved per user preference.
+3. **AI-generated conversational asset summary** — replaces raw node listing in the VersionDrawer "Summary" section. Style: Supervisor/Lead writing 2-4 sentences about what was made (e.g., "v003 is a tighter close-up of the dragon's eye, generated with Flux + the cinematic_fantasy LoRA at seed 42, swapping the wide-angle env map for a HDRI from the parent shot."). Built on top of the existing prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints — grounded in actual provenance, not hallucination.
+
+**Pivot context:** v1.2 was tentatively scoped at v1.1 close as "C2PA Hardening" (HSM/Yubikey signing, EXR/PSD sidecar, multi-CA trust roots). The artist feedback indicates dashboard UX is the higher-value next step — direct user-demand signal vs. infrastructure improvement. C2PA hardening shifts to v1.3+ candidate scope (deferred items remain documented in v1.1 archive).
+
+**Key context:**
+- All three features build on existing v1.0/v1.1 surfaces — no new top-level MCP tools needed (tool count holds at 7 of 12)
+- Conversational summary requires LLM-at-engine-layer for the first time — adds a dependency surface (model choice, latency budget, cost-per-call, fallback) that drives research
+- Thumbnails require a new dashboard route + asset thumbnail pipeline; current `/api/versions/:id/output` serves full-size bytes
+- Existing `version.diff` + Phase 15 ingredient graph + Phase 13 model fingerprints give the conversational summary structured ground truth
+
+## Next Milestone Goals (v1.3+ Candidates)
+
+**Theme:** C2PA hardening + cloud-mode parity + multi-backend routing.
 
 **Candidate scope:**
 - HSM/Yubikey signing — get the private key out of process heap (T-14-12 follow-up)
@@ -28,7 +47,7 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 - Sidecar HTTP route + dashboard download link (paired with above)
 - Multi-CA / federated trust roots for production deployments
 - IPAdapter pack node-variants audit (~12 forms; Plan 15-01 audit limit)
-- Fetch control image bytes from ComfyUI Cloud input store at sign time (REVISION C3 follow-up — closes the production cloud-mode `vfx_familiar.unavailable_ingredient` surface)
+- Fetch control image bytes from ComfyUI Cloud input store at sign time (REVISION C3 follow-up)
 - Parent-bytes LRU cache (T-15-07 acceptance)
 - Full ingredient mirror in redacted manifests (deferred-ingredient-mirror)
 - Redaction path size-guard symmetry (BUFFER_SIGNING_MAX_BYTES enforcement on redact)
@@ -65,7 +84,13 @@ Plus carried-forward backlog: Multi-Backend Routing (ROUTE-01..03), Function-Cal
 - ✓ **Recovery poller surfaces ComfyUI Cloud `node_errors`** — v1.1 (DEMO-02, Phase 11; flattenComfyError single source for submit + recovery paths; 14-case parity test green)
 - ✓ **Reproduce-divergence transparency** with WarningPill + side-by-side comparison — v1.1 (DEMO-03, Phase 12; reproduction_divergence field on DiffResponse)
 
-### Active (v1.2 candidates)
+### Active (v1.2 — Visual & Conversational Dashboard)
+
+- [ ] **Thumbnails on Project/Shot Asset cards** — visual asset preview augments the side list, lazy-loaded with in-progress/missing fallback
+- [ ] **Sortable dropdown folder structure** — latest-first default + toggleable sort (date, version, name, modified) with per-user state preservation
+- [ ] **AI-generated conversational asset summary** — Supervisor/Lead voice 2-4 sentences grounded in prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints (no hallucination — structured provenance is ground truth)
+
+### Active (v1.3+ candidates — deferred from v1.2 pivot)
 
 - [ ] HSM/Yubikey signing — private key out of process heap
 - [ ] Cryptographic sidecar manifests for EXR/PSD (gated on c2pa-node sidecar API)
@@ -177,4 +202,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-30 — v1.1 Provenance Verification (C2PA) milestone shipped. 7 phases (10-16), 24 plans, 10 requirements (7 PROV-V + 3 DEMO), +605 net new tests (760 → 1365 passing). PROV-V-05 partial (TIFF native-embed; EXR/PSD deferred to v1.2). Adversarial codex-substitute review (gsd-plan-checker) caught 5 BLOCKERS + 6 CONCERNS in Phase 16 alone — all closed before execute. C2PA architecture-purity locked: c2pa-node imports restricted to `src/engine/c2pa/{signer,verifier,redaction}.ts`. Driven by EU AI Act Article 50 (effective Aug 2026) and California SB 942 (effective Jan 2026).*
+*Last updated: 2026-04-30 — v1.2 Visual & Conversational Dashboard milestone started. Pivoted from tentatively-scoped C2PA hardening based on direct VFX artist feedback (visual learners need thumbnails, sortable folder dropdowns, and AI-written conversational summaries instead of raw node listings). C2PA hardening shifts to v1.3+ candidate scope. v1.1 shipped 2026-04-30: 7 phases (10-16), 24 plans, 10 requirements, +605 net new tests (760 → 1365 passing).*
