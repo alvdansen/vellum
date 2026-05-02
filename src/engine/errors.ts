@@ -51,6 +51,8 @@ export type ErrorCode =
   | 'REDACT_TIMEOUT'               // C-04 fix: assetWriterMutex acquire timeout (30s default)
   | 'REDACT_SIGNING_DISABLED'      // C-06 fix: c2paConfig === null (signing disabled, distinct from no-manifest)
   | 'REDACT_DB_WRITE_FAILED'       // C-06 fix: appendManifestSignedRedactedEvent insert failed AFTER re-sign succeeded
+  // Phase 17 — visual thumbnails (VIS-01..06)
+  | 'THUMBNAIL_FAILED'             // sharp / ffmpeg derivation failed; engine writes .thumb.failed sentinel and UI degrades to skeleton (D-26)
   // Internal fallback for unexpected I/O surfaces below the tool boundary.
   | 'INTERNAL_ERROR';
 
