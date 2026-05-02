@@ -12,13 +12,21 @@
  *     structural type this card needs and let the wider Version shape be
  *     structurally compatible via TypeScript's duck-typing.
  *
+ * Phase 17 / Plan 17-05 — the inline <img src={getOutputUrl(...)}> at lines
+ * 52-59 is REPLACED with <Thumbnail size='card'/>. D-19 LOCKED: the previous
+ * crop-to-fill class is gone; Thumbnail uses object-contain semantics
+ * (no letterbox cropping; transparent letterbox bars adapt to theme).
+ * The existing <button> wrapper at lines 42-50 is UNCHANGED — clicks bubble
+ * through Thumbnail (which has no click handlers per D-11) to onSelect.
+ *
  * SECURITY — T-5-06: {version.label} is rendered as text via Preact's virtual
  * DOM (auto-escaped). dangerouslySetInnerHTML is not used.
  */
 
 import { StatusPill } from './StatusPill.js';
 import type { Status } from './StatusPill.js';
-import { getOutputUrl } from '../lib/api.js';
+import { Thumbnail } from './Thumbnail.js';
+import type { C2paStatus } from '../lib/api.js';
 
 /**
  * Minimal version shape needed by this card. The full Version record (from
@@ -35,9 +43,23 @@ export interface VersionCardProps {
   version: VersionCardVersion;
   isSelected: boolean;
   onSelect: (versionId: string) => void;
+  /**
+   * Phase 17 / Plan 17-05 — c2paStatus governs the <C2paShield/> overlay
+   * (D-10 LOCKED — predicate is `c2paStatus?.status === 'signed'`). Optional:
+   * when undefined or not 'signed', NO shield is rendered. Threaded through
+   * to <Thumbnail/> verbatim. Existing call sites in HomeView do NOT yet
+   * provide c2paStatus, so the optional default keeps the v1.1 surface
+   * backward-compatible until that wiring lands.
+   */
+  c2paStatus?: C2paStatus;
 }
 
-export function VersionCard({ version, isSelected, onSelect }: VersionCardProps) {
+export function VersionCard({
+  version,
+  isSelected,
+  onSelect,
+  c2paStatus,
+}: VersionCardProps) {
   return (
     <button
       type="button"
@@ -49,14 +71,15 @@ export function VersionCard({ version, isSelected, onSelect }: VersionCardProps)
           : 'hover:bg-[var(--color-surface)]'
       }`}
     >
-      {version.status === 'complete' ? (
-        <img
-          src={getOutputUrl(version.id)}
-          alt={`Output for ${version.label}`}
-          class="block aspect-video w-full object-cover"
-          loading="lazy"
-        />
-      ) : null}
+      <Thumbnail
+        version={{
+          id: version.id,
+          label: version.label,
+          status: version.status,
+        }}
+        size="card"
+        c2paStatus={c2paStatus}
+      />
       <div class={`flex items-center justify-between gap-2 p-2 ${isSelected ? 'bg-[var(--color-accent)] text-[var(--color-bg)]' : 'text-[var(--color-fg)]'}`}>
         <span class="version-label truncate text-sm font-normal">
           {version.label}
