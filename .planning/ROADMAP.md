@@ -65,7 +65,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
   2. User sees a `<SkeletonThumbnail/>` placeholder for in-progress / loading / failed-to-generate versions (no broken image icons, no empty boxes); clicking any rendered thumbnail opens the full-size asset via the existing `/api/versions/:id/output` route.
   3. User sees an MP4 video's first representative frame as the thumbnail (extracted server-side via `@ffmpeg-installer/ffmpeg` `-vf thumbnail` filter, with brightness-threshold fallback to a 1.0s seek when the picked frame is black) AND the latest *completed* version's thumbnail surfaces on the shot card (Frame.io stack convention; falls back gracefully when latest is in-progress).
   4. User sees a small C2PA shield icon overlay on the thumbnail for cryptographically-signed versions (driven by Phase 14's `manifest_signed` event presence) AND a redact event (Phase 16) invalidates the cached thumbnail before the next read serves stale bytes.
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -75,7 +75,7 @@ Plans:
 - [x] 17-02-PLAN.md — Engine: video pipeline (@ffmpeg-installer/ffmpeg) + arch-purity (ffmpeg)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 17-03-PLAN.md — Engine facade (generateThumbnail/invalidateThumbnail) + HTTP route (GET/HEAD) + Phase 16 redact-invalidation hook
+- [x] 17-03-PLAN.md — Engine facade (generateThumbnail/invalidateThumbnail) + HTTP route (GET/HEAD) + Phase 16 redact-invalidation hook
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 17-04-PLAN.md — Dashboard: <Thumbnail/> + <C2paShield/> components + getThumbnailUrl + copy.ts (license verification checkpoint)
@@ -125,6 +125,6 @@ Plans:
 | ----- | --------- | ----- | ----------- | ---------- |
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
-| 17    | v1.2      | 2/5 | In Progress|  |
+| 17    | v1.2      | 3/5 | In Progress|  |
 | 18    | v1.2      | 0/0   | Not started | -          |
 | 19    | v1.2      | 0/0   | Not started | -          |
