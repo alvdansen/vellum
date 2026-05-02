@@ -466,8 +466,64 @@ describe('architecture purity', () => {
     expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
   });
 
-  // Phase 17 Plan 02 — @ffmpeg-installer/ffmpeg allowed-set lands when
-  // video-thumbnail.ts is introduced (D-25 SAME-plan rule).
+  // ================================================================
+  // Phase 17 / Plan 17-02 (D-24 + D-25) — @ffmpeg-installer/ffmpeg
+  // allowed-set lands in the SAME plan that introduces the import
+  // (per D-25 SAME-plan rule — no orphaned imports between plans).
+  //
+  // The MP4 first-frame extraction pipeline imports the bundled
+  // ffmpeg binary's `path` from @ffmpeg-installer/ffmpeg. The
+  // package is LGPL-2.1 separate-process — MIT-compatible per
+  // D-27. The import is centralized in EXACTLY ONE file:
+  // video-thumbnail.ts (D-24).
+  //
+  // Two-layer assertion identical in shape to the sharp + c2pa-node
+  // assertions. The dynamic-import regex is critical because
+  // video-thumbnail.ts uses `await import('@ffmpeg-installer/ffmpeg')`
+  // lazily per D-26 (lazy + monotonic-fail; server boot succeeds when
+  // the host platform binary is missing).
+  // ================================================================
+
+  it('@ffmpeg-installer/ffmpeg imports are centralized in src/engine/thumbnails/video-thumbnail.ts (D-24)', () => {
+    // Robust regex — covers BOTH static `from '@ffmpeg-installer/ffmpeg'`
+    // imports AND dynamic `import('@ffmpeg-installer/ffmpeg')` calls;
+    // handles single-quote, double-quote, any whitespace between
+    // `from`/`import(` and the quote. Excludes the __tests__ directories
+    // (test cases may import the package directly to read the binary
+    // path for fixture generation without violating the boundary).
+    const allowedFfmpegImporters = new Set<string>([
+      'src/engine/thumbnails/video-thumbnail.ts',
+    ]);
+    let out = '';
+    try {
+      out = execFileSync(
+        'grep',
+        [
+          '-rlE',
+          "from[[:space:]]*['\"]@ffmpeg-installer/ffmpeg|import[[:space:]]*\\([[:space:]]*['\"]@ffmpeg-installer/ffmpeg",
+          'src/',
+        ],
+        { encoding: 'utf8' },
+      );
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+      // No matches at all — file count == 0 — also a violation
+      // (video-thumbnail.ts SHOULD lazy-import @ffmpeg-installer/ffmpeg).
+      // Caught by the SET-equality assertion below.
+    }
+    const files = out ? out.trim().split('\n').filter(Boolean) : [];
+    const nonTestFiles = files.filter((f) => !f.includes('__tests__/'));
+    // (a) Subset check — no rogue importer outside the allowed set.
+    const violations = nonTestFiles.filter((f) => !allowedFfmpegImporters.has(f));
+    expect(
+      violations,
+      `@ffmpeg-installer/ffmpeg imports outside the allowed list:\n${violations.join('\n')}`,
+    ).toEqual([]);
+    // (b) SET-equality on the ACTUAL importers (sorted-array deepEqual).
+    const expectedActualImporters = ['src/engine/thumbnails/video-thumbnail.ts'].sort();
+    expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
+  });
 
   it('src/engine/thumbnails/ has zero imports from @modelcontextprotocol/sdk', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/thumbnails/')).toBe(0);
