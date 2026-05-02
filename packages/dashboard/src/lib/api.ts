@@ -192,6 +192,29 @@ export function getOutputUrl(versionId: string): string {
   return `${BASE}/api/versions/${encodeURIComponent(versionId)}/output`;
 }
 
+/**
+ * Phase 17 / Plan 17-04 — returns the URL string for the version's
+ * thumbnail. Does NOT fetch — callers pass the returned string directly
+ * to <img src=...>.
+ *
+ * Server route: GET /api/versions/:id/thumbnail (Phase 17 Plan 17-03).
+ * Returns ≤640×360 WebP cached on disk; supports If-None-Match conditional
+ * GET (304 fast path); 503 + THUMBNAIL_FAILED envelope on derivation failure.
+ *
+ * Mirrors getOutputUrl shape verbatim (encodeURIComponent on path segment +
+ * same-origin BASE = ''). Pure function — composes a string and returns it.
+ *
+ * The optional `filename` parameter is reserved for future multi-output
+ * versions; v1.2 ships single-thumbnail-per-version, so the server resolves
+ * the primary output's filename internally via outputs_json[0].filename.
+ * v1.3 may use the filename query parameter when a single version surfaces
+ * multiple outputs (e.g., one image + one mask).
+ */
+export function getThumbnailUrl(versionId: string, filename?: string): string {
+  const base = `${BASE}/api/versions/${encodeURIComponent(versionId)}/thumbnail`;
+  return filename ? `${base}?filename=${encodeURIComponent(filename)}` : base;
+}
+
 // ================================================================
 // Phase 14 Plan 04 Task 2 — C2PA signing-status surfacing
 // ================================================================
