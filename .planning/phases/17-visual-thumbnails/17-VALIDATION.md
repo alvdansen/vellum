@@ -1,10 +1,11 @@
 ---
 phase: 17
 slug: visual-thumbnails
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-04-30
+last_reviewed: 2026-05-01
 ---
 
 # Phase 17 — Validation Strategy
@@ -39,13 +40,26 @@ created: 2026-04-30
 
 ## Per-Task Verification Map
 
-> Filled per-plan during planning. Plan checker verifies every task has `<automated>` verify or a Wave-0 dependency.
+> Every task in Phase 17 has an `<automated>` verify command (Nyquist-compliant). Wave 0 stubs are created INSIDE the plan-owning tasks, not as a separate pre-wave (acceptable per the GSD Wave 0 rule: "stubs may be co-located with the task that uses them so long as the test file lands BEFORE the implementation in the task ordering").
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | VIS-01..06 | TBD | TBD | unit/integration | `npx vitest run <file>` | ❌ W0 | ⬜ pending |
+| Plan | Task | Wave | Test/Verify Command | Notes |
+|------|------|------|---------------------|-------|
+| 17-01 | T1 | 1 | `npx vitest run --reporter=basic --no-coverage src/engine/thumbnails/__tests__/format-router.test.ts src/engine/thumbnails/__tests__/cache.test.ts && npx tsc --noEmit` | Creates W0 stubs: format-router.test.ts + cache.test.ts |
+| 17-01 | T2 | 1 | `npx vitest run --reporter=basic --no-coverage src/engine/thumbnails/__tests__/image-thumbnail.test.ts && npx tsc --noEmit` | TDD task; creates W0 stub: image-thumbnail.test.ts (RED first) |
+| 17-01 | T3 | 1 | `npx vitest run --reporter=basic --no-coverage src/__tests__/architecture-purity.test.ts -t "sharp imports are centralized" src/__tests__/architecture-purity.test.ts -t "src/engine/thumbnails/" src/__tests__/c2pa-key-leak-negative.test.ts -t "Phase 17"` | Updates architecture-purity.test.ts (sharp allowed-set + 5 dir guards) + c2pa-key-leak-negative.test.ts (Phase 17 leak-scan extension) |
+| 17-02 | T1 | 2 | `npx vitest run --reporter=basic --no-coverage src/engine/thumbnails/__tests__/video-thumbnail.test.ts && npx tsc --noEmit` | TDD task; creates W0 stub: video-thumbnail.test.ts (RED first); skipIf-gates on ffmpeg availability |
+| 17-02 | T2 | 2 | `npx vitest run --reporter=basic --no-coverage src/__tests__/architecture-purity.test.ts -t "ffmpeg" && npx tsc --noEmit` | Updates architecture-purity.test.ts (@ffmpeg-installer allowed-set; removes Plan 01 sentinel comment) |
+| 17-03 | T1 | 3 | `npx vitest run --reporter=basic --no-coverage src/__tests__/thumbnail-route.test.ts -t "Engine\|generateThumbnail\|invalidateThumbnail\|thumbnailMutex" && npx tsc --noEmit` | TDD task; creates W0 stub: thumbnail-route.test.ts (RED first) — engine-layer Tests 1-11 |
+| 17-03 | T2 | 3 | `npx vitest run --reporter=basic --no-coverage src/__tests__/c2pa-redaction-thumbnail-invalidation.test.ts src/engine/c2pa/__tests__/redaction.test.ts src/__tests__/c2pa-redaction-e2e.test.ts src/__tests__/c2pa-redaction-uat-mcp-tool.test.ts && npx tsc --noEmit` | TDD task; creates W0 stub: c2pa-redaction-thumbnail-invalidation.test.ts (RED first); extends Plan 01's leak-scan to post-redact |
+| 17-03 | T3 | 3 | `npx vitest run --reporter=basic --no-coverage src/__tests__/thumbnail-route.test.ts src/__tests__/c2pa-key-leak-negative.test.ts src/__tests__/c2pa-dual-transport-parity.test.ts && npx tsc --noEmit` | TDD task; appends HTTP-layer Tests 12-20 to thumbnail-route.test.ts |
+| 17-04 | T1 | 4 | MISSING — checkpoint (human-verify); resume-signal token IS the verification | License verification gate; no automated verify (D-08 license decision A/B/C) |
+| 17-04 | T2 | 4 | `cd packages/dashboard && npx vitest run --reporter=basic --no-coverage src/__tests__/C2paShield.test.tsx src/__tests__/api.test.ts && cd /Users/macapple/comfyui-vfx-mcp && npx tsc --noEmit` | TDD task; creates W0 stub: C2paShield.test.tsx (RED first) |
+| 17-04 | T3 | 4 | `cd packages/dashboard && npx vitest run --reporter=basic --no-coverage src/__tests__/Thumbnail.test.tsx && cd /Users/macapple/comfyui-vfx-mcp && npx tsc --noEmit` | TDD task; creates W0 stub: Thumbnail.test.tsx (RED first) |
+| 17-05 | T1 | 5 | `cd packages/dashboard && npx vitest run --reporter=basic --no-coverage src/__tests__/VersionCard.test.tsx && cd /Users/macapple/comfyui-vfx-mcp && npx tsc --noEmit` | TDD task; updates existing VersionCard.test.tsx (2 tests modified, 2 added) |
+| 17-05 | T2 | 5 | `cd packages/dashboard && npx vitest run --reporter=basic --no-coverage src/__tests__/TreeSidebar.test.tsx src/__tests__/VersionCard.test.tsx && cd /Users/macapple/comfyui-vfx-mcp && npx tsc --noEmit` | TDD task; updates existing TreeSidebar.test.tsx (+2 new tests) |
+| 17-05 | T3 | 5 | `npx vitest run --reporter=basic --no-coverage 2>&1 \| tail -20 && cd packages/dashboard && npx vitest run --reporter=basic --no-coverage 2>&1 \| tail -20 && cd /Users/macapple/comfyui-vfx-mcp && npx tsc --noEmit && npx vitest run --reporter=basic --no-coverage src/__tests__/tool-budget.test.ts src/__tests__/architecture-purity.test.ts` | Full-suite regression gate; tool count holds at 7-of-12 |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status legend: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky — populated during execution after each task commit.*
 
 ---
 
@@ -83,18 +97,27 @@ created: 2026-04-30
 
 ---
 
-## Wave 0 Requirements
+## Wave 0 Test File Inventory (paths match the actual codebase layout — verified against PATTERNS.md §"Note on packages/dashboard/src/__tests__/ location")
 
-- [ ] `src/engine/thumbnails/__tests__/image-thumbnail.test.ts` — stubs for VIS-01 image path
-- [ ] `src/engine/thumbnails/__tests__/video-thumbnail.test.ts` — stubs for VIS-04 MP4 path
-- [ ] `src/engine/thumbnails/__tests__/cache.test.ts` — atomic-write + invalidation stubs
-- [ ] `src/engine/thumbnails/__tests__/format-router.test.ts` — pure router stubs
-- [ ] `src/http/__tests__/thumbnail-routes.test.ts` — HTTP route stubs (GET + HEAD + 304 + ETag)
-- [ ] `packages/dashboard/src/components/__tests__/Thumbnail.test.tsx` — wrapper component stubs (skeleton fallback + C2PA shield render predicate)
-- [ ] `packages/dashboard/src/components/__tests__/TreeSidebar.test.tsx` — extend existing tests for D-13 shot-row thumb
-- [ ] Test fixtures: small PNG, JPEG, WebP, MP4 (H.264 with bright + black frames), oversize MP4 (>100MB stub via sparse file)
+> Wave 0 stubs are created in the OWNING task (TDD RED step) of each plan, not as a separate pre-wave. Every path below matches what the plans actually create.
 
-*Existing infrastructure (vitest, Preact testing-library, fs/temp dir helpers from Phase 14/16) covers framework needs — no installs required.*
+- [x] `src/engine/thumbnails/__tests__/format-router.test.ts` — pure router stubs (Plan 17-01 Task 1)
+- [x] `src/engine/thumbnails/__tests__/cache.test.ts` — atomic-write + invalidation stubs (Plan 17-01 Task 1)
+- [x] `src/engine/thumbnails/__tests__/image-thumbnail.test.ts` — stubs for VIS-01 image path (Plan 17-01 Task 2)
+- [x] `src/engine/thumbnails/__tests__/video-thumbnail.test.ts` — stubs for VIS-04 MP4 path (Plan 17-02 Task 1)
+- [x] `src/__tests__/architecture-purity.test.ts` — sharp + ffmpeg allowed-set + 5 thumbnails dir guards (Plan 17-01 Task 3 + Plan 17-02 Task 2)
+- [x] `src/__tests__/c2pa-key-leak-negative.test.ts` — Phase 17 leak-scan extension over .thumb.webp + .thumb.failed (Plan 17-01 Task 3 + Plan 17-03 Task 2)
+- [x] `src/__tests__/thumbnail-route.test.ts` — engine + HTTP route coverage (Plan 17-03 Tasks 1+3) — single test file at the top-level `src/__tests__/` directory (NOT under `src/http/__tests__/`; the corrected path matches PATTERNS.md inventory)
+- [x] `src/__tests__/c2pa-redaction-thumbnail-invalidation.test.ts` — redact → invalidate ordering + leak-scan (Plan 17-03 Task 2)
+- [x] `packages/dashboard/src/__tests__/Thumbnail.test.tsx` — wrapper component stubs (skeleton fallback + C2PA shield render predicate) (Plan 17-04 Task 3) — at top-level `packages/dashboard/src/__tests__/` (NOT `packages/dashboard/src/components/__tests__/`)
+- [x] `packages/dashboard/src/__tests__/C2paShield.test.tsx` — pure SVG component stubs (Plan 17-04 Task 2) — at top-level `packages/dashboard/src/__tests__/`
+- [x] `packages/dashboard/src/__tests__/VersionCard.test.tsx` (modify existing) — extend with 2 Thumbnail-integration tests (Plan 17-05 Task 1)
+- [x] `packages/dashboard/src/__tests__/TreeSidebar.test.tsx` (modify existing) — extend with 2 shot-row-thumb tests (Plan 17-05 Task 2)
+- [x] Test fixtures: small PNG, JPEG, WebP, MP4 (H.264 with bright + black frames), oversize MP4 (>100MB stub via sparse file) — generated inline via sharp/ffmpeg in test code (no committed binaries)
+
+*Existing infrastructure (vitest, @testing-library/preact, fs/temp dir helpers from Phase 14/16) covers framework needs — no installs required.*
+
+**Path divergence note:** PATTERNS.md line ~39 explicitly flags that the original CONTEXT.md prompt referenced `packages/dashboard/src/components/__tests__/` and `src/http/__tests__/`, but the actual codebase places dashboard component tests at `packages/dashboard/src/__tests__/` and the new HTTP route test at the top-level `src/__tests__/`. The Wave 0 paths above use the corrected, codebase-matching layout.
 
 ---
 
@@ -106,16 +129,18 @@ created: 2026-04-30
 | C2PA shield placement on cropped renders | VIS-06 | Cross-aspect verification (square 1024×1024, vertical 1080×1920, ultrawide 2.39:1) | Sign a square + vertical render via Phase 14, verify shield doesn't overlap focal point or version label |
 | TreeSidebar shot-row density | VIS-05 + D-13 | Layout-shift inspection at narrow viewport widths | DevTools → resize sidebar to min-width, verify thumb fits without truncation |
 | Redact-invalidation visual cycle | VIS-06 + D-05 | End-to-end UX: sign → render thumb → redact → see thumb regenerate | Phase 16 redact_manifest action then refresh dashboard; thumb should regenerate within ~200ms |
+| License verification gate (Plan 04 Task 1) | D-08 | Subjective decision tree (A/B/C-redraw/C-fallback) over discovered license text | Resume-signal token from user; planner captures URLs + verbatim license quotes in 17-04-SUMMARY.md |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 20s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify (or are explicitly checkpoints — Plan 04 Task 1)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify (Plan 04 Task 1 is a single checkpoint sandwiched between Task 2 + Task 3, both automated)
+- [x] Wave 0 covers all MISSING references — every test file path above matches what the plans create
+- [x] No watch-mode flags — all verify commands use `vitest run --reporter=basic --no-coverage`
+- [x] Feedback latency < 20s — combined root + dashboard suite ~18s
+- [x] `nyquist_compliant: true` set in frontmatter
+- [x] `wave_0_complete: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-05-01

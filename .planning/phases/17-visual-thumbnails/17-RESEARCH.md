@@ -888,27 +888,33 @@ export function Thumbnail({ versionId, alt, width = 640, height = 360, hideShiel
 
 **Items to confirm before merge:** A1 (planner adds icon-license verification task to plan).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four open questions are resolved by plan content (Plan 17-01..17-05). Resolutions captured inline below; cross-referenced in `.planning/phases/17-visual-thumbnails/17-VALIDATION.md` Per-Task Verification Map.
 
 1. **Adobe Content Credentials "CR" icon — exact license text and source URL.**
    - What we know: the icon is "open source so it can be easily adopted" per c2pa.org/contentcredentials.org press materials. The c2pa-rs Rust SDK is dual-licensed MIT/Apache-2.0. The contentauth GitHub org has 10+ public repos but **none are dedicated to icon/brand assets**.
    - What's unclear: the actual SVG file location, the formal license header, attribution requirements, "implies endorsement" prohibitions.
    - Recommendation: Plan task: (a) try `https://c2pa.org` press kit page; (b) open a GitHub issue at `contentauth/c2pa-rs` asking for the icon SVG + license; (c) fallback to lucide-preact `ShieldCheck` + text label "C2PA" if (a) and (b) don't yield a clean license in <2 hours of research.
+   - **RESOLVED:** Plan 17-04 Task 1 (license-verification checkpoint, autonomous=false) gates on a human approval token (A=press-kit license OK / B=GitHub-issue license OK / C-redraw=in-house glyph / C-fallback=lucide ShieldCheck + text "C2PA"). Implementation cannot proceed past Task 1 without an explicit decision tracked in the plan record.
 
 2. **Cache-Control max-age value: `31536000` (1 year, immutable) vs. `3600` (existing `/output` precedent).**
    - What we know: Strong ETag + 304 makes either choice safe. Browser will conditional-GET on every render with `max-age=3600`; `immutable` skips the round-trip when fresh.
    - What's unclear: Telemetry data on dashboard refresh patterns — is the round-trip cost noticeable?
    - Recommendation: Use `max-age=31536000, immutable` (Pattern 5) — strong ETag invalidates correctly; consistency with existing `/output` is less important than perf-correctness on a thumbnail-heavy view. Planner can override if reviewer prefers consistency.
+   - **RESOLVED:** Plan 17-03 LOCKS the response header to `Cache-Control: public, max-age=31536000, immutable` for `GET /api/versions/:id/thumbnail`. Phase 16 redact path explicitly invalidates the cache entry (`invalidateThumbnail` after atomicRename per D-05) — strong ETag (sha256 or mtime) ensures any source-byte change re-derives correctly even with the long max-age.
 
 3. **TreeSidebar thumbnail dimensions: 64×36 (Claude's discretion candidate) vs. SkeletonThumbnail default 160×90.**
    - What we know: TreeRow at depth 3 has 44 px left-padding inside a `--sidebar-width` container; 64×36 reads cleanly at retina.
    - What's unclear: User's preference if 64×36 feels "too tiny."
    - Recommendation: Ship 64×36; capture a screenshot in PR description for spot-check.
+   - **RESOLVED:** Plan 17-04 ships `<Thumbnail size='sm'>` at 80×45 (slightly larger than the 64×36 candidate to preserve recognizability at depth-3 rows on retina); Plan 17-05 TreeSidebar shot rows consume `size='sm'` and the SkeletonThumbnail fallback uses matching width=80 height=45. PR review will confirm.
 
 4. **`outputs_json[0].sha256` field availability (for ETag strong validator).**
    - What we know: STACK research mentions `sha256` field as available but didn't pin which Phase introduced it.
    - What's unclear: Whether every completed version has this field today, or only Phase-13+ ones.
    - Recommendation: Plan reads the actual `outputs_json` shape via grep over `src/types/`; use `outputs_json[0].sha256` if present, else fall back to `sha256:<source_mtime>` (Pattern 4). Already documented as a both-paths design.
+   - **RESOLVED:** Plan 17-01 `cache.computeETag` ships dual-path: prefers `outputs_json[0].sha256` when present (typed nullable read), falls back to `sha256:<source_mtime>` derivation otherwise. Both paths produce strong ETags; browser conditional-GET behavior is identical. Plan 17-01 Task 2 test exercises both branches.
 
 ## Environment Availability
 

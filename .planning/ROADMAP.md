@@ -68,10 +68,19 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 **Plans:** 5 plans
 
 Plans:
+**Wave 1**
 - [ ] 17-01-PLAN.md — Engine: image pipeline (sharp) + format-router + cache + arch-purity (sharp) + leak-scan extension
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 17-02-PLAN.md — Engine: video pipeline (@ffmpeg-installer/ffmpeg) + arch-purity (ffmpeg)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 17-03-PLAN.md — Engine facade (generateThumbnail/invalidateThumbnail) + HTTP route (GET/HEAD) + Phase 16 redact-invalidation hook
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 17-04-PLAN.md — Dashboard: <Thumbnail/> + <C2paShield/> components + getThumbnailUrl + copy.ts (license verification checkpoint)
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 17-05-PLAN.md — Dashboard wiring: VersionCard + TreeSidebar shot rows + HomeView latestCompletedVersion + full-suite regression
 **UI hint**: yes
 
