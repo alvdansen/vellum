@@ -10,12 +10,12 @@ Each requirement maps to a single roadmap phase. User-centric, atomic, and testa
 
 ### Visual Thumbnails (VIS)
 
-- [ ] **VIS-01**: User sees a 16:9 thumbnail on every completed-version asset card in the side list and main grid without clicking through. Thumbnails are lazy-loaded (`loading="lazy"`) with explicit width/height for layout-shift-free rendering (CLS=0). Image-output thumbnails resize to a small WebP via `sharp` and cache atomically (temp + rename) at `<outputsDir>/<versionId>/<filename>.thumb.webp`.
-- [ ] **VIS-02**: User sees a `<SkeletonThumbnail/>` placeholder for in-progress / loading / failed-to-generate versions. No broken image icons; no empty boxes; no "image not found" surface.
-- [ ] **VIS-03**: User can click a thumbnail to view the full-size asset (existing `/api/versions/:id/output` route — preserved).
-- [ ] **VIS-04**: User sees an MP4 video's first representative frame as the thumbnail (extracted server-side via `@ffmpeg-installer/ffmpeg` with `-vf thumbnail` filter). Brightness-threshold fallback to 1.0s seek if the thumbnail filter selects a black frame.
-- [ ] **VIS-05**: User sees the latest *completed* version's thumbnail on the shot card (Frame.io stack convention) — falls back gracefully when latest is in-progress.
-- [ ] **VIS-06**: User sees a small C2PA shield icon overlay on the thumbnail for cryptographically-signed versions (driven by Phase 14's manifest_signed event presence).
+- [x] **VIS-01**: User sees a 16:9 thumbnail on every completed-version asset card in the side list and main grid without clicking through. Thumbnails are lazy-loaded (`loading="lazy"`) with explicit width/height for layout-shift-free rendering (CLS=0). Image-output thumbnails resize to a small WebP via `sharp` and cache atomically (temp + rename) at `<outputsDir>/<versionId>/<filename>.thumb.webp`.
+- [x] **VIS-02**: User sees a `<SkeletonThumbnail/>` placeholder for in-progress / loading / failed-to-generate versions. No broken image icons; no empty boxes; no "image not found" surface.
+- [x] **VIS-03**: User can click a thumbnail to view the full-size asset (existing `/api/versions/:id/output` route — preserved).
+- [x] **VIS-04**: User sees an MP4 video's first representative frame as the thumbnail (extracted server-side via `@ffmpeg-installer/ffmpeg` with `-vf thumbnail` filter). Brightness-threshold fallback to 1.0s seek if the thumbnail filter selects a black frame.
+- [x] **VIS-05**: User sees the latest *completed* version's thumbnail on the shot card (Frame.io stack convention) — falls back gracefully when latest is in-progress.
+- [x] **VIS-06**: User sees a small C2PA shield icon overlay on the thumbnail for cryptographically-signed versions (driven by Phase 14's manifest_signed event presence).
 
 ### Sortable Folder Dropdown (SORT)
 
