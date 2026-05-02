@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Visual & Conversational Dashboard
 status: Defining requirements
-stopped_at: Phase 17 context gathered
-last_updated: "2026-04-30T22:35:51.025Z"
+stopped_at: Phase 17 UI-SPEC approved
+last_updated: "2026-05-02T02:24:40.283Z"
 last_activity: 2026-04-30 — Milestone v1.2 started
 progress:
   total_phases: 3
@@ -150,8 +150,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-30T22:35:51.021Z
-Stopped at: Phase 17 context gathered
+Last session: 2026-05-02T02:24:40.280Z
+Stopped at: Phase 17 UI-SPEC approved
 Resume file: 
 
-.planning/phases/17-visual-thumbnails/17-CONTEXT.md
+.planning/phases/17-visual-thumbnails/17-UI-SPEC.md
