@@ -12,6 +12,8 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 **Shipped:** v1.1 Provenance Verification (C2PA) — 2026-04-30 (7 phases, 24 plans, +605 net new tests, baseline 1365/1372 passing). v1.0 MVP shipped 2026-04-28.
 
+**v1.2 Phase 17 complete (2026-05-02):** Visual thumbnails — sharp + @ffmpeg-installer/ffmpeg sole-importer engine, atomic disk cache with strong-ETag content-addressed validator, D-05 redact-invalidation hook, dashboard `<Thumbnail/>` + `<C2paShield/>` (Adobe CR mark, Apache 2.0) wired into VersionCard grid + TreeSidebar shot rows. 6/6 must-haves verified, 0 critical/0 blocking from code review, 7 human-UAT items pending. Phase 18 (sortable folder dropdown) unblocked.
+
 **Stack:** TypeScript ESM Node MCP server, dual-transport (stdio + Streamable HTTP), `@modelcontextprotocol/sdk` 1.29, Hono + `@hono/node-server`, `better-sqlite3` + Drizzle ORM (WAL + busy_timeout=5000), Zod v4, nanoid, Preact + Vite dashboard, Vitest. C2PA via `c2pa-node` v0.5.26 (lazy-imported, restricted to `src/engine/c2pa/{signer,verifier,redaction}.ts`).
 
 **Tool surface:** 7 of 12 MCP tools (workspace, project, sequence, shot, version, generation, asset). The `version` tool now has 7 actions (get + list + diff + provenance + export_manifest + verify_manifest + redact_manifest).
@@ -86,7 +88,7 @@ Plus carried-forward backlog: Multi-Backend Routing (ROUTE-01..03), Function-Cal
 
 ### Active (v1.2 — Visual & Conversational Dashboard)
 
-- [ ] **Thumbnails on Project/Shot Asset cards** — visual asset preview augments the side list, lazy-loaded with in-progress/missing fallback
+- [x] **Thumbnails on Project/Shot Asset cards** — visual asset preview augments the side list, lazy-loaded with in-progress/missing fallback (Phase 17 complete 2026-05-02; sharp + ffmpeg-installer thumbnail engine, atomic disk cache, redact-invalidation hook, C2paShield overlay; 7 human UAT items pending in 17-HUMAN-UAT.md)
 - [ ] **Sortable dropdown folder structure** — latest-first default + toggleable sort (date, version, name, modified) with per-user state preservation
 - [ ] **AI-generated conversational asset summary** — Supervisor/Lead voice 2-4 sentences grounded in prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints (no hallucination — structured provenance is ground truth)
 
@@ -202,4 +204,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-30 — v1.2 Visual & Conversational Dashboard milestone started. Pivoted from tentatively-scoped C2PA hardening based on direct VFX artist feedback (visual learners need thumbnails, sortable folder dropdowns, and AI-written conversational summaries instead of raw node listings). C2PA hardening shifts to v1.3+ candidate scope. v1.1 shipped 2026-04-30: 7 phases (10-16), 24 plans, 10 requirements, +605 net new tests (760 → 1365 passing).*
+*Last updated: 2026-05-02 — v1.2 Phase 17 (Visual Thumbnails) complete. 5 plans shipped: engine thumbnail foundation (sharp sole-importer + format router + atomic FS cache), MP4 first-frame extraction (@ffmpeg-installer/ffmpeg sole-importer with brightness fallback + 10s SIGKILL timeout), engine wired into pipeline + C2PA redact-invalidation hook (D-05 ordering — invalidate AFTER atomicRename), dashboard `<Thumbnail/>` + `<C2paShield/>` (Adobe CR mark, Apache 2.0), and consumer wiring into VersionCard grid + TreeSidebar shot rows + HomeView. All VIS-01..06 satisfied. 7 human-UAT items pending in 17-HUMAN-UAT.md (visual perception checks). Phase 18 (sortable folder dropdown) and Phase 19 (AI conversational summary) unblocked. v1.2 milestone started 2026-04-30 (pivot from C2PA hardening based on artist feedback).*
