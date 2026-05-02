@@ -405,6 +405,101 @@ describe('architecture purity', () => {
     expect(grepCount('drizzle-orm', 'src/engine/c2pa/redaction.ts')).toBe(0);
     expect(grepCount('@hono/node-server', 'src/engine/c2pa/redaction.ts')).toBe(0);
   });
+
+  // ================================================================
+  // Phase 17 / Plan 17-01 — visual thumbnails module purity (VIS-01..02).
+  //
+  // The new src/engine/thumbnails/ directory MUST be MCP-free, SQLite-
+  // free, ORM-free, HTTP-server-free. The sharp native binding import
+  // is centralized in EXACTLY ONE file: image-thumbnail.ts (D-23).
+  // Plan 17-02 will add a parallel @ffmpeg-installer/ffmpeg allowed-set
+  // assertion in the SAME plan that introduces video-thumbnail.ts (D-25
+  // SAME-plan rule).
+  //
+  // Two-layer assertion (mirrors the c2pa-node block at lines 166-231):
+  //   (a) Subset check — every actual sharp importer is in the allowed
+  //       set (no rogue importer outside src/engine/thumbnails/).
+  //   (b) SET-equality on the actual importers (sorted-array deepEqual).
+  //       Prevents a silent regression where image-thumbnail.ts is
+  //       removed from the importer set (e.g., someone refactors sharp
+  //       out into a different module without updating the allowed set).
+  // ================================================================
+
+  it('sharp imports are centralized in src/engine/thumbnails/image-thumbnail.ts (D-23)', () => {
+    // Robust regex — covers BOTH static `from 'sharp'` imports AND
+    // dynamic `import('sharp')` calls; handles single-quote, double-
+    // quote, any whitespace between `from`/`import(` and the quote.
+    // Excludes the __tests__ directories (test cases may import sharp
+    // directly to generate fixtures without violating the boundary —
+    // src/engine/thumbnails/__tests__/image-thumbnail.test.ts uses
+    // `import sharp from 'sharp'` for in-memory PNG generation).
+    const allowedSharpImporters = new Set<string>([
+      'src/engine/thumbnails/image-thumbnail.ts',
+    ]);
+    let out = '';
+    try {
+      out = execFileSync(
+        'grep',
+        [
+          '-rlE',
+          "from[[:space:]]*['\"]sharp|import[[:space:]]*\\([[:space:]]*['\"]sharp",
+          'src/',
+        ],
+        { encoding: 'utf8' },
+      );
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+      // No matches at all — file count == 0 — also a violation
+      // (image-thumbnail.ts SHOULD lazy-import sharp). Caught below.
+    }
+    const files = out ? out.trim().split('\n').filter(Boolean) : [];
+    const nonTestFiles = files.filter((f) => !f.includes('__tests__/'));
+    // (a) Subset check — no rogue importer outside the allowed set.
+    const violations = nonTestFiles.filter((f) => !allowedSharpImporters.has(f));
+    expect(
+      violations,
+      `sharp imports outside the allowed list:\n${violations.join('\n')}`,
+    ).toEqual([]);
+    // (b) SET-equality on the ACTUAL importers (sorted-array deepEqual).
+    const expectedActualImporters = ['src/engine/thumbnails/image-thumbnail.ts'].sort();
+    expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
+  });
+
+  // Phase 17 Plan 02 — @ffmpeg-installer/ffmpeg allowed-set lands when
+  // video-thumbnail.ts is introduced (D-25 SAME-plan rule).
+
+  it('src/engine/thumbnails/ has zero imports from @modelcontextprotocol/sdk', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/thumbnails/')).toBe(0);
+  });
+
+  it('src/engine/thumbnails/ has zero imports from better-sqlite3', () => {
+    expect(grepCount('better-sqlite3', 'src/engine/thumbnails/')).toBe(0);
+  });
+
+  it('src/engine/thumbnails/ has zero imports from drizzle-orm', () => {
+    expect(grepCount('drizzle-orm', 'src/engine/thumbnails/')).toBe(0);
+  });
+
+  it('src/engine/thumbnails/ has zero imports from hono (robust regex)', () => {
+    // Robust regex — handles single-quote, double-quote, any whitespace
+    // between `from` and the quote. Mirrors the c2pa block at line 146-160.
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-rE', "from[[:space:]]*['\"]hono['\"]", 'src/engine/thumbnails/'],
+        { encoding: 'utf8' },
+      );
+      expect(out.trim(), `hono import found in src/engine/thumbnails/:\n${out}`).toBe('');
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+  });
+
+  it('src/engine/thumbnails/ has zero imports from @hono/node-server', () => {
+    expect(grepCount('@hono/node-server', 'src/engine/thumbnails/')).toBe(0);
+  });
 });
 
 // ================================================================

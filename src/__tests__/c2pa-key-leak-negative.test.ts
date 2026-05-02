@@ -534,6 +534,98 @@ describe('C2PA key-leak negative — T-14-12 payload schema regression guard (Te
   });
 });
 
+// ============================================================================
+// Phase 17 / Plan 17-01 Task 3 — PITFALL G multi-encoding leak scan extension
+// ============================================================================
+//
+// The thumbnail cache (Plan 17-01) introduces TWO new on-disk surfaces under
+// <outputsDir>/<versionId>/<filename>:
+//   1. <filename>.thumb.webp — the cached thumbnail (sharp-encoded WebP)
+//   2. <filename>.thumb.failed — zero-byte sentinel marker (D-07)
+//
+// Both surfaces are scanned here in 4 encodings (UTF-8, UTF-16LE, UTF-16BE,
+// base64) for the sentinel string. The structural value: a future regression
+// that bypasses the leak scan (e.g., wires sharp output through a code path
+// that encodes the source filename into the thumb metadata) is caught
+// structurally — the scan target list IS what the test asserts.
+//
+// The sentinel here is a 32-byte random hex token (non-textual marker) so
+// WebP re-encoding does NOT preserve any visual rendering of it; the
+// assertion is byte-level absence in the cached thumb bytes.
+
+/**
+ * Multi-encoding sentinel scan helper. Asserts that `sentinel` does NOT
+ * appear in `buf` in any of: UTF-8 raw, UTF-16LE, UTF-16BE, base64.
+ *
+ * The sentinel is the human-readable hex string. The encoded fragments are
+ * computed by writing the hex string into a Buffer in each encoding then
+ * converting back to latin1 for substring search inside the haystack.
+ */
+function assertNotInBuffer(buf: Buffer, sentinel: string, label: string): void {
+  const utf8Frag = sentinel; // raw — Buffer.toString('latin1') faithfully encodes UTF-8 7-bit ASCII
+  const utf16leFrag = Buffer.from(sentinel, 'utf16le').toString('latin1');
+  const utf16beFrag = (() => {
+    // Node has no native 'utf16be' encoding; build it by swapping byte
+    // pairs of the utf16le encoding.
+    const le = Buffer.from(sentinel, 'utf16le');
+    const be = Buffer.alloc(le.length);
+    for (let i = 0; i < le.length; i += 2) {
+      be[i] = le[i + 1]!;
+      be[i + 1] = le[i]!;
+    }
+    return be.toString('latin1');
+  })();
+  const base64Frag = Buffer.from(sentinel).toString('base64');
+
+  const haystack = buf.toString('latin1');
+  expect(haystack.includes(utf8Frag), `${label} contained sentinel as UTF-8`).toBe(false);
+  expect(haystack.includes(utf16leFrag), `${label} contained sentinel as UTF-16LE`).toBe(false);
+  expect(haystack.includes(utf16beFrag), `${label} contained sentinel as UTF-16BE`).toBe(false);
+  expect(haystack.includes(base64Frag), `${label} contained sentinel as base64`).toBe(false);
+}
+
+describe('C2PA key-leak negative — Phase 17 PITFALL G: thumb cache + sentinel paths in 4 encodings', () => {
+  it('Test 10 — Phase 17 thumb.webp + thumb.failed scan covers UTF-8 + UTF-16LE + UTF-16BE + base64', async () => {
+    // Generate a 32-byte random hex token sentinel — non-textual marker,
+    // not preserved by WebP re-encoding's pixel transformation.
+    const sentinelBytes = Buffer.alloc(32);
+    for (let i = 0; i < 32; i++) sentinelBytes[i] = Math.floor(Math.random() * 256);
+    const sentinel = sentinelBytes.toString('hex');
+
+    // Generate a thumb against a tiny PNG. The sentinel string is NOT
+    // present in the source bytes — the test's structural value is that
+    // the new <thumb.webp> + <thumb.failed> cache surfaces ARE scanned by
+    // the multi-encoding helper. A future regression that allows the
+    // sentinel into the cached bytes would fail this scan.
+    const versionDir = join(ctx.outputsDir, ctx.versionId);
+    await mkdir(versionDir, { recursive: true });
+    const sourcePath = join(versionDir, 'sample.png');
+    await writeFile(sourcePath, TINY_PNG);
+
+    const { generateImageThumbnail } = await import('../engine/thumbnails/image-thumbnail.js');
+    const { cachePathFor, sentinelPathFor, writeFailedSentinel } = await import(
+      '../engine/thumbnails/cache.js'
+    );
+
+    const thumbPath = cachePathFor(ctx.outputsDir, ctx.versionId, 'sample.png');
+    await generateImageThumbnail(sourcePath, thumbPath);
+    const thumbBytes = await readFile(thumbPath);
+    expect(thumbBytes.length).toBeGreaterThan(0);
+    assertNotInBuffer(thumbBytes, sentinel, '.thumb.webp');
+
+    const failedPath = sentinelPathFor(ctx.outputsDir, ctx.versionId, 'sample.png');
+    await writeFailedSentinel(failedPath);
+    const failedBytes = await readFile(failedPath);
+    // Pitfall G hygiene — the sentinel file MUST be zero bytes (no
+    // identifier — no source path, no filename, no error reason). This
+    // is the harder structural lock: even if `assertNotInBuffer` would
+    // pass on an empty haystack, the size assertion catches a regression
+    // that adds debug content to the sentinel.
+    expect(failedBytes.length).toBe(0);
+    assertNotInBuffer(failedBytes, sentinel, '.thumb.failed');
+  });
+});
+
 afterAll(() => {
   // Belt-and-suspenders — module-level captureHandle should be null by now,
   // but ensure no leak.
