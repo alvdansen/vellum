@@ -43,6 +43,7 @@
     "fetch-to-node": "^2.1.0",
     "hono": "^4.12.14",
     "nanoid": "^5.1.9",
+    "sharp": "^0.34.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
