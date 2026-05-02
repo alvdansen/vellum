@@ -7,12 +7,12 @@
 //
 // Architecture-purity: zero non-thumbnails imports. The sharp import is
 // confined to ./image-thumbnail.ts and the @ffmpeg-installer/ffmpeg
-// import will be confined to ./video-thumbnail.ts (Plan 17-02);
+// import is confined to ./video-thumbnail.ts (Plan 17-02);
 // everything in this barrel is re-export only.
 //
-// image-thumbnail.ts is the sole sharp importer per D-23. Plan 17-02
-// adds video-thumbnail.ts as the sole @ffmpeg-installer/ffmpeg importer
-// (D-24); video-thumbnail.ts will re-encode its extracted PNG via the
+// image-thumbnail.ts is the sole sharp importer per D-23.
+// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer per D-24
+// (Plan 17-02). video-thumbnail.ts re-encodes its extracted PNG via the
 // `getSharpForVideoReencode` helper exported from image-thumbnail.ts so
 // sharp stays single-importer.
 
@@ -37,3 +37,10 @@ export {
   getSharpForVideoReencode,
   __resetSharpStateForTests,
 } from './image-thumbnail.js';
+
+// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer per D-24.
+export {
+  generateVideoThumbnail,
+  __setSpawnFfmpegForTests,
+  __resetFfmpegStateForTests,
+} from './video-thumbnail.js';
