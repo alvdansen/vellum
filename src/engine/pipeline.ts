@@ -1460,6 +1460,11 @@ export class Engine {
       this.outputRoot,
       signerOrCode.signer,
       this.acquireAssetWriterLock.bind(this),
+      // Phase 17 / Plan 17-03 (D-05) — bind engine.invalidateThumbnail so the
+      // redact path's atomic-rename hook scrubs the cached thumbnail before
+      // the next /thumbnail GET serves stale bytes. The structural callback
+      // pattern keeps the c2pa → engine boundary composition-friendly.
+      this.invalidateThumbnail.bind(this),
     );
   }
 
