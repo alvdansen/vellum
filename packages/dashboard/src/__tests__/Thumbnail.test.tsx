@@ -177,4 +177,59 @@ describe('Thumbnail (Phase 17 — Plan 17-04 Task 3)', () => {
     expect(cardCls).toContain('h-5');
     expect(cardCls).toContain('w-5');
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // Additional contract tests — UI-SPEC API surface coverage beyond the
+  // 9 behaviors enumerated in the plan. Each test below maps to a
+  // separate prop/contract in UI-SPEC §"<Thumbnail/> API contract".
+  // ────────────────────────────────────────────────────────────────────
+
+  it('Test 10: ariaLabel prop overrides the default "Output for ${label}" alt text', () => {
+    render(
+      <Thumbnail
+        version={makeVersion({ status: 'complete', label: 'v003' })}
+        ariaLabel="Custom alt text"
+      />,
+    );
+    // Default alt is gone; custom alt is rendered as the <img> alt attribute
+    expect(screen.queryByAltText('Output for v003')).toBeNull();
+    const img = screen.getByAltText('Custom alt text') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('alt')).toBe('Custom alt text');
+  });
+
+  it('Test 11: optional class prop is composed onto the wrapper (NOT applied to <img>)', () => {
+    const { container } = render(
+      <Thumbnail
+        version={makeVersion({ status: 'complete' })}
+        class="custom-wrapper-class"
+      />,
+    );
+    const wrapper = container.firstElementChild as HTMLElement;
+    const wrapperCls = wrapper.getAttribute('class') ?? '';
+    // Wrapper has BOTH the default and the user-supplied composition
+    expect(wrapperCls).toContain('custom-wrapper-class');
+    expect(wrapperCls).toContain('aspect-video');
+    // The <img> inside does NOT receive the wrapper class
+    const img = screen.getByAltText('Output for v001') as HTMLImageElement;
+    const imgCls = img.getAttribute('class') ?? '';
+    expect(imgCls).not.toContain('custom-wrapper-class');
+  });
+
+  it('Test 12: D-07 + D-10 interaction — shield NOT rendered for signed status when version is non-complete', () => {
+    // A version with c2paStatus.signed but status='running' is showing the
+    // skeleton (D-07 unified treatment). The shield must NOT render on top of
+    // the skeleton — the skeleton is the entire visual surface during
+    // in-progress generation. UI-SPEC §"Render contract" only emits the
+    // shield on the complete + no-error render path.
+    render(
+      <Thumbnail
+        version={makeVersion({ status: 'running' })}
+        c2paStatus={{ status: 'signed' }}
+      />,
+    );
+    expect(screen.queryByTestId('c2pa-shield')).toBeNull();
+    // And no <img> either
+    expect(screen.queryByAltText('Output for v001')).toBeNull();
+  });
 });
