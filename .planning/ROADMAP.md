@@ -50,7 +50,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 
 **3 phases, 18 requirements (6 VIS + 5 SORT + 7 SUM). Strict sequential ordering 17 → 18 → 19 (low-risk visual wins first; LLM dependency last to derisk).**
 
-- [ ] **Phase 17: Visual Thumbnails** — Lazy-loaded 16:9 thumbnails on every completed-version asset card with C2PA-shield overlay, MP4 first-frame extraction, atomic disk cache, redact-invalidation hook.
+- [x] **Phase 17: Visual Thumbnails** — Lazy-loaded 16:9 thumbnails on every completed-version asset card with C2PA-shield overlay, MP4 first-frame extraction, atomic disk cache, redact-invalidation hook. (completed 2026-05-02)
 - [ ] **Phase 18: Sortable Folder Dropdown** — Latest-first default sort + 4-option dropdown control with localStorage persistence + URL state mirror; smart-default-per-scope (tree=A→Z, version grid=latest); composite-cursor pagination stability.
 - [ ] **Phase 19: AI Conversational Summary** — Supervisor/Lead-voice 2-4 sentence summary grounded in prompt blob + ingredient graph + model fingerprints; cached by `manifest_sha256`; circuit breaker + graceful fallback. **Adversarial review mandatory at plan stage.**
 
@@ -65,7 +65,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
   2. User sees a `<SkeletonThumbnail/>` placeholder for in-progress / loading / failed-to-generate versions (no broken image icons, no empty boxes); clicking any rendered thumbnail opens the full-size asset via the existing `/api/versions/:id/output` route.
   3. User sees an MP4 video's first representative frame as the thumbnail (extracted server-side via `@ffmpeg-installer/ffmpeg` `-vf thumbnail` filter, with brightness-threshold fallback to a 1.0s seek when the picked frame is black) AND the latest *completed* version's thumbnail surfaces on the shot card (Frame.io stack convention; falls back gracefully when latest is in-progress).
   4. User sees a small C2PA shield icon overlay on the thumbnail for cryptographically-signed versions (driven by Phase 14's `manifest_signed` event presence) AND a redact event (Phase 16) invalidates the cached thumbnail before the next read serves stale bytes.
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -81,7 +81,7 @@ Plans:
 - [x] 17-04-PLAN.md — Dashboard: <Thumbnail/> + <C2paShield/> components + getThumbnailUrl + copy.ts (license verification checkpoint)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 17-05-PLAN.md — Dashboard wiring: VersionCard + TreeSidebar shot rows + HomeView latestCompletedVersion + full-suite regression
+- [x] 17-05-PLAN.md — Dashboard wiring: VersionCard + TreeSidebar shot rows + HomeView latestCompletedVersion + full-suite regression
 **UI hint**: yes
 
 ### Phase 18: Sortable Folder Dropdown
@@ -125,6 +125,6 @@ Plans:
 | ----- | --------- | ----- | ----------- | ---------- |
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
-| 17    | v1.2      | 4/5 | In Progress|  |
+| 17    | v1.2      | 5/5 | Complete   | 2026-05-02 |
 | 18    | v1.2      | 0/0   | Not started | -          |
 | 19    | v1.2      | 0/0   | Not started | -          |
