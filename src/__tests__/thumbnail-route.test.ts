@@ -575,9 +575,11 @@ describe('GET + HEAD /api/versions/:id/thumbnail (Plan 17-03 Task 3)', () => {
 
   // -------- Test 20: engine-null-return path emits sentinel (D-07 leak-scan) --------
   it('Test 20: engine-null-return creates .thumb.failed; second GET returns same 503', async () => {
-    vi.spyOn(ThumbnailsBarrel, 'generateImageThumbnail').mockImplementation(async () => {
-      throw new Error('synthetic sharp failure for sentinel test');
-    });
+    const spy = vi
+      .spyOn(ThumbnailsBarrel, 'generateImageThumbnail')
+      .mockImplementation(async () => {
+        throw new Error('synthetic sharp failure for sentinel test');
+      });
     const app = buildRouterApp(seed.engine);
     const r1 = await app.request(`/api/versions/${seed.versionId}/thumbnail`);
     expect(r1.status).toBe(503);
@@ -589,14 +591,17 @@ describe('GET + HEAD /api/versions/:id/thumbnail (Plan 17-03 Task 3)', () => {
     expect(existsSync(sentinel)).toBe(true);
     expect((await fsStat(sentinel)).size).toBe(0);
 
+    // Capture first-request call count, then clear so the second-request
+    // assertion is independent of r1's bookkeeping.
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockClear();
+
     // Second GET — engine.deriveThumbnail short-circuits via isCacheFresh
     // sentinel branch and returns null without calling sharp again.
-    const generateSpy = vi.spyOn(ThumbnailsBarrel, 'generateImageThumbnail');
     const r2 = await app.request(`/api/versions/${seed.versionId}/thumbnail`);
     expect(r2.status).toBe(503);
-    // Spy was set AFTER first call, but it should NOT be invoked on second call
-    // since sentinel suppresses retry.
-    expect(generateSpy).not.toHaveBeenCalled();
+    // Sentinel suppresses retry — generateImageThumbnail NOT called on r2.
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

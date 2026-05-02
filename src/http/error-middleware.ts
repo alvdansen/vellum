@@ -57,6 +57,16 @@ const BAD_GATEWAY_CODES = new Set<string>([
   'DOWNLOAD_FAILED',
 ]);
 
+// Phase 17 / Plan 17-03 — Explicit 503 set for transient/derived-resource
+// failures. THUMBNAIL_FAILED surfaces when sharp/ffmpeg derivation throws or
+// the source format is unsupported. The dashboard onError handler swaps the
+// <Thumbnail/> render to a <SkeletonThumbnail/> on either 500 or 503; 503 is
+// chosen because the underlying asset (the /output route) is still healthy —
+// only the cached thumbnail is unavailable.
+const SERVICE_UNAVAILABLE_CODES = new Set<string>([
+  'THUMBNAIL_FAILED',
+]);
+
 // Explicit 400 set — validation codes that don't start with INVALID_.
 // TAG_INVALID + METADATA_INVALID are *_INVALID (suffix); ITERATE_INVALID_PATCH
 // is *_INVALID_* (middle). Combined with the INVALID_* prefix check below, this
@@ -86,6 +96,7 @@ export function statusForCode(code: string): number {
   if (BAD_GATEWAY_CODES.has(code) || code.startsWith('COMFYUI_')) return 502;
   if (UNPROCESSABLE_CODES.has(code)) return 422;
   if (CONFLICT_CODES.has(code)) return 409;
+  if (SERVICE_UNAVAILABLE_CODES.has(code)) return 503;
   return 500;
 }
 
