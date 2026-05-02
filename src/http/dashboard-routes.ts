@@ -76,6 +76,12 @@ export type EngineForDashboard = Pick<
   // engine downloader hook (Plan 14-03). This accessor returns the latest
   // manifest_signed event payload for the (versionId, filename) pair, or null.
   | 'getC2paStatusForVersion'
+  // Phase 17 / Plan 17-03 — thumbnail derivation surface. The HTTP route at
+  // GET/HEAD /api/versions/:id/thumbnail delegates to engine.generateThumbnail
+  // which runs the coalescing mutex + cache + format-router + sharp/ffmpeg
+  // pipeline (Plans 17-01 + 17-02). Returns null on derivation failure;
+  // route surfaces 503 + THUMBNAIL_FAILED envelope in that case.
+  | 'generateThumbnail'
 >;
 
 /**
@@ -349,6 +355,80 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=3600, immutable',
       'X-C2PA-Signing-Status': signingStatus,
+    });
+  });
+
+  // Phase 17 / Plan 17-03 — VIS-01 + VIS-02 + VIS-03 + VIS-06 surface.
+  //
+  // GET /api/versions/:id/thumbnail — serves the cached 640x360 (max edge,
+  // source aspect preserved per D-04) WebP for a completed version. Mirrors
+  // the /output route shape but delegates to engine.generateThumbnail (which
+  // runs the coalescing mutex + cache + format-router + sharp/ffmpeg pipeline
+  // from Plans 17-01 + 17-02). Returns 503 + THUMBNAIL_FAILED envelope when
+  // the engine returns null (sentinel suppresses retry until source mtime
+  // advances — the dashboard onError handler swaps to <SkeletonThumbnail/>).
+  //
+  // Strong ETag is content-addressed via sha256 (when present in
+  // outputs_json[0].sha256) or mtime: short-hash. Strong ETag invalidates
+  // correctly on Phase 16 redact (D-05 hook); immutable cuts the round-trip
+  // when fresh.
+  //
+  // T-5-04 path-traversal mitigation: resolveOutputForVersion (existing helper)
+  // rejects '..' / '/' / '\\' in the stored filename BEFORE engine dispatch.
+  // T-14-10 byte-parity preserved: this route is purely additive — the
+  // existing /output route is byte-unchanged.
+  const THUMBNAIL_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
+  app.get('/api/versions/:id/thumbnail', async (c) => {
+    const versionId = c.req.param('id');
+    const { filename } = resolveOutputForVersion(versionId);
+
+    const result = await engine.generateThumbnail(versionId, filename);
+    if (result === null) {
+      // Sentinel branch — engine wrote .thumb.failed. Surface as 503 with
+      // typed envelope; dashboard onError silently falls back to skeleton.
+      throw new TypedError(
+        'THUMBNAIL_FAILED',
+        `Thumbnail generation failed or unsupported for version '${versionId}' (${filename})`,
+        'The version is still viewable via the full-size /output route. Thumbnails will retry only when the source bytes change.',
+      );
+    }
+
+    // 304 conditional GET — strong ETag is content-addressed via sha256 or
+    // mtime: short-hash; browsers send If-None-Match on every navigation.
+    const ifNoneMatch = c.req.header('If-None-Match');
+    if (ifNoneMatch && ifNoneMatch === result.etag) {
+      return c.body(null, 304, {
+        ETag: result.etag,
+        'Cache-Control': THUMBNAIL_CACHE_CONTROL,
+      });
+    }
+
+    const nodeStream = createReadStream(result.filePath);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+    return c.body(webStream, 200, {
+      'Content-Type': result.contentType,
+      'Cache-Control': THUMBNAIL_CACHE_CONTROL,
+      ETag: result.etag,
+    });
+  });
+
+  app.on('HEAD', '/api/versions/:id/thumbnail', async (c) => {
+    const versionId = c.req.param('id');
+    const { filename } = resolveOutputForVersion(versionId);
+
+    const result = await engine.generateThumbnail(versionId, filename);
+    if (result === null) {
+      throw new TypedError(
+        'THUMBNAIL_FAILED',
+        `Thumbnail generation failed or unsupported for version '${versionId}' (${filename})`,
+        'The version is still viewable via the full-size /output route.',
+      );
+    }
+    return c.body(null, 200, {
+      'Content-Type': result.contentType,
+      'Cache-Control': THUMBNAIL_CACHE_CONTROL,
+      ETag: result.etag,
     });
   });
 

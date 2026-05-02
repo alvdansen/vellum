@@ -51,6 +51,12 @@ import {
   // Phase 16 / Plan 16-02 — redaction facade type (PROV-V-06).
   type RedactionResult,
 } from './c2pa/index.js';
+// Phase 17 / Plan 17-03 — thumbnail derivation surface. The engine delegates
+// through this barrel so pipeline.ts has ZERO direct sharp / ffmpeg imports
+// (D-23 / D-24 architecture-purity invariants preserved). The barrel also
+// exports the cache helpers (cachePathFor / sentinelPathFor / writeFailedSentinel
+// / invalidateCache / isCacheFresh / computeETag) used by deriveThumbnail.
+import * as Thumbnails from './thumbnails/index.js';
 import {
   SHOT_NAME_REGEX,
   type Workspace,
@@ -288,6 +294,22 @@ export class Engine {
   private readonly signMutex = new Map<
     string,
     Promise<{ signed: Buffer | null; signedToPath: string | null; alreadySigned?: boolean }>
+  >();
+
+  /**
+   * Phase 17 / Plan 17-03 (D-21) — per-(versionId, filename) COALESCING
+   * mutex for thumbnail derivation. SAME shape as signMutex above (NOT
+   * the FIFO assetWriterMutex). Concurrent same-key requests share one
+   * in-flight Promise; different keys run in parallel. Pure derivation
+   * from immutable source bytes is safe to coalesce — the derivation
+   * result is a pure function of the source bytes' mtime / sha256.
+   *
+   * Settle cleanup in try/finally — entry deleted on success or failure.
+   * In-process only (single-server design; threat T-15-06 — bounded growth).
+   */
+  private readonly thumbnailMutex = new Map<
+    string,
+    Promise<{ filePath: string; contentType: string; etag: string } | null>
   >();
 
   /**
@@ -1438,6 +1460,11 @@ export class Engine {
       this.outputRoot,
       signerOrCode.signer,
       this.acquireAssetWriterLock.bind(this),
+      // Phase 17 / Plan 17-03 (D-05) — bind engine.invalidateThumbnail so the
+      // redact path's atomic-rename hook scrubs the cached thumbnail before
+      // the next /thumbnail GET serves stale bytes. The structural callback
+      // pattern keeps the c2pa → engine boundary composition-friendly.
+      this.invalidateThumbnail.bind(this),
     );
   }
 
@@ -1900,5 +1927,174 @@ export class Engine {
       recent_versions: recent,
       workspaces,
     };
+  }
+
+  // ================================================================
+  // PHASE 17 / Plan 17-03 — THUMBNAIL DERIVATION FACADE (VIS-01..03/06)
+  // ================================================================
+
+  /**
+   * Phase 17 / Plan 17-03 — D-21 COALESCING facade for thumbnail derivation.
+   *
+   * Returns the cached `.thumb.webp` filePath + Content-Type + ETag for
+   * `(versionId, filename)`, or `null` when the source format is unsupported
+   * OR sharp/ffmpeg derivation failed (engine writes a `.thumb.failed`
+   * sentinel; the HTTP route surfaces as 503 + THUMBNAIL_FAILED envelope; the
+   * dashboard fallback path renders a skeleton).
+   *
+   * Concurrent calls for the SAME `(versionId, filename)` share one in-flight
+   * Promise via `thumbnailMutex` (signMutex shape). Calls for DIFFERENT keys
+   * run in parallel. The mutex entry is deleted on settle (try/finally).
+   *
+   * Called from src/http/dashboard-routes.ts GET/HEAD `/api/versions/:id/thumbnail`
+   * (Plan 17-03 Task 3). NEVER throws on derivation failure — the failure path
+   * returns null + writes the sentinel.
+   */
+  async generateThumbnail(
+    versionId: string,
+    filename: string,
+  ): Promise<{ filePath: string; contentType: string; etag: string } | null> {
+    const key = `${versionId}::${filename}`;
+    const inflight = this.thumbnailMutex.get(key);
+    if (inflight) return inflight;
+    const promise = (async () => {
+      try {
+        return await this.deriveThumbnail(versionId, filename);
+      } finally {
+        this.thumbnailMutex.delete(key);
+      }
+    })();
+    this.thumbnailMutex.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Phase 17 / Plan 17-03 — D-05 idempotent thumbnail-cache invalidation.
+   *
+   * Removes both `<filename>.thumb.webp` and `<filename>.thumb.failed` for
+   * `(versionId, filename)` if either exists. Both unlinks are best-effort
+   * (ENOENT swallowed) so the call is safe to invoke after every redact +
+   * regenerate cycle.
+   *
+   * Called from src/engine/c2pa/redaction.ts AFTER `atomicRename(tempPathFresh,
+   * fullPath)` inside the try block (D-05 ordering — see Plan 17-03 Task 2).
+   * Calling BEFORE the rename creates a window where the old thumb is deleted
+   * but the rewrite failed — UI shows skeleton until next request retries.
+   * Calling AFTER ensures invalidation only happens for actually-rewritten
+   * bytes.
+   *
+   * Pure FS unlink — does NOT acquire `thumbnailMutex` because:
+   *  (a) the redact caller already holds `assetWriterMutex` on this key, AND
+   *  (b) invalidate is idempotent — concurrent invalidate calls compose
+   *      correctly without coordination.
+   */
+  async invalidateThumbnail(versionId: string, filename: string): Promise<void> {
+    await Thumbnails.invalidateCache(this.outputRoot, versionId, filename);
+  }
+
+  /**
+   * Phase 17 / Plan 17-03 — private dispatcher. Reads source mtime + sha256
+   * (when available from outputs_json[0].sha256), checks cache freshness via
+   * isCacheFresh, dispatches to format-router, and writes a sentinel on
+   * failure paths. Public surface is generateThumbnail (above) which wraps
+   * this in the coalescing mutex.
+   *
+   * Failure semantics — engine on sharp/ffmpeg failure writes a `.thumb.failed`
+   * sentinel and returns null. NO exception bubbles to the HTTP route on the
+   * failure path. The route surfaces null as 503 + THUMBNAIL_FAILED envelope.
+   */
+  private async deriveThumbnail(
+    versionId: string,
+    filename: string,
+  ): Promise<{ filePath: string; contentType: string; etag: string } | null> {
+    const sourcePath = nodepath.resolve(this.outputRoot, versionId, filename);
+    const cachePath = Thumbnails.cachePathFor(this.outputRoot, versionId, filename);
+    const sentinelPath = Thumbnails.sentinelPathFor(this.outputRoot, versionId, filename);
+
+    // Read sha256 from outputs_json[0].sha256 if present — provides a strong
+    // ETag validator. Parse defensively; never let a JSON-parse error escape.
+    let sha256: string | null = null;
+    try {
+      const version = this.versionRepo.getVersion(versionId);
+      if (version?.outputs_json) {
+        const parsed = JSON.parse(version.outputs_json) as Array<{
+          filename?: string;
+          sha256?: string;
+        }>;
+        if (Array.isArray(parsed) && parsed[0]?.sha256) {
+          sha256 = parsed[0].sha256 as string;
+        }
+      }
+    } catch {
+      // outputs_json parse failure or version not found — fall back to
+      // mtime-based ETag derivation.
+      sha256 = null;
+    }
+
+    // Cache freshness check — D-07 (cache | sentinel | miss).
+    let fresh: Thumbnails.CacheFreshness;
+    try {
+      fresh = await Thumbnails.isCacheFresh(cachePath, sentinelPath, sourcePath);
+    } catch {
+      // Source file is unreadable — treat as a derivation failure: write
+      // sentinel and return null. The HTTP route surfaces 503.
+      try {
+        const { mkdir } = await import('node:fs/promises');
+        await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
+        await Thumbnails.writeFailedSentinel(sentinelPath);
+      } catch {
+        // best-effort
+      }
+      return null;
+    }
+
+    if (fresh.via === 'cache') {
+      const etag = await Thumbnails.computeETag(sourcePath, sha256);
+      return { filePath: cachePath, contentType: 'image/webp', etag };
+    }
+    if (fresh.via === 'sentinel') {
+      // Last derivation failed AFTER source last changed; do NOT retry.
+      return null;
+    }
+
+    // Cache miss — format-route + dispatch.
+    const route = Thumbnails.routeFormat(filename);
+    if (route.mode === 'unsupported') {
+      // Ensure parent dir exists for the sentinel write.
+      try {
+        const { mkdir } = await import('node:fs/promises');
+        await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
+        await Thumbnails.writeFailedSentinel(sentinelPath);
+      } catch {
+        // best-effort
+      }
+      return null;
+    }
+
+    try {
+      if (route.mode === 'image') {
+        await Thumbnails.generateImageThumbnail(sourcePath, cachePath);
+      } else {
+        // route.mode === 'video'
+        await Thumbnails.generateVideoThumbnail(sourcePath, cachePath);
+      }
+    } catch (err) {
+      console.warn(
+        `vfx-familiar: thumbnail derivation failed for ${versionId}/${filename}: ${
+          (err as Error).message
+        }`,
+      );
+      try {
+        const { mkdir } = await import('node:fs/promises');
+        await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
+        await Thumbnails.writeFailedSentinel(sentinelPath);
+      } catch {
+        // best-effort
+      }
+      return null;
+    }
+
+    const etag = await Thumbnails.computeETag(sourcePath, sha256);
+    return { filePath: cachePath, contentType: 'image/webp', etag };
   }
 }

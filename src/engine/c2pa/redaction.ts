@@ -435,6 +435,20 @@ export type AssetWriterAcquire = <T>(
   task: () => Promise<T>,
 ) => Promise<T>;
 
+/** Phase 17 / Plan 17-03 (D-05) — function-shape of the engine's thumbnail
+ *  invalidation callback. Called AFTER the atomicRename inside the try block
+ *  (NOT before — calling before creates a stale-cache window when the rewrite
+ *  fails). Engine.invalidateThumbnail is idempotent (best-effort unlink of
+ *  cache + sentinel) so a no-op call is safe.
+ *
+ *  Structural callback rather than a hard import on the Engine class —
+ *  keeps the c2pa → engine boundary composition-friendly (mirrors the
+ *  AssetWriterAcquire shape). */
+export type ThumbnailInvalidate = (
+  versionId: string,
+  filename: string,
+) => Promise<void>;
+
 /** Lazy native-binding module + load-error caching (mirror signer.ts pattern). */
 let c2paNodeModule: typeof import('c2pa-node') | null = null;
 let c2paNodeLoadError: Error | null = null;
@@ -564,6 +578,11 @@ export async function redactManifestForVersionImpl(
   outputsDir: string,
   signer: LoadedSigner,
   assetWriterAcquire: AssetWriterAcquire,
+  // Phase 17 / Plan 17-03 (D-05) — optional callback invoked AFTER atomicRename
+  // succeeds. Engine binds engine.invalidateThumbnail; tests pass a stub or
+  // omit (defaults to a no-op). Failures inside the callback are NON-FATAL
+  // (try/catch swallow + console.warn) so the redact success path is preserved.
+  thumbnailInvalidate: ThumbnailInvalidate = async () => { /* no-op default */ },
   now: () => string = () => new Date().toISOString(),
 ): Promise<RedactionResult> {
   const version = versionRepo.getVersion(versionId);
@@ -747,6 +766,22 @@ export async function redactManifestForVersionImpl(
     try {
       await atomicWriteFile(tempPathFresh, redactedBytes);
       await atomicRename(tempPathFresh, fullPath);
+      // Phase 17 / Plan 17-03 (D-05) — invalidate thumbnail cache AFTER the
+      // rewrite lands. Idempotent unlink of <fullPath>.thumb.webp +
+      // <fullPath>.thumb.failed via the engine's invalidateCache delegate.
+      // Per Pattern 7: ordering is critical — invalidating BEFORE the rename
+      // creates a stale-cache window if the rename fails. Calling AFTER ensures
+      // invalidation only happens for actually-rewritten bytes.
+      try {
+        await thumbnailInvalidate(versionId, filename);
+      } catch (err) {
+        // Non-fatal — the redact succeeded; a stale thumb at worst returns one
+        // outdated 304 until the user navigates away. Log + continue so the
+        // append-only manifest_signed event still emits below.
+        console.warn(
+          `vfx-familiar: thumb invalidate after redact failed (versionId=${versionId}, filename=${filename}): ${(err as Error).message}`,
+        );
+      }
     } catch (err) {
       // Best-effort cleanup of temp file on failure.
       try { await atomicUnlink(tempPathFresh); } catch { /* ignore */ }
