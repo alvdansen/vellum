@@ -191,6 +191,32 @@ export function HomeView() {
     });
   }
 
+  // Phase 17 / Plan 17-05 — populate TreeShot.latestCompletedVersion for the
+  // currently-selected shot from the in-memory versions signal. Other shots
+  // (whose versions have not been loaded into the local cache) keep
+  // latestCompletedVersion undefined → SkeletonThumbnail fallback (D-14/D-15).
+  // This is the v1.2 conservative ship per Plan 17-05 Task 2 Step 3 — the
+  // "selected-shot-only" populate approach is documented in the plan as the
+  // safe minimum; cross-shot prefetch is deferred to v1.3.
+  //
+  // The version selection rule is: the FIRST entry in versions.value with
+  // status === 'complete'. listByShot returns version_number DESC; the first
+  // complete in that list approximates "latest completed_at DESC" because
+  // version_number and completed_at correlate in the project's lineage model.
+  const selectedShotVersions = versions.value;
+  const latestCompletedForSelectedShot = (() => {
+    if (!selectedShotId.value) return undefined;
+    const completed = selectedShotVersions.find(
+      (v) => normalizeStatus(v.status) === 'complete',
+    );
+    if (!completed) return undefined;
+    return {
+      id: completed.id,
+      label: versionLabel(completed),
+      status: 'complete' as const,
+    };
+  })();
+
   // Compose the nested tree shape TreeSidebar expects from the workspaces
   // signal + lazy-loaded children cache.
   const tree: TreeWorkspace[] = workspaces.value.map((ws) => ({
@@ -205,7 +231,16 @@ export function HomeView() {
             id: s.id,
             name: s.name,
             shots: (children.shots[s.id] ?? []).map(
-              (sh): TreeShot => ({ id: sh.id, name: sh.name }),
+              (sh): TreeShot => ({
+                id: sh.id,
+                name: sh.name,
+                // Populate latestCompletedVersion ONLY for the selected shot
+                // (D-15 happy path); all other shots fall back to SkeletonThumbnail.
+                latestCompletedVersion:
+                  sh.id === selectedShotId.value
+                    ? latestCompletedForSelectedShot
+                    : undefined,
+              }),
             ),
           }),
         ),
