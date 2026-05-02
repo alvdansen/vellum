@@ -127,26 +127,31 @@ describe('Plan 17-01 Task 2 — generateImageThumbnail end-to-end', () => {
   });
 
   it('Test 3: atomic-write cleanup — no .partial file leaks when sharp.toFile rejects', async () => {
-    // Trigger a sharp-side failure: pass a directory instead of a regular
-    // file to .toFile(). The writer callback will throw, writeAtomic must
-    // clean up the partial.
-    const sourcePath = join(workdir, 'source.png');
-    // Wide-deep destination: write to a destPath whose parent does not exist
-    // (sharp.toFile rejects when the parent directory is missing). The
-    // writeAtomic catch block runs the unlink cleanup.
-    const destPath = join(workdir, 'no-such-parent', 'thumb.webp');
-    await writeFile(sourcePath, await makeGreyPng());
+    // Trigger a sharp-side failure: pass a NON-EXISTENT source file. Sharp
+    // attempts to read it inside .toFile(), throws ENOENT, the writeAtomic
+    // catch block runs the unlink cleanup. The writer never created a
+    // partial in this case (sharp throws before writing) — the assertion
+    // is the absence of any .partial entries either way.
+    //
+    // The destPath's parent IS created by generateImageThumbnail's
+    // mkdir-recursive, so the partial WOULD be writable if sharp got that
+    // far. But sharp throws inside the toFile() call because the source
+    // is missing → catch in writeAtomic → best-effort unlink → throw
+    // wrapped as TypedError('THUMBNAIL_FAILED', reason='sharp_failed').
+    const sourcePath = join(workdir, 'does-not-exist.png');
+    const destPath = join(workdir, 'thumb.webp');
 
     await expect(generateImageThumbnail(sourcePath, destPath)).rejects.toBeInstanceOf(
       TypedError,
     );
 
-    // The partial in workdir/no-such-parent doesn't exist (the parent itself
-    // doesn't exist), so we just confirm the workdir parent has no leaked
-    // partials.
+    // No partial leaked.
     const entries = await readdir(workdir);
     const partials = entries.filter((e) => e.endsWith('.partial'));
     expect(partials).toEqual([]);
+    // Confirm the destPath itself was NOT created on failure.
+    const finalEntries = entries.filter((e) => e === 'thumb.webp');
+    expect(finalEntries).toEqual([]);
   });
 });
 

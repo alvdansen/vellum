@@ -30,7 +30,10 @@ export {
   type CacheFreshness,
 } from './cache.js';
 
-// Plan 17-01 Task 2 will add image-thumbnail.ts re-exports
-// (generateImageThumbnail, getImageBrightness, getSharpForVideoReencode,
-// __resetSharpStateForTests) per D-23 — image-thumbnail.ts is the sole
-// sharp importer.
+// image-thumbnail.ts is the sole sharp importer per D-23.
+export {
+  generateImageThumbnail,
+  getImageBrightness,
+  getSharpForVideoReencode,
+  __resetSharpStateForTests,
+} from './image-thumbnail.js';
