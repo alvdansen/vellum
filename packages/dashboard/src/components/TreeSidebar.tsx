@@ -19,6 +19,12 @@
  *     live in the data layer (Plan 08) — our types are structurally compatible
  *     via TypeScript duck-typing.
  *
+ * Phase 17 / Plan 17-05 — depth=3 shot rows gain a leading thumbnail slot
+ * (D-13). When TreeShot.latestCompletedVersion is provided → real thumb;
+ * when absent → SkeletonThumbnail width=80 height=45 fallback (D-14/D-15).
+ * Sequence + Project + Workspace rows stay text-only (D-16 LOCKED — exactly
+ * one thumbnail-rendering caller in this file, in the shot.map() context).
+ *
  * Accessibility:
  *   - Root <nav aria-label="Project hierarchy">
  *   - Each expandable row: role="treeitem", aria-expanded reflects state
@@ -30,13 +36,24 @@
  * not used.
  */
 
+import type { VNode } from 'preact';
 import { ChevronRight, ChevronDown } from 'lucide-preact';
+import { Thumbnail } from './Thumbnail.js';
+import { SkeletonThumbnail } from './SkeletonThumbnail.js';
 
 /* ---------- Minimal structural types (owned by this component) ---------- */
 
 export interface TreeShot {
   id: string;
   name: string;
+  /**
+   * Phase 17 / Plan 17-05 — latest completed version under this shot. Drives
+   * the leading thumb slot at size='sm' per D-13. Undefined → SkeletonThumbnail
+   * fallback (D-14/D-15). HomeView populates this from the local versions
+   * cache; shots without loaded versions render the skeleton (graceful
+   * degradation per UI-SPEC §"Empty states").
+   */
+  latestCompletedVersion?: { id: string; label: string; status: 'complete' };
 }
 
 export interface TreeSequence {
@@ -225,6 +242,16 @@ function SequenceNode({
             onToggle={() => {
               /* shots are leaves — no toggle */
             }}
+            thumbnail={
+              shot.latestCompletedVersion ? (
+                <Thumbnail
+                  version={shot.latestCompletedVersion}
+                  size="sm"
+                />
+              ) : (
+                <SkeletonThumbnail width={80} height={45} />
+              )
+            }
           />
         ))}
     </>
@@ -241,6 +268,13 @@ interface TreeRowProps {
   isSelected: boolean;
   onClick: () => void;
   onToggle: () => void;
+  /**
+   * Phase 17 / Plan 17-05 — optional leading thumbnail slot. Sequence /
+   * Project / Workspace TreeRow callers omit this prop (D-16 LOCKED — only
+   * the depth=3 shot-row caller passes it). When undefined, the slot is
+   * not rendered and the row stays text-only.
+   */
+  thumbnail?: VNode;
 }
 
 function TreeRow({
@@ -251,6 +285,7 @@ function TreeRow({
   isSelected,
   onClick,
   onToggle,
+  thumbnail,
 }: TreeRowProps) {
   const Icon = expanded ? ChevronDown : ChevronRight;
   return (
@@ -287,6 +322,7 @@ function TreeRow({
       ) : (
         <span class="w-3.5 flex-shrink-0" aria-hidden="true" />
       )}
+      {thumbnail ? <span class="flex-shrink-0">{thumbnail}</span> : null}
       <span class="truncate">{label}</span>
     </div>
   );
