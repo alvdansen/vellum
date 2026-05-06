@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: Visual & Conversational Dashboard
 status: executing
 stopped_at: Phase 18 UI-SPEC approved
-last_updated: "2026-05-06T15:03:13.775Z"
-last_activity: 2026-05-06 -- Phase 18 planning complete
+last_updated: "2026-05-06T15:09:52.294Z"
+last_activity: 2026-05-06 -- Phase 18 execution started
 progress:
   total_phases: 3
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v1.1 milestone start)
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 17 — visual-thumbnails
+**Current focus:** Phase 18 — sortable-folder-dropdown
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-06 -- Phase 18 planning complete
+Phase: 18 (sortable-folder-dropdown) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 18
+Last activity: 2026-05-06 -- Phase 18 execution started
 
 ## Performance Metrics
 

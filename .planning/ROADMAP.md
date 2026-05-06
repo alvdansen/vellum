@@ -97,7 +97,7 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 18-01-PLAN.md — Engine sort foundations (sort.ts: whitelist enum + ORDER BY composers + cursor encode/decode + WHERE-after-cursor)
+- [x] 18-01-PLAN.md — Engine sort foundations (sort.ts: whitelist enum + ORDER BY composers + cursor encode/decode + WHERE-after-cursor)
 
 **Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
 - [ ] 18-02-PLAN.md — Version repo cursor migration (listByShot → composite-cursor pagination; pipeline.ts facade; transitional shim in dashboard-routes.ts)
@@ -140,5 +140,5 @@ Plans:
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
-| 18    | v1.2      | 0/0   | Not started | -          |
+| 18    | v1.2      | 1/5 | In Progress|  |
 | 19    | v1.2      | 0/0   | Not started | -          |
