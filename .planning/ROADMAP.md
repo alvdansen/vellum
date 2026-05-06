@@ -100,8 +100,8 @@ Plans:
 - [x] 18-01-PLAN.md — Engine sort foundations (sort.ts: whitelist enum + ORDER BY composers + cursor encode/decode + WHERE-after-cursor)
 
 **Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
-- [ ] 18-02-PLAN.md — Version repo cursor migration (listByShot → composite-cursor pagination; pipeline.ts facade; transitional shim in dashboard-routes.ts)
-- [ ] 18-04-PLAN.md — Dashboard primitives (sortTypes mirror + sortHelpers state machine + LRU + comparator + SortDropdown WAI-ARIA combobox + LoadMoreButton)
+- [x] 18-02-PLAN.md — Version repo cursor migration (listByShot → composite-cursor pagination; pipeline.ts facade; transitional shim in dashboard-routes.ts)
+- [x] 18-04-PLAN.md — Dashboard primitives (sortTypes mirror + sortHelpers state machine + LRU + comparator + SortDropdown WAI-ARIA combobox + LoadMoreButton)
 
 **Wave 3** *(blocked on 18-02)*
 - [ ] 18-03-PLAN.md — Hierarchy sort + HTTP routes (hierarchy-repo opts.sort + Engine facade + Zod whitelist parsing in dashboard-routes.ts; removes 18-02 transitional shim)
@@ -140,5 +140,5 @@ Plans:
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
-| 18    | v1.2      | 1/5 | In Progress|  |
+| 18    | v1.2      | 3/5 | In Progress|  |
 | 19    | v1.2      | 0/0   | Not started | -          |
