@@ -45,3 +45,58 @@ export const SIGNED_TOOLTIP = 'Signed · Verified provenance';
  * by giving SR equivalent semantic info to what sighted users see.
  */
 export const PREVIEW_UNAVAILABLE_PREFIX = 'Preview unavailable for ';
+
+// ================================================================
+// Phase 18 / Plan 18-04 — sort-strip + dropdown + load-more copy
+// (UI-SPEC §"Copywriting Contract" lines 480-545)
+// ================================================================
+
+/**
+ * Sort-strip muted prefix label — single word "Sort" rendered with the
+ * `.label-uppercase` utility (tracking + uppercase transform). Visible
+ * sibling to the <SortDropdown/> trigger. NOT "Sort by:" — the dropdown's
+ * `aria-label` already says "Sort versions by" / "Sort tree by" so the
+ * visible label stays brief.
+ */
+export const SORT_STRIP_LABEL = 'Sort';
+
+/**
+ * Grid <SortDropdown/> trigger `aria-label`. Required prop; surfaces the
+ * trigger purpose to screen-reader users since the visible label inside
+ * the trigger is just the current option (e.g., "Latest").
+ */
+export const SORT_GRID_ARIA_LABEL = 'Sort versions by';
+
+/**
+ * Tree <SortDropdown/> trigger `aria-label`. Symmetric to grid; refers to
+ * the workspace/project/sequence/shot tree.
+ */
+export const SORT_TREE_ARIA_LABEL = 'Sort tree by';
+
+/**
+ * <LoadMoreButton/> loading-state label. Single word + Unicode horizontal
+ * ellipsis (U+2026) — matches the existing "Loading…" tone used elsewhere.
+ */
+export const LOAD_MORE_LOADING_LABEL = 'Loading…';
+
+/**
+ * <LoadMoreButton/> error-state retry CTA label. Used on the inline pill
+ * below the button when the previous fetch failed; clicking the Retry
+ * button re-fires the same onClick handler as the main button.
+ */
+export const LOAD_MORE_RETRY_LABEL = 'Retry';
+
+/**
+ * <LoadMoreButton/> error-state copy prefix for HTTP / server failures —
+ * e.g., a 4xx/5xx envelope from /api/shots/:id/versions?cursor=… The full
+ * pill copy becomes `${LOAD_MORE_ERROR_PREFIX_FAILED} · Retry` with
+ * U+00B7 middle dot (matches Phase 17 SIGNED_TOOLTIP separator tone).
+ */
+export const LOAD_MORE_ERROR_PREFIX_FAILED = 'Failed to load';
+
+/**
+ * <LoadMoreButton/> error-state copy prefix for network failures — fetch
+ * threw (offline, server down, DNS fail). Synthesized client-side; not a
+ * server-emitted code.
+ */
+export const LOAD_MORE_ERROR_PREFIX_NETWORK = 'Network error';
