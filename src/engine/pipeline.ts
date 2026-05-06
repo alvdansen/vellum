@@ -9,6 +9,11 @@ import type * as schema from '../store/schema.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
+// Phase 18 / Plan 18-02 — composite-cursor sort tuple types forwarded
+// through Engine.listVersionsForShot. Plan 18-03 will Zod-parse these at
+// the HTTP boundary; the engine layer trusts the structurally-validated
+// VersionCursor (decoded by Plan 18-01 helper) on entry.
+import type { VersionSort, VersionCursor } from '../store/sort.js';
 import { TagRepo } from '../store/tag-repo.js';
 import { MetadataRepo } from '../store/metadata-repo.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
@@ -751,26 +756,43 @@ export class Engine {
   }
 
   /**
-   * D-PROV-09 + D-ASST-20: paginated version list for a shot, version_number DESC.
+   * D-PROV-09 + D-ASST-20 + Phase 18 (Plan 18-02): paginated version list for
+   * a shot via composite-cursor pagination (SORT-01 default Latest with
+   * NULL-pin; SORT-02 whitelist enum surface; SORT-05 stable cursor).
    * Opt-in hydration via include_tags / include_metadata flags (default omit
    * keeps payload cheap for list-heavy reads). When neither flag is set, items
    * are plain Version (Phase 3 parity). Otherwise each item gains the requested
    * array(s) — tags only, metadata only, or both.
+   *
+   * The legacy `offset` field on the ListResult shape is preserved as a
+   * constant 0 transitional artifact for the v1.2 dashboard surface — it is
+   * no longer meaningful under cursor pagination, but downstream callers
+   * (Plan 18-04 lib/api.ts) will drop it from the dashboard's TypeScript
+   * shape. The `next_cursor` field is the canonical pagination signal.
    */
   listVersionsForShot(
     shotId: string,
-    limit: number,
-    offset: number,
-    options: { include_tags?: boolean; include_metadata?: boolean } = {},
-  ): ListResult<VersionWithAssets | Version> {
-    const { items, total_count } = this.versionRepo.listByShot(shotId, limit, offset);
+    opts: {
+      sort: VersionSort;
+      cursor: VersionCursor | null;
+      limit: number;
+      include_tags?: boolean;
+      include_metadata?: boolean;
+    },
+  ): ListResult<VersionWithAssets | Version> & { next_cursor: string | null } {
+    const { sort, cursor, limit, include_tags, include_metadata } = opts;
+    const { items, next_cursor, total_count } = this.versionRepo.listByShot(shotId, {
+      sort,
+      cursor,
+      limit,
+    });
     const hydrated = items.map((v) => {
       let withAssets: Version | VersionWithAssets = v;
-      if (options.include_tags || options.include_metadata) {
+      if (include_tags || include_metadata) {
         const full = this.assets.hydrateVersionWithAssets(v);
-        if (options.include_tags && options.include_metadata) {
+        if (include_tags && include_metadata) {
           withAssets = full;
-        } else if (options.include_tags) {
+        } else if (include_tags) {
           // tags only
           const { metadata: _m, ...rest } = full;
           withAssets = rest as Version & { tags: string[] };
@@ -782,7 +804,7 @@ export class Engine {
       }
       return { ...withAssets, ...this.breadcrumb.resolve('version', v.id) };
     });
-    return { items: hydrated, total_count, limit, offset };
+    return { items: hydrated, total_count, limit, offset: 0, next_cursor };
   }
 
   /** D-PROV-10: full chronological event history. Empty events[] for pre-Phase-3 rows. */

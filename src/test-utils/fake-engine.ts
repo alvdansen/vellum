@@ -178,12 +178,16 @@ export class FakeEngine {
 
   listVersionsForShot(
     shotId: string,
-    limit: number,
-    offset: number,
-    options: { include_tags?: boolean; include_metadata?: boolean } = {},
-  ): ListResult<Version> {
-    this.calls.push({ method: 'listVersionsForShot', args: [shotId, limit, offset, options] });
-    return this.cans.versionList;
+    opts: {
+      sort: { field: string; dir: string };
+      cursor: { cna: boolean; sv: number | string | null; vid: string } | null;
+      limit: number;
+      include_tags?: boolean;
+      include_metadata?: boolean;
+    },
+  ): ListResult<Version> & { next_cursor: string | null } {
+    this.calls.push({ method: 'listVersionsForShot', args: [shotId, opts] });
+    return { ...this.cans.versionList, next_cursor: null };
   }
 
   getProvenance(versionId: string): { events: ProvenanceEvent[]; breadcrumb: Breadcrumb } {

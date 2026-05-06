@@ -528,9 +528,24 @@ export function registerVersion(server: McpServer, engine: Engine) {
             return toolOk(shapeVersionEntity(versionResult, c2paStatus));
           }
           case 'list':
+            // Phase 18 / Plan 18-02 TRANSITIONAL — the MCP `version.list`
+            // wire-level surface preserves the pre-Phase-18 ordering
+            // (version_number DESC) for v1.1 agents. The engine signature
+            // now requires { sort, cursor, limit }; we forward
+            // {field:'version_number', dir:'desc'} + null cursor here so
+            // the byte-level ordering returned to MCP clients is unchanged
+            // from v1.1. Plan 18-02 is dashboard-scoped — Plan 18-04 may
+            // add cursor/sort surfaces to the MCP tool if SORT-01/05 close
+            // at the agent boundary too. input.offset is ignored under
+            // cursor pagination (cursor:null = page 1; subsequent pages
+            // would need a sort/cursor MCP-tool contract beyond Plan
+            // 18-02's scope).
             return toolOk(
               shapeList(
-                engine.listVersionsForShot(input.shot_id, input.limit, input.offset, {
+                engine.listVersionsForShot(input.shot_id, {
+                  sort: { field: 'version_number', dir: 'desc' }, // TRANSITIONAL — preserves v1.1 ordering
+                  cursor: null,                                     // TRANSITIONAL — Plan 18-04 may add ?cursor=
+                  limit: input.limit,
                   include_tags: input.include_tags,
                   include_metadata: input.include_metadata,
                 }),

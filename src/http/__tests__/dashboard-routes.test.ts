@@ -220,14 +220,29 @@ describe('createDashboardRouter', () => {
   });
 
   describe('GET /api/shots/:id/versions', () => {
-    it('passes limit/offset/include_tags/include_metadata to engine.listVersionsForShot', async () => {
+    // Phase 18 / Plan 18-02 TRANSITIONAL — the dashboard-routes shim forwards
+    // {sort: {field: 'completed_at', dir: 'desc'}, cursor: null} as engine
+    // defaults until Plan 18-03 wires Zod-parsed ?sort=/?cursor= query params.
+    // Until then ?offset= is ignored by the engine layer (cursor pagination
+    // supersedes offset semantics) but still parsed at the route boundary
+    // for backward-compat 4xx behavior on malformed offset values.
+    it('passes limit/include_tags/include_metadata to engine.listVersionsForShot with transitional sort/cursor defaults', async () => {
       const app = buildApp(engine);
       await app.request(
         '/api/shots/shot_1/versions?limit=5&offset=3&include_tags=true&include_metadata=true',
       );
       expect(engine.calls).toContainEqual({
         method: 'listVersionsForShot',
-        args: ['shot_1', 5, 3, { include_tags: true, include_metadata: true }],
+        args: [
+          'shot_1',
+          {
+            sort: { field: 'completed_at', dir: 'desc' },
+            cursor: null,
+            limit: 5,
+            include_tags: true,
+            include_metadata: true,
+          },
+        ],
       });
     });
 
@@ -236,7 +251,16 @@ describe('createDashboardRouter', () => {
       await app.request('/api/shots/shot_1/versions');
       expect(engine.calls).toContainEqual({
         method: 'listVersionsForShot',
-        args: ['shot_1', 20, 0, { include_tags: false, include_metadata: false }],
+        args: [
+          'shot_1',
+          {
+            sort: { field: 'completed_at', dir: 'desc' },
+            cursor: null,
+            limit: 20,
+            include_tags: false,
+            include_metadata: false,
+          },
+        ],
       });
     });
   });

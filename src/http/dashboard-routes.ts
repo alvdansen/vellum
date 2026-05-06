@@ -160,11 +160,24 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
 
   app.get('/api/shots/:id/versions', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
-    const offset = qNum(c.req.query('offset'), 0, 'offset');
+    // Phase 18 / Plan 18-02 TRANSITIONAL — Plan 18-03 replaces this block
+    // entirely with Zod-parsed `?sort=` + `?cursor=` query params and adds
+    // a typed cursor decoder at the boundary (T-18-02 mitigation). For now
+    // the route forwards the engine defaults (DEFAULT_VERSION_SORT + null
+    // cursor) so the wire-level surface stays stable for v1.1 dashboards
+    // that still pass `?limit=&offset=`. Plan 18-02 keeps the offset query
+    // param parsing for backward compatibility but ignores the value
+    // (cursor pagination supersedes offset semantics). Plan 18-03 verifies
+    // this TRANSITIONAL marker is removed.
+    const _ignoredOffset = qNum(c.req.query('offset'), 0, 'offset');
+    void _ignoredOffset;
     const include_tags = c.req.query('include_tags') === 'true';
     const include_metadata = c.req.query('include_metadata') === 'true';
     return c.json(
-      engine.listVersionsForShot(c.req.param('id'), limit, offset, {
+      engine.listVersionsForShot(c.req.param('id'), {
+        sort: { field: 'completed_at', dir: 'desc' }, // TRANSITIONAL — Plan 18-03 parses ?sort=
+        cursor: null,                                  // TRANSITIONAL — Plan 18-03 parses ?cursor=
+        limit,
         include_tags,
         include_metadata,
       }),

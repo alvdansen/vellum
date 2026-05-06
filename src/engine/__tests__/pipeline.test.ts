@@ -122,35 +122,54 @@ describe('Engine.getVersion', () => {
 });
 
 describe('Engine.listVersionsForShot', () => {
-  test('returns items DESC by version_number, total_count, limit, offset', () => {
+  test('returns items DESC by version_number, total_count, limit, offset:0 (transitional)', () => {
     ctx.versions.insertVersion(ctx.shotId); // v1
     ctx.versions.insertVersion(ctx.shotId); // v2
     ctx.versions.insertVersion(ctx.shotId); // v3
-    const result = ctx.engine.listVersionsForShot(ctx.shotId, 20, 0);
+    // Phase 18: explicit version_number DESC to preserve pre-Phase-18 test
+    // intent. Default sort is now completed_at DESC (DEFAULT_VERSION_SORT)
+    // which would land all newly-inserted (completed_at=null) rows in the
+    // in-progress band sorted by versions.id ASC tiebreaker.
+    const result = ctx.engine.listVersionsForShot(ctx.shotId, {
+      sort: { field: 'version_number', dir: 'desc' },
+      cursor: null,
+      limit: 20,
+    });
     expect(result.items).toHaveLength(3);
     expect(result.items.map((i) => i.version_number)).toEqual([3, 2, 1]);
     expect(result.total_count).toBe(3);
     expect(result.limit).toBe(20);
     expect(result.offset).toBe(0);
+    expect(result.next_cursor).toBeNull();
     for (const i of result.items) {
       expect(i.entries).toBeDefined();
       expect(i.entries).toHaveLength(5);
     }
   });
 
-  test('pagination works', () => {
+  test('cursor pagination works (replaces limit/offset pagination from Phase 3)', () => {
     for (let i = 0; i < 5; i++) ctx.versions.insertVersion(ctx.shotId);
-    const page = ctx.engine.listVersionsForShot(ctx.shotId, 2, 2);
-    expect(page.items.map((i) => i.version_number)).toEqual([3, 2]);
-    expect(page.total_count).toBe(5);
-    expect(page.limit).toBe(2);
-    expect(page.offset).toBe(2);
+    // Page 1: limit=2 → returns top 2 by version_number DESC = [5, 4]
+    const page1 = ctx.engine.listVersionsForShot(ctx.shotId, {
+      sort: { field: 'version_number', dir: 'desc' },
+      cursor: null,
+      limit: 2,
+    });
+    expect(page1.items.map((i) => i.version_number)).toEqual([5, 4]);
+    expect(page1.total_count).toBe(5);
+    expect(page1.limit).toBe(2);
+    expect(page1.next_cursor).not.toBeNull();
   });
 
-  test('empty shot returns items:[] + total_count:0', () => {
-    const result = ctx.engine.listVersionsForShot(ctx.shotBId, 20, 0);
+  test('empty shot returns items:[] + total_count:0 + next_cursor:null', () => {
+    const result = ctx.engine.listVersionsForShot(ctx.shotBId, {
+      sort: { field: 'version_number', dir: 'desc' },
+      cursor: null,
+      limit: 20,
+    });
     expect(result.items).toEqual([]);
     expect(result.total_count).toBe(0);
+    expect(result.next_cursor).toBeNull();
   });
 });
 

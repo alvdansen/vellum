@@ -153,9 +153,17 @@ async function invokeGet(stack: { engine: Engine }, input: any): Promise<ToolRes
 async function invokeList(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
   try {
     const p = ListInput.parse(input);
+    // Phase 18 / Plan 18-02 TRANSITIONAL — mirrors the production
+    // version-tool.ts list-action shim: forwards version_number DESC + null
+    // cursor so the v1.1 wire-level ordering at the MCP boundary is byte-
+    // identical to pre-Phase-18 behavior. Offset is ignored under cursor
+    // pagination (cursor:null = page 1).
     return toolOk(
       shapeList(
-        stack.engine.listVersionsForShot(p.shot_id, p.limit, p.offset, {
+        stack.engine.listVersionsForShot(p.shot_id, {
+          sort: { field: 'version_number', dir: 'desc' }, // TRANSITIONAL — preserves v1.1 ordering
+          cursor: null,                                     // TRANSITIONAL
+          limit: p.limit,
           include_tags: p.include_tags,
           include_metadata: p.include_metadata,
         }),
@@ -289,7 +297,14 @@ describe('version tool — list', () => {
     }
   });
 
-  it('pagination limit/offset honored', async () => {
+  it('pagination limit honored (offset ignored under Phase 18 cursor pagination — TRANSITIONAL shim)', async () => {
+    // Phase 18 / Plan 18-02 TRANSITIONAL: the engine surface migrated from
+    // limit/offset to {sort, cursor, limit}; the MCP `version.list` wire-
+    // level Zod schema still ACCEPTS offset for v1.1 byte compatibility,
+    // but the TRANSITIONAL shim in version-tool.ts forwards cursor: null
+    // (page 1). Offset values are accepted at the boundary (no INVALID_INPUT)
+    // but produce no pagination side-effect. Plan 18-04 may add a cursor-
+    // aware MCP wire surface; until then page 2+ is unreachable via MCP.
     for (let i = 0; i < 5; i++) stack.versions.insertVersion(stack.shotId);
     const res = await invokeList(stack, {
       action: 'list',
@@ -298,7 +313,9 @@ describe('version tool — list', () => {
       offset: 2,
     });
     const sc = res.structuredContent as { items: { version_number: number }[]; total_count: number };
-    expect(sc.items.map((i) => i.version_number)).toEqual([3, 2]);
+    // Top 2 by version_number DESC under TRANSITIONAL shim → [5, 4] (offset
+    // ignored, returns page 1).
+    expect(sc.items.map((i) => i.version_number)).toEqual([5, 4]);
     expect(sc.total_count).toBe(5);
   });
 
