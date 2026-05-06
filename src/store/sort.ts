@@ -207,10 +207,22 @@ export function decodeVersionCursor(s: string): VersionCursor | null {
  * Branches:
  *   1. (IS NULL) < cursor.cna_int       -- band advance (NULL → not-NULL)
  *   2. (IS NULL) = cursor.cna_int AND col <op> cursor.sv  -- same band, sort advance
- *   3. (IS NULL) = cursor.cna_int AND col = cursor.sv AND id > cursor.vid  -- same band+value, tiebreaker
+ *   3. (IS NULL) = cursor.cna_int AND col EQ_PREDICATE AND id > cursor.vid  -- same band+value, tiebreaker
  *
  * <op> is `<` for DESC, `>` for ASC (sortOp inversion). Tiebreaker `>` is
  * always ASC (id ASC tiebreaker is invariant per SORT-05).
+ *
+ * NULL handling (Plan 18-02 Rule 1 fix): when cursor.sv === null the cursor
+ * sits on a row whose sort column is NULL (only possible inside the in-progress
+ * band when sort.field === 'completed_at'). SQLite three-valued logic makes
+ * `col <op> NULL` and `col = NULL` always unknown, which would silently drop
+ * all remaining same-band rows from the cursor walk (skip-bug). Instead:
+ *   - Branch 2 collapses to FALSE (no row can be strictly less/greater than
+ *     a null sort value — the only meaningful continuation inside the
+ *     null-sv same band is via the tiebreaker).
+ *   - Branch 3 substitutes `col IS NULL` for `col = cursor.sv` so same-band
+ *     rows whose sort value is also null are still reachable via the
+ *     versions.id ASC tiebreaker.
  *
  * DEVIATION: when cursor.cna === true (cursor inside in-progress band),
  * the simpler v1.2 implementation uses the same `versions.id ASC` tiebreaker
@@ -224,12 +236,21 @@ export function buildAfterCursorWhere(
   const col = VERSION_COL_REF[sort.field]();
   const sortOp = sort.dir === 'desc' ? sql`<` : sql`>`;
   const cnaInt = cursor.cna ? sql`1` : sql`0`;
+  // sql`FALSE` collapses branch 2 in the null-sv case so the OR chain is
+  // structurally identical (same number of branches) regardless of sv shape;
+  // SQLite optimises the constant FALSE branch out of the plan.
+  const sortAdvance = cursor.sv === null
+    ? sql`FALSE`
+    : sql`${col} ${sortOp} ${cursor.sv}`;
+  const tieEq = cursor.sv === null
+    ? sql`${col} IS NULL`
+    : sql`${col} = ${cursor.sv}`;
   return sql`(
     ((${versions.completed_at} IS NULL) < ${cnaInt})
     OR ((${versions.completed_at} IS NULL) = ${cnaInt}
-        AND ${col} ${sortOp} ${cursor.sv})
+        AND ${sortAdvance})
     OR ((${versions.completed_at} IS NULL) = ${cnaInt}
-        AND ${col} = ${cursor.sv}
+        AND ${tieEq}
         AND ${versions.id} > ${cursor.vid})
   )`;
 }

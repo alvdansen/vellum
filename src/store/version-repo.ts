@@ -1,10 +1,18 @@
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, and, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { versions } from './schema.js';
 import type { Version } from '../types/hierarchy.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
+import {
+  buildVersionOrderBy,
+  buildAfterCursorWhere,
+  encodeVersionCursor,
+  readSortValue,
+  type VersionSort,
+  type VersionCursor,
+} from './sort.js';
 
 type Db = BetterSQLite3Database<typeof schema>;
 
@@ -196,28 +204,68 @@ export class VersionRepo {
   }
 
   /**
-   * Phase 3: paginated version list for a shot, ordered version_number DESC
-   * (latest first — matches VFX expectation per CONTEXT.md §Specifics).
+   * Phase 3 + Phase 18: paginated version list for a shot via composite-cursor
+   * pagination. ORDER BY assembled from a whitelist enum (SORT-02 gate via
+   * Plan 18-01's buildVersionOrderBy); in-progress band pinned to top via
+   * (completed_at IS NULL) DESC NULL-bit term (D-01).
+   *
+   * Stability invariant (SORT-05): the trailing `versions.id ASC` tiebreaker
+   * makes the composite key unique. Cursor encodes (cna, sv, vid) — pagination
+   * is duplicate-free and skip-free under inserts and deletes.
+   *
+   * total_count is cursor-independent — single COUNT(*) query mirrors the
+   * pre-Phase-18 shape so existing total_count semantics are preserved.
+   *
+   * Threat model anchors:
+   *  - T-18-01 (SQL injection via sort field): inherits whitelist enum + the
+   *    Record<SortField, () => SQL> column-ref map from Plan 18-01; user
+   *    strings never reach the SQL fragment.
+   *  - T-18-02 (SQL injection via cursor): cursor is a structurally-validated
+   *    VersionCursor object passed by callers; HTTP layer (Plan 18-03) rejects
+   *    malformed cursors at the boundary before they reach this method.
    */
   listByShot(
     shotId: string,
-    limit: number,
-    offset: number,
-  ): { items: Version[]; total_count: number } {
+    opts: { sort: VersionSort; cursor: VersionCursor | null; limit: number },
+  ): { items: Version[]; next_cursor: string | null; total_count: number } {
+    const { sort, cursor, limit } = opts;
+
+    // total_count is cursor-independent (matches pre-Phase-18 shape).
     const totalRow = this.db
       .select({ c: sql<number>`COUNT(*)` })
       .from(versions)
       .where(eq(versions.shot_id, shotId))
       .get();
-    const items = this.db
+
+    // Build WHERE: shot filter ALWAYS; AND after-cursor predicate WHEN cursor present.
+    const whereClause = cursor
+      ? and(eq(versions.shot_id, shotId), buildAfterCursorWhere(sort, cursor))
+      : eq(versions.shot_id, shotId);
+
+    // Fetch limit+1 rows to peek for has_more without a second query.
+    const rows = this.db
       .select()
       .from(versions)
-      .where(eq(versions.shot_id, shotId))
-      .orderBy(sql`${versions.version_number} DESC`)
-      .limit(limit)
-      .offset(offset)
+      .where(whereClause)
+      .orderBy(buildVersionOrderBy(sort))
+      .limit(limit + 1)
       .all() as Version[];
-    return { items, total_count: Number(totalRow?.c ?? 0) };
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastRow = items[items.length - 1];
+      const sortValue = readSortValue(lastRow, sort.field);
+      nextCursor = encodeVersionCursor({
+        cna: lastRow.completed_at === null,
+        sv: sortValue,
+        vid: lastRow.id,
+      });
+    }
+
+    return { items, next_cursor: nextCursor, total_count: Number(totalRow?.c ?? 0) };
   }
 
   /**
