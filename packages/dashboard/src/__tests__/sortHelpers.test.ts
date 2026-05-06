@@ -83,7 +83,6 @@ import type {
   HierarchySortField,
   SortDirection,
   VersionSort,
-  HierarchySort,
 } from '../lib/sortTypes.js';
 import {
   DEFAULT_VERSION_SORT,
@@ -103,7 +102,6 @@ const HIERARCHY_FIELDS: ReadonlySet<HierarchySortField> = new Set([
 
 const GRID_LS_KEY = 'vfx-familiar:sort:grid';
 const TREE_LS_KEY = 'vfx-familiar:sort:tree';
-const LRU_KEY = 'vfx-familiar:_lru';
 
 /**
  * Set up a fresh memory localStorage + URL/history mock per test. Returns the
@@ -466,7 +464,3 @@ describe('GRID_SORT_OPTIONS / TREE_SORT_OPTIONS (Tests 23-25)', () => {
   });
 });
 
-// Avoid "unused import" complaints from strict ts: the type-only imports are
-// already consumed in `as VersionSort` and `as HierarchySort` casts above.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type _MentionedTypes = HierarchySort | VersionSort;
