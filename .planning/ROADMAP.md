@@ -93,7 +93,21 @@ Plans:
   2. User can change the sort via a dropdown control with 4 options (Latest, Oldest, Name A→Z, Version ↓); engine-side ORDER BY uses a whitelisted enum (`completed_at | created_at | name | version_number` × `asc | desc`) — no SQL injection surface.
   3. User's sort preference persists per scope across browser sessions via `localStorage` (bounded keys with LRU eviction at quota) AND is mirrored in URL state for shareable views.
   4. Pagination remains stable when sort changes — no duplicate items across pages, no skipped items — via composite cursor `(sort_key_value, version_id)` where `version_id` is the stable nanoid tiebreaker; sort change resets cursor to page 1.
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+- [ ] 18-01-PLAN.md — Engine sort foundations (sort.ts: whitelist enum + ORDER BY composers + cursor encode/decode + WHERE-after-cursor)
+
+**Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
+- [ ] 18-02-PLAN.md — Version repo cursor migration (listByShot → composite-cursor pagination; pipeline.ts facade; transitional shim in dashboard-routes.ts)
+- [ ] 18-04-PLAN.md — Dashboard primitives (sortTypes mirror + sortHelpers state machine + LRU + comparator + SortDropdown WAI-ARIA combobox + LoadMoreButton)
+
+**Wave 3** *(blocked on 18-02)*
+- [ ] 18-03-PLAN.md — Hierarchy sort + HTTP routes (hierarchy-repo opts.sort + Engine facade + Zod whitelist parsing in dashboard-routes.ts; removes 18-02 transitional shim)
+
+**Wave 4** *(blocked on 18-03 + 18-04)*
+- [ ] 18-05-PLAN.md — HomeView integration + verification (state signals + lib/api migration + two SortDropdown instances + LoadMoreButton + paginated buffer + tree client-side re-sort + full-suite regression)
 **UI hint**: yes
 
 ### Phase 19: AI Conversational Summary
