@@ -1,10 +1,11 @@
 ---
 phase: 18
 slug: sortable-folder-dropdown
-status: draft
+status: approved
 shadcn_initialized: false
 preset: not applicable
 created: 2026-05-06
+reviewed_at: 2026-05-06T00:00:00Z
 inherits: 17-UI-SPEC.md (which inherits Phase 5 dashboard design system)
 ---
 
