@@ -75,10 +75,14 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
       const orderBy = buildVersionOrderBy({ field: 'completed_at', dir: 'desc' });
       const rendered = renderOrderBy(orderBy);
       // Three terms separated by ', ': (col IS NULL) DESC, col DESC, id ASC.
+      // Drizzle qualifies columns with the table name when starting from
+      // db.select().from(versions): `"versions"."completed_at"`. Allow either
+      // bare or table-qualified form to keep the regex robust.
+      const COL = (name: string) => new RegExp(`(?:"versions"\\.)?"${name}"`, 'i');
       expect(rendered).toMatch(/order\s+by/i);
-      expect(rendered).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s+desc/i);
-      expect(rendered).toMatch(/"completed_at"\s+desc/i);
-      expect(rendered).toMatch(/"id"\s+asc\s*$/i);
+      expect(rendered).toMatch(new RegExp(`\\(\\s*${COL('completed_at').source}\\s+is\\s+null\\s*\\)\\s+desc`, 'i'));
+      expect(rendered).toMatch(new RegExp(`${COL('completed_at').source}\\s+desc`, 'i'));
+      expect(rendered).toMatch(new RegExp(`${COL('id').source}\\s+asc\\s*$`, 'i'));
     });
   });
 
@@ -99,7 +103,8 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
           // with `, ` so a simple split is sufficient (no nested parens at the
           // top level besides the IS NULL wrap).
           const firstTerm = orderClause.split(/,(?![^()]*\))/)[0].trim();
-          expect(firstTerm).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s+desc/i);
+          // Accept both bare ("completed_at") and table-qualified ("versions"."completed_at") forms.
+          expect(firstTerm).toMatch(/\(\s*(?:"versions"\.)?"completed_at"\s+is\s+null\s*\)\s+desc/i);
         });
       }
     }
@@ -114,9 +119,9 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
         it(`(${field}, ${dir}): last term is "<table>.id ASC"`, () => {
           const orderBy = buildVersionOrderBy({ field, dir });
           const rendered = renderOrderBy(orderBy);
-          // The rendered SQL ends with `"id" asc` (Drizzle escapes column refs
-          // in double-quotes; table-qualified or bare both end with "id" asc).
-          expect(rendered).toMatch(/"id"\s+asc\s*$/i);
+          // The rendered SQL ends with `"id" asc` or `"versions"."id" asc`
+          // (Drizzle escapes column refs in double-quotes; either form is OK).
+          expect(rendered).toMatch(/(?:"versions"\.)?"id"\s+asc\s*$/i);
         });
       }
     }
@@ -133,8 +138,9 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
       it(`${t.name}: { field: 'name', dir: 'asc' } → "name" asc, "id" asc`, () => {
         const orderBy = buildHierarchyOrderBy(t.ref, { field: 'name', dir: 'asc' });
         const rendered = renderHierarchyOrderBy(t.ref, orderBy);
-        expect(rendered).toMatch(/"name"\s+asc/i);
-        expect(rendered).toMatch(/"id"\s+asc\s*$/i);
+        // Allow either bare or table-qualified form per Drizzle's emit shape.
+        expect(rendered).toMatch(/(?:"[a-z_]+"\.)?"name"\s+asc/i);
+        expect(rendered).toMatch(/(?:"[a-z_]+"\.)?"id"\s+asc\s*$/i);
         // No NULL-bit term in the hierarchy order by.
         expect(rendered).not.toMatch(/is\s+null/i);
       });
@@ -142,8 +148,8 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
       it(`${t.name}: { field: 'created_at', dir: 'desc' } → "created_at" desc, "id" asc`, () => {
         const orderBy = buildHierarchyOrderBy(t.ref, { field: 'created_at', dir: 'desc' });
         const rendered = renderHierarchyOrderBy(t.ref, orderBy);
-        expect(rendered).toMatch(/"created_at"\s+desc/i);
-        expect(rendered).toMatch(/"id"\s+asc\s*$/i);
+        expect(rendered).toMatch(/(?:"[a-z_]+"\.)?"created_at"\s+desc/i);
+        expect(rendered).toMatch(/(?:"[a-z_]+"\.)?"id"\s+asc\s*$/i);
       });
     }
   });
@@ -240,12 +246,12 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
       const where = buildAfterCursorWhere({ field: 'completed_at', dir: 'desc' }, cursor);
       const rendered = renderWhere(where);
       // Branch 1: (col IS NULL) < cna_int (band advance)
-      expect(rendered).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s*<\s*0/i);
+      expect(rendered).toMatch(/\(\s*(?:"versions"\.)?"completed_at"\s+is\s+null\s*\)\s*<\s*0/i);
       // Branch 2: same band, sort advance with `<` (DESC)
-      expect(rendered).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s*=\s*0/i);
-      expect(rendered).toMatch(/"completed_at"\s*<\s*\?/i);
+      expect(rendered).toMatch(/\(\s*(?:"versions"\.)?"completed_at"\s+is\s+null\s*\)\s*=\s*0/i);
+      expect(rendered).toMatch(/(?:"versions"\.)?"completed_at"\s*<\s*\?/i);
       // Branch 3: tiebreaker is always > (ASC tiebreaker)
-      expect(rendered).toMatch(/"id"\s*>\s*\?/i);
+      expect(rendered).toMatch(/(?:"versions"\.)?"id"\s*>\s*\?/i);
       // OR-joined
       expect(rendered.toLowerCase()).toContain(' or ');
     });
@@ -257,19 +263,19 @@ describe('Plan 18-01 — src/store/sort.ts', () => {
       const where = buildAfterCursorWhere({ field: 'completed_at', dir: 'asc' }, cursor);
       const rendered = renderWhere(where);
       // Branch 2 uses > now
-      expect(rendered).toMatch(/"completed_at"\s*>\s*\?/i);
+      expect(rendered).toMatch(/(?:"versions"\.)?"completed_at"\s*>\s*\?/i);
       // Tiebreaker stays >
-      expect(rendered).toMatch(/"id"\s*>\s*\?/i);
+      expect(rendered).toMatch(/(?:"versions"\.)?"id"\s*>\s*\?/i);
       // No < operator on the user column anywhere
-      expect(rendered).not.toMatch(/"completed_at"\s*<\s*\?/i);
+      expect(rendered).not.toMatch(/(?:"versions"\.)?"completed_at"\s*<\s*\?/i);
     });
 
     it('encodes cna === true as 1 in the SQL fragment', () => {
       const cursor: VersionCursor = { cna: true, sv: null, vid: 'ver_in_progress' };
       const where = buildAfterCursorWhere({ field: 'completed_at', dir: 'desc' }, cursor);
       const rendered = renderWhere(where);
-      expect(rendered).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s*<\s*1/i);
-      expect(rendered).toMatch(/\(\s*"completed_at"\s+is\s+null\s*\)\s*=\s*1/i);
+      expect(rendered).toMatch(/\(\s*(?:"versions"\.)?"completed_at"\s+is\s+null\s*\)\s*<\s*1/i);
+      expect(rendered).toMatch(/\(\s*(?:"versions"\.)?"completed_at"\s+is\s+null\s*\)\s*=\s*1/i);
     });
   });
 
