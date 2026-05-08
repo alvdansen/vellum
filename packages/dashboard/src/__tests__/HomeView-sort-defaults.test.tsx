@@ -104,8 +104,10 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
   gridLoadMoreError.value = null;
   treeSort.value = DEFAULT_HIERARCHY_SORT;
 
-  // Reset localStorage.
+  // Reset localStorage. Re-stub the global because afterEach() calls
+  // vi.unstubAllGlobals() between tests.
   memoryStorage.clear();
+  vi.stubGlobal('localStorage', memoryStorage);
   if (opts.localStorageGrid) {
     memoryStorage.setItem('vfx-familiar:sort:grid', opts.localStorageGrid);
   }
@@ -113,21 +115,23 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
     memoryStorage.setItem('vfx-familiar:sort:tree', opts.localStorageTree);
   }
 
-  // Stub window.location to a writable URL with the test's search params.
-  // jsdom's location is read-only by default; replace via stubGlobal.
-  vi.stubGlobal('window', {
-    ...globalThis.window,
-    location: url,
-  });
-  // Some sortHelpers code paths reference bare `window.location.href`. Make
-  // sure the global URL object is also updated for tests reading it directly.
-  Object.defineProperty(globalThis, 'location', {
+  // Stub window.location to the test URL. jsdom's location is read-only by
+  // default — define a fresh property descriptor so sortHelpers reads the
+  // test's `?gridSort=...` query params on hydrate.
+  Object.defineProperty(window, 'location', {
     configurable: true,
     value: url,
+    writable: true,
   });
 
   // Stub history.replaceState — the helper writes URL via this method.
   const replaceStateSpy = vi.fn();
+  Object.defineProperty(window, 'history', {
+    configurable: true,
+    value: { replaceState: replaceStateSpy },
+    writable: true,
+  });
+  // Some code paths read bare `history` (the global) — also stub on globalThis.
   vi.stubGlobal('history', { replaceState: replaceStateSpy });
 
   // Stub fetch — return JSON for any matching route prefix; otherwise empty.

@@ -13,7 +13,7 @@
  * Architecture-purity (D-WEBUI-31): zero server-tree relative imports.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { h } from 'preact';
 import { render, screen, waitFor, fireEvent } from '@testing-library/preact';
 
@@ -110,17 +110,18 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
   treeSort.value = DEFAULT_HIERARCHY_SORT;
 
   // Reset localStorage AND wrap setItem with a spy so we can assert writes.
+  // Re-stub the global because afterEach() calls vi.unstubAllGlobals().
   memoryStorage.clear();
+  vi.stubGlobal('localStorage', memoryStorage);
   const setItemSpy = vi.spyOn(memoryStorage, 'setItem');
 
-  // Stub window.location to a writable URL.
-  vi.stubGlobal('window', {
-    ...globalThis.window,
-    location: url,
-  });
-  Object.defineProperty(globalThis, 'location', {
+  // Stub window.location to the test URL. jsdom's location is read-only by
+  // default — define a fresh property descriptor so sortHelpers reads the
+  // test's `?gridSort=...` query params on hydrate.
+  Object.defineProperty(window, 'location', {
     configurable: true,
     value: url,
+    writable: true,
   });
 
   // Stub history.replaceState — sortHelpers writes URL via this method.
@@ -134,6 +135,11 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
     } catch {
       /* ignore */
     }
+  });
+  Object.defineProperty(window, 'history', {
+    configurable: true,
+    value: { replaceState: replaceStateSpy },
+    writable: true,
   });
   vi.stubGlobal('history', { replaceState: replaceStateSpy });
 
