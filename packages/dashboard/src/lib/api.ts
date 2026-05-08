@@ -7,7 +7,13 @@
 //
 // Architecture-purity invariant (D-WEBUI-31): this file performs zero
 // server-tree relative-import traversals. Only imports: the dashboard-local
-// type barrel under ../types/*.
+// type barrel under ../types/* and dashboard-local sort utilities under ./sort*.
+//
+// Phase 18 / Plan 18-05 Task 1 — fetchVersions migrates to a paginated
+// response envelope (PaginatedVersionsResponse) and gains optional ?sort= +
+// ?cursor= query params. fetchProjects / fetchSequences / fetchShots gain
+// optional ?sort= for the hierarchy tree's first-fetch lockstep with the
+// client-side compareTreeNodes re-sort.
 
 import type {
   Workspace,
@@ -16,6 +22,8 @@ import type {
   Shot,
   Version,
 } from '../types/entities.js';
+import type { VersionSort, HierarchySort } from './sortTypes.js';
+import { serializeSortValue } from './sortHelpers.js';
 
 /** Same-origin base. No hardcoded host; Vite dev server proxies to the API. */
 const BASE = '';
@@ -104,10 +112,20 @@ export function fetchWorkspace(id: string): Promise<Workspace> {
   return fetchJson<Workspace>(`/api/workspaces/${encodeURIComponent(id)}`);
 }
 
-/** 3. GET /api/workspaces/:id/projects */
-export function fetchProjects(workspaceId: string): Promise<Project[]> {
+/**
+ * 3. GET /api/workspaces/:id/projects?sort=field:dir
+ *
+ * Phase 18 / Plan 18-05 Task 1 — optional `sort` parameter (omitted →
+ * server-side default `name:asc` per src/store/sort.ts; Plan 18-03 wires
+ * the `?sort=` Zod whitelist parser at the HTTP boundary).
+ */
+export function fetchProjects(
+  workspaceId: string,
+  sort?: HierarchySort,
+): Promise<Project[]> {
+  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
   return fetchJson<Project[]>(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects${query}`,
   );
 }
 
@@ -116,10 +134,18 @@ export function fetchProject(id: string): Promise<Project> {
   return fetchJson<Project>(`/api/projects/${encodeURIComponent(id)}`);
 }
 
-/** 5. GET /api/projects/:id/sequences */
-export function fetchSequences(projectId: string): Promise<Sequence[]> {
+/**
+ * 5. GET /api/projects/:id/sequences?sort=field:dir
+ *
+ * Phase 18 / Plan 18-05 Task 1 — symmetric with fetchProjects (see header).
+ */
+export function fetchSequences(
+  projectId: string,
+  sort?: HierarchySort,
+): Promise<Sequence[]> {
+  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
   return fetchJson<Sequence[]>(
-    `/api/projects/${encodeURIComponent(projectId)}/sequences`,
+    `/api/projects/${encodeURIComponent(projectId)}/sequences${query}`,
   );
 }
 
@@ -128,10 +154,18 @@ export function fetchSequence(id: string): Promise<Sequence> {
   return fetchJson<Sequence>(`/api/sequences/${encodeURIComponent(id)}`);
 }
 
-/** 7. GET /api/sequences/:id/shots */
-export function fetchShots(sequenceId: string): Promise<Shot[]> {
+/**
+ * 7. GET /api/sequences/:id/shots?sort=field:dir
+ *
+ * Phase 18 / Plan 18-05 Task 1 — symmetric with fetchProjects (see header).
+ */
+export function fetchShots(
+  sequenceId: string,
+  sort?: HierarchySort,
+): Promise<Shot[]> {
+  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
   return fetchJson<Shot[]>(
-    `/api/sequences/${encodeURIComponent(sequenceId)}/shots`,
+    `/api/sequences/${encodeURIComponent(sequenceId)}/shots${query}`,
   );
 }
 
@@ -144,23 +178,69 @@ export function fetchShot(id: string): Promise<Shot> {
 // Version reads (9-13)
 // ================================================================
 
-/** Parameters for GET /api/shots/:id/versions. */
+/**
+ * Parameters for GET /api/shots/:id/versions.
+ *
+ * Phase 18 / Plan 18-05 Task 1 — gains `sort` (VersionSort, serialized to
+ * `?sort=field:dir` via serializeSortValue) + `cursor` (opaque base64url
+ * string from a previous response's `next_cursor`). The pre-Phase-18
+ * `offset` parameter is DROPPED — the server route now uses cursor
+ * pagination per SORT-05 + D-22 (Plan 18-03 HTTP layer).
+ */
 export interface FetchVersionsParams {
+  /** Phase 18 SORT-02 — version-grid sort. When omitted, server defaults to Latest. */
+  sort?: VersionSort;
+  /** Phase 18 SORT-05 — opaque cursor from a previous response's next_cursor; null/undefined = page 1. */
+  cursor?: string | null;
+  /** Page size. Default 20 per CLAUDE.md "Paginate all list queries" + D-18. */
   limit?: number;
-  offset?: number;
   include_tags?: boolean;
   include_metadata?: boolean;
 }
 
-/** 9. GET /api/shots/:id/versions?limit=&offset=&include_tags=&include_metadata= */
+/**
+ * Phase 18 / Plan 18-05 Task 1 — Response shape for GET /api/shots/:id/versions.
+ *
+ * The pre-Phase-18 route returned a bare `Version[]`; the new route returns
+ * an envelope with cursor pagination + total_count. HomeView derives
+ * `has_more` from `next_cursor !== null` rather than a server-emitted flag
+ * (D-22 + UI-SPEC §"Sort Strip — pagination").
+ */
+export interface PaginatedVersionsResponse {
+  items: Version[];
+  /** Opaque base64url cursor for the next page. null when no more pages. */
+  next_cursor: string | null;
+  /** Total row count for the shot (cursor-independent). */
+  total_count: number;
+}
+
+/**
+ * 9. GET /api/shots/:id/versions?sort=&cursor=&limit=&include_tags=&include_metadata=
+ *
+ * Phase 18 / Plan 18-05 Task 1 — migrated to PaginatedVersionsResponse return
+ * shape. Server contract (Plan 18-03):
+ *   - Omitted `?sort=` → defaults to `completed_at:desc` with NULL pin to top
+ *   - Omitted `?cursor=` → page 1 (no pagination state)
+ *   - Malformed `?sort=` or `?cursor=` → 400 INVALID_INPUT envelope
+ *     (DashboardApiError with code='INVALID_INPUT')
+ *
+ * `cursor: null` is intentionally collapsed to undefined here so qs() omits
+ * the param from the URL (server treats missing-cursor as page 1).
+ */
 export function fetchVersions(
   shotId: string,
   params?: FetchVersionsParams,
-): Promise<Version[]> {
-  return fetchJson<Version[]>(
-    `/api/shots/${encodeURIComponent(shotId)}/versions${qs(
-      params as Record<string, unknown> | undefined,
-    )}`,
+): Promise<PaginatedVersionsResponse> {
+  const queryParams: Record<string, unknown> = {
+    sort: params?.sort ? serializeSortValue(params.sort) : undefined,
+    // null collapses to undefined → qs() skips it
+    cursor: params?.cursor ?? undefined,
+    limit: params?.limit,
+    include_tags: params?.include_tags,
+    include_metadata: params?.include_metadata,
+  };
+  return fetchJson<PaginatedVersionsResponse>(
+    `/api/shots/${encodeURIComponent(shotId)}/versions${qs(queryParams)}`,
   );
 }
 
