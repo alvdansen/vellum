@@ -51,7 +51,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 **3 phases, 18 requirements (6 VIS + 5 SORT + 7 SUM). Strict sequential ordering 17 → 18 → 19 (low-risk visual wins first; LLM dependency last to derisk).**
 
 - [x] **Phase 17: Visual Thumbnails** — Lazy-loaded 16:9 thumbnails on every completed-version asset card with C2PA-shield overlay, MP4 first-frame extraction, atomic disk cache, redact-invalidation hook. (completed 2026-05-02)
-- [ ] **Phase 18: Sortable Folder Dropdown** — Latest-first default sort + 4-option dropdown control with localStorage persistence + URL state mirror; smart-default-per-scope (tree=A→Z, version grid=latest); composite-cursor pagination stability.
+- [x] **Phase 18: Sortable Folder Dropdown** — Latest-first default sort + 4-option dropdown control with localStorage persistence + URL state mirror; smart-default-per-scope (tree=A→Z, version grid=latest); composite-cursor pagination stability. (completed 2026-05-08)
 - [ ] **Phase 19: AI Conversational Summary** — Supervisor/Lead-voice 2-4 sentence summary grounded in prompt blob + ingredient graph + model fingerprints; cached by `manifest_sha256`; circuit breaker + graceful fallback. **Adversarial review mandatory at plan stage.**
 
 ## Phase Details
@@ -107,7 +107,7 @@ Plans:
 - [x] 18-03-PLAN.md — Hierarchy sort + HTTP routes (hierarchy-repo opts.sort + Engine facade + Zod whitelist parsing in dashboard-routes.ts; removes 18-02 transitional shim)
 
 **Wave 4** *(blocked on 18-03 + 18-04)*
-- [ ] 18-05-PLAN.md — HomeView integration + verification (state signals + lib/api migration + two SortDropdown instances + LoadMoreButton + paginated buffer + tree client-side re-sort + full-suite regression)
+- [x] 18-05-PLAN.md — HomeView integration + verification (state signals + lib/api migration + two SortDropdown instances + LoadMoreButton + paginated buffer + tree client-side re-sort + full-suite regression)
 **UI hint**: yes
 
 ### Phase 19: AI Conversational Summary
@@ -140,5 +140,5 @@ Plans:
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
-| 18    | v1.2      | 4/5 | In Progress|  |
+| 18    | v1.2      | 5/5 | Complete   | 2026-05-08 |
 | 19    | v1.2      | 0/0   | Not started | -          |
