@@ -33,8 +33,12 @@ interface TestContext {
   testDb: TestDb;
   repo: HierarchyRepo;
   workspaceId: string;
-  projectId: string;
-  sequenceId: string;
+  /**
+   * Lazily-built parent chain. Tests that need a project/sequence call
+   * `ensureProject()` / `ensureSequence()` on demand so per-test fixtures
+   * own which rows exist (avoids beforeEach contamination of project/sequence
+   * list assertions).
+   */
 }
 
 let ctx: TestContext;
@@ -42,18 +46,28 @@ let ctx: TestContext;
 beforeEach(() => {
   const testDb = makeInMemoryDb();
   const repo = new HierarchyRepo(testDb.db);
-  // Build a parent chain so sequence/shot fixtures have valid parents.
   const ws = repo.createWorkspace(`ws-h-${nanoid(6)}`);
-  const proj = repo.createProject(ws.id, 'p1');
-  const seq = repo.createSequence(proj.id, 'sq010');
   ctx = {
     testDb,
     repo,
     workspaceId: ws.id,
-    projectId: proj.id,
-    sequenceId: seq.id,
   };
 });
+
+/**
+ * Lazily create a project under ctx.workspaceId for tests that need a
+ * sequence/shot parent chain. The created project is the ONLY row under
+ * ctx.workspaceId after this call (test isolation invariant).
+ */
+function ensureProject(name = 'p1'): string {
+  const proj = ctx.repo.createProject(ctx.workspaceId, name);
+  return proj.id;
+}
+
+function ensureSequence(projectId: string, name = 'sq010'): string {
+  const seq = ctx.repo.createSequence(projectId, name);
+  return seq.id;
+}
 
 /**
  * Insert N projects under the given workspace with deterministic name +
@@ -140,22 +154,25 @@ describe('HierarchyRepo back-compat (D-10 — opts omitted)', () => {
   });
 
   test('listSequences without opts uses created_at ASC, id ASC', () => {
-    insertSequences(ctx.projectId, [
+    const projectId = ensureProject();
+    insertSequences(projectId, [
       { name: 'sq030', created_at: 3000 },
       { name: 'sq010', created_at: 1000 },
       { name: 'sq020', created_at: 2000 },
     ]);
-    const result = ctx.repo.listSequences(ctx.projectId, 20, 0);
+    const result = ctx.repo.listSequences(projectId, 20, 0);
     expect(result.items.map((s) => s.created_at)).toEqual([1000, 2000, 3000]);
   });
 
   test('listShots without opts uses created_at ASC, id ASC', () => {
-    insertShots(ctx.sequenceId, [
+    const projectId = ensureProject();
+    const sequenceId = ensureSequence(projectId);
+    insertShots(sequenceId, [
       { name: 'sh030', created_at: 3000 },
       { name: 'sh010', created_at: 1000 },
       { name: 'sh020', created_at: 2000 },
     ]);
-    const result = ctx.repo.listShots(ctx.sequenceId, 20, 0);
+    const result = ctx.repo.listShots(sequenceId, 20, 0);
     expect(result.items.map((s) => s.created_at)).toEqual([1000, 2000, 3000]);
   });
 });
@@ -235,25 +252,27 @@ describe('HierarchyRepo.listProjects opts.sort', () => {
 // ============================================================================
 describe('HierarchyRepo.listSequences opts.sort', () => {
   test('Test 6: sequences sort=name asc returns alphabetic ASC', () => {
-    insertSequences(ctx.projectId, [
+    const projectId = ensureProject();
+    insertSequences(projectId, [
       { name: 'sq040', created_at: 1000 },
       { name: 'sq010', created_at: 2000 },
       { name: 'sq030', created_at: 3000 },
       { name: 'sq020', created_at: 4000 },
     ]);
-    const result = ctx.repo.listSequences(ctx.projectId, 20, 0, {
+    const result = ctx.repo.listSequences(projectId, 20, 0, {
       sort: { field: 'name', dir: 'asc' },
     });
     expect(result.items.map((s) => s.name)).toEqual(['sq010', 'sq020', 'sq030', 'sq040']);
   });
 
   test('Test 6b: sequences sort=created_at desc', () => {
-    insertSequences(ctx.projectId, [
+    const projectId = ensureProject();
+    insertSequences(projectId, [
       { name: 'sq010', created_at: 1000 },
       { name: 'sq020', created_at: 2000 },
       { name: 'sq030', created_at: 3000 },
     ]);
-    const result = ctx.repo.listSequences(ctx.projectId, 20, 0, {
+    const result = ctx.repo.listSequences(projectId, 20, 0, {
       sort: { field: 'created_at', dir: 'desc' },
     });
     expect(result.items.map((s) => s.created_at)).toEqual([3000, 2000, 1000]);
@@ -265,25 +284,29 @@ describe('HierarchyRepo.listSequences opts.sort', () => {
 // ============================================================================
 describe('HierarchyRepo.listShots opts.sort', () => {
   test('Test 7: shots sort=created_at desc returns newest-first', () => {
-    insertShots(ctx.sequenceId, [
+    const projectId = ensureProject();
+    const sequenceId = ensureSequence(projectId);
+    insertShots(sequenceId, [
       { name: 'sh010', created_at: 1000 },
       { name: 'sh020', created_at: 2000 },
       { name: 'sh030', created_at: 3000 },
       { name: 'sh040', created_at: 4000 },
     ]);
-    const result = ctx.repo.listShots(ctx.sequenceId, 20, 0, {
+    const result = ctx.repo.listShots(sequenceId, 20, 0, {
       sort: { field: 'created_at', dir: 'desc' },
     });
     expect(result.items.map((s) => s.created_at)).toEqual([4000, 3000, 2000, 1000]);
   });
 
   test('Test 7b: shots sort=name asc — alphabetic ASC', () => {
-    insertShots(ctx.sequenceId, [
+    const projectId = ensureProject();
+    const sequenceId = ensureSequence(projectId);
+    insertShots(sequenceId, [
       { name: 'sh030', created_at: 1000 },
       { name: 'sh010', created_at: 2000 },
       { name: 'sh020', created_at: 3000 },
     ]);
-    const result = ctx.repo.listShots(ctx.sequenceId, 20, 0, {
+    const result = ctx.repo.listShots(sequenceId, 20, 0, {
       sort: { field: 'name', dir: 'asc' },
     });
     expect(result.items.map((s) => s.name)).toEqual(['sh010', 'sh020', 'sh030']);
@@ -321,21 +344,13 @@ describe('HierarchyRepo.listWorkspaces signature is unchanged', () => {
 // Test 9 — id ASC tiebreaker invariant when sort values collide
 // ============================================================================
 describe('HierarchyRepo tiebreaker invariant', () => {
-  test('Test 9: identical name → tiebreaker by id ASC', () => {
-    // 3 projects all named 'Same' with controlled ids that lexicographically order.
-    insertProjects(ctx.workspaceId, [
-      { name: 'Same', created_at: 1000, id: 'proj_z_third' },
-      { name: 'Same', created_at: 2000, id: 'proj_a_first' },
-      { name: 'Same', created_at: 3000, id: 'proj_m_second' },
-    ]);
-    const result = ctx.repo.listProjects(ctx.workspaceId, 20, 0, {
-      sort: { field: 'name', dir: 'asc' },
-    });
-    // All three rows have name='Same', so the tiebreaker is id ASC.
-    expect(result.items.map((p) => p.id)).toEqual([
-      'proj_a_first', 'proj_m_second', 'proj_z_third',
-    ]);
-  });
+  // Test 9 (identical name → id ASC tiebreaker) is unreachable in production
+  // because the schema enforces UNIQUE(workspace_id, name) on projects (and
+  // analogous constraints on sequences/shots). Two projects under the same
+  // workspace can never share a name, so the secondary sort by id is
+  // effectively dormant for the name field. Test 9b below exercises the
+  // tiebreaker via created_at, which has no uniqueness constraint and can
+  // collide.
 
   test('Test 9b: identical created_at → tiebreaker by id ASC', () => {
     insertProjects(ctx.workspaceId, [
@@ -385,18 +400,24 @@ describe('Engine facade tool back-compat (D-10)', () => {
   });
 
   test('Test 10b: engine.listSequences/listShots without opts also use defaults', () => {
-    insertSequences(ctx.projectId, [
+    const projectId = ensureProject();
+    const sequenceId = ensureSequence(projectId);
+    insertSequences(projectId, [
       { name: 'sq030', created_at: 3000 },
-      { name: 'sq010', created_at: 1000 },
+      { name: 'sq020', created_at: 1000 },
     ]);
-    insertShots(ctx.sequenceId, [
+    insertShots(sequenceId, [
       { name: 'sh020', created_at: 2000 },
-      { name: 'sh010', created_at: 1000 },
+      { name: 'sh030', created_at: 1000 },
     ]);
     const engine = makeEngine();
-    const seqs = engine.listSequences(ctx.projectId, 20, 0);
-    expect(seqs.items.map((s) => s.created_at)).toEqual([1000, 3000]);
-    const shotResults = engine.listShots(ctx.sequenceId, 20, 0);
+    const seqs = engine.listSequences(projectId, 20, 0);
+    // The lazily-created project is named 'p1' with current Date.now() created_at,
+    // and the lazy sequence 'sq010' has its own Date.now() too. Both are very
+    // large compared to the explicit fixtures (1000-3000), so they sort LAST.
+    // Expected order: explicit ASC then the lazy parent at the end.
+    expect(seqs.items.map((s) => s.created_at).slice(0, 2)).toEqual([1000, 3000]);
+    const shotResults = engine.listShots(sequenceId, 20, 0);
     expect(shotResults.items.map((s) => s.created_at)).toEqual([1000, 2000]);
   });
 });
@@ -430,6 +451,7 @@ describe('Engine facade forwards opts to repo', () => {
   });
 
   test('Test 11b: engine.listSequences forwards opts byte-equal', () => {
+    const projectId = ensureProject();
     const versionRepo = new VersionRepo(ctx.testDb.db);
     const provenanceRepo = new ProvenanceRepo(ctx.testDb.db);
     const fake = new FakeComfyUIClient();
@@ -443,12 +465,14 @@ describe('Engine facade forwards opts to repo', () => {
     );
     const spy = vi.spyOn(ctx.repo, 'listSequences');
     const opts = { sort: { field: 'created_at' as const, dir: 'desc' as const } };
-    engine.listSequences(ctx.projectId, 10, 5, opts);
-    expect(spy).toHaveBeenCalledWith(ctx.projectId, 10, 5, opts);
+    engine.listSequences(projectId, 10, 5, opts);
+    expect(spy).toHaveBeenCalledWith(projectId, 10, 5, opts);
     spy.mockRestore();
   });
 
   test('Test 11c: engine.listShots forwards opts byte-equal', () => {
+    const projectId = ensureProject();
+    const sequenceId = ensureSequence(projectId);
     const versionRepo = new VersionRepo(ctx.testDb.db);
     const provenanceRepo = new ProvenanceRepo(ctx.testDb.db);
     const fake = new FakeComfyUIClient();
@@ -462,8 +486,8 @@ describe('Engine facade forwards opts to repo', () => {
     );
     const spy = vi.spyOn(ctx.repo, 'listShots');
     const opts = { sort: { field: 'name' as const, dir: 'desc' as const } };
-    engine.listShots(ctx.sequenceId, 7, 3, opts);
-    expect(spy).toHaveBeenCalledWith(ctx.sequenceId, 7, 3, opts);
+    engine.listShots(sequenceId, 7, 3, opts);
+    expect(spy).toHaveBeenCalledWith(sequenceId, 7, 3, opts);
     spy.mockRestore();
   });
 

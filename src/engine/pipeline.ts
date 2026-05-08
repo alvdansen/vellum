@@ -13,7 +13,7 @@ import type { ProvenanceRepo } from '../store/provenance-repo.js';
 // through Engine.listVersionsForShot. Plan 18-03 will Zod-parse these at
 // the HTTP boundary; the engine layer trusts the structurally-validated
 // VersionCursor (decoded by Plan 18-01 helper) on entry.
-import type { VersionSort, VersionCursor } from '../store/sort.js';
+import type { VersionSort, VersionCursor, HierarchySort } from '../store/sort.js';
 import { TagRepo } from '../store/tag-repo.js';
 import { MetadataRepo } from '../store/metadata-repo.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
@@ -546,8 +546,13 @@ export class Engine {
     workspaceId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): ListResult<Project> {
-    const { items, total_count } = this.repo.listProjects(workspaceId, limit, offset);
+    // Phase 18 / Plan 18-03: opts.sort is optional. When provided, the repo
+    // applies the whitelisted sort (Plan 18-01 buildHierarchyOrderBy). When
+    // omitted, the repo preserves pre-Phase-18 ORDER BY (D-10 back-compat for
+    // MCP tool callers — src/tools/project-tool.ts:88 calls without opts).
+    const { items, total_count } = this.repo.listProjects(workspaceId, limit, offset, opts);
     return {
       items: items.map((p) => ({ ...p, ...this.breadcrumb.resolve('project', p.id) })),
       total_count,
@@ -590,8 +595,10 @@ export class Engine {
     projectId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): ListResult<Sequence> {
-    const { items, total_count } = this.repo.listSequences(projectId, limit, offset);
+    // Phase 18 / Plan 18-03: see listProjects for the back-compat invariant.
+    const { items, total_count } = this.repo.listSequences(projectId, limit, offset, opts);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('sequence', s.id) })),
       total_count,
@@ -639,8 +646,10 @@ export class Engine {
     sequenceId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): ListResult<Shot> {
-    const { items, total_count } = this.repo.listShots(sequenceId, limit, offset);
+    // Phase 18 / Plan 18-03: see listProjects for the back-compat invariant.
+    const { items, total_count } = this.repo.listShots(sequenceId, limit, offset, opts);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('shot', s.id) })),
       total_count,

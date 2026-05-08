@@ -5,6 +5,7 @@ import { workspaces, projects, sequences, shots } from './schema.js';
 import type { Workspace, Project, Sequence, Shot } from '../types/hierarchy.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
+import { buildHierarchyOrderBy, type HierarchySort } from './sort.js';
 
 type Db = BetterSQLite3Database<typeof schema>;
 
@@ -134,23 +135,30 @@ export class HierarchyRepo {
     workspaceId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): { items: Project[]; total_count: number } {
-    // RT-03: deterministic pagination ordering (see listWorkspaces).
+    // D-10 back-compat: when opts.sort is OMITTED, ORDER BY preserves the
+    // pre-Phase-18 `created_at ASC, id ASC` shape so existing MCP tool callers
+    // (src/tools/project-tool.ts:88) continue to receive byte-identical
+    // ordering. When opts.sort is provided, buildHierarchyOrderBy emits
+    // `<col> <dir>, projects.id ASC` (RT-03 deterministic tiebreaker preserved).
     const itemsQuery =
       workspaceId !== undefined
-        ? this.db
-            .select()
-            .from(projects)
-            .where(eq(projects.workspace_id, workspaceId))
-            .orderBy(asc(projects.created_at), asc(projects.id))
-            .limit(limit)
-            .offset(offset)
-        : this.db
-            .select()
-            .from(projects)
-            .orderBy(asc(projects.created_at), asc(projects.id))
-            .limit(limit)
-            .offset(offset);
+        ? (() => {
+            const q = this.db
+              .select()
+              .from(projects)
+              .where(eq(projects.workspace_id, workspaceId));
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(projects, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(projects.created_at), asc(projects.id)).limit(limit).offset(offset);
+          })()
+        : (() => {
+            const q = this.db.select().from(projects);
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(projects, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(projects.created_at), asc(projects.id)).limit(limit).offset(offset);
+          })();
     const items = itemsQuery.all() as Project[];
 
     const totalQuery =
@@ -206,23 +214,28 @@ export class HierarchyRepo {
     projectId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): { items: Sequence[]; total_count: number } {
-    // RT-03: deterministic pagination ordering.
+    // D-10 back-compat (see listProjects). Pre-Phase-18 ORDER BY preserved
+    // when opts.sort is omitted; tool callers (src/tools/sequence-tool.ts:88)
+    // unaffected.
     const itemsQuery =
       projectId !== undefined
-        ? this.db
-            .select()
-            .from(sequences)
-            .where(eq(sequences.project_id, projectId))
-            .orderBy(asc(sequences.created_at), asc(sequences.id))
-            .limit(limit)
-            .offset(offset)
-        : this.db
-            .select()
-            .from(sequences)
-            .orderBy(asc(sequences.created_at), asc(sequences.id))
-            .limit(limit)
-            .offset(offset);
+        ? (() => {
+            const q = this.db
+              .select()
+              .from(sequences)
+              .where(eq(sequences.project_id, projectId));
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(sequences, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(sequences.created_at), asc(sequences.id)).limit(limit).offset(offset);
+          })()
+        : (() => {
+            const q = this.db.select().from(sequences);
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(sequences, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(sequences.created_at), asc(sequences.id)).limit(limit).offset(offset);
+          })();
     const items = itemsQuery.all() as Sequence[];
 
     const totalQuery =
@@ -280,23 +293,28 @@ export class HierarchyRepo {
     sequenceId: string | undefined,
     limit: number,
     offset: number,
+    opts?: { sort?: HierarchySort },
   ): { items: Shot[]; total_count: number } {
-    // RT-03: deterministic pagination ordering.
+    // D-10 back-compat (see listProjects). Pre-Phase-18 ORDER BY preserved
+    // when opts.sort is omitted; tool callers (src/tools/shot-tool.ts:94)
+    // unaffected.
     const itemsQuery =
       sequenceId !== undefined
-        ? this.db
-            .select()
-            .from(shots)
-            .where(eq(shots.sequence_id, sequenceId))
-            .orderBy(asc(shots.created_at), asc(shots.id))
-            .limit(limit)
-            .offset(offset)
-        : this.db
-            .select()
-            .from(shots)
-            .orderBy(asc(shots.created_at), asc(shots.id))
-            .limit(limit)
-            .offset(offset);
+        ? (() => {
+            const q = this.db
+              .select()
+              .from(shots)
+              .where(eq(shots.sequence_id, sequenceId));
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(shots, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(shots.created_at), asc(shots.id)).limit(limit).offset(offset);
+          })()
+        : (() => {
+            const q = this.db.select().from(shots);
+            return opts?.sort
+              ? q.orderBy(buildHierarchyOrderBy(shots, opts.sort)).limit(limit).offset(offset)
+              : q.orderBy(asc(shots.created_at), asc(shots.id)).limit(limit).offset(offset);
+          })();
     const items = itemsQuery.all() as Shot[];
 
     const totalQuery =
