@@ -19,11 +19,11 @@ Each requirement maps to a single roadmap phase. User-centric, atomic, and testa
 
 ### Sortable Folder Dropdown (SORT)
 
-- [ ] **SORT-01**: User opens the version grid and sees versions sorted "latest first" (most recently completed at top) by default.
-- [ ] **SORT-02**: User can change the sort via a dropdown control: Latest, Oldest, Name A→Z, Version ↓. Engine-side ORDER BY with whitelisted enum (`completed_at | created_at | name | version_number` × `asc | desc`).
-- [ ] **SORT-03**: User's sort preference persists per scope across browser sessions via `localStorage` with bounded keys (LRU eviction at quota); URL state mirror for shareable views.
-- [ ] **SORT-04**: User opens the tree sidebar (folder hierarchy: workspace → project → sequence → shot) and sees children sorted A→Z by default (smart default per scope — artists know names, not creation dates, in the tree).
-- [ ] **SORT-05**: Pagination remains stable when sort changes — no duplicate items across pages, no skipped items. Composite cursor `(sort_key_value, version_id)` — `version_id` is the stable nanoid tiebreaker. Sort change resets cursor to page 1.
+- [x] **SORT-01**: User opens the version grid and sees versions sorted "latest first" (most recently completed at top) by default.
+- [x] **SORT-02**: User can change the sort via a dropdown control: Latest, Oldest, Name A→Z, Version ↓. Engine-side ORDER BY with whitelisted enum (`completed_at | created_at | name | version_number` × `asc | desc`).
+- [x] **SORT-03**: User's sort preference persists per scope across browser sessions via `localStorage` with bounded keys (LRU eviction at quota); URL state mirror for shareable views.
+- [x] **SORT-04**: User opens the tree sidebar (folder hierarchy: workspace → project → sequence → shot) and sees children sorted A→Z by default (smart default per scope — artists know names, not creation dates, in the tree).
+- [x] **SORT-05**: Pagination remains stable when sort changes — no duplicate items across pages, no skipped items. Composite cursor `(sort_key_value, version_id)` — `version_id` is the stable nanoid tiebreaker. Sort change resets cursor to page 1.
 
 ### AI Conversational Summary (SUM)
 
@@ -82,11 +82,11 @@ These are non-negotiable invariants preserved from v1.0 + v1.1:
 | VIS-04 | Phase 17 | Not started |
 | VIS-05 | Phase 17 | Not started |
 | VIS-06 | Phase 17 | Not started |
-| SORT-01 | Phase 18 | Not started |
-| SORT-02 | Phase 18 | Not started |
-| SORT-03 | Phase 18 | Not started |
-| SORT-04 | Phase 18 | Not started |
-| SORT-05 | Phase 18 | Not started |
+| SORT-01 | Phase 18 | Complete |
+| SORT-02 | Phase 18 | Complete |
+| SORT-03 | Phase 18 | Complete |
+| SORT-04 | Phase 18 | Complete |
+| SORT-05 | Phase 18 | Complete |
 | SUM-01 | Phase 19 | Not started |
 | SUM-02 | Phase 19 | Not started |
 | SUM-03 | Phase 19 | Not started |
