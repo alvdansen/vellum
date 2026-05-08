@@ -21,11 +21,20 @@
 // malicious ComfyUI response cannot trigger path traversal (T-5-04).
 
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { createReadStream, existsSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import * as path from 'node:path';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
+import {
+  decodeVersionCursor,
+  DEFAULT_VERSION_SORT,
+  DEFAULT_HIERARCHY_SORT,
+  type VersionSort,
+  type VersionCursor,
+  type HierarchySort,
+} from '../store/sort.js';
 
 /**
  * Extension → Content-Type map (D-WEBUI-33). Unknown extensions fall through
@@ -114,6 +123,84 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     return n;
   };
 
+  // ==========================================================================
+  // Phase 18 / Plan 18-03 — Zod whitelist parsers for ?sort= and ?cursor=
+  // T-18-01 / T-18-02 mitigations: closed enums refuse anything outside the
+  // canonical set; engine never sees raw user strings. T-18-03 hygiene: error
+  // messages do NOT echo the malformed input back. T-18-04 mitigation:
+  // cursor decode failure → 4xx (NEVER 5xx) via TypedError.
+  // ==========================================================================
+  const VersionSortFieldEnum = z.enum(['completed_at', 'created_at', 'name', 'version_number']);
+  const HierarchySortFieldEnum = z.enum(['name', 'created_at']);
+  const SortDirectionEnum = z.enum(['asc', 'desc']);
+
+  const VERSION_FIELDS_LIST = VersionSortFieldEnum.options.join(', ');
+  const HIERARCHY_FIELDS_LIST = HierarchySortFieldEnum.options.join(', ');
+
+  /** Parse "field:dir" against the version-grid whitelist. Defaults to Latest when undefined. */
+  function parseVersionSortParam(raw: string | undefined): VersionSort {
+    if (raw === undefined || raw === '') return DEFAULT_VERSION_SORT;
+    const colon = raw.indexOf(':');
+    if (colon < 0) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Malformed sort param — expected 'field:dir'`,
+        `Use ?sort=completed_at:desc (or any of: ${VERSION_FIELDS_LIST} × asc/desc)`,
+      );
+    }
+    const fieldR = VersionSortFieldEnum.safeParse(raw.slice(0, colon));
+    const dirR = SortDirectionEnum.safeParse(raw.slice(colon + 1));
+    if (!fieldR.success || !dirR.success) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Invalid sort param — field/dir not in whitelist`,
+        `Use ?sort=completed_at:desc (or any of: ${VERSION_FIELDS_LIST} × asc/desc)`,
+      );
+    }
+    return { field: fieldR.data, dir: dirR.data };
+  }
+
+  /** Parse "field:dir" against the hierarchy whitelist (narrower set). */
+  function parseHierarchySortParam(raw: string | undefined): HierarchySort {
+    if (raw === undefined || raw === '') return DEFAULT_HIERARCHY_SORT;
+    const colon = raw.indexOf(':');
+    if (colon < 0) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Malformed sort param — expected 'field:dir'`,
+        `Use ?sort=name:asc (or any of: ${HIERARCHY_FIELDS_LIST} × asc/desc)`,
+      );
+    }
+    const fieldR = HierarchySortFieldEnum.safeParse(raw.slice(0, colon));
+    const dirR = SortDirectionEnum.safeParse(raw.slice(colon + 1));
+    if (!fieldR.success || !dirR.success) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Invalid sort param — field/dir not in whitelist`,
+        `Use ?sort=name:asc (or any of: ${HIERARCHY_FIELDS_LIST} × asc/desc)`,
+      );
+    }
+    return { field: fieldR.data, dir: dirR.data };
+  }
+
+  /**
+   * Parse ?cursor= against decodeVersionCursor. Throws INVALID_INPUT (NOT 500)
+   * on garbage — Pitfall D / T-18-04 mitigation. NEVER echoes the malformed
+   * input back verbatim (T-18-03 information-disclosure hygiene).
+   */
+  function parseCursorParam(raw: string | undefined): VersionCursor | null {
+    if (raw === undefined || raw === '') return null;
+    const decoded = decodeVersionCursor(raw);
+    if (decoded === null) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Malformed cursor — drop the ?cursor= param to start from page 1`,
+        `Cursors are opaque base64url strings issued in the response's next_cursor field`,
+      );
+    }
+    return decoded;
+  }
+
   // --- Workspaces ---
   app.get('/api/workspaces', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
@@ -128,7 +215,9 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   app.get('/api/workspaces/:id/projects', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
     const offset = qNum(c.req.query('offset'), 0, 'offset');
-    return c.json(engine.listProjects(c.req.param('id'), limit, offset));
+    const sortRaw = c.req.query('sort');
+    const opts = sortRaw !== undefined ? { sort: parseHierarchySortParam(sortRaw) } : undefined;
+    return c.json(engine.listProjects(c.req.param('id'), limit, offset, opts));
   });
 
   // --- Projects ---
@@ -139,7 +228,9 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   app.get('/api/projects/:id/sequences', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
     const offset = qNum(c.req.query('offset'), 0, 'offset');
-    return c.json(engine.listSequences(c.req.param('id'), limit, offset));
+    const sortRaw = c.req.query('sort');
+    const opts = sortRaw !== undefined ? { sort: parseHierarchySortParam(sortRaw) } : undefined;
+    return c.json(engine.listSequences(c.req.param('id'), limit, offset, opts));
   });
 
   // --- Sequences ---
@@ -150,7 +241,9 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   app.get('/api/sequences/:id/shots', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
     const offset = qNum(c.req.query('offset'), 0, 'offset');
-    return c.json(engine.listShots(c.req.param('id'), limit, offset));
+    const sortRaw = c.req.query('sort');
+    const opts = sortRaw !== undefined ? { sort: parseHierarchySortParam(sortRaw) } : undefined;
+    return c.json(engine.listShots(c.req.param('id'), limit, offset, opts));
   });
 
   // --- Shots ---
@@ -159,24 +252,21 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   app.get('/api/shots/:id/versions', (c) => {
+    // Phase 18 / Plan 18-03 — full Zod whitelist parsing at the HTTP boundary.
+    // Engine receives structurally-validated VersionSort + (VersionCursor|null);
+    // raw user strings never reach the SQL layer (T-18-01 / T-18-02 / T-18-04
+    // mitigations). ?offset= is preserved as a no-op for graceful migration of
+    // v1.1 callers (the cursor pagination supersedes offset semantics).
     const limit = qNum(c.req.query('limit'), 20, 'limit');
-    // Phase 18 / Plan 18-02 TRANSITIONAL — Plan 18-03 replaces this block
-    // entirely with Zod-parsed `?sort=` + `?cursor=` query params and adds
-    // a typed cursor decoder at the boundary (T-18-02 mitigation). For now
-    // the route forwards the engine defaults (DEFAULT_VERSION_SORT + null
-    // cursor) so the wire-level surface stays stable for v1.1 dashboards
-    // that still pass `?limit=&offset=`. Plan 18-02 keeps the offset query
-    // param parsing for backward compatibility but ignores the value
-    // (cursor pagination supersedes offset semantics). Plan 18-03 verifies
-    // this TRANSITIONAL marker is removed.
-    const _ignoredOffset = qNum(c.req.query('offset'), 0, 'offset');
-    void _ignoredOffset;
+    void qNum(c.req.query('offset'), 0, 'offset'); // back-compat parse, value unused
+    const sort = parseVersionSortParam(c.req.query('sort'));
+    const cursor = parseCursorParam(c.req.query('cursor'));
     const include_tags = c.req.query('include_tags') === 'true';
     const include_metadata = c.req.query('include_metadata') === 'true';
     return c.json(
       engine.listVersionsForShot(c.req.param('id'), {
-        sort: { field: 'completed_at', dir: 'desc' }, // TRANSITIONAL — Plan 18-03 parses ?sort=
-        cursor: null,                                  // TRANSITIONAL — Plan 18-03 parses ?cursor=
+        sort,
+        cursor,
         limit,
         include_tags,
         include_metadata,
