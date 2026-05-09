@@ -705,6 +705,26 @@ describe('architecture purity', () => {
     expect(grepCount('drizzle-orm', 'src/engine/summary/anthropic-client.ts')).toBe(0);
     expect(grepCount('@hono/node-server', 'src/engine/summary/anthropic-client.ts')).toBe(0);
   });
+
+  // Phase 19 Plan 08 — telemetry.ts is a pure-helper companion that re-exports
+  // flattenAnthropicError from anthropic-client.ts but otherwise has zero
+  // MCP/SQLite/ORM/HTTP imports. The @anthropic-ai/sdk allowed-set is
+  // satisfied because the SDK reference is transitive via anthropic-client.ts
+  // (the sole importer); telemetry.ts itself does NOT directly import the SDK.
+  it('src/engine/summary/telemetry.ts is pure (zero MCP/SQLite/ORM/HTTP imports)', () => {
+    if (!existsSync('src/engine/summary/telemetry.ts')) {
+      return; // Pre-Plan-19-08 no-op
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/telemetry.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/telemetry.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/telemetry.ts')).toBe(0);
+    expect(grepCount('@hono/node-server', 'src/engine/summary/telemetry.ts')).toBe(0);
+    // Note: @anthropic-ai/sdk is allowed only via flattenAnthropicError
+    // re-export through './anthropic-client.js' — the SDK reference is
+    // transitive, not direct. The allowed-set assertion above (line 600)
+    // verifies anthropic-client.ts is the sole direct SDK importer.
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/telemetry.ts')).toBe(0);
+  });
 });
 
 // ================================================================

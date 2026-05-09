@@ -40,6 +40,7 @@ import {
 } from './template.js';
 import { circuitBreaker } from './circuit-breaker.js';
 import { generateSummary, flattenAnthropicError } from './anthropic-client.js';
+import { logSummaryEvent } from './telemetry.js';
 
 // BLOCKER #1 (revision-1): wire Phase 15 KSampler edge walk for prompt resolution.
 // extractInputAssertion (src/engine/c2pa/ingredient-extractor.ts:310) lives in the
@@ -157,6 +158,13 @@ export async function summarizeVersion(
   deps: SummarizeVersionDeps,
   options: SummarizeVersionOptions = {},
 ): Promise<SummaryOutcome> {
+  // WARNING #5 (revision-1): performance.now() at function entry; threaded
+  // into every logSummaryEvent call site so cache_hit / live / fallback all
+  // emit accurate duration_ms (cache_hit is sub-100ms; live is ~600ms;
+  // fallback varies by reason — operational visibility relies on accurate
+  // timings per AI-SPEC §7 monitoring contract).
+  const startedAt = performance.now();
+
   // Step 1: Load version + provenance + model fingerprints + manifest_signed event.
   const version = deps.versionRepo.getVersion(versionId);
   if (!version) {
@@ -203,20 +211,38 @@ export async function summarizeVersion(
   // the resolution block but pick up the resolved value when invoked.
   let resolvedParentLabelForFallback: string | null = null;
 
-  // Helper to build a fallback outcome with the deterministic template content.
+  // Helper to build a fallback outcome with the deterministic template
+  // content. Emits a telemetry event at the SAME call site so every fallback
+  // path is logged in full per AI-SPEC §7 (the diagnostic surface).
+  // WARNING #5 (revision-1): duration_ms threaded from startedAt at the
+  // function entry above — not a hardcoded zero.
   const buildFallbackOutcome = (
     reason: Extract<SummaryOutcome, { source: 'fallback' }>['reason'],
-  ): SummaryOutcome => ({
-    source: 'fallback',
-    reason,
-    text: buildDeterministicSummary({
-      completed: completed ?? null,
-      models: models ?? null,
-      parentVersionLabel: resolvedParentLabelForFallback,
-      isRedacted,
-      versionLabel,
-    }),
-  });
+  ): SummaryOutcome => {
+    logSummaryEvent({
+      event: 'summary_generated',
+      version_id: versionId,
+      manifest_sha256: manifestSha256 ?? null,
+      model_id: SUMMARY_MODEL_ID,
+      template_version: SUMMARY_TEMPLATE_VERSION,
+      duration_ms: Math.round(performance.now() - startedAt),
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      outcome: 'fallback',
+      reason,
+    });
+    return {
+      source: 'fallback',
+      reason,
+      text: buildDeterministicSummary({
+        completed: completed ?? null,
+        models: models ?? null,
+        parentVersionLabel: resolvedParentLabelForFallback,
+        isRedacted,
+        versionLabel,
+      }),
+    };
+  };
 
   // Step 2: Cache lookup (skipped on regenerate).
   if (!options.regenerate && manifestSha256) {
@@ -227,6 +253,21 @@ export async function summarizeVersion(
       SUMMARY_MODEL_ID,
     );
     if (cached !== null) {
+      // AI-SPEC §7: cache_hit emits on 1% deterministic sample; sampling
+      // logic owned by logSummaryEvent (shouldSampleCacheHit). duration_ms
+      // is threaded from startedAt — cache hits are sub-100ms but the
+      // value is still operationally useful for p99 latency tracking.
+      logSummaryEvent({
+        event: 'summary_generated',
+        version_id: versionId,
+        manifest_sha256: manifestSha256 ?? null,
+        model_id: SUMMARY_MODEL_ID,
+        template_version: SUMMARY_TEMPLATE_VERSION,
+        duration_ms: Math.round(performance.now() - startedAt),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        outcome: 'cache_hit',
+      });
       return {
         source: 'cache_hit',
         text: cached.summary_text,
@@ -353,6 +394,20 @@ export async function summarizeVersion(
       outcome: 'live',
     });
 
+    // AI-SPEC §7: live emits in full (cost-projection flywheel input).
+    // duration_ms is threaded from startedAt for accurate p95/p99 tracking.
+    logSummaryEvent({
+      event: 'summary_generated',
+      version_id: versionId,
+      manifest_sha256: manifestSha256,
+      model_id: SUMMARY_MODEL_ID,
+      template_version: SUMMARY_TEMPLATE_VERSION,
+      duration_ms: Math.round(performance.now() - startedAt),
+      prompt_tokens: llmResult.prompt_tokens,
+      completion_tokens: llmResult.completion_tokens,
+      outcome: 'live',
+    });
+
     return {
       source: 'live',
       text: llmResult.text,
@@ -367,6 +422,20 @@ export async function summarizeVersion(
   // Step 8 (no manifest_sha256): live response but cache write blocked — return live without persistence.
   // Per RESEARCH.md Open Question 3: skip cache write when manifest_sha256 is null;
   // every view of these edge cases is a fresh LLM call (acceptable cost).
+  // Telemetry still emits — manifest_sha256 is null but the live call cost
+  // is the same; cost-projection flywheel needs the metadata regardless.
+  logSummaryEvent({
+    event: 'summary_generated',
+    version_id: versionId,
+    manifest_sha256: null,
+    model_id: SUMMARY_MODEL_ID,
+    template_version: SUMMARY_TEMPLATE_VERSION,
+    duration_ms: Math.round(performance.now() - startedAt),
+    prompt_tokens: llmResult.prompt_tokens,
+    completion_tokens: llmResult.completion_tokens,
+    outcome: 'live',
+  });
+
   return {
     source: 'live',
     text: llmResult.text,
