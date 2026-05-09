@@ -18,6 +18,7 @@
     "smoke": "node scripts/inspector-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:eval": "vitest run src/__tests__/summary-eval --reporter=default",
     "typecheck": "tsc --noEmit",
     "build:dashboard": "npm run build --workspace=packages/dashboard",
     "dev:dashboard": "npm run dev --workspace=packages/dashboard",
