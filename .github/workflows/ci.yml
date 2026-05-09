@@ -36,6 +36,18 @@ jobs:
       - name: Run dashboard test suite
         run: npm run test:dashboard
 
+      - name: Run summary eval suite (AI-SPEC §5)
+        # Phase 19 — eval suite mandated by AI-SPEC §5. Code-based dimensions
+        # run unconditionally (model-name, sentence-count, anti-feature,
+        # banned-lexicon, leak-scan); LLM-judge dimensions (lineage, voice
+        # register) require the ANTHROPIC_API_KEY GitHub secret and skip
+        # cleanly when absent (logs "[summary-eval] skipped (no API key)").
+        # Pass thresholds gate merge: Critical 100%, High 95%, redaction-leak
+        # 100%. Estimated cost per CI run when key is set: ~$0.05.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run test:eval
+
       # WEBUI-05 freshness gate: packages/dashboard/dist/ is committed to the
       # repo so the server can serve it at runtime without a build step at
       # install. If a PR changes dashboard source (packages/dashboard/src/**,

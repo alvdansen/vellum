@@ -1,0 +1,35 @@
+{
+  "fixture_id": "12-long-prompt-edge",
+  "lineage_shape": "iterate",
+  "version_label": "v012",
+  "parent_version_label": "v005",
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":2048,\"sampler\":\"euler\"}}",
+    "outputs_json": "[{\"filename\":\"v012.png\"}]",
+    "seed": 2048
+  },
+  "models": [
+    { "model_name": "flux1-dev" },
+    { "model_name": "cinematic_fantasy" },
+    { "model_name": "detail_boost" }
+  ],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": { "lora": 2 },
+  "user_prompt_positive": "epic ancient dragon with iridescent scales and luminescent eyes set against a sprawling castle vista at dusk where the warm orange glow of distant torches catches the wisps of fog rising from the moat below as the dragon's massive form coils around a crumbling stone tower its talons gripping weathered battlements while its serpentine tail trails behind in a slow protective curve and the ambient atmosphere fills with floating particles of soot and ash from the smoldering pyres below where banners flap in a gentle wind their once-bright heraldry faded to muted earth tones from years of exposure to the elements with intricate fractal patterns running across every visible surface of the dragon's skin from the ridges along its spine to the membrane of its wings whose translucent surface refracts the ambient orange light into prismatic bands of color rendered in painstaking detail with each individual scale hand-detailed by an army of digital artists working from extensive concept art references including the original Frazetta paintings, Brom's gothic fantasy work, and the more recent works of Kerembeyit and other contemporary fantasy illustrators of note as well as the visual language established in the project bible for this particular shot which calls for a moody atmospheric register that emphasizes the weight and gravitas of the creature without sliding into pastiche of any single influence and instead synthesizing those references into a coherent visual statement that anchors the entire sequence and provides a memorable establishing shot for the viewer to anchor their understanding of the world that this dragon inhabits and the narrative stakes that the rest of the sequence will build upon as the camera dollies in over the next several frames revealing more of the creature and the besieged castle context and ultimately landing on a tight close-up of one of the dragon's eyes for the dramatic reveal moment that the prior version v005 was already iterating toward but had not yet fully achieved due to compositional constraints in the parent shot v004 which is itself derived from v003 and traces all the way back to the v001 root iterate that initially established the dragon design language for this entire shot sequence",
+  "user_prompt_negative": "blurry low quality, oversaturated, distorted",
+  "golden_summary": "v012 stacks two LoRAs over flux1-dev — cinematic_fantasy and detail_boost — at seed 2048, iterating from v005. Long-prompt edge case stress-tests sentence-budget discipline against the upper user-turn token bound.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["flux1-dev"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "from_parent",
+    "lora_count": 2,
+    "lora_names_expected": ["cinematic_fantasy", "detail_boost"],
+    "redacted": false,
+    "long_prompt_edge_case": true,
+    "voice_register_score_min": 4
+  }
+}
