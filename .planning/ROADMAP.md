@@ -120,7 +120,28 @@ Plans:
   3. User views a redacted version and the summary uses ONLY surviving fields and explicitly tags the disclosure (e.g., "(some prompt fields were redacted)") — redact event invalidates cache for free because cache key includes `manifest_sha256`.
   4. User sees a graceful fallback when the LLM is down, the API key is missing, or the circuit breaker has tripped: "(AI summary unavailable; showing structured details)" + the existing raw provenance display — no broken UI surface, no leaked error message containing API keys (verified via `flattenAnthropicError` helper + multi-encoding leak negative test).
   5. Raw provenance details (existing node list, prompt JSON, models, seed) remain available in the drawer collapsed under a "Show provenance details" disclosure — v1.0/v1.1 functionality preserved as table stakes; tool count stays at 7 of 12 (no new top-level MCP tools added).
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+**Wave 1**
+- [ ] 19-01-PLAN.md — Foundation: Anthropic config + boot validation + arch-purity allowed-set + Migration 0007 + ProvenanceRepo accessors + SDK pin
+
+**Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
+- [ ] 19-02-PLAN.md — Pure helpers: sanitizer + validation + deterministic-template
+- [ ] 19-03-PLAN.md — Pure helpers: template + few-shot examples + circuit-breaker
+
+**Wave 3** *(blocked on Waves 1+2+3)*
+- [ ] 19-04-PLAN.md — Anthropic client (sole-importer + lazy-import + retry policy + flattenAnthropicError) + Engine.summarizeVersion 8-outcome facade
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 19-05-PLAN.md — HTTP routes (GET + POST regenerate + 60s throttle) + dashboard signal/state + lib/api.ts helpers
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 19-06-PLAN.md — Dashboard components (SummarySection + RegenerateButton) + VersionDrawer integration + 11 copy constants
+
+**Wave 6** *(parallel — both depend on Wave 4 OR 5; no file overlap)*
+- [ ] 19-07-PLAN.md — Eval suite (12 fixtures × 9 dimensions per AI-SPEC §5) + CI integration
+- [ ] 19-08-PLAN.md — E2E adversarial tests (redact-cache-invariant + leak-scan + prompt-injection) + telemetry per AI-SPEC §7 + HUMAN-UAT.md + ADVERSARIAL-REVIEW.md
 **UI hint**: yes
 
 ## Future Milestones
@@ -141,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 0/0   | Not started | -          |
+| 19    | v1.2      | 0/8   | Planned     | -          |
