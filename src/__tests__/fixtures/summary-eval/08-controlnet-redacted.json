@@ -1,0 +1,37 @@
+{
+  "fixture_id": "08-controlnet-redacted",
+  "lineage_shape": "iterate",
+  "version_label": "v008",
+  "parent_version_label": "v007",
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":888,\"sampler\":\"euler\"}}",
+    "outputs_json": "[{\"filename\":\"v008.png\"}]",
+    "seed": 888
+  },
+  "models": [
+    { "model_name": "flux1-dev" },
+    { "model_name": "controlnet_canny" }
+  ],
+  "manifest_signed": {
+    "redacted": true,
+    "manifest_sha256": "abc123def456abc123def456abc123def456abc123def456abc123def456ab"
+  },
+  "redacted": true,
+  "ingredient_summary_counts": { "controlnet": 1 },
+  "user_prompt_positive": "(redacted)",
+  "user_prompt_negative": "(redacted)",
+  "golden_summary": "v008 iterates from v007 with flux1-dev and controlnet_canny at seed 888. Some prompt fields were redacted, so the prompt direction is not visible here — check the C2PA-signed manifest for the full lineage.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": [],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "from_parent",
+    "lora_count": 0,
+    "controlnet_count": 1,
+    "redacted": true,
+    "redaction_marker_required": true,
+    "voice_register_score_min": 4
+  }
+}

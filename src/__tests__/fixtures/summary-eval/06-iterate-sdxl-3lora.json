@@ -1,0 +1,36 @@
+{
+  "fixture_id": "06-iterate-sdxl-3lora",
+  "lineage_shape": "iterate",
+  "version_label": "v006",
+  "parent_version_label": "v005",
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":333,\"sampler\":\"dpmpp_2m\"}}",
+    "outputs_json": "[{\"filename\":\"v006.png\"}]",
+    "seed": 333
+  },
+  "models": [
+    { "model_name": "sd_xl_base_1.0.safetensors" },
+    { "model_name": "cinematic_fantasy" },
+    { "model_name": "detail_boost" },
+    { "model_name": "noir_mood" }
+  ],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": { "lora": 3 },
+  "user_prompt_positive": "noir-styled dragon with high contrast and dramatic shadow",
+  "user_prompt_negative": "flat lighting",
+  "golden_summary": "v006 stacks three LoRAs over sd_xl_base_1.0.safetensors at seed 333, iterating from v005 to push the noir creative direction. Heavier LoRA composition than the parent.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["sd_xl_base_1.0.safetensors"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "from_parent",
+    "lora_count": 3,
+    "lora_names_expected": ["cinematic_fantasy", "detail_boost", "noir_mood"],
+    "honest_collapse_acceptable": true,
+    "redacted": false,
+    "voice_register_score_min": 4
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "fixture_id": "01-root-flux",
+  "lineage_shape": "root",
+  "version_label": "v001",
+  "parent_version_label": null,
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":12345,\"sampler\":\"euler\"}}",
+    "outputs_json": "[{\"filename\":\"v001.png\"}]",
+    "seed": 12345
+  },
+  "models": [{ "model_name": "flux1-dev" }],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": {},
+  "user_prompt_positive": "cinematic dragon eye, dramatic close-up",
+  "user_prompt_negative": "",
+  "golden_summary": "v001 is the first iterate of the dragon-eye close-up, generated with flux1-dev at seed 12345 from the cinematic dragon prompt. No parent — this is where the lineage starts.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["flux1-dev"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "root",
+    "lora_count": 0,
+    "redacted": false,
+    "voice_register_score_min": 4
+  }
+}
