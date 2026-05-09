@@ -22,13 +22,14 @@
  * dangerouslySetInnerHTML. Provenance events never interpolate into HTML.
  */
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { StatusPill } from '../components/StatusPill.js';
 import type { Status } from '../components/StatusPill.js';
 import { WarningPill } from '../components/WarningPill.js';
 import { C2paBadge } from '../components/C2paBadge.js';
 import { JsonBlock } from '../components/JsonBlock.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { SummarySection } from '../components/SummarySection.js';
 import { DiffDrawer } from './DiffDrawer.js';
 import {
   getProvenance,
@@ -37,6 +38,15 @@ import {
   getC2paStatus,
 } from '../lib/api.js';
 import type { C2paStatus } from '../lib/api.js';
+import {
+  summarySignal,
+  fetchSummary,
+  type SummaryState,
+} from '../state/summaries.js';
+import {
+  SUMMARY_DISCLOSURE_TOGGLE,
+  SUMMARY_FIRST_USE_LOCALSTORAGE_KEY,
+} from '../lib/copy.js';
 import type { Version } from '../types/entities.js';
 import { versionLabel, normalizeStatus } from '../lib/shape.js';
 
@@ -92,6 +102,36 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
   // depth).
   const [c2paStatus, setC2paStatus] = useState<C2paStatus>({ status: 'unknown' });
 
+  // Phase 19 / Plan 19-06 — per-version AI conversational summary state +
+  // auto-fetch on version.id change + 500ms client-side debounce on
+  // Regenerate. Mirrors the C2PA status auto-fetch pattern at lines 119-133
+  // verbatim (let alive = true cancellation guard).
+  const [summary, setSummary] = useState<SummaryState>({ state: 'loading' });
+
+  // D-PRIV-2 — first-use disclosure gate. Reads localStorage at mount; the
+  // muted "AI summary uses your prompt text" note renders ABOVE the body
+  // until the user clicks Regenerate (auto-acks the disclosure) or until
+  // localStorage explicitly carries the ack key. SSR / privacy-mode browsers
+  // (where localStorage throws) degrade to "no first-use note" via the
+  // try/catch — acceptable per UI-SPEC researcher discretion.
+  const [showFirstUseDisclosure, setShowFirstUseDisclosure] = useState<boolean>(
+    () => {
+      try {
+        return (
+          typeof localStorage !== 'undefined' &&
+          localStorage.getItem(SUMMARY_FIRST_USE_LOCALSTORAGE_KEY) !== 'true'
+        );
+      } catch {
+        return false;
+      }
+    },
+  );
+
+  // 500ms client-side debounce for Regenerate (SUM-04 + D-FB-4). Captured as
+  // a ref so successive clicks are compared against the most-recent click
+  // timestamp without re-rendering the drawer.
+  const lastRegenerateClickRef = useRef<number>(0);
+
   useEffect(() => {
     // Lazy-load provenance on version change. Swallow errors into empty list
     // so a 404 on a version reaped between click and fetch does not crash the
@@ -131,6 +171,74 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
       alive = false;
     };
   }, [version.id]);
+
+  // Phase 19 / Plan 19-06 — auto-fetch the AI summary on version.id change.
+  // Mirrors the C2PA effect above (lines 159-173) verbatim — same `let alive
+  // = true` cancellation guard, same defensive `.catch` collapsing to a
+  // local error state. Mirrors the global summarySignal so cross-component
+  // reads see the same value. fetchSummary is contract-bound to never throw
+  // (lib/api collapses errors to { state: 'error' } envelopes), but the
+  // .catch is defence-in-depth.
+  useEffect(() => {
+    let alive = true;
+    setSummary({ state: 'loading' });
+    fetchSummary(version.id)
+      .then((s) => {
+        if (alive) {
+          setSummary(s);
+          summarySignal.value = new Map(summarySignal.value).set(version.id, s);
+        }
+      })
+      .catch(() => {
+        if (alive) setSummary({ state: 'error' });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [version.id]);
+
+  async function handleRegenerate(): Promise<void> {
+    // 500ms client-side debounce — captures the most-recent click timestamp;
+    // ignores clicks that fire faster than the debounce window. Pairs with
+    // the 60s server-side throttle (Plan 19-05) to form the 2-line defence
+    // against thrash (T-19-35 mitigation).
+    const now = Date.now();
+    if (now - lastRegenerateClickRef.current < 500) return;
+    lastRegenerateClickRef.current = now;
+
+    // D-PRIV-2 — auto-ack the first-use disclosure on the first Regenerate
+    // click. localStorage may throw in privacy-mode browsers; the try/catch
+    // degrades the ack to in-memory only (acceptable per UI-SPEC researcher
+    // discretion).
+    if (showFirstUseDisclosure) {
+      try {
+        localStorage.setItem(SUMMARY_FIRST_USE_LOCALSTORAGE_KEY, 'true');
+      } catch {
+        /* defensive — privacy-mode or SSR */
+      }
+      setShowFirstUseDisclosure(false);
+    }
+
+    // Optimistic UI flip — show the loading skeleton while the live LLM call
+    // is in flight. The Regenerate button shows 'Regenerating…' via
+    // SummarySection's isLoading branch.
+    setSummary({ state: 'loading' });
+    try {
+      const fresh = await fetchSummary(version.id, { regenerate: true });
+      setSummary(fresh);
+      summarySignal.value = new Map(summarySignal.value).set(version.id, fresh);
+    } catch {
+      setSummary({ state: 'error' });
+    }
+  }
+
+  // Read regenerateAvailableAtMs from the current summary state. Only present
+  // on success/fallback variants — error/loading state defaults to undefined,
+  // which leaves the RegenerateButton enabled (no cooldown).
+  const regenerateAvailableAtMs =
+    summary.state === 'success' || summary.state === 'fallback'
+      ? summary.regenerateAvailableAtMs
+      : null;
 
   // Phase 12 — DEMO-03 (D-CTX-2). Auto-fetch diff when this version is
   // reproduce-lineage AND a priorVersion exists, so the WarningPill and
@@ -231,6 +339,38 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           </div>
         </header>
 
+        {/* Phase 19 / Plan 19-06 — AI conversational summary section.
+            Renders FIRST in the drawer body (above Output) per UI-SPEC visual
+            hierarchy. Children are the relocated SUM-07 Provenance disclosure
+            (the standalone Provenance <section> from Phase 5 is now wrapped in
+            a <details> here for the SUM-07 collapsed-by-default contract). */}
+        <SummarySection
+          summary={summary}
+          regenerateAvailableAtMs={regenerateAvailableAtMs}
+          showFirstUseDisclosure={showFirstUseDisclosure}
+          onRegenerate={handleRegenerate}
+          versionLabel={label}
+        >
+          <details class="mt-4" data-testid="provenance-disclosure">
+            <summary class="cursor-pointer text-sm text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
+              {SUMMARY_DISCLOSURE_TOGGLE}
+            </summary>
+            {provenance.length === 0 ? (
+              <div class="mt-2">
+                <EmptyState message="No provenance records" />
+              </div>
+            ) : (
+              <ul class="mt-2 flex flex-col gap-2">
+                {provenance.map((record, i) => (
+                  <li key={i}>
+                    <JsonBlock data={record} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+        </SummarySection>
+
         {status === 'complete' ? (
           <section>
             <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Output</h3>
@@ -321,20 +461,9 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           </ul>
         </section>
 
-        <section>
-          <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Provenance</h3>
-          {provenance.length === 0 ? (
-            <EmptyState message="No provenance records" />
-          ) : (
-            <ul class="flex flex-col gap-2">
-              {provenance.map((record, i) => (
-                <li key={i}>
-                  <JsonBlock data={record} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        {/* Phase 19 / Plan 19-06 (SUM-07): the standalone Provenance section
+            previously rendered here is now relocated INSIDE <SummarySection>'s
+            children slot above as a <details>/<summary> disclosure. */}
       </aside>
 
       {showDiff && (
