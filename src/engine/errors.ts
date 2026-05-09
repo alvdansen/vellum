@@ -53,6 +53,10 @@ export type ErrorCode =
   | 'REDACT_DB_WRITE_FAILED'       // C-06 fix: appendManifestSignedRedactedEvent insert failed AFTER re-sign succeeded
   // Phase 17 — visual thumbnails (VIS-01..06)
   | 'THUMBNAIL_FAILED'             // sharp / ffmpeg derivation failed; engine writes .thumb.failed sentinel and UI degrades to skeleton (D-26)
+  // Phase 19 — AI Conversational Summary (SUM-01..07)
+  | 'ANTHROPIC_CONFIG_INVALID'    // boot-time validation (D-PRIV-4)
+  | 'ANTHROPIC_SDK_LOAD_FAILED'   // lazy-import failure (mirrors C2PA_SIGNER_LOAD_FAILED)
+  | 'SUMMARY_THROTTLED'           // POST regenerate 60s server throttle (SUM-04)
   // Internal fallback for unexpected I/O surfaces below the tool boundary.
   | 'INTERNAL_ERROR';
 
