@@ -100,3 +100,85 @@ export const LOAD_MORE_ERROR_PREFIX_FAILED = 'Failed to load';
  * server-emitted code.
  */
 export const LOAD_MORE_ERROR_PREFIX_NETWORK = 'Network error';
+
+// ================================================================
+// Phase 19 / Plan 19-06 — AI conversational summary copy
+// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+// ================================================================
+
+/** Section heading rendered above the summary card body. */
+export const SUMMARY_HEADING = 'SUMMARY';
+
+/**
+ * Existing PROVENANCE heading — preserved verbatim when the standalone
+ * Provenance section is wrapped in a <details> disclosure (SUM-07). Kept as
+ * a named constant so future planners have one source of truth for the label.
+ */
+export const PROVENANCE_HEADING = 'PROVENANCE';
+
+/**
+ * Disclosure toggle text — matches REQUIREMENTS.md SUM-07 verbatim.
+ *
+ * The literal string flows from REQUIREMENTS.md SUM-07 acceptance criterion
+ * ("Show provenance details") through UI-SPEC §"Copywriting Contract" → here.
+ */
+export const SUMMARY_DISCLOSURE_TOGGLE = 'Show provenance details';
+
+/** Default Regenerate button label — no cooldown, not fetching. */
+export const REGENERATE_BUTTON_LABEL = 'Regenerate';
+
+/**
+ * Regenerate button label during a fetch (initial mount OR active regenerate).
+ * Uses U+2026 horizontal-ellipsis verbatim — matches the Phase 18
+ * LOAD_MORE_LOADING_LABEL tone.
+ */
+export const REGENERATE_BUTTON_FETCHING = 'Regenerating…';
+
+/** Visible label inside the WarningPill for the SUM-06 fallback marker. */
+export const WARNING_PILL_FALLBACK_LABEL = 'AI summary unavailable';
+
+/**
+ * Long-form ARIA label for the WarningPill — full SUM-06 disclosure for
+ * screen-reader users (sighted users see only the WARNING_PILL_FALLBACK_LABEL).
+ */
+export const WARNING_PILL_FALLBACK_ARIA =
+  'AI summary unavailable; showing structured details';
+
+/**
+ * Body text shown when the fetch fails before any engine outcome lands
+ * (network error, 4xx envelope, parse failure). Verbatim user-facing copy.
+ */
+export const SUMMARY_ERROR_FALLBACK = '(AI summary unavailable; please retry.)';
+
+/**
+ * First-use disclosure — D-PRIV-2 informed-consent surface. Renders as a
+ * muted note ABOVE the first-ever summary body; auto-dismissed on first
+ * Regenerate click or first explicit dismissal (per UI-SPEC interaction
+ * contract).
+ */
+export const SUMMARY_FIRST_USE_DISCLOSURE = 'AI summary uses your prompt text';
+
+/**
+ * localStorage key for "user has dismissed first-use disclosure". Namespaced
+ * (`vfx-familiar:`) to avoid cross-app collisions on shared origins.
+ * D-PRIV-2 + UI-SPEC.
+ */
+export const SUMMARY_FIRST_USE_LOCALSTORAGE_KEY =
+  'vfx-familiar:summary:first-use-acked';
+
+/**
+ * Template builder for the Regenerate button ARIA label. Caller passes the
+ * version label (e.g., 'v003') and the SR-friendly referent is composed.
+ */
+export function regenerateButtonAriaLabel(versionLabel: string): string {
+  return `Regenerate summary for ${versionLabel}`;
+}
+
+/**
+ * Cooldown label template — used inside RegenerateButton when the
+ * server-reported regenerate-available-at timestamp is in the future.
+ * The cooldown digit ticks down once per second via a 1Hz setInterval.
+ */
+export function regenerateButtonCooldownLabel(cooldownSeconds: number): string {
+  return `Regenerate (${cooldownSeconds}s)`;
+}
