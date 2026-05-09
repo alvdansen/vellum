@@ -26,7 +26,7 @@ function cleanup(dbPath: string): void {
   }
 }
 
-const EXPECTED_MIGRATIONS = 6; // 0001..0006 — same constant as migrate.test.ts
+const EXPECTED_MIGRATIONS = 7; // 0001..0007 — same constant as migrate.test.ts (Phase 19 added 0007)
 
 describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
   let dbPath: string;
@@ -56,12 +56,12 @@ describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
     }
   });
 
-  it('no spurious migration apply on second open — __drizzle_migrations row count stays at 4', () => {
+  it('no spurious migration apply on second open — __drizzle_migrations row count stays at EXPECTED_MIGRATIONS', () => {
     // First open.
     const first = openDb(dbPath);
     first.sqlite.close();
 
-    // Second open. After this, __drizzle_migrations must still hold exactly 4 rows.
+    // Second open. After this, __drizzle_migrations must still hold EXPECTED_MIGRATIONS rows.
     const second = openDb(dbPath);
     const row = second.sqlite
       .prepare(`SELECT COUNT(*) AS n FROM __drizzle_migrations`)

@@ -556,6 +556,156 @@ describe('architecture purity', () => {
   it('src/engine/thumbnails/ has zero imports from @hono/node-server', () => {
     expect(grepCount('@hono/node-server', 'src/engine/thumbnails/')).toBe(0);
   });
+
+  // ================================================================
+  // Phase 19 / Plan 19-01 — AI Conversational Summary (SUM-01..07).
+  //
+  // The new src/engine/summary/ directory will host pure helpers
+  // (sanitizer, validation, deterministic-template, template,
+  // few-shot-examples, circuit-breaker) plus the SOLE @anthropic-ai/sdk
+  // importer (anthropic-client.ts — landed by Plan 19-04). The boot
+  // path src/server.ts MUST never statically import the SDK so server
+  // boot stays resilient when @anthropic-ai/sdk's binding fails to load
+  // (mirrors Phase 14 c2pa-node Concern #11).
+  //
+  // The allowed-set assertion + 6 pure-helper file-level guards are
+  // staged HERE (Plan 19-01) but kept .skip()'d — they activate as the
+  // corresponding files land in Plans 19-02 / 19-03 / 19-04. The
+  // boot-resilience guard runs LIVE from Plan 19-01 (src/server.ts
+  // already lacks any @anthropic-ai/sdk import).
+  // ================================================================
+
+  it('src/server.ts has zero static imports from @anthropic-ai/sdk (Phase 19 — boot resilience)', () => {
+    // Mirrors the Phase 14 c2pa-node boot-resilience guard at lines
+    // 108-127 above. Server boot must never eagerly load the Anthropic
+    // SDK — Plan 19-04's lazy `await import(...)` inside
+    // src/engine/summary/anthropic-client.ts is the SOLE load path.
+    try {
+      const out = execFileSync(
+        'grep',
+        ['-E', "from[[:space:]]+['\"]@anthropic-ai/sdk['\"]", 'src/server.ts'],
+        { encoding: 'utf8' },
+      );
+      expect(
+        out.trim(),
+        `static @anthropic-ai/sdk import found in src/server.ts:\n${out}`,
+      ).toBe('');
+    } catch (err) {
+      // grep exits 1 when no matches — that's the GREEN state we want.
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+  });
+
+  it.skip('@anthropic-ai/sdk imports are centralized in src/engine/summary/anthropic-client.ts (Phase 19)', () => {
+    // SKIP marker removed by Plan 19-04 once anthropic-client.ts lands.
+    //
+    // Mirror Phase 14 c2pa-node allowed-set assertion at lines 166-231:
+    // two-layer (subset check + sorted-array deepEqual) on actual
+    // importers. Pre-Plan-19-04 the file does not exist; the empty
+    // importer set fails the SET-equality check, which is intended
+    // RED→GREEN visibility per CONTEXT.md.
+    const allowedAnthropicImporters = new Set<string>([
+      'src/engine/summary/anthropic-client.ts',
+    ]);
+    let out = '';
+    try {
+      out = execFileSync(
+        'grep',
+        [
+          '-rlE',
+          "from[[:space:]]*['\"]@anthropic-ai/sdk|import[[:space:]]*\\([[:space:]]*['\"]@anthropic-ai/sdk",
+          'src/',
+        ],
+        { encoding: 'utf8' },
+      );
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 1) throw err;
+    }
+    const files = out ? out.trim().split('\n').filter(Boolean) : [];
+    const nonTestFiles = files.filter((f) => !f.includes('__tests__/'));
+
+    // (a) Subset check — no rogue importer outside the allowed set.
+    const violations = nonTestFiles.filter((f) => !allowedAnthropicImporters.has(f));
+    expect(
+      violations,
+      `@anthropic-ai/sdk imports outside the allowed list:\n${violations.join('\n')}`,
+    ).toEqual([]);
+
+    // (b) SET-equality on actual importers (sorted-array deepEqual;
+    //     prevents silent regression).
+    const expectedActualImporters = ['src/engine/summary/anthropic-client.ts'].sort();
+    expect([...nonTestFiles].sort()).toEqual(expectedActualImporters);
+  });
+
+  // Phase 19 — pure-helper isolation guards. Each file MUST import zero
+  // MCP/SDK/SQLite-driver/ORM/HTTP. Each test enabled by the plan that
+  // creates the corresponding file:
+  //   sanitizer.ts → Plan 19-02
+  //   validation.ts → Plan 19-02
+  //   deterministic-template.ts → Plan 19-02
+  //   template.ts → Plan 19-03
+  //   templates/few-shot-examples.ts → Plan 19-03
+  //   circuit-breaker.ts → Plan 19-03
+
+  it.skip('src/engine/summary/sanitizer.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/sanitizer.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/sanitizer.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/sanitizer.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/sanitizer.ts')).toBe(0);
+  });
+
+  it.skip('src/engine/summary/validation.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/validation.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/validation.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/validation.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/validation.ts')).toBe(0);
+  });
+
+  it.skip('src/engine/summary/deterministic-template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/deterministic-template.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/deterministic-template.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/deterministic-template.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/deterministic-template.ts')).toBe(0);
+  });
+
+  it.skip('src/engine/summary/template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/template.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/template.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/template.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/template.ts')).toBe(0);
+  });
+
+  it.skip('src/engine/summary/templates/few-shot-examples.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
+  });
+
+  it.skip('src/engine/summary/circuit-breaker.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+    expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
+  });
+
+  it('src/engine/summary/anthropic-client.ts uses lazy @anthropic-ai/sdk + zero MCP/SQLite/ORM/hono', () => {
+    // .skip() left OFF — Plan 19-01 ships the boot-resilience guard above.
+    // This test passes pre-Plan-19-04 because the file does not yet exist
+    // (grepCount returns 0 for a missing file). Once Plan 19-04 creates the
+    // file, the SDK reference becomes legitimate (it's the sole-importer);
+    // this test asserts ZERO MCP/SQLite/ORM/hono — which the file should
+    // never import.
+    if (!existsSync('src/engine/summary/anthropic-client.ts')) {
+      return; // Pre-Plan-19-04 no-op
+    }
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/anthropic-client.ts')).toBe(0);
+    expect(grepCount('better-sqlite3', 'src/engine/summary/anthropic-client.ts')).toBe(0);
+    expect(grepCount('drizzle-orm', 'src/engine/summary/anthropic-client.ts')).toBe(0);
+    expect(grepCount('@hono/node-server', 'src/engine/summary/anthropic-client.ts')).toBe(0);
+  });
 });
 
 // ================================================================
