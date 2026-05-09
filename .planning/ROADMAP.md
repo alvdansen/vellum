@@ -137,7 +137,7 @@ Plans:
 - [x] 19-05-PLAN.md — HTTP routes (GET + POST regenerate + 60s throttle) + dashboard signal/state + lib/api.ts helpers
 
 **Wave 5** *(blocked on Wave 4)*
-- [ ] 19-06-PLAN.md — Dashboard components (SummarySection + RegenerateButton) + VersionDrawer integration + 11 copy constants
+- [x] 19-06-PLAN.md — Dashboard components (SummarySection + RegenerateButton) + VersionDrawer integration + 11 copy constants
 
 **Wave 6** *(parallel — both depend on Wave 4 OR 5; no file overlap)*
 - [ ] 19-07-PLAN.md — Eval suite (12 fixtures × 9 dimensions per AI-SPEC §5) + CI integration
@@ -162,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 5/8 | In Progress|  |
+| 19    | v1.2      | 6/8 | In Progress|  |
