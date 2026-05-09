@@ -52,7 +52,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 
 - [x] **Phase 17: Visual Thumbnails** — Lazy-loaded 16:9 thumbnails on every completed-version asset card with C2PA-shield overlay, MP4 first-frame extraction, atomic disk cache, redact-invalidation hook. (completed 2026-05-02)
 - [x] **Phase 18: Sortable Folder Dropdown** — Latest-first default sort + 4-option dropdown control with localStorage persistence + URL state mirror; smart-default-per-scope (tree=A→Z, version grid=latest); composite-cursor pagination stability. (completed 2026-05-08)
-- [ ] **Phase 19: AI Conversational Summary** — Supervisor/Lead-voice 2-4 sentence summary grounded in prompt blob + ingredient graph + model fingerprints; cached by `manifest_sha256`; circuit breaker + graceful fallback. **Adversarial review mandatory at plan stage.**
+- [x] **Phase 19: AI Conversational Summary** — Supervisor/Lead-voice 2-4 sentence summary grounded in prompt blob + ingredient graph + model fingerprints; cached by `manifest_sha256`; circuit breaker + graceful fallback. **Adversarial review mandatory at plan stage.** (completed 2026-05-09)
 
 ## Phase Details
 
@@ -140,8 +140,8 @@ Plans:
 - [x] 19-06-PLAN.md — Dashboard components (SummarySection + RegenerateButton) + VersionDrawer integration + 11 copy constants
 
 **Wave 6** *(parallel — both depend on Wave 4 OR 5; no file overlap)*
-- [ ] 19-07-PLAN.md — Eval suite (12 fixtures × 9 dimensions per AI-SPEC §5) + CI integration
-- [ ] 19-08-PLAN.md — E2E adversarial tests (redact-cache-invariant + leak-scan + prompt-injection) + telemetry per AI-SPEC §7 + HUMAN-UAT.md + ADVERSARIAL-REVIEW.md
+- [x] 19-07-PLAN.md — Eval suite (12 fixtures × 9 dimensions per AI-SPEC §5) + CI integration
+- [x] 19-08-PLAN.md — E2E adversarial tests (redact-cache-invariant + leak-scan + prompt-injection) + telemetry per AI-SPEC §7 + HUMAN-UAT.md + ADVERSARIAL-REVIEW.md
 **UI hint**: yes
 
 ## Future Milestones
@@ -162,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 6/8 | In Progress|  |
+| 19    | v1.2      | 8/8 | Complete   | 2026-05-09 |
