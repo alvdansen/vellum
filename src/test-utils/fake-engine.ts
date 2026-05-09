@@ -8,6 +8,7 @@ import type {
   DiffResponse,
   ManifestSignedPayloadFields,
 } from '../types/provenance.js';
+import type { SummaryOutcome } from '../engine/summary/index.js';
 
 /**
  * Phase 5: shared empty Breadcrumb fixture — used by every fake getter so the
@@ -67,6 +68,20 @@ export class FakeEngine {
       recent_versions: [] as Version[],
       workspaces: [] as Workspace[],
     },
+    /**
+     * Phase 19 / Plan 19-05 — per-versionId SummaryOutcome override map. Tests
+     * set entries here to control engine.summarizeVersion's discriminated
+     * outcome (cache_hit / live / fallback variants). Default fallback returned
+     * when entry missing — avoids the test having to wire every outcome variant.
+     */
+    summaryOutcomes: new Map<string, SummaryOutcome>(),
+    /**
+     * Phase 19 / Plan 19-05 — per-versionId TypedError override. When set, the
+     * engine.summarizeVersion fake throws the configured error (mirrors the
+     * VERSION_NOT_FOUND surface from Plan 19-04 Step 1 — only TypedError that
+     * propagates through to HTTP per Pattern G).
+     */
+    summaryErrors: new Map<string, Error>(),
   };
 
   // ============== Hierarchy reads ==============
@@ -295,6 +310,34 @@ export class FakeEngine {
     return null;
   }
 
+  // ============== Phase 19 Plan 19-05 — AI conversational summary surface ===
+  /**
+   * Default returns a fallback SummaryOutcome with reason='api_key_missing' so
+   * tests that don't care about the summary route get a consistent envelope
+   * (mirrors the production graceful-degradation path when ANTHROPIC_API_KEY
+   * is unset). Per-test overrides via `cans.summaryOutcomes` / `cans.summaryErrors`.
+   *
+   * The route in src/http/dashboard-routes.ts NEVER throws for engine-side
+   * failure paths (api_key_missing / circuit_open / etc. become 'fallback'
+   * SummaryOutcome variants and surface as 200 + envelope per D-FB-1) — only
+   * VERSION_NOT_FOUND TypedError surfaces and translates to 404.
+   */
+  async summarizeVersion(
+    versionId: string,
+    options?: { regenerate?: boolean; signal?: AbortSignal },
+  ): Promise<SummaryOutcome> {
+    this.calls.push({ method: 'summarizeVersion', args: [versionId, options] });
+    const err = this.cans.summaryErrors.get(versionId);
+    if (err) throw err;
+    const override = this.cans.summaryOutcomes.get(versionId);
+    if (override) return override;
+    return {
+      source: 'fallback',
+      reason: 'api_key_missing',
+      text: 'AI summary unavailable; showing structured details.',
+    };
+  }
+
   reset(): void {
     this.calls.length = 0;
     this.events.removeAllListeners();
@@ -315,6 +358,8 @@ export class FakeEngine {
     this.cans.metadataKeys = { items: [], total_count: 0, limit: 20, offset: 0 };
     this.cans.reproduceResult = null;
     this.cans.dashboardHome = { active_versions: [], recent_versions: [], workspaces: [] };
+    this.cans.summaryOutcomes.clear();
+    this.cans.summaryErrors.clear();
   }
 }
 

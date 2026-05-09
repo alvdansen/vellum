@@ -67,6 +67,15 @@ const SERVICE_UNAVAILABLE_CODES = new Set<string>([
   'THUMBNAIL_FAILED',
 ]);
 
+// Phase 19 / Plan 19-05 — Explicit 429 set for rate-limit / throttle codes.
+// SUMMARY_THROTTLED surfaces from POST /api/versions/:id/summary/regenerate
+// when the same versionId is requested within the 60s server-side cooldown
+// window (SUM-04). 429 (Too Many Requests) is the standard HTTP semantics for
+// throttled endpoints; clients can read Retry-After if added later.
+const TOO_MANY_REQUESTS_CODES = new Set<string>([
+  'SUMMARY_THROTTLED',
+]);
+
 // Explicit 400 set — validation codes that don't start with INVALID_.
 // TAG_INVALID + METADATA_INVALID are *_INVALID (suffix); ITERATE_INVALID_PATCH
 // is *_INVALID_* (middle). Combined with the INVALID_* prefix check below, this
@@ -87,7 +96,9 @@ const BAD_REQUEST_CODES = new Set<string>([
  *   3. Bad-gateway set OR COMFYUI_* prefix → 502.
  *   4. Unprocessable set → 422.
  *   5. Conflict set → 409.
- *   6. Unknown code → 500 (fallthrough; original code is preserved in the body
+ *   6. Service unavailable set → 503.
+ *   7. Too-many-requests set → 429 (Phase 19 SUMMARY_THROTTLED).
+ *   8. Unknown code → 500 (fallthrough; original code is preserved in the body
  *      by `typedErrorHandler`).
  */
 export function statusForCode(code: string): number {
@@ -97,6 +108,7 @@ export function statusForCode(code: string): number {
   if (UNPROCESSABLE_CODES.has(code)) return 422;
   if (CONFLICT_CODES.has(code)) return 409;
   if (SERVICE_UNAVAILABLE_CODES.has(code)) return 503;
+  if (TOO_MANY_REQUESTS_CODES.has(code)) return 429;
   return 500;
 }
 
