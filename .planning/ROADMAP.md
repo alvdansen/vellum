@@ -131,7 +131,7 @@ Plans:
 - [x] 19-03-PLAN.md — Pure helpers: template + few-shot examples + circuit-breaker
 
 **Wave 3** *(blocked on Waves 1+2+3)*
-- [ ] 19-04-PLAN.md — Anthropic client (sole-importer + lazy-import + retry policy + flattenAnthropicError) + Engine.summarizeVersion 8-outcome facade
+- [x] 19-04-PLAN.md — Anthropic client (sole-importer + lazy-import + retry policy + flattenAnthropicError) + Engine.summarizeVersion 8-outcome facade
 
 **Wave 4** *(blocked on Wave 3)*
 - [ ] 19-05-PLAN.md — HTTP routes (GET + POST regenerate + 60s throttle) + dashboard signal/state + lib/api.ts helpers
@@ -162,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 3/8 | In Progress|  |
+| 19    | v1.2      | 4/8 | In Progress|  |
