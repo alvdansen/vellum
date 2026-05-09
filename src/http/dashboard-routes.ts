@@ -91,6 +91,14 @@ export type EngineForDashboard = Pick<
   // pipeline (Plans 17-01 + 17-02). Returns null on derivation failure;
   // route surfaces 503 + THUMBNAIL_FAILED envelope in that case.
   | 'generateThumbnail'
+  // Phase 19 / Plan 19-05 — AI conversational summary surface. GET + POST
+  // routes at /api/versions/:id/summary delegate to engine.summarizeVersion
+  // (Plan 19-04). Engine returns SummaryOutcome discriminated union; HTTP
+  // layer never throws for failure paths (graceful degradation per D-FB-1) —
+  // only TypedError(VERSION_NOT_FOUND) surfaces (translated to 404 via
+  // error-middleware Pattern G). POST regenerate is gated by an in-memory
+  // 60s throttle keyed by versionId (SUM-04).
+  | 'summarizeVersion'
 >;
 
 /**
@@ -103,6 +111,24 @@ export type EngineForDashboard = Pick<
  */
 export function createDashboardRouter(engine: EngineForDashboard): Hono {
   const app = new Hono();
+
+  // ==========================================================================
+  // Phase 19 / Plan 19-05 — SUM-04. Per-versionId server-side throttle for the
+  // POST /api/versions/:id/summary/regenerate route. Lazy GC at lookup time —
+  // entries older than 60s are simply overwritten on the next request (no
+  // scheduled cleanup needed for v1.2 single-process scope; per RESEARCH.md
+  // "Don't Hand-Roll" lazy GC pattern + threat T-19-28 acceptance).
+  //
+  // Per-process scope (matches circuit breaker D-FB-3 granularity). Resets on
+  // process restart. Multi-process deployments would split the budget but v1.2
+  // ships single-process per PROJECT.md "Single-artist demo scope".
+  //
+  // Threat T-19-27 mitigation: server-side throttle prevents user-driven
+  // thrash on the Anthropic API. Client-side debounce (Plan 06) is the second
+  // line of defence.
+  // ==========================================================================
+  const summaryThrottle = new Map<string, number>();
+  const SUMMARY_THROTTLE_MS = 60_000;
 
   // SC-4 (Phase 6 gap_closure IN-01): parse a numeric query param with a default.
   // Throws TypedError('INVALID_INPUT', ...) at the HTTP boundary if the param
@@ -296,6 +322,59 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     // hashes when B is reproduce-lineage). Hono coerces the awaited Promise
     // into the response body via c.json.
     return c.json(await engine.diffVersions(c.req.param('id'), against));
+  });
+
+  // ==========================================================================
+  // Phase 19 / Plan 19-05 — AI conversational summary routes (SUM-01..06).
+  //
+  // GET /api/versions/:id/summary returns the SummaryOutcome envelope augmented
+  // with regenerate_available_at_ms for the dashboard 1Hz countdown timer.
+  //
+  // engine.summarizeVersion NEVER throws to HTTP for engine-side failure paths
+  // (api_key_missing / circuit_open / sdk_load_failed / http_error /
+  //  network_error / validation_failed / timeout) — those become typed
+  // 'fallback' SummaryOutcome variants and return 200 with the envelope per
+  // D-FB-1 graceful-degradation contract. Only TypedError(VERSION_NOT_FOUND)
+  // surfaces (translated to 404 via error-middleware Pattern G).
+  // ==========================================================================
+  app.get('/api/versions/:id/summary', async (c) => {
+    const versionId = c.req.param('id');
+    const outcome = await engine.summarizeVersion(versionId);
+    // Embed regenerate-availability hint for the dashboard countdown. lastReq
+    // defaults to 0 → regenerate_available_at_ms is in the past → dashboard
+    // interprets as "available now".
+    const lastReq = summaryThrottle.get(versionId) ?? 0;
+    const regenerateAvailableAtMs = lastReq + SUMMARY_THROTTLE_MS;
+    return c.json({ ...outcome, regenerate_available_at_ms: regenerateAvailableAtMs });
+  });
+
+  // POST /api/versions/:id/summary/regenerate forces a fresh LLM call (engine
+  // skips cache lookup at step 2 when options.regenerate=true). Server-side
+  // throttle is the load-bearing invariant per SUM-04; client-side debounce
+  // (Plan 06 RegenerateButton) is the second line of defence.
+  //
+  // Throttle violation throws TypedError('SUMMARY_THROTTLED', ...) which the
+  // existing error-middleware translates to a 429 (Plan 19-05 Task 1 added
+  // the 429 mapping per Phase 18 INVALID_INPUT precedent + standard HTTP
+  // rate-limit semantics).
+  app.post('/api/versions/:id/summary/regenerate', async (c) => {
+    const versionId = c.req.param('id');
+    const lastReq = summaryThrottle.get(versionId) ?? 0;
+    const now = Date.now();
+    if (now - lastReq < SUMMARY_THROTTLE_MS) {
+      const retryAfterSec = Math.ceil((SUMMARY_THROTTLE_MS - (now - lastReq)) / 1000);
+      throw new TypedError(
+        'SUMMARY_THROTTLED',
+        `Regenerate throttled — try again in ${retryAfterSec}s`,
+        `One regenerate per version per 60 seconds. Available in ${retryAfterSec}s.`,
+      );
+    }
+    summaryThrottle.set(versionId, now);
+    const outcome = await engine.summarizeVersion(versionId, { regenerate: true });
+    return c.json({
+      ...outcome,
+      regenerate_available_at_ms: now + SUMMARY_THROTTLE_MS,
+    });
   });
 
   // --- Output streaming ---

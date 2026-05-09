@@ -378,6 +378,154 @@ export function reproduceVersion(id: string): Promise<ReproduceVersionResponse> 
 }
 
 // ================================================================
+// Phase 19 Plan 19-05 Task 2 — AI conversational summary helpers
+// ================================================================
+
+/**
+ * Discriminated response shape returned by getSummary + regenerateSummary.
+ * Mirrors the Plan 19-05 SummaryState contract exposed through state/summaries.ts
+ * (UI-SPEC SummarySection contract).
+ *
+ * NOTE: 'success' merges 'live' + 'cache_hit' SummaryOutcome variants — the
+ * dashboard UI does NOT distinguish them visually (per UI-SPEC "discriminated
+ * state union" decision). The server-side telemetry/log layer keeps the
+ * distinction; the dashboard treats both as "ready to render prose".
+ *
+ * Defence in depth (Phase 14 getC2paStatus precedent at lines 332-354): any
+ * network error / parse failure / unexpected envelope shape collapses to
+ * { state: 'error' } so the caller never has to handle thrown exceptions.
+ */
+export type SummaryFetchResponse =
+  | {
+      state: 'success';
+      text: string;
+      source: 'live' | 'cache_hit';
+      generated_at: string;
+      template_version: string;
+      model_id: string;
+      regenerateAvailableAtMs: number | null;
+    }
+  | {
+      state: 'fallback';
+      text: string;
+      source: 'fallback';
+      reason?: string;
+      regenerateAvailableAtMs: number | null;
+    }
+  | { state: 'error'; message?: string };
+
+/**
+ * GET /api/versions/:id/summary.
+ *
+ * Maps the server's SummaryOutcome envelope (cache_hit | live | fallback)
+ * augmented with regenerate_available_at_ms into the dashboard's
+ * SummaryFetchResponse. Defensive — collapses network errors / parse errors
+ * / unexpected source values to { state: 'error' } per Phase 14 getC2paStatus
+ * precedent.
+ *
+ * NEVER throws to the caller — the dashboard signal layer relies on this
+ * contract to keep the discriminated state union total.
+ */
+export async function getSummary(versionId: string): Promise<SummaryFetchResponse> {
+  try {
+    const res = await fetch(
+      `${BASE}/api/versions/${encodeURIComponent(versionId)}/summary`,
+    );
+    if (!res.ok) {
+      return { state: 'error', message: `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return mapSummaryEnvelope(data);
+  } catch (err) {
+    return {
+      state: 'error',
+      message: err instanceof Error ? err.message : 'unknown',
+    };
+  }
+}
+
+/**
+ * POST /api/versions/:id/summary/regenerate.
+ *
+ * Forces a fresh LLM call (server bypasses cache lookup at engine step 2 when
+ * options.regenerate=true). Returns the same SummaryFetchResponse shape.
+ *
+ * Defensive: a 429 throttle response collapses to { state: 'error' } and the
+ * caller's previously-rendered summary stays visible (the 60s cooldown
+ * countdown handles the visual feedback). NEVER throws.
+ */
+export async function regenerateSummary(
+  versionId: string,
+): Promise<SummaryFetchResponse> {
+  try {
+    const res = await fetch(
+      `${BASE}/api/versions/${encodeURIComponent(versionId)}/summary/regenerate`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      // 429 throttle, 5xx server error, etc. — surface as error envelope.
+      // The dashboard countdown timer continues to use the
+      // regenerate_available_at_ms from the previous successful fetch.
+      return { state: 'error', message: `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return mapSummaryEnvelope(data);
+  } catch (err) {
+    return {
+      state: 'error',
+      message: err instanceof Error ? err.message : 'unknown',
+    };
+  }
+}
+
+/**
+ * Map the server's SummaryOutcome envelope shape (with regenerate_available_at_ms
+ * augmentation from Plan 19-05 routes) into the dashboard's
+ * SummaryFetchResponse shape. Tolerates malformed responses by collapsing to
+ * { state: 'error', message: ... } — defensive parsing per the Phase 14
+ * getC2paStatus precedent.
+ */
+function mapSummaryEnvelope(data: unknown): SummaryFetchResponse {
+  if (typeof data !== 'object' || data === null) {
+    return { state: 'error', message: 'malformed response' };
+  }
+  const envelope = data as Record<string, unknown>;
+  const source = envelope.source;
+  const text = typeof envelope.text === 'string' ? envelope.text : '';
+  const regenerateAvailableAtMs =
+    typeof envelope.regenerate_available_at_ms === 'number'
+      ? envelope.regenerate_available_at_ms
+      : null;
+
+  if (source === 'cache_hit' || source === 'live') {
+    return {
+      state: 'success',
+      text,
+      source,
+      generated_at:
+        typeof envelope.generated_at === 'string' ? envelope.generated_at : '',
+      template_version:
+        typeof envelope.template_version === 'string'
+          ? envelope.template_version
+          : '',
+      model_id:
+        typeof envelope.model_id === 'string' ? envelope.model_id : '',
+      regenerateAvailableAtMs,
+    };
+  }
+  if (source === 'fallback') {
+    return {
+      state: 'fallback',
+      text,
+      source: 'fallback',
+      reason: typeof envelope.reason === 'string' ? envelope.reason : undefined,
+      regenerateAvailableAtMs,
+    };
+  }
+  return { state: 'error', message: 'unexpected source' };
+}
+
+// ================================================================
 // Asset queries (15-17)
 // ================================================================
 
