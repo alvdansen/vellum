@@ -200,3 +200,39 @@ export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
     }
   }
 }
+
+/**
+ * Phase 19 D-PRIV-3 — post-LLM defence-in-depth.
+ *
+ * The pre-call sanitizer above scans inputs (sanitized provenance) before the
+ * SDK call. This helper scans a single string (typically `llmResult.text`)
+ * AFTER the SDK call and BEFORE cache persistence. Closes the smuggle path
+ * where the LLM response itself contains an API key (rare model misbehavior,
+ * adversarial prompt-injection that exfiltrates env state, or upstream
+ * provider regressions).
+ *
+ * Encodings mirrored from assertNoApiKeyInPayload: UTF-8 / UTF-16LE / UTF-16BE
+ * / base64. ANTHROPIC_API_KEY absent → no-op (open-source contributors run
+ * without a key; the test layer injects synthetic keys to exercise this guard).
+ */
+export function assertNoApiKeyInString(text: string): void {
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
+  if (apiKey.length === 0) return;
+
+  const fragments = [
+    apiKey,                                                       // UTF-8 / ASCII
+    Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
+    Buffer.from(apiKey, 'utf16le').reverse().toString('binary'),  // UTF-16BE
+    Buffer.from(apiKey).toString('base64'),                       // base64
+  ];
+
+  for (const frag of fragments) {
+    if (frag.length === 0) continue;
+    if (text.includes(frag)) {
+      throw new Error(
+        `assertNoApiKeyInString: API key fragment leaked in LLM response (encoding match found). ` +
+        `This is a critical adversarial-review surface failure.`,
+      );
+    }
+  }
+}

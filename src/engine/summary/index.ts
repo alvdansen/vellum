@@ -30,6 +30,7 @@ import { TypedError } from '../errors.js';
 import {
   sanitizeProvenance,
   assertNoApiKeyInPayload,
+  assertNoApiKeyInString,
 } from './sanitizer.js';
 import { validateSummary } from './validation.js';
 import { buildDeterministicSummary } from './deterministic-template.js';
@@ -377,6 +378,18 @@ export async function summarizeVersion(
   // Step 6: Validate output (D-VAL-2 — gates the cache write).
   const validation = validateSummary(llmResult.text, models ?? [], isRedacted);
   if (!validation.ok) {
+    return buildFallbackOutcome('validation_failed');
+  }
+
+  // Step 6.5: Post-LLM API key leak scan (D-PRIV-3 defence-in-depth). Closes
+  // the smuggle path where the LLM response itself contains an API key
+  // fragment (rare model misbehavior, adversarial prompt-injection, or
+  // upstream provider regressions). Routes to validation_failed fallback so
+  // the cache row is never written with leaked content.
+  try {
+    assertNoApiKeyInString(llmResult.text);
+  } catch (err) {
+    console.error('vfx-familiar: post-LLM leak-scan FAILED:', flattenAnthropicError(err));
     return buildFallbackOutcome('validation_failed');
   }
 
