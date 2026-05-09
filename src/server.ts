@@ -65,6 +65,7 @@ import { ProvenanceRepo } from './store/provenance-repo.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
 import { validateBaseUrlFromEnv } from './utils/validate-base-url.js';
 import { loadC2paConfigFromEnv } from './utils/c2pa-config.js';
+import { loadAnthropicConfigFromEnv } from './utils/anthropic-config.js';
 import { basename } from 'node:path';
 import { Engine } from './engine/pipeline.js';
 import {
@@ -223,6 +224,27 @@ async function main(): Promise<void> {
     );
   }
 
+  // Phase 19 — SUM-01..06. Anthropic API key loading + boot validation.
+  // Throws TypedError('ANTHROPIC_CONFIG_INVALID', ...) BEFORE any Engine
+  // construction or tool registration when env var is set but malformed.
+  // Returns null when ANTHROPIC_API_KEY is unset → summary feature disabled
+  // silently (D-FB-2 graceful degradation; engine returns SummaryOutcome=
+  // fallback reason='api_key_missing' on every call).
+  //
+  // Boot does NOT eagerly load @anthropic-ai/sdk — the SDK module load is
+  // deferred to Plan 19-04's anthropic-client.ts on first user-facing call.
+  // This is the boot-resilience invariant verified by the architecture-purity
+  // grep guard `src/server.ts has zero static imports from @anthropic-ai/sdk`.
+  const anthropicConfig = loadAnthropicConfigFromEnv();
+  if (anthropicConfig) {
+    // Last-4 only in success log — same hygiene as the TypedError messages
+    // (D-PRIV-4 mirrors c2pa-config basename-only path discipline).
+    const last4 = anthropicConfig.apiKey.slice(-4);
+    console.error(
+      `vfx-familiar: AI summary enabled (Anthropic ****${last4}, model claude-haiku-4-5-20251001)`,
+    );
+  }
+
   // Phase 14 Plan 14-05 — outputs root is configurable via
   // VFX_FAMILIAR_OUTPUTS_DIR for ops + multi-tenant deployments. Default
   // 'outputs' relative to cwd (D-WEBUI-26 stable download root pattern).
@@ -240,6 +262,11 @@ async function main(): Promise<void> {
     // (graceful degradation). Plan 14-02's signer wrapper is the SOLE
     // consumer of the cert/key bytes — read lazily on first sign attempt.
     c2paConfig,
+    // Phase 19 — SUM-01..06. NULL means summarization is disabled
+    // (graceful degradation; D-FB-2). The summary/anthropic-client.ts
+    // wrapper is the SOLE consumer of the API key — loaded lazily on
+    // first Engine.summarizeVersion call.
+    anthropicConfig,
   });
   const version = await readVersion();
 
