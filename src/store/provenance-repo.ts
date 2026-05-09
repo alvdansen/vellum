@@ -6,6 +6,7 @@ import type {
   ManifestSignedPayloadFields,
   ModelRef,
   ProvenanceEvent,
+  SummaryGeneratedPayloadFields,
 } from '../types/provenance.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
@@ -21,6 +22,15 @@ type Db = BetterSQLite3Database<typeof schema>;
  * the LIMIT shows up immediately.
  */
 export const MANIFEST_SIGNED_LOOKUP_LIMIT = 50;
+
+/**
+ * Phase 19 (SUM-05) — bound the summary_generated event scan analogously
+ * to MANIFEST_SIGNED_LOOKUP_LIMIT. The newest-first ORDER BY timestamp DESC
+ * means the latest matching cache-key tuple lives near the head; 50 is
+ * the pathological-budget ceiling. Exported for tests so a regression that
+ * drops the LIMIT shows up immediately.
+ */
+export const SUMMARY_GENERATED_LOOKUP_LIMIT = 50;
 
 /**
  * Detect SQLite unique-constraint violations. Duplicated verbatim from
@@ -71,12 +81,22 @@ export type ProvenanceManifestSignedRowPayload = {
   manifest_signed_json: string;
 };
 
+/** Phase 19 — SUM-05. Sibling event written by Engine.summarizeVersion AFTER
+ *  a successful LIVE Anthropic call + validation pass. Carries the
+ *  JSON-encoded SummaryGeneratedPayloadFields in a nullable
+ *  summary_generated_json column (migration 0007). Append-only — fallback
+ *  paths NEVER write a row (D-VAL-2). */
+export type ProvenanceSummaryGeneratedRowPayload = {
+  summary_generated_json: string;
+};
+
 export type ProvenanceEventPayload =
   | ({ event_type: 'submitted' } & ProvenanceSubmittedPayload)
   | ({ event_type: 'completed' } & ProvenanceCompletedPayload)
   | ({ event_type: 'failed' } & ProvenanceFailedPayload)
   | ({ event_type: 'models_fingerprinted' } & ProvenanceModelsFingerprintedPayload)
-  | ({ event_type: 'manifest_signed' } & ProvenanceManifestSignedRowPayload);
+  | ({ event_type: 'manifest_signed' } & ProvenanceManifestSignedRowPayload)
+  | ({ event_type: 'summary_generated' } & ProvenanceSummaryGeneratedRowPayload);
 
 export class ProvenanceRepo {
   constructor(private db: Db) {}
@@ -104,6 +124,10 @@ export class ProvenanceRepo {
       // payload in the new manifest_signed_json column (migration 0006).
       manifest_signed_json:
         payload.event_type === 'manifest_signed' ? payload.manifest_signed_json : null,
+      // Phase 19 — SUM-05. The 'summary_generated' event_type carries its
+      // payload in the new summary_generated_json column (migration 0007).
+      summary_generated_json:
+        payload.event_type === 'summary_generated' ? payload.summary_generated_json : null,
       timestamp: Date.now(),
     };
     try {
@@ -284,6 +308,76 @@ export class ProvenanceRepo {
         // Malformed payload — skip and keep walking newer-to-older. T-13-12
         // mitigation parity: callers see a clean null signal rather than a
         // partially-parsed object.
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Phase 19 — SUM-05. appendSummaryGeneratedEvent writes an
+   * append-only sibling event carrying the verified-good Anthropic LLM
+   * output. Mirrors Phase 14's appendManifestSignedEvent shape exactly.
+   *
+   * Cache-key composite (manifest_sha256, template_version, model_id) lives
+   * INSIDE the JSON payload — readers compose the lookup at the engine layer.
+   *
+   * NEVER carries raw API key material — the engine's flattenAnthropicError
+   * (Plan 19-04) + sanitizer multi-encoding leak scan (Plan 19-02) run BEFORE
+   * this writer.
+   */
+  appendSummaryGeneratedEvent(
+    versionId: string,
+    payload: SummaryGeneratedPayloadFields,
+  ): ProvenanceEvent {
+    return this.insertEvent(versionId, {
+      event_type: 'summary_generated',
+      summary_generated_json: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * Phase 19 — SUM-05. Bounded-scan composite-key lookup.
+   * LIMIT-50 + in-memory JSON filter mirrors getLatestManifestSignedEvent at
+   * lines 265-291 above. Returns the latest 'summary_generated' row for
+   * (versionId, manifestSha256, templateVersion, modelId) — null when no
+   * matching row exists within the bounded scan.
+   *
+   * Cache-key invariant: Phase 16 redact mutates manifest_sha256, so a
+   * post-redact lookup misses the pre-redact cache row "for free" without
+   * explicit invalidation logic. Plan 19-04 composes the lookup tuple at the
+   * engine boundary (manifest_sha256 from getLatestManifestSignedEvent;
+   * template_version from src/engine/summary/template.ts; model_id from
+   * SUMMARY_MODEL_ID).
+   */
+  getLatestSummaryGeneratedEvent(
+    versionId: string,
+    manifestSha256: string,
+    templateVersion: string,
+    modelId: string,
+  ): SummaryGeneratedPayloadFields | null {
+    const rows = this.db
+      .select()
+      .from(provenance)
+      .where(
+        and(eq(provenance.version_id, versionId), eq(provenance.event_type, 'summary_generated')),
+      )
+      .orderBy(desc(provenance.timestamp))
+      .limit(SUMMARY_GENERATED_LOOKUP_LIMIT)
+      .all() as ProvenanceEvent[];
+    for (const row of rows) {
+      if (!row.summary_generated_json) continue;
+      try {
+        const parsed = JSON.parse(row.summary_generated_json) as SummaryGeneratedPayloadFields;
+        if (
+          parsed.manifest_sha256 === manifestSha256 &&
+          parsed.template_version === templateVersion &&
+          parsed.model_id === modelId
+        ) {
+          return parsed;
+        }
+      } catch {
+        // Malformed payload — skip and keep walking newer-to-older.
         continue;
       }
     }

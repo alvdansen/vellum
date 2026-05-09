@@ -7,7 +7,8 @@ export type ProvenanceEventType =
   | 'completed'
   | 'failed'
   | 'models_fingerprinted'
-  | 'manifest_signed';
+  | 'manifest_signed'
+  | 'summary_generated';   // Phase 19 — SUM-05
 export type LineageType = 'reproduce' | 'iterate';
 
 /**
@@ -99,6 +100,45 @@ export type ProvenanceManifestSignedPayload = {
   event_type: 'manifest_signed';
 } & ManifestSignedPayloadFields;
 
+/**
+ * Phase 19 — SUM-05. Sibling event written by Engine.summarizeVersion AFTER
+ * a successful LIVE call (cache miss + Anthropic success + validation pass).
+ *
+ * Cache key: (manifest_sha256, template_version, model_id). Phase 16 redact
+ * mutates manifest_sha256 — free invalidation without explicit logic.
+ *
+ * NEVER carries the prompt text or the response text inside log emissions.
+ * The summary_text field stays inside the JSON cell only; the multi-encoding
+ * leak scan applies BEFORE INSERT to assert no API key fragments leaked.
+ *
+ * Append-only: ProvenanceRepo.appendSummaryGeneratedEvent INSERTs a new row;
+ * fallback paths NEVER write a row (D-VAL-2). Regenerate paths bypass the
+ * cache lookup but still INSERT a new sibling row on success —
+ * getLatestSummaryGeneratedEvent returns the newer row.
+ */
+export type SummaryGeneratedPayloadFields = {
+  /** Composite cache-key part 1. From the latest manifest_signed event. */
+  manifest_sha256: string;
+  /** Composite cache-key part 2. SUMMARY_TEMPLATE_VERSION constant from template.ts. */
+  template_version: string;
+  /** Composite cache-key part 3. 'claude-haiku-4-5-20251001'. */
+  model_id: string;
+  /** The validated LLM output (length-capped to ~180-token output budget). */
+  summary_text: string;
+  /** ISO-8601 timestamp from clock at write time. */
+  generated_at: string;
+  /** Anthropic response.usage.input_tokens — observability only, never logged with text. */
+  prompt_tokens: number;
+  /** Anthropic response.usage.output_tokens — observability only. */
+  completion_tokens: number;
+  /** ALWAYS 'live' — fallback paths do NOT write rows (D-VAL-2). */
+  outcome: 'live';
+};
+
+export type ProvenanceSummaryGeneratedPayload = {
+  event_type: 'summary_generated';
+} & SummaryGeneratedPayloadFields;
+
 /** D-PROV-02 + Phase 13: one row per (version, event). Append-only — repo
  *  has no UPDATE/DELETE. Phase 13 adds the 'models_fingerprinted' event
  *  carrying populated SHA-256 fingerprints in models_json (sibling row to
@@ -118,6 +158,10 @@ export interface ProvenanceEvent {
    *  the JSON-encoded ManifestSignedPayloadFields. Pre-Phase-14 rows always
    *  read NULL here (migration 0006 added the column as nullable). */
   manifest_signed_json: string | null;
+  /** Phase 19 — SUM-05. Populated on 'summary_generated' rows ONLY; carries
+   *  the JSON-encoded SummaryGeneratedPayloadFields. Pre-Phase-19 rows always
+   *  read NULL here (migration 0007 added the column as nullable). */
+  summary_generated_json: string | null;
   timestamp: number;              // epoch ms
 }
 

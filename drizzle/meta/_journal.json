@@ -43,6 +43,13 @@
       "when": 1777552207000,
       "tag": "0006_phase14_manifest_signed_event",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1778000000000,
+      "tag": "0007_phase19_summary_generated_event",
+      "breakpoints": true
     }
   ]
 }

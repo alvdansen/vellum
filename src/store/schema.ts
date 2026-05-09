@@ -128,6 +128,12 @@ export const provenance = sqliteTable('provenance', {
   // 0006_phase14_manifest_signed_event.sql; SCHEMA_DDL above intentionally
   // does NOT declare this column — matches the Phase 2/3/12 additive split.
   manifest_signed_json: text('manifest_signed_json'),
+  // Phase 19 addition — SUM-05. Nullable JSON-encoded payload of the
+  // 'summary_generated' event_type added by Plan 19-01. Pre-Phase-19 rows
+  // read NULL here. Added by drizzle migrator via
+  // 0007_phase19_summary_generated_event.sql; SCHEMA_DDL above intentionally
+  // does NOT declare this column — matches the Phase 2/3/12/14 additive split.
+  summary_generated_json: text('summary_generated_json'),
   timestamp: integer('timestamp').notNull(),
 }, (t) => ({
   // D-PROV-35: two-column index supports both "all events for version in order"
