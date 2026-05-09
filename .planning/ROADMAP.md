@@ -124,7 +124,7 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 19-01-PLAN.md — Foundation: Anthropic config + boot validation + arch-purity allowed-set + Migration 0007 + ProvenanceRepo accessors + SDK pin
+- [x] 19-01-PLAN.md — Foundation: Anthropic config + boot validation + arch-purity allowed-set + Migration 0007 + ProvenanceRepo accessors + SDK pin
 
 **Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
 - [ ] 19-02-PLAN.md — Pure helpers: sanitizer + validation + deterministic-template
@@ -162,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 0/8   | Planned     | -          |
+| 19    | v1.2      | 1/8 | In Progress|  |
