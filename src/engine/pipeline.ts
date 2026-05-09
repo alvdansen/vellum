@@ -258,6 +258,15 @@ export class Engine {
    *  validated at boot by src/utils/c2pa-config.ts. NEVER read here — the
    *  signer wrapper (Plan 14-02) is the SOLE consumer of the file bytes. */
   private readonly c2paConfig: C2paConfig | null;
+  /** Phase 19 — SUM-01..06. Optional Anthropic config for the AI conversational
+   *  summary feature. NULL means summarization is disabled — graceful degradation
+   *  per D-FB-2: Engine.summarizeVersion returns SummaryOutcome=fallback
+   *  reason='api_key_missing' on every call, dashboards see deterministic-template
+   *  content. Never read here — the engine/summary/anthropic-client.ts wrapper
+   *  is the SOLE consumer of the API key. Boot validation in
+   *  src/utils/anthropic-config.ts throws TypedError('ANTHROPIC_CONFIG_INVALID')
+   *  BEFORE Engine construction on malformed env-var input. */
+  private readonly anthropicConfig: { apiKey: string } | null;
   /** Phase 14 — Plan 14-03 lazy-load cache. The c2pa-node native binding +
    *  cert/key are loaded ONCE per process on the first signOutput call. The
    *  cache holds either the loaded signer OR a typed errorCode (cert_load_failed
@@ -417,6 +426,7 @@ export class Engine {
       maxConcurrentPollers?: number;
       modelsDir?: string | null;
       c2paConfig?: C2paConfig | null;
+      anthropicConfig?: { apiKey: string } | null;
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
@@ -425,6 +435,7 @@ export class Engine {
     this.outputRoot = outputRoot;
     this.modelsDir = options.modelsDir ?? null;
     this.c2paConfig = options.c2paConfig ?? null;
+    this.anthropicConfig = options.anthropicConfig ?? null;
     this.events = createEngineEmitter();
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
@@ -1378,6 +1389,43 @@ export class Engine {
     filename: string,
   ): ManifestSignedPayloadFields | null {
     return this.provenanceRepo.getLatestManifestSignedEvent(versionId, filename);
+  }
+
+  // ================================================================
+  // Phase 19 — SUM-01..06. AI Conversational Summary engine facade.
+  // Delegates to the pure orchestration in src/engine/summary/index.ts.
+  // ================================================================
+
+  /**
+   * Phase 19 — SUM-01..06. Engine facade for the AI conversational summary feature.
+   * Delegates to the pure orchestration in src/engine/summary/index.ts. Returns
+   * a discriminated SummaryOutcome union — never throws to the HTTP layer for
+   * fallback paths (mirrors Engine.signOutput shape).
+   *
+   * options.regenerate=true skips the cache lookup (forces fresh LLM call) but
+   * still respects circuit breaker + sanitization + validation. On success,
+   * INSERTs a NEW summary_generated event row; the OLD row is untouched per
+   * append-only invariant.
+   *
+   * Lazy `await import` — defers loading the summary module (and transitively
+   * the Anthropic SDK) until first call, preserving boot-resilience. Mirrors
+   * the Phase 14 c2pa-node lazy-import discipline.
+   */
+  async summarizeVersion(
+    versionId: string,
+    options?: { regenerate?: boolean; signal?: AbortSignal },
+  ): Promise<import('./summary/index.js').SummaryOutcome> {
+    const { summarizeVersion } = await import('./summary/index.js');
+    return summarizeVersion(
+      versionId,
+      {
+        versionRepo: this.versionRepo,
+        provenanceRepo: this.provenanceRepo,
+        anthropicConfig: this.anthropicConfig,
+        clock: () => Date.now(),
+      },
+      options,
+    );
   }
 
   // ================================================================

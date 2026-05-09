@@ -597,14 +597,13 @@ describe('architecture purity', () => {
     }
   });
 
-  it.skip('@anthropic-ai/sdk imports are centralized in src/engine/summary/anthropic-client.ts (Phase 19)', () => {
-    // SKIP marker removed by Plan 19-04 once anthropic-client.ts lands.
+  it('@anthropic-ai/sdk imports are centralized in src/engine/summary/anthropic-client.ts (Phase 19)', () => {
+    // Activated by Plan 19-04 Task 3. anthropic-client.ts lands the SOLE
+    // SDK import; this assertion locks the invariant going forward.
     //
     // Mirror Phase 14 c2pa-node allowed-set assertion at lines 166-231:
     // two-layer (subset check + sorted-array deepEqual) on actual
-    // importers. Pre-Plan-19-04 the file does not exist; the empty
-    // importer set fails the SET-equality check, which is intended
-    // RED→GREEN visibility per CONTEXT.md.
+    // importers.
     const allowedAnthropicImporters = new Set<string>([
       'src/engine/summary/anthropic-client.ts',
     ]);

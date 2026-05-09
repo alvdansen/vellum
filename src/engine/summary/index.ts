@@ -123,7 +123,7 @@ export interface SummarizeVersionDeps {
     getLatestManifestSignedEvent: (
       id: string,
       filename: string,
-    ) => { manifest_sha256?: string; redacted?: boolean } | null;
+    ) => { manifest_sha256?: string | null; redacted?: boolean | null } | null;
     getLatestSummaryGeneratedEvent: (
       id: string,
       manifestSha256: string,
