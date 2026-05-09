@@ -127,8 +127,8 @@ Plans:
 - [x] 19-01-PLAN.md — Foundation: Anthropic config + boot validation + arch-purity allowed-set + Migration 0007 + ProvenanceRepo accessors + SDK pin
 
 **Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
-- [ ] 19-02-PLAN.md — Pure helpers: sanitizer + validation + deterministic-template
-- [ ] 19-03-PLAN.md — Pure helpers: template + few-shot examples + circuit-breaker
+- [x] 19-02-PLAN.md — Pure helpers: sanitizer + validation + deterministic-template
+- [x] 19-03-PLAN.md — Pure helpers: template + few-shot examples + circuit-breaker
 
 **Wave 3** *(blocked on Waves 1+2+3)*
 - [ ] 19-04-PLAN.md — Anthropic client (sole-importer + lazy-import + retry policy + flattenAnthropicError) + Engine.summarizeVersion 8-outcome facade
@@ -162,4 +162,4 @@ Plans:
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
 | 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 1/8 | In Progress|  |
+| 19    | v1.2      | 3/8 | In Progress|  |
