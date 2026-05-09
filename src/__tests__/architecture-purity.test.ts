@@ -649,42 +649,42 @@ describe('architecture purity', () => {
   //   templates/few-shot-examples.ts → Plan 19-03
   //   circuit-breaker.ts → Plan 19-03
 
-  it.skip('src/engine/summary/sanitizer.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/sanitizer.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/sanitizer.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/sanitizer.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/sanitizer.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/summary/sanitizer.ts')).toBe(0);
   });
 
-  it.skip('src/engine/summary/validation.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/validation.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/validation.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/validation.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/validation.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/summary/validation.ts')).toBe(0);
   });
 
-  it.skip('src/engine/summary/deterministic-template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/deterministic-template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/deterministic-template.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/deterministic-template.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/deterministic-template.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/summary/deterministic-template.ts')).toBe(0);
   });
 
-  it.skip('src/engine/summary/template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/template.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/template.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/template.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/template.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/summary/template.ts')).toBe(0);
   });
 
-  it.skip('src/engine/summary/templates/few-shot-examples.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/templates/few-shot-examples.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
     expect(grepCount('drizzle-orm', 'src/engine/summary/templates/few-shot-examples.ts')).toBe(0);
   });
 
-  it.skip('src/engine/summary/circuit-breaker.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
+  it('src/engine/summary/circuit-breaker.ts is pure (zero anthropic/MCP/SQLite/ORM imports)', () => {
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
     expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
     expect(grepCount('better-sqlite3', 'src/engine/summary/circuit-breaker.ts')).toBe(0);
