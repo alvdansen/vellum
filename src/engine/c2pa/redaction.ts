@@ -413,6 +413,7 @@ function redactValue(v: unknown): unknown {
 // signEmbedFileWithIngredients to re-sign with the same cert.
 
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type { ProvenanceRepo } from '../../store/provenance-repo.js';
 import type { VersionRepo } from '../../store/version-repo.js';
@@ -804,6 +805,13 @@ export async function redactManifestForVersionImpl(
       ...applied.redactedFields,
       ...applied.notFound.map((p) => `not_found:${p}`),
     ];
+    // Phase 19 D-PRIV-3 follow-up: compute the new manifest_sha256 from the
+    // re-signed redacted bytes so the cache-key invariant is fully observable.
+    // Pre-Phase-19, the redacted payload omitted manifest_sha256 — the cache
+    // miss still occurred (null !== original SHA), but downstream consumers
+    // could not read the new SHA from the audit row directly. Mirrors the
+    // original-sign computation at pipeline.ts:1317 / :1348-1351.
+    const redactedManifestSha256 = createHash('sha256').update(redactedBytes).digest('hex');
     const newPayload: ManifestSignedPayloadFields = {
       filename,
       format: route.mimeType,
@@ -812,6 +820,7 @@ export async function redactManifestForVersionImpl(
       signed_at: signedAt,
       status_reason: '',
       algorithm: String(signer.algorithm),
+      manifest_sha256: redactedManifestSha256,
       redacted: true,
       redacted_fields: auditRedactedFields,
     };
