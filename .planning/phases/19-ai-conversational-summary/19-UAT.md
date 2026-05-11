@@ -1,14 +1,14 @@
 ---
-status: partial
+status: complete
 phase: 19-ai-conversational-summary
 source: 19-HUMAN-UAT.md, 19-VERIFICATION.md, 19-01-SUMMARY.md..19-08-SUMMARY.md
 started: 2026-05-09T21:05:13Z
-updated: 2026-05-11T00:00:00Z
+updated: 2026-05-11T00:15:00Z
 ---
 
 ## Current Test
 
-[testing paused — 1 item outstanding: UAT-1 blocked on ANTHROPIC_API_KEY]
+[testing complete]
 
 ## Tests
 
@@ -83,22 +83,30 @@ notes: |
 
 ### 5. UAT-1: Voice Quality Across 12 Fixture Versions
 expected: Open VersionDrawer for each of the 12 fixtures in `src/__tests__/fixtures/summary-eval/`. Each summary reads as Supervisor/Lead voice — declarative present tense, 25-45 words, model name verbatim (case-sensitive `models_json[].name`), parent named on iterate-lineage, every applied LoRA named, exact integer seed reported, no AI-slop tells (stunning/vibrant/captivating/delve), no image-content claims. Compare against ROADMAP voice fingerprint.
-result: blocked
-blocked_by: third-party
+result: skipped
 reason: |
-  ANTHROPIC_API_KEY not set in the current process env (server boot log
-  emitted no "AI summary enabled" line; live curl to /api/versions/:id/summary
-  returned source=fallback reason=api_key_missing). Defer the 12-fixture
-  voice-quality walk-through until the key is exported and the server is
-  rebooted. Structural voice surfaces (sentence count, verbatim model name,
-  banned-lexicon absence, parent reference on iterate-lineage, every-LoRA-
-  named, exact-integer-seed) are already automated by Plan 19-07's
-  9-dimension eval suite (npm run test:eval) — what remains is the human
-  read for register/tone, per PROJECT.md / REQUIREMENTS.md user quote
-  (Timothy Paul Bielec, 2026-04-30).
-  To unblock: `export ANTHROPIC_API_KEY="sk-ant-..."` (or add to .env),
-  rerun `npx tsx src/server.ts --http`, open http://127.0.0.1:3000 in a
-  browser, walk the 12 fixtures, rerun `/gsd-verify-work 19` to resume.
+  N/A by design — this deployment uses Claude Max plan subscription, not the
+  Anthropic API. There is no ANTHROPIC_API_KEY and there won't be one.
+  loadAnthropicConfigFromEnv permanently returns null in this environment;
+  every summary call returns source=fallback reason=api_key_missing with the
+  deterministic-template text (D-FB-2 graceful degradation). The live LLM
+  voice surface this test checks is dead code for this user.
+
+  Coverage that remains exercised:
+    - Plan 19-07 eval suite's 5 code-based dimensions (sentence count,
+      verbatim model name, banned-lexicon, redaction marker, no-redacted-
+      prompt-leak, api-key-leak-scan, anti-feature-regression) run via
+      `npm run test:eval` against the deterministic-template golden path.
+    - Plan 19-07's LLM-judge dimensions (lineage_relationship, voice_register)
+      skip cleanly without a key — designed for open-source consumers who
+      configure their own.
+    - Deterministic-template output IS the production summary text in this
+      deployment, and its shape is locked by 12 validation tests + the
+      validator round-trip Test 6.
+
+  For open-source consumers who DO configure ANTHROPIC_API_KEY, the
+  12-fixture voice walk-through described in HUMAN-UAT.md remains the
+  canonical UAT.
 
 ## Summary
 
@@ -106,8 +114,8 @@ total: 5
 passed: 4
 issues: 0
 pending: 0
-skipped: 0
-blocked: 1
+skipped: 1
+blocked: 0
 
 ## Gaps
 
