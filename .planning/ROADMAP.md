@@ -8,7 +8,8 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 
 - ✅ **v1.0 MVP** — Phases 1-9 (shipped 2026-04-28). Full archive: `milestones/v1.0-ROADMAP.md`, `milestones/v1.0-REQUIREMENTS.md`, `milestones/v1.0-MILESTONE-AUDIT.md`.
 - ✅ **v1.1 Provenance Verification (C2PA)** — Phases 10-16 (shipped 2026-04-30). 7 phases, 24 plans, 10 requirements (7 PROV-V + 3 DEMO). Full archive: `milestones/v1.1-ROADMAP.md`, `milestones/v1.1-REQUIREMENTS.md`, `milestones/v1.1-MILESTONE-AUDIT.md`.
-- 🚧 **v1.2 Visual & Conversational Dashboard** — Phases 17-19 (started 2026-04-30). 3 phases, 18 requirements (6 VIS + 5 SORT + 7 SUM). In planning.
+- ✅ **v1.2 Visual & Conversational Dashboard** — Phases 17-19 (shipped 2026-05-09). 3 phases, 18 requirements (6 VIS + 5 SORT + 7 SUM). Full archive: see Phase 17-19 details below.
+- 🚧 **v1.3 Production Shot Grid** — Phases 20-24 (started 2026-05-11). 5 phases, 22 requirements (5 STAT + 5 GRID + 5 REV + 3 OVR + 4 POL). In planning.
 
 ## Phases
 
@@ -46,7 +47,7 @@ VFX Familiar delivers an MCP server that brings production VFX pipeline structur
 
 </details>
 
-### v1.2 Visual & Conversational Dashboard (Phases 17-19) — IN PROGRESS
+### v1.2 Visual & Conversational Dashboard (Phases 17-19) — SHIPPED 2026-05-09
 
 **3 phases, 18 requirements (6 VIS + 5 SORT + 7 SUM). Strict sequential ordering 17 → 18 → 19 (low-risk visual wins first; LLM dependency last to derisk).**
 
@@ -144,10 +145,83 @@ Plans:
 - [x] 19-08-PLAN.md — E2E adversarial tests (redact-cache-invariant + leak-scan + prompt-injection) + telemetry per AI-SPEC §7 + HUMAN-UAT.md + ADVERSARIAL-REVIEW.md
 **UI hint**: yes
 
+### v1.3 Production Shot Grid (Phases 20-24) — IN PLANNING
+
+**5 phases, 22 requirements (5 STAT + 5 GRID + 5 REV + 3 OVR + 4 POL). Strict ordering 20 → 21 → 22 → 23 → 24. Phase 24 is highest-risk and requires adversarial review checklist before execute.**
+
+- [ ] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. (Not started)
+- [ ] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20)
+- [ ] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20)
+- [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
+- [ ] **Phase 24: UX Polish Bundle** — Sprite sheet lazy generation + CSS scrub in `ShotGridCard`, hover-to-zoom for image stills, SSE token streaming for AI Regenerate path (`void + .catch()` universally applied, AbortController wired), per-shot sort persistence, cross-version comparison summary in A/B panel. **Adversarial review required at plan stage.** (Not started — requires Phase 20; sequential after 23 to avoid file conflicts)
+
+## Phase Details (v1.3)
+
+### Phase 20: Shot Status Engine
+**Goal**: Backend foundation for production status tracking — the mutable `shots.status` column, the append-only `shot_status_events` audit table, transactional write discipline, MCP tool arms, and SSE push. All subsequent v1.3 phases depend on this.
+**Depends on**: Nothing in v1.3 (pure backend, builds on Phase 19 foundation)
+**Requirements**: STAT-01, STAT-02, STAT-03, STAT-04, STAT-05
+**Success Criteria** (what must be TRUE):
+  1. Migration 0008 runs cleanly on a fresh DB and on a DB with existing shots — existing shots receive `status = 'wip'` default; `shot_status_events` is empty for all pre-migration shots.
+  2. `shot.set_status` tool arm writes UPDATE + INSERT in a single transaction; `db.transaction()` is the implementation pattern (not two sequential awaits). A shot with zero history rows returns `{ status: 'wip', history: [] }` from `shot.get_status` — no null, no throw.
+  3. `shot.status_changed` SSE event fires on every status change and includes `{ shotId, fromStatus, toStatus, changedBy, note? }`. Tool count remains at 7 (`tool-budget.test.ts` assertion green).
+  4. Grep test confirms `UPDATE shot_status_events` returns zero matches in `src/` (append-only invariant enforced in CI).
+  5. 4 indexes exist in migration 0008: `idx_shots_status`, `idx_shots_project_status`, `idx_shot_status_events_shot_time`, `idx_shots_cursor`.
+**Plans:** TBD (estimated 4-5 plans)
+
+### Phase 21: Shot Grid View
+**Goal**: Primary v1.3 user surface — VFX artists navigate to a sequence and see all shots in a visual grid with status badges, thumbnails, and filter controls.
+**Depends on**: Phase 20 (status column + SSE event must exist)
+**Requirements**: GRID-01, GRID-02, GRID-03, GRID-04, GRID-05
+**Success Criteria** (what must be TRUE):
+  1. User clicks grid icon in TreeSidebar for a sequence and `activeView` switches to `'shot-grid'`; home view is preserved and reachable from home icon. No router library is added.
+  2. `GET /api/sequences/:id/shot-grid` executes a single SQL query (verified by sqlite3 `EXPLAIN QUERY PLAN` — no N+1 subquery per row) and returns shot rows with status, latest-completed-version thumbnail URL, and version count.
+  3. Shot grid renders with CSS Grid `minmax(220px, 1fr)`; each card has a 16:9 aspect-ratio container; lazy-loaded thumbnail (`loading="lazy"`) with explicit width/height for CLS=0.
+  4. Status filter bar filters to single-status views client-side (no re-fetch); "Show omitted" toggle reveals `omit`-status shots with dimmed treatment (`opacity-40`).
+  5. SSE `shot.status_changed` event updates the affected card's status badge in-place; no full grid re-fetch; open VersionDrawer panels are not disrupted (keyed on `shotId`).
+**Plans:** TBD (estimated 4-5 plans)
+**UI hint**: yes
+
+### Phase 22: Review and Approval
+**Goal**: VFX supervisors approve, retake, hold, or omit shots from a review panel; compare two versions side-by-side; quick-approve directly from the grid.
+**Depends on**: Phase 20 (status engine + event log)
+**Requirements**: REV-01, REV-02, REV-03, REV-04, REV-05
+**Success Criteria** (what must be TRUE):
+  1. Review panel opens as VersionDrawer-style overlay; each status-transition action (Approve, Request Retake, Hold, Omit) shows a confirmation popover before committing — no bare one-click transitions.
+  2. Quick-approve from shot grid card shows inline confirmation popover; on confirm, status optimistically updates in the signal, then PATCH confirms; on error, status reverts and shows error indicator.
+  3. A/B comparison view loads any two user-selected versions; both thumbnails are preloaded via `new Image().src` before the comparison panel mounts (no sequential flash).
+  4. "Restore Shot" action in review panel is available only when `currentStatus === 'omit'`; writes `{ to_status: 'wip', note: 'Restored from omit' }` to `shot_status_events`.
+  5. Notes stored as `null` (not empty string) when no note provided; notes displayed in timeline with `changed_by` attribution.
+**Plans:** TBD (estimated 4-5 plans)
+**UI hint**: yes
+
+### Phase 23: Production Stats
+**Goal**: Sequence-level production stats widget giving supervisors an at-a-glance view of approval progress, backlog, and stale shots.
+**Depends on**: Phase 20 + Phase 21 (stats appear in ShotGridView header)
+**Requirements**: OVR-01, OVR-02, OVR-03
+**Success Criteria** (what must be TRUE):
+  1. Stats widget appears in `ShotGridView` header showing total shots, % approved, per-status counts, pending-review backlog. Stats computed via single `GROUP BY` query (verified by EXPLAIN — no per-shot subquery).
+  2. Stale shot cards display amber "Stale" indicator for shots with `status IN ('wip','pending-review')` and no completed version in last 14 days. Threshold is `STALE_SHOT_DAYS = 14` named constant.
+  3. Stats widget updates counters when `shot.status_changed` SSE event fires for a shot in the current sequence — no full re-fetch, signal-derived computed value.
+**Plans:** TBD (estimated 2-3 plans)
+**UI hint**: yes
+
+### Phase 24: UX Polish Bundle
+**Goal**: Deliver the four v1.2 deferrals plus one new enhancement — hover-to-scrub, SSE streaming regenerate, per-shot sort persistence, and cross-version comparison summary. Highest-risk phase; adversarial review mandatory at plan stage.
+**Depends on**: Phase 20 (status engine); sequential after Phase 23 to avoid file conflicts with `sse.ts`, `video-thumbnail.ts`, `image-thumbnail.ts`
+**Requirements**: POL-01, POL-02, POL-03, POL-04
+**Success Criteria** (what must be TRUE):
+  1. Hovering a video-source thumbnail in the shot grid triggers sprite sheet generation on first hover (lazy) — no sprite generated at version completion time. Sprite pipeline: ffmpeg `fps=1/2,scale=160:-1` → sharp composite → `.thumb.sprite.webp` + `.thumb.sprite.json`. CSS `background-position` scrub at 2s/frame. `invalidateCache` removes all 4 artifact files atomically.
+  2. Clicking Regenerate on a version summary shows token streaming: `summary.delta` SSE frames arrive progressively; `summary.done` closes the stream. Every `sseStream.writeSSE()` uses `void + .catch(() => {})` — grep test confirms no bare `await sseStream.writeSSE(` in the streaming path. AbortController tied to `c.req.raw.signal` aborts the upstream Anthropic stream on disconnect.
+  3. When `ANTHROPIC_API_KEY` is absent, streaming endpoint emits one `summary.delta` frame (static fallback text) then `summary.done` — no 500, no broken UI.
+  4. Per-shot sort preference persists to `localStorage` key `sort:shot:${shotId}` (LRU cap 50 entries); restored on grid remount; sort change resets cursor to page 1.
+  5. Adversarial review checklist passed before execute: (a) `void + .catch()` uniformity, (b) AbortController wiring, (c) sprite cache invalidation atomicity, (d) permanent fallback for absent API key.
+**Plans:** TBD (estimated 4-5 plans)
+**UI hint**: yes
+
 ## Future Milestones
 
-- **v1.3 C2PA Hardening** (candidate scope): HSM/Yubikey signing, multi-CA / federated trust roots, cryptographic sidecar manifests for EXR/PSD when c2pa-node exposes the sidecar API, sidecar HTTP route + dashboard download link, IPAdapter pack node-variants audit, fetch control image bytes from ComfyUI Cloud input store at sign time, parent-bytes LRU cache, full ingredient mirror in redacted manifests, redaction path size-guard symmetry. (Pivoted from tentatively-scoped v1.2; see PROJECT.md "Pivot context".)
-- **v1.3 candidates carried from v1.2 deferrals**: hover-to-scrub video preview, streaming summary UX (SSE), summary translation (multi-language), per-shot sort persistence, branched-lineage narrative coherence across summaries, AI-generated alt text on thumbnails.
+- **v1.4 C2PA Hardening** (candidate scope): HSM/Yubikey signing, multi-CA / federated trust roots, cryptographic sidecar manifests for EXR/PSD when c2pa-node exposes the sidecar API, sidecar HTTP route + dashboard download link, IPAdapter pack node-variants audit, fetch control image bytes from ComfyUI Cloud input store at sign time, parent-bytes LRU cache, full ingredient mirror in redacted manifests, redaction path size-guard symmetry. (Pivoted from tentatively-scoped v1.2 then v1.3; see PROJECT.md "Pivot context".)
 - **Multi-Backend Routing** (ROUTE-01..03) — route generation to specific ComfyUI instances by capability with failover.
 - **Function-Calling Adapter** (ADAPT-01..03) — OpenAI-compatible REST endpoint for non-MCP agents.
 - **Advanced Operations** (ADV-01..04) — batch queuing, webhooks, hierarchy export, lineage visualization.
@@ -160,6 +234,11 @@ Plans:
 | ----- | --------- | ----- | ----------- | ---------- |
 | 1-9   | v1.0      | 46/46 | Complete    | 2026-04-28 |
 | 10-16 | v1.1      | 24/24 | Complete    | 2026-04-30 |
-| 17    | v1.2      | 5/5 | Complete    | 2026-05-02 |
-| 18    | v1.2      | 5/5 | Complete    | 2026-05-08 |
-| 19    | v1.2      | 8/8 | Complete   | 2026-05-09 |
+| 17    | v1.2      | 5/5   | Complete    | 2026-05-02 |
+| 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
+| 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
+| 20    | v1.3      | 0/TBD | Not started | —          |
+| 21    | v1.3      | 0/TBD | Not started | —          |
+| 22    | v1.3      | 0/TBD | Not started | —          |
+| 23    | v1.3      | 0/TBD | Not started | —          |
+| 24    | v1.3      | 0/TBD | Not started | —          |

@@ -1,257 +1,298 @@
-# Stack Research — v1.2 Visual & Conversational Dashboard
+# Stack Research — v1.3 Production Shot Grid
 
-**Domain:** Subsequent-milestone additions to existing TypeScript ESM Node MCP server + Preact dashboard
-**Researched:** 2026-04-30
-**Confidence:** HIGH
-
-> **Scope discipline.** This document only specifies *new* dependencies for v1.2. The base stack
-> (`@modelcontextprotocol/sdk`, Hono, better-sqlite3, Drizzle, Zod v4, Preact, Tailwind v4, c2pa-node)
-> is locked from v1.0/v1.1 and is **not** re-researched here. See `CLAUDE.md` and `package.json` for
-> the existing surface. The prior v1.0 STACK.md (researched 2026-04-15) is superseded by this file.
+**Domain:** VFX production management additions to existing TypeScript ESM Node MCP server + Preact dashboard
+**Date:** 2026-05-11
+**Confidence:** HIGH (codebase verified + ecosystem research confirmed)
 
 ---
 
-## Recommended Stack Additions
+## Q1: Status Workflow State Machines
 
-### Core New Dependencies (server-side engine layer)
+**Industry pattern:** All major VFX tools (ShotGrid/Flow Production Tracking, ftrack, Kitsu) use a **mutable current-state field** on the entity combined with a **separate append-only event log** for audit. They do not use append-only state alone — the current status is always readable without scanning the log.
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `@anthropic-ai/sdk` | `^0.92.0` | LLM SDK for AI-generated conversational asset summary (feature 3) | First-party Anthropic TypeScript SDK; **declares `peerDependencies: { zod: '^3.25.0 \|\| ^4.0.0' }`** — clean fit with project's Zod v4 (no peer-dep storm); ESM-native; supports prompt caching, streaming, tool use, message batches. Project owner uses Claude Code, so credential plumbing is already in their workflow. |
-| `sharp` | `^0.34.5` | Server-side image resize for thumbnail pipeline (feature 1: PNG/JPEG/WebP/TIFF/GIF) | Industry-standard libvips binding; **30x faster than jimp**; ships pre-compiled platform binaries via `@img/sharp-{platform}` optional deps (no system libvips required); native AVIF support (matches v1.1 supported formats); engines `>=20.3.0` aligns with project `>=20`. |
-| `@ffmpeg-installer/ffmpeg` | `^1.1.0` | First-frame extraction from MP4 outputs (feature 1: video thumbnails) | **Critical license decision** — `@ffmpeg-installer/ffmpeg` is **LGPL-2.1** (separate-process invocation = compatible with MIT). The popular `ffmpeg-static@5.x` is **GPL-3.0-or-later** which would virally relicense an MIT project. Same per-platform optional-deps architecture as sharp. Used as a sibling subprocess (not linked) — invoked once per MP4 ingest, output piped back into sharp for the actual resize. |
+ShotGrid stores `status_list` as a short code string on each entity (e.g., `Shot.sg_status_list = 'ip' | 'apr' | 'hld'`). Separately, every status change writes an `EventLogEntry` row. Transitions are **unconstrained by default** — the UI enforces workflow conventions, not the database.
 
-**No client-side new dependencies.** Sorting (feature 2) uses native `Array.prototype.sort` + existing `@preact/signals` for state; persistence uses `localStorage` via a thin custom hook. No `lodash`, no `zustand`, no `mobx`. The dashboard's ~38.55 kB JS budget is preserved.
+Kitsu (CGWire/Zou) goes further: status changes are created as **comment posts** with an attached task status. The default task statuses are `WIP`, `WFA` (Waiting For Approval), `Done`, `Ready To Start`. Transitions are free-form (no validated DAG).
 
-### Supporting Libraries
+**Recommended state set for v1.3:**
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| (existing) `nanoid` | `^5.1.9` | Thumbnail filename component if we choose UUID-style sidecar names | Use only if thumbnails are written under a separate `thumbnailsDir` with non-derivable names. Simpler path: derive `<filename>.thumb.webp` from the source filename — no new ID generation needed. |
-| (existing) `@preact/signals` | `^2.9.0` | Sort-state and user-preference reactivity in dashboard | Already shipped. Add a `signal('latest')` for sort mode and persist-on-change via a `useEffect`-style subscribe. Zero new deps. |
+| Status | Short Code | Meaning |
+|--------|-----------|---------|
+| `wip` | wip | Active work in progress |
+| `pending-review` | pen | Awaiting supervisor review |
+| `approved` | apr | Signed off |
+| `on-hold` | hld | Blocked / deprioritized |
+| `omit` | omt | Cut from sequence, archived in place |
 
-### Development Tools
+Transitions: **free DAG** (any → any). Do not implement linear guards — VFX supervisors need to reopen approved shots and override holds without workarounds.
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `vitest` (existing) | Unit + integration tests | Mock the Anthropic SDK with `vi.mock('@anthropic-ai/sdk')` returning a deterministic 2-4 sentence stub. Tests must NOT make real API calls (cost + flakiness). One opt-in live-smoke test gated on `RUN_LIVE_LLM=1` — same pattern as the existing `RUN_LIVE_COMFY` smoke tests. |
-| `tsx` (existing) | Dev server runner | No change. |
+**Schema additions required:**
 
----
+```sql
+-- Mutable current state (fast reads, grid filtering)
+ALTER TABLE shots ADD COLUMN status TEXT NOT NULL DEFAULT 'wip'
+  CHECK(status IN ('wip','pending-review','approved','on-hold','omit'));
 
-## Installation
-
-```bash
-# Server-side engine layer additions (root package.json)
-npm install @anthropic-ai/sdk@^0.92.0 sharp@^0.34.5 @ffmpeg-installer/ffmpeg@^1.1.0
-
-# No new dev dependencies required.
-# No new dashboard dependencies required.
+-- Append-only audit trail (provenance pattern, never UPDATE/DELETE)
+CREATE TABLE shot_status_events (
+  id          TEXT PRIMARY KEY,
+  shot_id     TEXT NOT NULL REFERENCES shots(id),
+  from_status TEXT,           -- NULL on first explicit set
+  to_status   TEXT NOT NULL,
+  changed_by  TEXT,           -- 'agent' | 'user' | tool name
+  note        TEXT,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
 ```
 
-After install, expect the lockfile to grow by:
-- `@anthropic-ai/sdk` — 1 direct, ~3 transitive (`json-schema-to-ts` + a couple of Anthropic-internal helpers)
-- `sharp` — 1 direct, ~25 *optional* platform binaries (only your platform's binary actually downloads); 3 small transitive (`semver`, `@img/colour`, `detect-libc`)
-- `@ffmpeg-installer/ffmpeg` — 1 direct, 1 platform-optional binary (~75 MB on disk for your platform's ffmpeg)
-
-**Total disk footprint added:** ~80 MB on macOS arm64 (mostly the ffmpeg binary). Acceptable for a desktop dev tool; revisit if we ever ship a slim Docker image.
+The hybrid mirrors ShotGrid's architecture exactly: fast current-state field for queries, immutable log for audit. This is consistent with the existing `provenance` table's append-only invariant.
 
 ---
 
-## Alternatives Considered
+## Q2: Real-Time Updates (SSE vs WebSockets)
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `@anthropic-ai/sdk` (Anthropic) | `openai` SDK + GPT-4o-mini | Only if the project explicitly diversifies away from a single LLM vendor. Pricing is similar ($0.15/$0.60 per MTok for 4o-mini vs $1/$5 for Haiku 4.5), but Haiku 4.5 is markedly stronger on grounded summarization tasks where the prompt blob is the source of truth. Also: project owner is on Claude Code, so the credential and operational story is already understood. **Reject for v1.2.** |
-| `@anthropic-ai/sdk` | Local model via `@xenova/transformers` or `node-llama-cpp` | Only if regulatory/air-gap constraints rule out cloud LLM calls. Adds ~2-4 GB of model weights and 5-20s latency per summary on consumer hardware. The grounded-summary task doesn't need frontier capability — but it also doesn't justify the operational cost of shipping local inference. **Reject for v1.2; keep as v1.4+ option for offline mode.** |
-| `sharp` | `jimp` (pure-JS) | If the deployment target genuinely cannot run native binaries (extremely rare for Node 20+; libvips is now wasm-fallback-capable via `@img/sharp-wasm32`). Jimp is ~30x slower and lacks AVIF. **Reject.** |
-| `sharp` | `@squoosh/lib` | Squoosh has been in maintenance-only mode since 2023 with no Node 20+ guarantees. **Reject.** |
-| `@ffmpeg-installer/ffmpeg` | `ffmpeg-static@^5` | **DO NOT USE.** GPL-3.0-or-later. License-viral against this project's MIT license. |
-| `@ffmpeg-installer/ffmpeg` | System `ffmpeg` (assume on PATH) | Acceptable for self-hosted deployments where the operator can install ffmpeg. Adds operational fragility (which version? installed where?) for the demo / out-of-the-box experience. **Use as a fallback** — try `@ffmpeg-installer/ffmpeg`'s bundled binary first, fall back to `process.env.VFX_FAMILIAR_FFMPEG_PATH \|\| 'ffmpeg'` if the bundled binary fails to spawn. |
-| `@ffmpeg-installer/ffmpeg` | `fluent-ffmpeg` wrapper | Adds a fluent API but also adds another LGPL/MIT mixed dep with weak typings. Direct `child_process.spawn` with a 4-arg ffmpeg invocation (`-i input.mp4 -frames:v 1 -f image2pipe -vcodec png -`) is simpler and contained. **Reject.** |
-| Native client-side sort + `localStorage` | `zustand` / `mobx` / `lodash.orderby` | The project already uses `@preact/signals`. Adding another state library would violate the "single source of state truth" pattern shipped in v1.0. Native `Array.prototype.sort` with a tiny comparator factory is 12 lines of code. **Reject all.** |
-| (no separate vector DB) | `pgvector` / `lancedb` / `chroma` | The grounded-summary task synthesizes from already-stored prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints. **There is no retrieval problem here** — the manifest IS the context. Adding an embedding store would be solving a problem we don't have. **Reject.** |
+**Industry pattern:** SSE is the established choice for server→client-only status push. Anthropic, OpenAI, and Vercel AI all use SSE as their streaming transport. WebSockets are warranted only when you need bidirectional framing (chat with acks, presence, multi-peer) — none of which apply here.
 
----
+**Existing infrastructure is the exact right model.** `src/http/sse.ts` already:
+- Uses `streamSSE` from `hono/streaming`
+- Tracks 5 event types via `stream.writeSSE({ data: JSON.stringify(payload), event: type })`
+- Sends keep-alive pings via `stream.write(': ping\n\n')` every 30s
+- Cleans up via `c.req.raw.signal` AbortSignal
 
-## What NOT to Use
+**What v1.3 needs to add:**
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `ffmpeg-static@^5.x` | **GPL-3.0-or-later. License-viral.** This package wraps the same upstream ffmpeg binaries but distributes them under GPL-3, which would cascade to any project that includes it as a runtime dependency under the strong GPL contagion clause. MIT-licensed open-source distribution becomes legally compromised. | `@ffmpeg-installer/ffmpeg` (LGPL-2.1, separate-process invocation = compatible) |
-| `jimp` | Pure-JS image processing — 10-30x slower than sharp for resize, no AVIF, no WebP-animation. Acceptable for a script, unacceptable for a dashboard hot-path that may resize 100s of thumbnails on bulk-import. | `sharp` |
-| `node-canvas` | Heavy native binary, designed for Canvas API rendering not bulk resize, no AVIF in older versions. | `sharp` |
-| OpenAI SDK as a *primary* (vendor-neutral first-vendor) | The project already has a clear Anthropic-aligned story (Claude Code). Adding an OpenAI dependency as the *default* would either (a) require a credential-routing layer the v1.2 scope doesn't justify, or (b) silently shift the operator burden. Project owner has explicitly preferred sticking with Anthropic. | `@anthropic-ai/sdk` for v1.2; revisit multi-provider in v1.4+ |
-| `axios` for the LLM HTTP layer | The Anthropic SDK uses native `fetch` (Node 20+) under the hood. Adding axios would re-introduce a dep the project successfully avoided in v1.0. | (n/a — Anthropic SDK handles transport) |
-| `dayjs` / `moment` for sort timestamps | Native `Date` ordering is sufficient for v1.2's "newest-first" semantic (records already store ISO-8601 strings). | Native `Date` + `String` comparators |
-| Adding a new top-level MCP tool | v1.2 scope is dashboard-side + transparent server-side enrichment. **Tool count stays at 7 of 12.** The conversational summary is exposed via the existing `version.get` action's response shape, not a new tool. | Extend `engine/version-service` to include an optional `summary` field; thin REST route on the dashboard side; no MCP surface change. |
-
----
-
-## Stack Patterns by Variant
-
-### If LLM-summary feature must work offline / air-gapped:
-- Keep `@anthropic-ai/sdk` as the default
-- Add a config flag `VFX_FAMILIAR_SUMMARY_PROVIDER=disabled|anthropic|local` (default `anthropic`)
-- When `disabled`, the engine returns the existing structured node listing (current behavior) — feature gracefully degrades
-- Local-model path is **out of scope for v1.2** (see Alternatives)
-
-### If thumbnail input is animated WebP / GIF:
-- `sharp` handles natively via `{ animated: true }` constructor option, then `.resize()` + `.toBuffer()` returns a still frame (the first frame by default)
-- **No ffmpeg required for animated WebP/GIF — only for MP4**
-
-### If thumbnail input is MP4:
-- Spawn `@ffmpeg-installer/ffmpeg`'s `path` with `-i <input> -frames:v 1 -f image2pipe -vcodec png -` to extract frame-1 to stdout
-- Pipe stdout buffer into `sharp(buffer).resize(256).webp().toBuffer()`
-- Fallback chain on failure:
-  1. `@ffmpeg-installer/ffmpeg` bundled binary (default)
-  2. `process.env.VFX_FAMILIAR_FFMPEG_PATH` if set
-  3. System `ffmpeg` on PATH
-  4. Skip thumbnail → return placeholder 1x1 transparent PNG with a `vfx_familiar_placeholder` content-type hint header so the dashboard renders a "video, no preview" badge
-
-### If thumbnail generation fails entirely:
-- Return a 1x1 transparent WebP with header `X-Vfx-Familiar-Thumbnail: missing` (clean degradation; no broken-image icon)
-- Log structured error event with version_id + filename + reason
-- Dashboard shows a film-strip icon overlay ("video unavailable" or "thumbnail pending")
-- **Never block** the asset card render or the version drawer load on thumbnail availability
-
-### If Anthropic API is down / rate-limited / network-failing:
-- Engine wraps `messages.create()` in a 5-second timeout + 1 retry with 2x backoff
-- On final failure, returns the existing structured node listing as the `summary` field with `summary_source: "fallback_node_listing"`
-- Dashboard shows the structured listing (current pre-v1.2 UX) without a degradation banner — the *content* is the degradation signal
-- Add a Prometheus-style counter `vfx_familiar_summary_failures_total{reason}` to existing telemetry (if telemetry layer exists; otherwise log-only for v1.2)
-
----
-
-## Version Compatibility
-
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `@anthropic-ai/sdk@^0.92.0` | `zod@^4.3.6` (project's pin) | SDK declares `peerDependencies: { zod: '^3.25.0 \|\| ^4.0.0' }` — explicit Zod 4 support. Verified via npm metadata 2026-04-30. |
-| `@anthropic-ai/sdk@^0.92.0` | Node `>=20` (project's `engines`) | SDK uses native `fetch` (Node 20+). No undici or node-fetch needed. |
-| `sharp@^0.34.5` | Node `^18.17.0 \|\| ^20.3.0 \|\| >=21.0.0` | Project pins `>=20`, fully covered. macOS arm64 + linux-x64 + linux-arm64 binaries all in `@img/sharp-{platform}` optional deps. |
-| `sharp@^0.34.5` | `c2pa-node@0.5.26` (project's pin) | Both load native bindings via prebuild-install / N-API; zero overlap (sharp uses libvips, c2pa-node uses Rust c2pa). They share no transitive deps that conflict. Verified by inspecting `sharp.dependencies` and `c2pa-node`'s static lib. |
-| `@ffmpeg-installer/ffmpeg@^1.1.0` | All Node 18+ | Pure binary distribution — no Node API usage; spawned via `child_process`. Cross-platform (darwin-arm64, darwin-x64, linux-arm, linux-arm64, linux-x64, linux-ia32, win32-x64, win32-ia32). |
-| `claude-haiku-4-5-20251001` | `@anthropic-ai/sdk@^0.92.0` | Verified at https://platform.claude.com/docs/en/docs/about-claude/models/overview — alias `claude-haiku-4-5` also works. 200k context window, 64k max output, supports prompt caching. **Reliable knowledge cutoff: Feb 2025.** |
-
----
-
-## Cost-Per-Call Budget (LLM Summary)
-
-**Verified pricing** (Anthropic platform docs, 2026-04-30):
-- Claude Haiku 4.5 input: **$1.00 per million tokens** (NOT $0.80 — the prompt's pre-research estimate was low)
-- Claude Haiku 4.5 output: **$5.00 per million tokens** (NOT $4 — the prompt's estimate was low)
-
-**Sample summary call breakdown:**
-
-```
-SYSTEM PROMPT (cacheable, ~600 tokens):
-  Role + voice instructions + grounding rules + format constraints
-
-USER MESSAGE (per-call, ~250 tokens):
-  - Manifest sha256 (16 chars)
-  - Resolved prompt blob projection: model name + LoRA names + sampler/steps/cfg/seed (~80 tokens)
-  - Phase 15 ingredient graph: parent version_id + componentOf images count (~30 tokens)
-  - Phase 13 model fingerprints: 1-3 SHA-256 prefixes (~50 tokens)
-  - Diff vs parent (if exists): 2-3 changed-fields (~50 tokens)
-  - Asset metadata: tags + project context (~40 tokens)
-
-ASSISTANT RESPONSE (~120 tokens, 2-4 sentences in Supervisor voice)
-
-TOTAL PER CALL:
-  Input: 850 tokens × $1.00/MTok = $0.00085
-  Output: 120 tokens × $5.00/MTok = $0.00060
-  Per-call cost: ~$0.00145 (~$1.45 per 1000 summaries)
-```
-
-**With prompt caching enabled** (5-min cache TTL on the system prompt — supported by Haiku 4.5 + SDK):
-- First call: $0.00085 + $0.0006 = $0.00145 (system prompt is "cache write" at 1.25x base = $0.00075 instead of $0.0006)
-- Subsequent calls within 5 min: System prompt becomes "cache read" at 0.1x = $0.00006 instead of $0.0006
-- Effective per-call after first: **~$0.00071** (~$0.71 per 1000 summaries) — **51% cost reduction**
-
-**Cache key for client-side memoization:** `manifest_sha256 + summary_prompt_version`
-- Persist generated summaries in a new SQLite table `version_summaries(version_id PRIMARY KEY, manifest_sha256, summary_text, model, generated_at)`
-- Re-use across dashboard reloads — only re-generate when `manifest_sha256` changes (i.e., re-sign / redact)
-- This cache is **separate** from the Anthropic API's prompt-cache; they stack
-
-**Realistic v1.2 demo budget:**
-- 200 versions in a typical demo project × $0.00145 = $0.29 total to generate every summary once
-- After persistence, zero further cost on dashboard navigation
-- **Total LLM spend for a demo: under $1.** Negligible.
-
----
-
-## Architecture-Purity Implications
-
-The v1.0/v1.1 codebase enforces a strict allowed-set for the `c2pa-node` import via
-`src/__tests__/architecture-purity.test.ts` (lines 166-220). v1.2 must extend the same pattern for
-`@anthropic-ai/sdk`:
-
-### New restricted-import rule (Phase to introduce in v1.2)
-
+In `src/types/events.ts`, add:
 ```typescript
-// Add to architecture-purity.test.ts
-const allowedAnthropicSdkImporters = new Set<string>([
-  'src/engine/summary/anthropic-client.ts', // ONLY this file imports the SDK
-  'src/engine/summary/index.ts',            // Barrel export — no SDK import, but reserved
-]);
+'shot.status_changed': {
+  shotId: string;
+  fromStatus: ShotStatus | null;
+  toStatus: ShotStatus;
+  changedBy: string;
+  note?: string;
+}
 ```
 
-**Why this matters:**
-- The MCP tool layer (`src/tools/`) must NOT directly import `@anthropic-ai/sdk` — same discipline as `c2pa-node`. The summary engine is invoked through `engine/summary/generate.ts` which returns plain `{ summary: string, source: 'llm' | 'fallback_node_listing' }`. The tool layer sees only the typed result.
-- The engine layer outside `engine/summary/` must NOT import the SDK. The summary engine is sealed behind a single entry point.
-- Test-time mocking is on `@anthropic-ai/sdk` directly — `vi.mock('@anthropic-ai/sdk', () => ({ default: class { messages = { create: vi.fn() } } }))` — so non-summary tests never accidentally make a network call.
+In the shot update engine method, after writing the `shot_status_events` row, emit through the existing engine event emitter — the SSE handler picks it up automatically.
 
-### Sharp + ffmpeg-installer scope
+In the dashboard, the existing `useEffect` SSE listener in `HomeView` needs a case for `shot.status_changed` that updates the shot's status in the local `shots` signal without a full re-fetch.
 
-These are less sensitive than LLM SDKs (no API keys, no cost, no network), but the architecture review still recommends a *softer* containment:
+No new transport infrastructure. Extend what exists.
 
+---
+
+## Q3: Thumbnail Hover-to-Scrub
+
+**Industry pattern:** Sprite sheets are the universal industry technique. JW Player, Video.js, Vimeo, and all VFX review tools (ShotGrid Media Center, ftrack Review) use a single image containing a grid of frames. The player or grid cell uses CSS `background-position` to show the correct frame as the cursor moves.
+
+**Feasibility with existing infrastructure:** HIGH. The codebase already has:
+- `src/engine/thumbnails/video-thumbnail.ts` — sole ffmpeg consumer (D-24 invariant)
+- `src/engine/thumbnails/image-thumbnail.ts` — sole sharp consumer (D-23 invariant)
+
+**Sprite sheet generation approach:**
+
+Step 1 — Extract frames with ffmpeg (add to `video-thumbnail.ts`):
 ```typescript
-// Recommended (soft containment — review-time check, not test-enforced)
-// Sharp imports allowed in:
-//   src/engine/thumbnails/*
-//   src/engine/c2pa/* (already has manifest thumbnail logic)
-// Ffmpeg-installer imports allowed in:
-//   src/engine/thumbnails/video-frame-extract.ts (the ONLY caller)
+// Extract 1 frame every N seconds into a temp dir
+// ffmpeg -i input.mp4 -vf "fps=1/2,scale=160:-1" /tmp/frames/frame_%04d.png
 ```
 
-We do NOT need an architecture-purity test for sharp/ffmpeg, because:
-1. They have no security-sensitive surface (vs. c2pa cryptography or LLM API keys)
-2. The cost of accidental cross-module import is "duplicated resize logic", which would be caught in code review
-3. Adding test enforcement for every native lib would inflate the test suite without proportionate value
+Step 2 — Composite with sharp (add to `image-thumbnail.ts`):
+```typescript
+const composited = sharp({
+  create: { width: frameWidth * columns, height: frameHeight * rows, channels: 3, background: '#000' }
+});
+const overlays = frames.map((f, i) => ({
+  input: f,
+  left: (i % columns) * frameWidth,
+  top: Math.floor(i / columns) * frameHeight
+}));
+await composited.composite(overlays).webp({ quality: 70 }).toFile(spritePath);
+```
+
+Step 3 — Serve metadata alongside sprite URL:
+```typescript
+interface SpriteSheetMeta {
+  spriteUrl: string;       // /api/thumbnails/:versionId/sprite.webp
+  frameWidth: number;      // 160
+  frameHeight: number;     // 90
+  columns: number;
+  rows: number;
+  intervalSeconds: number; // 2
+  totalFrames: number;
+}
+```
+
+Step 4 — Dashboard CSS scrub logic in `Thumbnail.tsx`:
+```typescript
+const frameIndex = Math.floor(hoverTime / meta.intervalSeconds);
+const col = frameIndex % meta.columns;
+const row = Math.floor(frameIndex / meta.columns);
+el.style.backgroundImage = `url(${meta.spriteUrl})`;
+el.style.backgroundPosition = `-${col * meta.frameWidth}px -${row * meta.frameHeight}px`;
+el.style.backgroundSize = `${meta.frameWidth * meta.columns}px auto`;
+```
+
+**Recommendation:** Generate sprite sheets lazily on first hover request, cache to disk alongside the frame thumbnail. For video sources only — image versions get no sprite (single frame already).
+
+**D-24/D-23 invariant preservation:** The new `generateSpriteSheet()` function lives in `video-thumbnail.ts` (ffmpeg) and calls into `image-thumbnail.ts` (sharp composite) via an internal engine import — same module boundaries, no new importers.
 
 ---
 
-## Fallback Story (Failure Modes)
+## Q4: Streaming LLM Responses (Anthropic SDK)
 
-| Failure | Detection | User-Visible Behavior | Engine Behavior |
-|---------|-----------|----------------------|-----------------|
-| Anthropic API down | 5s timeout + 1 retry | Dashboard shows structured node listing (existing v1.0/v1.1 UX); no banner | `summary_source: "fallback_node_listing"` in response; structured logger event |
-| Anthropic API rate-limited (429) | SDK throws `RateLimitError` | Same as above | Counter `summary_failures_total{reason="rate_limit"}++`; degrade silently |
-| Anthropic API key missing/invalid | SDK throws `AuthenticationError` on first call | Same as above; admin sees structured log with "set ANTHROPIC_API_KEY" hint | Engine continues to serve all other features; only summary degrades |
-| `@anthropic-ai/sdk` import fails (binary or runtime) | Lazy-import wrapped in try/catch | Same as above | Engine logs once at boot; summary feature disabled until restart |
-| Sharp binary missing | Native bind error on first call | Dashboard shows generic file-icon placeholder + "thumbnail unavailable" badge | Counter `thumbnail_failures_total{reason="sharp_init"}++`; structured log with libvips diagnostic |
-| Sharp resize fails (corrupt PNG, oversized image) | Sharp throws `Error` | Same as above | Per-file failure; other thumbnails continue rendering |
-| Ffmpeg binary missing (Linux distro without bundled binary, locked-down container) | `child_process.spawn` ENOENT | Video assets show "video, no preview" badge | Try fallback: `process.env.VFX_FAMILIAR_FFMPEG_PATH` → system `ffmpeg` on PATH; if all fail, mark MP4 thumbnails as `pending` permanently |
-| MP4 frame extraction times out (>10s for a single frame) | `child_process` timeout | Same as video badge | Kill subprocess; counter `thumbnail_failures_total{reason="ffmpeg_timeout"}++` |
-| MP4 file is corrupt or non-video | ffmpeg exits non-zero | Same as video badge | One-time log; do not retry on subsequent thumbnail requests for the same file (cache the failure with TTL) |
-| Sort preference localStorage write fails (quota / private mode) | `try/catch` around `localStorage.setItem` | Sort preference resets on next load (loses user choice but doesn't crash) | Console warn; no engine impact — sort is fully client-side |
+**SDK version:** `@anthropic-ai/sdk: 0.95.1` is already in `package.json`.
 
-**Cross-cutting principle:** *Never block the dashboard render on a v1.2 enrichment.* Thumbnails, summaries, and sort preferences are all augmentations. The v1.0/v1.1 baseline UX must remain functional even if every v1.2 dependency fails simultaneously.
+**Two streaming patterns in the SDK:**
+
+Pattern A — MessageStream (higher level, recommended for SSE pipe):
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+
+const stream = await anthropic.messages.stream({
+  model: 'claude-sonnet-4-5',
+  max_tokens: 1024,
+  messages: [{ role: 'user', content: prompt }]
+});
+
+for await (const event of stream) {
+  if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+    const textDelta = event.delta.text;
+    // pipe to Hono SSE
+  }
+}
+const finalMessage = await stream.getFinalMessage();
+```
+
+Pattern B — Raw async iterable (lower level):
+```typescript
+const stream = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5',
+  max_tokens: 1024,
+  messages: [...],
+  stream: true
+});
+for await (const chunk of stream) { /* same event shapes */ }
+```
+
+**Pipe through Hono SSE** — the existing `streamSSE` pattern handles this cleanly:
+```typescript
+app.get('/api/versions/:id/summary/stream', async (c) => {
+  return streamSSE(c, async (sseStream) => {
+    const anthropicStream = await anthropic.messages.stream({ ... });
+
+    // Abort Anthropic stream if client disconnects
+    c.req.raw.signal.addEventListener('abort', () => {
+      anthropicStream.controller.abort();
+    }, { once: true });
+
+    for await (const event of anthropicStream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        void sseStream.writeSSE({
+          data: event.delta.text,
+          event: 'summary.delta'
+        }).catch(() => {});
+      }
+    }
+    void sseStream.writeSSE({ data: '', event: 'summary.done' }).catch(() => {});
+  });
+});
+```
+
+**Preact consumer pattern** (new `useSummaryStream` hook):
+```typescript
+const es = new EventSource(`/api/versions/${versionId}/summary/stream`);
+es.addEventListener('summary.delta', (e) => {
+  summaryText.value += e.data;
+});
+es.addEventListener('summary.done', () => {
+  es.close();
+  isSummaryStreaming.value = false;
+});
+es.onerror = () => {
+  summaryError.value = 'Stream interrupted — retry';
+  es.close();
+};
+```
+
+**Permanent fallback (per project memory):** `ANTHROPIC_API_KEY` is not available on Claude Max plan. The summary endpoint must detect missing key at startup and return a static fallback message rather than 500-erroring. The existing Phase 19 pattern (ships in permanent fallback mode) is the established precedent for this project.
 
 ---
 
-## Sources
+## Q5: Status Badge UI Patterns
 
-- **Context7 `/anthropics/anthropic-sdk-typescript`** — verified SDK shape, model id format (`claude-haiku-4-5-20251001`), `messages.create()` API, prompt caching support. HIGH confidence.
-- **Context7 `/lovell/sharp`** — verified resize API, animated WebP/GIF support, JPEG/PNG/WebP/AVIF output, NO native MP4 support. HIGH confidence.
-- **Anthropic Models Overview** ([https://platform.claude.com/docs/en/docs/about-claude/models/overview](https://platform.claude.com/docs/en/docs/about-claude/models/overview)) — verified Claude Haiku 4.5 API id `claude-haiku-4-5-20251001` (alias `claude-haiku-4-5`), pricing **$1/$5 per MTok** (input/output), 200k context, 64k max output, prompt caching support, knowledge cutoff Feb 2025. HIGH confidence (official source).
-- **npm registry** — verified versions on 2026-04-30: `@anthropic-ai/sdk@0.92.0` (modified 2026-04-30), `sharp@0.34.5` (modified 2026-04-25), `@ffmpeg-installer/ffmpeg@1.1.0` (LGPL-2.1), `ffmpeg-static@5.3.0` (GPL-3.0-or-later — **rejected**). HIGH confidence.
-- **Project source** — `package.json`, `packages/dashboard/package.json`, `src/__tests__/architecture-purity.test.ts:166-220` (existing allowed-set pattern for `c2pa-node` imports). HIGH confidence.
-- **Project context** — `.planning/PROJECT.md` v1.2 milestone definition (visual-first artist feedback, 7-of-12 tool cap holds, ~38.55 kB JS budget). HIGH confidence.
+**WCAG requirements (2.1 AA):**
+- 1.4.1: Color alone must not convey information — always pair color with text or icon
+- 1.4.3: Text contrast ratio ≥ 4.5:1 (normal text), 3:1 (large text / bold ≥ 14pt)
+- 1.4.11: UI component contrast ≥ 3:1 against adjacent color
+
+**Industry color conventions (ShotGrid, ftrack, Kitsu):**
+
+| Production Status | Hue | Tailwind Classes |
+|-------------------|-----|-----------------|
+| wip | Gray | `bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300` |
+| pending-review | Amber | `bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200` |
+| approved | Green | `bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200` |
+| on-hold | Orange | `bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200` |
+| omit | Red | `bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200` |
+
+**Existing `StatusPill.tsx` pattern already satisfies WCAG** — it renders uppercase text alongside the color swatch and exposes `data-status` for testing. The new production states slot into the same component.
+
+**Inline edit pattern:** ShotGrid and ftrack both use a click-to-cycle or click-to-dropdown on the status badge in the grid row (no modal). Recommended: click on `ShotStatusPill` opens a floating `<select>` or listbox anchored to the pill, dismisses on blur/Escape, optimistically updates the signal then confirms via PATCH.
 
 ---
 
-*Stack research for: v1.2 Visual & Conversational Dashboard milestone (additive scope on existing TypeScript ESM Node MCP server + Preact dashboard)*
-*Researched: 2026-04-30*
-*Confidence: HIGH — every version pinned via npm metadata; LLM model id + pricing verified at official Anthropic docs same day; license-poison risk on `ffmpeg-static` caught and routed to `@ffmpeg-installer/ffmpeg`*
+## Q6: SQLite Scale Considerations
+
+**At v1.3 target scale:** 10K shots × 5 versions average = 50K version rows, 10K shot rows. With proper indexes this is trivially fast — SQLite handles millions of rows for this query shape.
+
+**Indexes needed for v1.3:**
+
+```sql
+-- Grid filtering: sequence → status (most common query pattern)
+CREATE INDEX idx_shots_status
+  ON shots(sequence_id, status);
+
+-- If you add "all shots across project" grid view:
+CREATE INDEX idx_shots_project_status
+  ON shots(project_id, status, created_at DESC);
+
+-- Shot status event history (timeline panel)
+CREATE INDEX idx_shot_status_events_shot_time
+  ON shot_status_events(shot_id, created_at DESC);
+
+-- Cursor pagination on shots grid (existing cursor pattern in versions)
+CREATE INDEX idx_shots_cursor
+  ON shots(sequence_id, created_at DESC, id);
+```
+
+**Covering index opportunity** — if the grid renders `(id, name, status, created_at)` per row:
+```sql
+CREATE INDEX idx_shots_grid_cover
+  ON shots(sequence_id, status, created_at DESC)
+  INCLUDE (id, name);  -- SQLite 3.38+ supports INCLUDE
+```
+
+Note: `better-sqlite3` ships with SQLite 3.45+ via its bundled build — INCLUDE syntax is available.
+
+**ANALYZE discipline:** Run `PRAGMA optimize;` after bulk imports. SQLite's query planner uses stale statistics without it — this matters when status distribution is skewed (e.g., 90% approved).
+
+---
+
+## Summary for Roadmap
+
+The v1.3 milestone adds **zero new infrastructure**. Every technical requirement maps to extending existing patterns:
+
+| Requirement | Extends |
+|-------------|---------|
+| Shot status column | Drizzle schema migration (ALTER TABLE) |
+| Status audit log | `shot_status_events` table, same pattern as `provenance` |
+| SSE status push | Add `shot.status_changed` to existing `src/http/sse.ts` |
+| Status badge UI | Extend `StatusPill.tsx` with 5 new status variants |
+| LLM summary stream | `anthropic.messages.stream()` piped through `streamSSE` |
+| Sprite sheet scrub | New function in `video-thumbnail.ts` / `image-thumbnail.ts` |
+| Grid indexes | 4 new `CREATE INDEX` statements in migration |
+
+**Highest-risk item:** Sprite sheet generation — ffmpeg tile extraction + sharp composite is straightforward but adds I/O and latency to the thumbnail pipeline. Recommend generating lazily on first hover, not at version-creation time, with a `sprite_generated_at` nullable column on versions as the cache sentinel.
+
+**Lowest-risk item:** SSE `shot.status_changed` event — the existing handler is a 5-line `case` addition with no new routes or transports.

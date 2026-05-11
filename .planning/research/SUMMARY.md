@@ -1,208 +1,180 @@
-# Project Research Summary — v1.2 Visual & Conversational Dashboard
+# Project Research Summary — v1.3 Production Shot Grid
 
 **Project:** VFX Familiar (comfyui-vfx-mcp)
-**Domain:** Subsequent-milestone additions to a shipped TypeScript ESM Node MCP server + Preact dashboard (existing v1.0 + v1.1 surfaces)
-**Researched:** 2026-04-30
-**Confidence:** HIGH for stack + thumbnails + sort; MEDIUM for AI summary (LLM is a first-of-its-kind dependency surface in this codebase)
+**Domain:** VFX production management layer — shot status workflow, shot grid UI, review/approval surface, production stats, UX polish bundle
+**Researched:** 2026-05-11
+**Confidence:** HIGH for status workflow, schema, and architecture; MEDIUM for AI summary streaming scope and hover-to-scrub cache integration
+
+---
 
 ## Executive Summary
 
-v1.2 is an **additive UX milestone** layered on shipped v1.0 (project hierarchy + provenance) and v1.1 (C2PA cryptographic signing). Three artist-driven features ship together: thumbnails on Project/Shot Asset cards, a sortable folder dropdown structure (latest-first by default), and an AI-generated conversational asset summary in the Supervisor/Lead voice. **No new MCP tools** — the 7-of-12 tool cap holds; v1.2 is dashboard-facing + transparent server-side enrichment with append-only-via-cache-table semantics that preserve every v1.0/v1.1 invariant.
+v1.3 — "Production Shot Grid" — transforms VFX Familiar from a generation-and-provenance tool into a light production management layer. It adds five feature areas on top of the shipped v1.2 visual dashboard: (1) a shot status workflow with audit trail, (2) a shot grid view grouped by sequence, (3) a review and approval surface with inline actions and A/B comparison, (4) sequence-level production stats, and (5) a UX polish bundle comprising hover-to-scrub thumbnails, SSE-streamed AI summaries on the Regenerate path, and per-shot sort persistence.
 
-**Recommended approach:** ship low-risk visual wins first (thumbnails → sort) before introducing the LLM dependency last. Three new server-side dependencies (`@anthropic-ai/sdk@^0.92.0`, `sharp@^0.34.5`, `@ffmpeg-installer/ffmpeg@^1.1.0`) are restricted to specific files via the same architecture-purity allowed-set pattern that v1.1 used to lock `c2pa-node`. The AI summary is grounded in existing structured provenance (Phase 13 model fingerprints + Phase 15 ingredient graph + the prompt blob) with **zero vision-model inference** — preventing hallucination by design, not policy. **License-viral risk caught:** the obvious `ffmpeg-static@5` dep is GPL-3.0-or-later (would cascade onto MIT); routed to `@ffmpeg-installer/ffmpeg` (LGPL-2.1, separate-process compatible).
+The milestone is bounded to the solo-artist / small-team audience — the 20-state ShotGrid model is explicitly out of scope; five states cover the entire target persona.
 
-**Key risks:** (1) privacy-leak class — a redact event must invalidate cached summary AND thumbnail (cache key = `manifest_sha256`, never `version_id`); (2) prompt-injection class — user-controlled prompt blob fed into the LLM must be XML-tagged-untrusted with output validation that requires verbatim model-name mention; (3) cost runaway — auto-fetching summaries on card render can spike to $125/hr per dashboard instance, so summaries fetch ONLY on VersionDrawer open with `manifest_sha256`-keyed cache + Anthropic prompt caching. The **adversarial review pattern** that caught 5 BLOCKERS in v1.1 Phase 16 is mandatory at the LLM-summary plan stage.
+The recommended architecture is additive and follows every established project pattern. The status model uses the industry-standard hybrid: a mutable `shots.status` column for fast grid reads/filtering paired with a new append-only `shot_status_events` table for audit trail, both written in a single transaction. All new MCP actions ship as arms on the existing `shot` tool — the tool budget stays at 7 of 12. No new MCP tools, no new transport infrastructure, no new client-side router. Every v1.3 requirement maps to extending an existing pattern.
+
+---
 
 ## Key Findings
 
-### Recommended Stack
+### Stack and Tooling
 
-Three additive server-side dependencies, no new client-side libs (dashboard's ~38.55 kB JS budget is preserved). Existing `@preact/signals` powers sort state via native `Array.prototype.sort`; native `localStorage` handles persistence. See `.planning/research/STACK.md` for full details.
+v1.3 adds **zero new package dependencies**. Every technical requirement maps to an existing library or pattern already in the codebase. The Anthropic SDK (`@anthropic-ai/sdk: 0.95.1`) is already in `package.json` from Phase 19. The sprite sheet pipeline uses `@ffmpeg-installer/ffmpeg` (already present, D-24 invariant) and `sharp` (already present, D-23 invariant). SSE infrastructure (`src/http/sse.ts`) already handles `streamSSE`, keep-alive pings, and AbortSignal cleanup.
 
-**Core technologies:**
+**Core technologies and their v1.3 roles:**
 
-- **`@anthropic-ai/sdk@^0.92.0`** — LLM for conversational summary; declares `peerDependencies: { zod: '^3.25.0 || ^4.0.0' }` (clean fit with project Zod v4); ESM-native; supports prompt caching, streaming. Default model `claude-haiku-4-5-20251001`; 200k context, 64k max output, $1/$5 per MTok in/out.
-- **`sharp@^0.34.5`** — server-side image resize; libvips binding via pre-compiled per-platform `@img/sharp-{platform}` optional deps; native AVIF + WebP + animated WebP/GIF support.
-- **`@ffmpeg-installer/ffmpeg@^1.1.0`** — first-frame extraction from MP4 outputs; **LGPL-2.1 (separate-process invocation = MIT-compatible)**; `ffmpeg-static@5.x` is **GPL-3.0-or-later (license-viral; rejected)**. Bundled binary ~75 MB on macOS arm64.
+| Technology | v1.3 Role |
+|------------|-----------|
+| `better-sqlite3` + Drizzle ORM | Migration `0008_shot_status` (ALTER TABLE + new table + 4 indexes) |
+| `@anthropic-ai/sdk` | `anthropic.messages.stream()` piped through `streamSSE` on Regenerate path only |
+| `@ffmpeg-installer/ffmpeg` | Sprite sheet frame extraction (lazy, on first hover) |
+| `sharp` | Sprite sheet composite in `image-thumbnail.ts` |
+| `hono/streaming` | Extended for `shot.status_changed` + `summary.delta` / `summary.done` event types |
+| Preact signals | New `activeView` signal; isolated shot grid signals; no router added |
 
-**Disk footprint added:** ~80 MB. Cost-per-call budget for summaries: ~$0.00145 first call, ~$0.00071 per cached call (51% reduction via Anthropic prompt caching) — under $1 total to summarize a 200-version demo project.
+**SQLite indexes required (migration 0008):**
 
-**License posture:** original recommendation `ffmpeg-static` would have virally relicensed this MIT project under GPL-3. Routed to LGPL-2.1 — verify in PR review before any v1.2 plan executes.
-
-### Expected Features
-
-Three feature pillars with three different complexity profiles. See `.planning/research/FEATURES.md` for full details.
-
-**Must have (table stakes):**
-- Thumbnails on completed-version cards (16:9 lazy-load + skeleton fallback, click-to-fullsize)
-- MP4 first-frame thumbnail (`-vf thumbnail` filter for representative frame)
-- Latest-first default sort with 4-option dropdown on version grid; localStorage persistence
-- Replace raw provenance JSON dump in VersionDrawer with 2-4 sentence conversational summary
-- Cached summary with regenerate button (1/min throttle); summary never auto-regenerates
-- Aspect-ratio reservation + skeleton placeholders (CLS=0)
-
-**Should have (differentiators):**
-- Highest-version-as-shot-card-thumbnail (Frame.io stack convention)
-- C2PA-signed badge overlay on thumbnail (small shield icon)
-- Smart default per scope (tree=A→Z, version grid=latest)
-- "What changed from parent" inline in iterate-lineage summary
-- Inline metadata pills (model + LoRAs + seed + parent version)
-
-**Defer (v1.3+):**
-- Hover-to-scrub video preview
-- Streaming summary UX (SSE)
-- Summary translation
-- Per-shot sort persistence
-- Branched-lineage narrative coherence
-- AI-generated alt text on thumbnails
-
-**Anti-features (deliberately NOT in v1.2):**
-- Vision-model "describe the rendered image" (hallucination class — provenance graph IS the ground truth)
-- Auto-enhanced thumbnails (sharpen/contrast/denoise)
-- Summary editing in dashboard (append-only contract)
-- New top-level MCP tool for summary or thumbnail (tool count holds at 7 of 12)
-
-### Architecture Approach
-
-Three feature pillars, three new modules at the engine layer, **one** new database migration (0007 — single column on existing `provenance` table), **zero** new database tables, **zero** MCP tool changes. Architecture mirrors v1.1's `c2pa-node` containment pattern. See `.planning/research/ARCHITECTURE.md` for component-by-component spec.
-
-**Major components (new):**
-
-1. **`src/engine/thumbnails/`** — `image-thumbnail.ts` (sharp), `video-thumbnail.ts` (ffmpeg), `format-router.ts` (pure), `cache.ts`, `index.ts`. Atomic write via temp+rename. Per-(versionId, filename) coalescing mutex.
-2. **`src/engine/summary/`** — `anthropic-client.ts` (lazy import), `ground-truth-builder.ts` (pure), `prompt-template.ts` (versioned), `cache.ts` (LRU 1000), `summarizer.ts`, `index.ts`. Cache key = `manifest_sha256 + template_version + model_id` — free invalidation on redact.
-3. **`src/store/{version-repo,hierarchy-repo,provenance-repo}.ts`** (MODIFIED) — sort param with whitelisted enum; new `appendSummaryGeneratedEvent` and `getLatestSummaryEvent`.
-4. **`src/http/dashboard-routes.ts`** (MODIFIED) — three new routes: `GET/HEAD /api/versions/:id/thumbnail?w=80|160|320|640`, `GET /api/versions/:id/summary`. Existing list routes accept `?sort=...&order=...`.
-5. **Dashboard components** (NEW: `Thumbnail.tsx`, `SortControl.tsx`, `ConversationalSummary.tsx`).
-
-**Migration footprint (single migration 0007):**
 ```sql
-ALTER TABLE `provenance` ADD `summary_generated_json` text;
+CREATE INDEX idx_shots_status ON shots(sequence_id, status);
+CREATE INDEX idx_shots_project_status ON shots(project_id, status, created_at DESC);
+CREATE INDEX idx_shot_status_events_shot_time ON shot_status_events(shot_id, created_at DESC);
+CREATE INDEX idx_shots_cursor ON shots(sequence_id, created_at DESC, id);
 ```
-Mirrors Phase 14's `manifest_signed_json` shape; zero new tables; append-only invariant preserved.
 
-**Architecture-purity allowed-set extensions** (mirrors v1.1 `c2pa-node` pattern):
-- `@anthropic-ai/sdk` → only `src/engine/summary/anthropic-client.ts`
-- `sharp` → only `src/engine/thumbnails/image-thumbnail.ts`
-- `@ffmpeg-installer/ffmpeg` → only `src/engine/thumbnails/video-thumbnail.ts`
+### Features
+
+**Must-have (core milestone promise):**
+- 5-state shot status engine: `wip | pending-review | approved | on-hold | omit` — free DAG, no transition guards
+- Shot grid view grouped by sequence: CSS Grid `minmax(220px, 1fr)`, 16:9 aspect-ratio containers, lazy-load thumbnails, status filter bar, sequence header with aggregate status counts
+- Status badge per shot card: WCAG 2.1 AA compliant (color + text), slots into existing `StatusPill.tsx` pattern
+- Status change with optional note: every transition writes to `shot_status_events`; system captures `changed_by` and timestamp
+- Review panel: VersionDrawer-style overlay with approve/retake/hold/omit actions, notes per version (append-only), version history timeline
+- Inline quick-approve from grid with confirmation popover
+- Two-panel A/B version comparison: side-by-side with metadata diff; no interactive wipe in v1.3
+- Sequence-level stats: % approved, status counts, pending review backlog count
+- Sprite-sheet hover scrub for video versions: lazy generation on first hover request
+- Hover-to-zoom for image stills (CSS `transform: scale`)
+- SSE streaming on AI summary Regenerate path only (not cache-hit reads)
+- Per-shot sort persistence via localStorage
+
+**Permanent anti-features:** 20-state status machine, client approval portal, frame-level annotation, automated status transitions, financial/bid tracking.
+
+### Architecture
+
+v1.3 adds one Drizzle migration, one new table, one new endpoint, three new `shot` tool arms, one new dashboard view, and two new SSE event types — all slotted into existing patterns.
+
+**Major components:**
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `src/store/shot-status-repo.ts` | New | `insertStatusEvent()` wraps UPDATE + INSERT in single `db.transaction()` |
+| `src/tools/shot-tool.ts` | Extended | 3 new arms: `set_status | get_status | list_status_history` |
+| `GET /api/sequences/:id/shot-grid` | New endpoint | Denormalized payload via single SQL; no N+1 |
+| `src/engine/thumbnails/video-thumbnail.ts` | Extended | `generateSpriteSheet()` for lazy sprite generation |
+| `src/engine/thumbnails/image-thumbnail.ts` | Extended | `compositeSpriteSheet()` called from `video-thumbnail.ts` |
+| `src/http/sse.ts` | Extended | `shot.status_changed`, `summary.delta`, `summary.done` events |
+| `packages/dashboard/src/lib/state.ts` | Extended | `activeView` signal, `shotGridSequenceId`, isolated shot grid signals |
+| `packages/dashboard/src/views/ShotGridView.tsx` | New | Full-width view, CSS Grid, sequence-grouped collapsible sections |
+| `packages/dashboard/src/components/ShotStatusPill.tsx` | New | 5 production status variants with inline-edit click handler |
+
+**Routing pattern:** Signal-driven view switch via `activeView` in `App.tsx` — no client-side router, matching the `VersionDrawer` overlay precedent.
 
 ### Critical Pitfalls
 
-21 pitfalls documented (10 critical, 6 moderate, 5 minor) — privacy-leak class dominates. See `.planning/research/PITFALLS.md` for full prevention strategies.
+1. **Dual-model collision** — three status semantics coexist; mitigation: `SHOT_STATUSES` named constant, grep test enforcing no `UPDATE shot_status_events`, migration file documentation.
 
-**Top 10 ranked by criticality:**
+2. **`void + .catch()` omission in AI streaming** — hangs event loop on client disconnect; mitigation: apply existing pattern universally; add disconnection test to `sse-e2e.test.ts`.
 
-1. **Stale LLM summary after redaction (privacy-leak)** — cache key = `manifest_sha256`, multi-encoding leak scan extends to summary cache, summarizer receives only post-redaction surviving fields.
-2. **Prompt injection via user-controlled prompt blob** — XML-tagged untrusted user content + output validation requires verbatim `models_json` model name + length-floor check.
-3. **Architecture-purity drift on `@anthropic-ai/sdk`** — extend allowed-set in same plan that introduces SDK import; tool layer never reads `process.env.ANTHROPIC_API_KEY`.
-4. **Hallucination from ungrounded summarization** — structured XML-tagged input, system prompt restricts to `<provenance>` data, output validation regex requires verbatim model name.
-5. **Cost runaway via auto-regeneration** — fetch ONLY on `VersionDrawer` open, cache by `manifest_sha256`, coalescing mutex, Anthropic prompt caching, env-var queue cap.
-6. **MP4 frame extraction OOM on long videos** — stream-based child_process spawn with bounded accumulator, pre-flight 100MB skip, 10s hard timeout.
-7. **Concurrent thumbnail generation stampede** — `thumbnailGenerationMutex` per (versionId, filename, target_size), `sharp.concurrency(2)` global cap, dashboard fetch queue cap 6.
-8. **Thumbnail cache poisoning after redact** — cache key = `manifest_sha256`, explicit invalidation hook AFTER atomic rename in `redactManifestForVersion`.
-9. **API key leak via LLM error message echo** — single `flattenAnthropicError` helper mirrors `flattenComfyError` (Phase 11), regex-strip auth headers, multi-encoding negative test.
-10. **Sort instability across pagination** — server-side sort+paginate with composite cursor `(sort_key_value, version_id)`, sort change resets cursor.
+3. **Missing indexes** — status-filtered grid on 200 shots does full table scan without them; mitigation: all 4 indexes non-optional in migration 0008.
 
-**Cross-cutting v1.1 patterns re-applied** (mandatory):
-- Adversarial review at plan stage for the LLM-summary phase (privacy + injection + API-key-leak class)
-- Multi-encoding leak scan (UTF-8 + UTF-16LE + UTF-16BE + base64) extends to summary cache, thumbnail cache, error logs
-- Wire-level UAT discipline (don't punt on tests)
-- Append-only via cache table — separate `summary_generated_json` column on `provenance`
-- Lazy native-binding import + graceful degradation
+4. **Empty event history null-coalesce** — pre-migration shots have zero `shot_status_events` rows; `null` must become `'wip'` at repo layer; mitigation: explicit null-coalesce in `getStatusHistory()`.
+
+5. **Multi-file sprite cache invalidation** — `invalidateCache` must atomically remove all 4 artifact files; stale metadata causes visual corruption.
+
+---
+
+## Resolved Disagreements Between Research Files
+
+| Topic | Resolution | Reasoning |
+|-------|------------|-----------|
+| **Status states** | `wip\|pending-review\|approved\|on-hold\|omit` | Matches ShotGrid vocabulary; `waiting\|ready\|in_review\|approved\|rejected` from ARCHITECTURE.md had no industry precedent |
+| **Hover-to-scrub** | Sprite sheets (not WebM) | Integrates with existing thumbnail cache; no video buffering; no new content-type; ARCHITECTURE.md's WebM recommendation had wrong cost/complexity assessment |
+| **AI summary streaming** | SSE on Regenerate path only | Streaming adds perceived speed on active generation; not streaming cache hits is correct (cache reads are instant) |
+| **Schema naming** | `shots.status` column, `shot_status_events` table | Shorter, consistent with existing `versions.status` naming; ARCHITECTURE.md's `production_status` / `shot_status_history` names were verbose |
+
+---
 
 ## Implications for Roadmap
 
-**3 phases in strict ordering** (low-risk visual wins first; LLM dependency last to derisk). Phase numbers continue from v1.1 (last shipped = 16) so Phases 17, 18, 19.
+Phases continue from Phase 19. v1.3 = Phases 20–24.
 
-### Phase 17: Visual Thumbnails
+### Phase 20: Shot Status Engine
+**Rationale:** Foundation — all subsequent v1.3 features depend on status existing. Pure backend, no dashboard changes, lowest risk.
+**Delivers:** Migration `0008_shot_status` (ALTER TABLE + CREATE TABLE + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type.
+**Must-avoid:** Dual-model collision, empty-history null-coalesce, missing transaction wrapping UPDATE + INSERT.
 
-**Rationale:** Lowest risk — no new SaaS, no LLM, no API keys. `sharp` and `ffmpeg-installer` are battle-tested. Ships visible artist value on day one. Establishes the architecture-purity allowed-set extension pattern that the LLM phase will re-apply.
+### Phase 21: Shot Grid View
+**Rationale:** Requires Phase 20. Delivers the primary v1.3 user surface.
+**Delivers:** `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, TreeSidebar grid-icon navigation.
+**Must-avoid:** N+1 on grid query (solved by denormalized endpoint), SSE-driven update disrupting open panels (key panel on `shotId` only).
 
-**Delivers:** thumbnail HTTP routes, `<Thumbnail/>` Preact component, MP4 first-frame extraction, atomic disk cache with ETag, redact-invalidation hook, architecture-purity test extensions for sharp + ffmpeg.
+### Phase 22: Review and Approval Surface
+**Rationale:** Requires Phase 20. Medium risk — confirmation flows and optimistic UI updates.
+**Delivers:** Review panel with approve/retake/hold/omit actions + confirmation popovers, notes per version (append-only), two-panel A/B comparison, inline quick-approve from grid, thumbnail preload on compare activation.
+**Must-avoid:** Confirmation-less transitions, data loss on A/B navigation, sequential thumbnail loads in compare.
 
-**Avoids (PITFALLS):** Pitfall 6 (MP4 OOM), Pitfall 7 (stampede), Pitfall 8 (cache poisoning), Pitfall 13 (unsupported format).
+### Phase 23: Production Stats
+**Rationale:** Requires Phases 20 + 21. All reads, no new write paths. Lowest risk of the five phases.
+**Delivers:** Sequence-level stats widget (% approved, status counts, pending review backlog), stale shot detection query.
+**Must-avoid:** N+1 on stats (single GROUP BY), stale query planner statistics.
 
-**Build effort estimate:** ~3 days.
+### Phase 24: UX Polish Bundle
+**Rationale:** Last because it touches `sse.ts`, `video-thumbnail.ts`, `image-thumbnail.ts` — files also modified by phases 20–23. Sequencing last avoids merge conflicts. Highest risk phase.
+**Delivers:** Sprite sheet lazy generation + CSS scrub in `ShotGridCard`, hover-to-zoom for image stills, SSE token streaming for AI Regenerate path, per-shot sort persistence, cross-version comparison summary in A/B panel.
+**Must-avoid:** `void + .catch()` omission in streaming, multi-file cache invalidation atomicity for sprite artifacts, AbortController omission on upstream Anthropic stream.
+**Research flag:** Phase 24 plan requires adversarial review checklist: (a) `void + .catch()` uniformity, (b) AbortController wiring, (c) sprite cache invalidation atomicity, (d) permanent fallback for absent API key.
 
-### Phase 18: Sortable Folder Dropdown
+### Dependency Graph
 
-**Rationale:** Architectural-mostly-trivial — server-side sort is a thin enum-whitelisted ORDER BY extension. Establishes the cursor-pagination-with-sort discipline.
+```
+Phase 20 (Status Engine) — backend foundation
+  ├── Phase 21 (Shot Grid View) — primary UI surface
+  │     └── Phase 23 (Production Stats) — read-only aggregation
+  └── Phase 22 (Review & Approval) — interactive review layer
+Phase 24 (UX Polish Bundle) — depends on Phase 20; sequential after 23 to avoid file conflicts
+```
 
-**Delivers:** repo `sort` param additions, engine facade pass-through, HTTP route `?sort=...&order=...`, `<SortControl/>` Preact dropdown with localStorage persistence + URL state mirror, smart-default-per-scope.
+---
 
-**Avoids (PITFALLS):** Pitfall 10 (sort instability), Pitfall 15 (localStorage quota), Pitfall 20 (tool cap drift).
+## Open Questions for REQUIREMENTS.md
 
-**Build effort estimate:** ~2 days.
+1. **Status change note:** Optional (recommended) or required?
+2. **Stale-shot threshold:** Default N days for "no activity > N days" detection. Recommend 14 days.
+3. **Sprite sheet timing:** Lazy on first hover (recommended) vs. eager at version completion?
+4. **A/B comparison scope:** Any two user-selected versions, or always current vs. parent?
+5. **`pending-review` trigger:** New version auto-sets shot to `pending-review`, or always manual?
+6. **`omit` state visibility:** Hidden from default grid view? Explicit "restore" flow?
+7. **Stats widget placement:** ShotGridView header (recommended), separate panel, or HomeView?
 
-### Phase 19: AI Conversational Summary
-
-**Rationale:** Highest complexity, highest risk — ships LAST. Introduces the FIRST LLM dependency in this codebase. Adversarial review mandatory at plan stage (mirrors v1.1 Phase 16 review that caught 5 BLOCKERS).
-
-**Delivers:** `src/engine/summary/` module, Drizzle migration 0007, engine facade `summarizeVersion`, HTTP route `GET /api/versions/:id/summary` with circuit breaker + 8s timeout, `<ConversationalSummary/>` Preact component, architecture-purity test extension for `@anthropic-ai/sdk`, `flattenAnthropicError` helper, env-config (`VFX_FAMILIAR_SUMMARY_MODEL`, `_FALLBACKS`, `_TIMEOUT_MS`, `_QUEUE_RPM`).
-
-**Avoids (PITFALLS):** Pitfall 1 (stale-after-redact), Pitfall 2 (prompt injection), Pitfall 3 (architecture-purity drift), Pitfall 4 (hallucination), Pitfall 5 (cost runaway), Pitfall 9 (API key leak), Pitfall 11 (model deprecation), Pitfall 12 (rate limit), Pitfall 14 (Anthropic outage), Pitfall 17 (max_tokens truncation), Pitfall 18 (SSE/stdio mismatch), Pitfall 19 (append-only mutation), Pitfall 21 (migrate-on-boot).
-
-**Build effort estimate:** ~4 days.
-
-### Phase Ordering Rationale
-
-- Strict ordering 17 → 18 → 19 (not parallel): each phase establishes patterns the next inherits.
-- Low-risk first (de-risk ordering rule): thumbnails ship visible artist value with zero external-dependency risk → if v1.2 has to slip, Phase 17 still ships independently.
-- Migration footprint locked at one file: only Phase 19 introduces 0007.
-
-### Research Flags
-
-**Phases likely needing deeper research during planning:**
-- **Phase 19 (AI Conversational Summary):** **MANDATORY adversarial codex-substitute review at plan stage.** Plus: validation harness for "is this output actually a Supervisor-voice 2-4 sentence summary?" — needs human VFX-savvy spot-check at acceptance.
-
-**Phases with standard patterns (skip /gsd-research-phase):**
-- Phase 17 (Visual Thumbnails): well-documented patterns; inherits from Phase 14 download discipline.
-- Phase 18 (Sortable Folder Dropdown): SQL ORDER BY enum whitelist + cursor pagination is standard.
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Versions pinned via npm metadata 2026-04-30; LLM model id + pricing verified; license-poison risk caught and routed; Zod v4 peer-dep verified. |
-| Features | HIGH (thumbnails + sort), MEDIUM (AI summary) | Thumbnails + sort are well-trodden ground. Supervisor-voice register for AI summary is novel for this codebase. |
-| Architecture | HIGH | Codebase ground-truth read; integration points verified against actual source. All v1.1 patterns directly transferable. |
-| Pitfalls | HIGH | Anthropic SDK behavior + sharp performance + cursor-pagination patterns verified via Context7 + official docs; multi-encoding leak scan + adversarial review patterns verified via v1.1 RETROSPECTIVE. |
+| Stack | HIGH | Zero new dependencies; all libraries already present |
+| Features — status/review/stats | HIGH | Verified across ShotGrid/Kitsu/ftrack |
+| Features — AI streaming/sprite scrub | MEDIUM | Patterns well-understood; cache integration needs validation |
+| Architecture | HIGH | Ground-truth codebase read for every claim |
+| Pitfalls | HIGH | Sourced from actual codebase patterns (LANDMINE annotations, existing `void + .catch()` usage) |
 
 **Overall confidence:** HIGH
 
-### Gaps to Address
-
-- **Supervisor-voice acceptance:** Phase 19 acceptance includes a sample-output spot-check by a human VFX-savvy reviewer (Timothy as canonical reviewer) on 5+ generated summaries.
-- **Anthropic prompt caching real-world hit rate:** Phase 19 ships with structured logging of `cache_creation_input_tokens` vs `cache_read_input_tokens`.
-- **MP4 thumbnail format edge cases:** Phase 17 plan includes brightness-threshold fallback for `-vf thumbnail` filter on cuts.
-- **Branched-lineage summary coherence:** v1.2 ships independent summaries; cross-summary intelligence deferred to v1.3.
-- **Per-shot vs global sort persistence:** v1.2 ships global; per-shot evaluation deferred to v1.3.
-
-## Sources
-
-### Primary (HIGH confidence)
-- Context7 `/anthropics/anthropic-sdk-typescript`, Context7 `/lovell/sharp`
-- Anthropic Models Overview + API Docs (mitigate jailbreaks, rate limits, deprecations, prompt caching)
-- npm registry metadata 2026-04-30 (version pins + license posture)
-- Project source — package.json, architecture-purity.test.ts, pipeline.ts, c2pa modules, repos, drizzle migrations
-- Project context — PROJECT.md, RETROSPECTIVE.md, CLAUDE.md
-- Sharp performance docs (Pixelplumbing)
-- Frame.io / VFX domain conventions
-
-### Secondary (MEDIUM confidence)
-- LLM hallucination mitigation literature 2026
-- Sharp memory + concurrency issues (GitHub #138)
-- HEIC thumbnail edge cases (immich-app/immich)
-- Cursor pagination with arbitrary ordering (Drizzle ORM)
-- LLM UX / streaming / TTFT (Redis blog)
-
-### Tertiary (LOW confidence — flagged for validation during execution)
-- Anthropic prompt caching real-world hit rate (validate via instrumentation)
-- MP4 `-vf thumbnail` representative-frame quality (mitigate via brightness-threshold)
-- Supervisor-voice register acceptance (relies on human spot-check)
-
 ---
 
-*Research completed: 2026-04-30*
+*Research completed: 2026-05-11*
 *Ready for roadmap: yes*
-*Synthesis basis: 4 research dimensions (STACK/FEATURES/ARCHITECTURE/PITFALLS) + PROJECT.md context*
-*Note for roadmapper: phase ordering is strict (17 → 18 → 19), not parallel. Adversarial review mandatory at Phase 19 plan stage. License-viral routing on ffmpeg is load-bearing — verify before any Phase 17 plan executes.*
+*Synthesis basis: 4 research dimensions (STACK/FEATURES/ARCHITECTURE/PITFALLS)*
+*Note for roadmapper: Phase ordering is strict 20 → 21 → 22 → 23 → 24. Phase 24 is highest risk and requires adversarial plan review. The 4 resolved disagreements between research files are load-bearing decisions — do not re-open without explicit deliberation.*
