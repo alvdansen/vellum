@@ -44,6 +44,7 @@ import {
   type SummaryState,
 } from '../state/summaries.js';
 import {
+  PROVENANCE_HEADING,
   SUMMARY_DISCLOSURE_TOGGLE,
   SUMMARY_FIRST_USE_LOCALSTORAGE_KEY,
 } from '../lib/copy.js';
@@ -351,7 +352,10 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           onRegenerate={handleRegenerate}
           versionLabel={label}
         >
-          <details class="mt-4" data-testid="provenance-disclosure">
+          <h3 class="label-uppercase mb-2 mt-4 text-[var(--color-fg-muted)]">
+            {PROVENANCE_HEADING}
+          </h3>
+          <details data-testid="provenance-disclosure">
             <summary class="cursor-pointer text-sm text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
               {SUMMARY_DISCLOSURE_TOGGLE}
             </summary>
