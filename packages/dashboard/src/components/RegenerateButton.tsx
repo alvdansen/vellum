@@ -101,7 +101,7 @@ export function RegenerateButton({
   // Match View Diff button styling verbatim per UI-SPEC color/spacing matrix
   // (see VersionDrawer.tsx:218-222).
   const baseClass =
-    'rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-normal tabular-nums text-[var(--color-bg)] hover:opacity-90 disabled:opacity-50';
+    'rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-normal tabular-nums text-[var(--color-bg)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] disabled:opacity-50';
   const composed = className ? `${baseClass} ${className}` : baseClass;
 
   return (
