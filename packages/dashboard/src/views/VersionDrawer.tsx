@@ -360,11 +360,11 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
               {SUMMARY_DISCLOSURE_TOGGLE}
             </summary>
             {provenance.length === 0 ? (
-              <div class="mt-2">
+              <div class="mt-2 pl-4">
                 <EmptyState message="No provenance records" />
               </div>
             ) : (
-              <ul class="mt-2 flex flex-col gap-2">
+              <ul class="mt-2 pl-4 flex flex-col gap-2">
                 {provenance.map((record, i) => (
                   <li key={i}>
                     <JsonBlock data={record} />
