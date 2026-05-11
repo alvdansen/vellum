@@ -10,11 +10,9 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 ## Current State
 
-**Shipped:** v1.1 Provenance Verification (C2PA) — 2026-04-30 (7 phases, 24 plans, +605 net new tests, baseline 1365/1372 passing). v1.0 MVP shipped 2026-04-28.
+**Shipped:** v1.2 Visual & Conversational Dashboard — 2026-05-09 (3 phases, 18 plans; thumbnails, sortable dropdown, AI conversational summary). v1.1 Provenance Verification (C2PA) shipped 2026-04-30. v1.0 MVP shipped 2026-04-28.
 
-**v1.2 Phase 17 complete (2026-05-02):** Visual thumbnails — sharp + @ffmpeg-installer/ffmpeg sole-importer engine, atomic disk cache with strong-ETag content-addressed validator, D-05 redact-invalidation hook, dashboard `<Thumbnail/>` + `<C2paShield/>` (Adobe CR mark, Apache 2.0) wired into VersionCard grid + TreeSidebar shot rows. 6/6 must-haves verified, 0 critical/0 blocking from code review, 7 human-UAT items pending. Phase 18 (sortable folder dropdown) unblocked.
-
-**v1.2 Phase 18 complete (2026-05-08):** Sortable folder dropdown — Latest-first version-grid default + A→Z tree default + 4-option SortDropdown (WAI-ARIA APG combobox) + LoadMoreButton with composite-cursor pagination + localStorage persistence + URL state mirror. Engine: Drizzle ORDER BY composer with closed enum whitelist (`completed_at | created_at | name | version_number` × `asc | desc`); composite cursor `(NULL-bit, sort_value, version_id)` for stable pagination. HTTP boundary: 3 Zod parsers (T-18-01/T-18-02/T-18-03/T-18-04 mitigated; 4xx INVALID_INPUT envelope; never echoes input). D-10 back-compat preserved — MCP tool callers continue to compile + execute without modification (167/167 tool tests green). 5/5 must-haves verified, 6 human-UAT items pending (visual + keyboard + URL round-trip). Phase 19 (AI conversational summary — adversarial review mandatory) unblocked.
+**v1.3 starting (2026-05-11):** Production Shot Grid milestone. Goal: turn VFX Familiar into a complete production management tool — shot status workflow (WIP → Pending Review → Approved → On Hold), visual shot grid with thumbnails + status badges, review & approval surface, sequence completion stats, and the UX polish bundle deferred from v1.2 (hover-to-scrub, SSE streaming AI summary, per-shot sort persistence, cross-version narrative coherence). Phases 20+ TBD from roadmap.
 
 **Stack:** TypeScript ESM Node MCP server, dual-transport (stdio + Streamable HTTP), `@modelcontextprotocol/sdk` 1.29, Hono + `@hono/node-server`, `better-sqlite3` + Drizzle ORM (WAL + busy_timeout=5000), Zod v4, nanoid, Preact + Vite dashboard, Vitest. C2PA via `c2pa-node` v0.5.26 (lazy-imported, restricted to `src/engine/c2pa/{signer,verifier,redaction}.ts`).
 
@@ -22,28 +20,29 @@ A VFX artist tells their AI familiar what they need in natural language, and it 
 
 **Live API:** ComfyUI Cloud locked at `https://cloud.comfy.org` with healthcheck path `/api/system_stats`; live-smoke verified 2/2 green via Phase 7.
 
-## Current Milestone: v1.2 Visual & Conversational Dashboard
+## Current Milestone: v1.3 Production Shot Grid
 
-**Goal:** Make the VFX Familiar dashboard a visual-first experience for VFX artists — replace text-heavy node listings with thumbnails on Project/Shot Asset cards, add smart sorting (latest-first by default) in the folder dropdown structure, and replace the raw "summary lists nodes" with an AI-written conversational summary that reads like a Supervisor or Lead describing what was made and how.
+**Goal:** Turn VFX Familiar into a complete AI production management tool for VFX professionals — add a shot-status workflow with visual shot grid, review & approval surface, and sequence-level production tracking, plus the UX polish bundle deferred from v1.2.
 
-**Driver:** Direct VFX artist feedback (Timothy Paul Bielec, 2026-04-30): "VFX artists are very visual learners (no surprise huh?) so if you could feature thumbnails for the Project or Shot Asset below, that would be very helpful. Also different sorting options so you can pull up latest generations quickly in the dropdown folder structure would be neat. It would be really cool if the 'Summary' didn't just list the nodes, but instead provided an intelligent summary of the asset and the workflow that was used to make it. Make it feel conversational like a Supervisor or Lead wrote it."
+**Driver:** Artist feedback: VFX Familiar needs to cover the full production management surface that tools like ShotGrid/ftrack/Kitsu provide, so a team can manage status, review outputs, and track progress without leaving the AI-native pipeline.
 
 **Target features:**
-1. **Thumbnails on Project/Shot Asset cards** — every asset card in the side list and main grid surfaces the rendered output thumbnail (lazy-loaded, fallback for in-progress/missing). The list view stays — thumbnails augment, not replace.
-2. **Sortable dropdown folder structure** — folder/asset pickers default to "latest first" with toggleable sort options (date created, version number, name, modified). State preserved per user preference.
-3. **AI-generated conversational asset summary** — replaces raw node listing in the VersionDrawer "Summary" section. Style: Supervisor/Lead writing 2-4 sentences about what was made (e.g., "v003 is a tighter close-up of the dragon's eye, generated with Flux + the cinematic_fantasy LoRA at seed 42, swapping the wide-angle env map for a HDRI from the parent shot."). Built on top of the existing prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints — grounded in actual provenance, not hallucination.
-
-**Pivot context:** v1.2 was tentatively scoped at v1.1 close as "C2PA Hardening" (HSM/Yubikey signing, EXR/PSD sidecar, multi-CA trust roots). The artist feedback indicates dashboard UX is the higher-value next step — direct user-demand signal vs. infrastructure improvement. C2PA hardening shifts to v1.3+ candidate scope (deferred items remain documented in v1.1 archive).
+1. **Shot status workflow** — WIP → Pending Review → Approved → On Hold; append-only status events (same provenance-event pattern as v1.0/v1.1); MCP tool surface so agents can query and update production status programmatically (within 12-tool cap).
+2. **Shot grid view** — visual matrix of shots: thumbnail, status badge (color-coded), version count, last-updated timestamp; quick filter by status/date; responsive grid layout.
+3. **Review & approval** — approve/reject from grid with optional note, A/B version compare panel, per-version reviewer notes; status change triggers append-only event.
+4. **Production overview** — sequence completion stats (% approved), project roll-up dashboard, shot-count and version-count summaries.
+5. **UX polish bundle (v1.2 deferrals)** — hover-to-scrub preview on thumbnails, SSE streaming AI summary updates (real-time token streaming instead of single-shot response), per-shot sort persistence across sessions, cross-version narrative coherence (summary references parent version context).
 
 **Key context:**
-- All three features build on existing v1.0/v1.1 surfaces — no new top-level MCP tools needed (tool count holds at 7 of 12)
-- Conversational summary requires LLM-at-engine-layer for the first time — adds a dependency surface (model choice, latency budget, cost-per-call, fallback) that drives research
-- Thumbnails require a new dashboard route + asset thumbnail pipeline; current `/api/versions/:id/output` serves full-size bytes
-- Existing `version.diff` + Phase 15 ingredient graph + Phase 13 model fingerprints give the conversational summary structured ground truth
+- Shot status workflow extends the existing provenance event table — append-only, no new top-level MCP tools required if status is a new action on the existing `shot` or `version` tool
+- Shot grid is a new dashboard view composing existing `<Thumbnail/>` + new `<StatusBadge/>` primitives
+- Review/approval requires a reviewer-notes column on a new or extended table — additive Drizzle migration
+- SSE streaming AI summary needs Anthropic SDK streaming mode (already integrated in Phase 19, but single-shot); Phase 19 ships in permanent fallback mode for Claude Max users (no API key) — streaming is additive
+- Tool cap: 7 of 12 used; shot-status actions likely fit as new action arms on existing tools
 
-## Next Milestone Goals (v1.3+ Candidates)
+## Next Milestone Goals (v1.4+ Candidates)
 
-**Theme:** C2PA hardening + cloud-mode parity + multi-backend routing.
+**Theme:** C2PA hardening + multi-backend routing + enterprise features.
 
 **Candidate scope:**
 - HSM/Yubikey signing — get the private key out of process heap (T-14-12 follow-up)
@@ -88,13 +87,21 @@ Plus carried-forward backlog: Multi-Backend Routing (ROUTE-01..03), Function-Cal
 - ✓ **Recovery poller surfaces ComfyUI Cloud `node_errors`** — v1.1 (DEMO-02, Phase 11; flattenComfyError single source for submit + recovery paths; 14-case parity test green)
 - ✓ **Reproduce-divergence transparency** with WarningPill + side-by-side comparison — v1.1 (DEMO-03, Phase 12; reproduction_divergence field on DiffResponse)
 
-### Active (v1.2 — Visual & Conversational Dashboard)
+### Validated (v1.2 — Visual & Conversational Dashboard)
 
-- [x] **Thumbnails on Project/Shot Asset cards** — visual asset preview augments the side list, lazy-loaded with in-progress/missing fallback (Phase 17 complete 2026-05-02; sharp + ffmpeg-installer thumbnail engine, atomic disk cache, redact-invalidation hook, C2paShield overlay; 7 human UAT items pending in 17-HUMAN-UAT.md)
-- [ ] **Sortable dropdown folder structure** — latest-first default + toggleable sort (date, version, name, modified) with per-user state preservation
-- [ ] **AI-generated conversational asset summary** — Supervisor/Lead voice 2-4 sentences grounded in prompt blob + Phase 15 ingredient graph + Phase 13 model fingerprints (no hallucination — structured provenance is ground truth)
+- ✓ **Thumbnails on Project/Shot Asset cards** — visual asset preview augments the side list, lazy-loaded with in-progress/missing fallback (Phase 17 complete 2026-05-02; sharp + ffmpeg-installer thumbnail engine, atomic disk cache, redact-invalidation hook, C2paShield overlay)
+- ✓ **Sortable dropdown folder structure** — latest-first default + 4-option SortDropdown (WAI-ARIA APG combobox) + composite-cursor pagination + localStorage + URL state mirror (Phase 18 complete 2026-05-08)
+- ✓ **AI-generated conversational asset summary** — Supervisor/Lead voice 2-4 sentences grounded in prompt blob + ingredient graph + model fingerprints; permanent fallback mode for Claude Max users (Phase 19 complete 2026-05-09; ships in fallback mode by design)
 
-### Active (v1.3+ candidates — deferred from v1.2 pivot)
+### Active (v1.3 — Production Shot Grid)
+
+- [ ] **Shot status workflow** — WIP → Pending Review → Approved → On Hold; append-only provenance events; MCP tool surface for agent-driven status updates (within 12-tool cap)
+- [ ] **Shot grid view** — visual matrix: thumbnail, color-coded status badge, version count, last-updated; filter by status/date; responsive grid layout
+- [ ] **Review & approval** — approve/reject from grid with optional note, A/B version compare panel, per-version reviewer notes; status changes emit append-only events
+- [ ] **Production overview** — sequence completion stats (% approved), project roll-up, shot-count and version-count summaries
+- [ ] **UX polish bundle (v1.2 deferrals)** — hover-to-scrub preview, SSE streaming AI summary, per-shot sort persistence, cross-version narrative coherence
+
+### Active (v1.4+ candidates — deferred from v1.3 pivot)
 
 - [ ] HSM/Yubikey signing — private key out of process heap
 - [ ] Cryptographic sidecar manifests for EXR/PSD (gated on c2pa-node sidecar API)

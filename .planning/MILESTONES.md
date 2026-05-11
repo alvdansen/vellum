@@ -1,5 +1,34 @@
 # Milestones
 
+## v1.2 Visual & Conversational Dashboard (Shipped: 2026-05-09)
+
+**Phases completed:** 3 phases (17-19), 18 plans, ~50 tasks
+
+**Key accomplishments:**
+
+- Sharp + @ffmpeg-installer/ffmpeg sole-importer thumbnail engine: atomic disk cache with strong-ETag content-addressed validation, format router (JPEG/WebP/PNG/GIF → JPEG thumbnail; MP4/WebM → first-frame JPEG with brightness probe + 10s SIGKILL timeout), D-05 redact-invalidation hook fires after atomicRename. Architecture-purity (D-WEBUI-31): no `src/` imports in dashboard components.
+- Dashboard `<Thumbnail/>` + `<C2paShield/>` (Adobe CR mark, Apache 2.0 licensed) wired into VersionCard grid, TreeSidebar shot rows, and HomeView. Lazy-loaded with SkeletonThumbnail fallback; missing/in-progress outputs degrade gracefully.
+- Sortable folder dropdown — Latest-first version-grid default + A→Z tree default; 4-option SortDropdown (WAI-ARIA APG combobox pattern) with keyboard navigation (Arrow keys, Home/End, Escape); LoadMoreButton with composite-cursor pagination (`(NULL-bit, sort_value, version_id)` for stable ordering). localStorage persistence + URL state mirror.
+- Drizzle ORDER BY composer with closed enum whitelist (`completed_at | created_at | name | version_number` × `asc | desc`); composite cursor cursor for stable pagination across sort changes. Three Zod parsers at HTTP boundary (T-18-01/T-18-02/T-18-03/T-18-04 mitigated; 4xx INVALID_INPUT envelope; never echoes input). D-10 MCP back-compat preserved — 167/167 tool tests green.
+- AI conversational summary — Claude 3 Haiku via Anthropic SDK; supervisor-voice prose generator producing 2-4 sentences grounded in prompt blob + ingredient graph + model fingerprints (no hallucination). Permanent fallback mode (structured provenance table) for Claude Max users who lack `ANTHROPIC_API_KEY`.
+- SummaryDrawer tab surfaced on VersionDrawer; RegenerateButton with 1Hz cooldown countdown (tabular-nums layout stability, WAI-ARIA aria-busy='true' during fetch, native disabled + aria-label). SSE streaming deferred to v1.3 UX polish bundle.
+- Security: 4/4 threat mitigations verified (prompt injection via provenance-as-ground-truth + system prompt separation, API key env-only, cost cap via per-summary limit); 11/11 accepted risks documented.
+
+**Delivered:** Visual-first VFX Familiar dashboard — thumbnail previews on every asset card, smart sorting with stable pagination, and AI-written supervisor-voice summaries grounded in cryptographic provenance. Every v1.2 requirement validated, 0 critical/blocking findings from code review.
+
+**Stats:**
+
+- Date range: 2026-04-30 → 2026-05-09 (10 days)
+- Phases: 3 (17: thumbnails, 18: sortable dropdown, 19: AI summary)
+- Plans: 18
+- Tests: baseline 1365/1372 → ~1400+ passing (architecture-purity 35/35; phase-attribution green)
+- Dashboard: ~45kB JS + 25kB CSS bundle (estimate)
+- Tool surface: 7 of 12 MCP tools (unchanged from v1.1)
+
+**Deferred to v1.3 UX polish bundle:** hover-to-scrub preview, SSE streaming AI summary updates, per-shot sort persistence across sessions, cross-version narrative coherence (summary refers to parent version).
+
+---
+
 ## v1.1 Provenance Verification (Shipped: 2026-04-30)
 
 **Phases completed:** 7 phases, 24 plans, 63 tasks
