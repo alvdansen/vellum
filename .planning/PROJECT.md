@@ -93,9 +93,12 @@ Plus carried-forward backlog: Multi-Backend Routing (ROUTE-01..03), Function-Cal
 - ✓ **Sortable dropdown folder structure** — latest-first default + 4-option SortDropdown (WAI-ARIA APG combobox) + composite-cursor pagination + localStorage + URL state mirror (Phase 18 complete 2026-05-08)
 - ✓ **AI-generated conversational asset summary** — Supervisor/Lead voice 2-4 sentences grounded in prompt blob + ingredient graph + model fingerprints; permanent fallback mode for Claude Max users (Phase 19 complete 2026-05-09; ships in fallback mode by design)
 
+### Validated (v1.3 — Production Shot Grid, in progress)
+
+- ✓ **Shot status workflow (backend)** — WIP → Pending Review → Approved → On Hold → Omit; append-only `shot_status_events` table + transactional dual-write in `shot-status-repo.ts`; `shot` tool gains 3 action arms (`set_status` / `get_status` / `list_status_history`) — tool count stays 7 of 12 cap; `shot.status_changed` SSE event wired through engine event bus (Phase 20 complete 2026-05-12; STAT-01..05 backend; dashboard surfaces deferred to Phase 21)
+
 ### Active (v1.3 — Production Shot Grid)
 
-- [ ] **Shot status workflow** — WIP → Pending Review → Approved → On Hold; append-only provenance events; MCP tool surface for agent-driven status updates (within 12-tool cap)
 - [ ] **Shot grid view** — visual matrix: thumbnail, color-coded status badge, version count, last-updated; filter by status/date; responsive grid layout
 - [ ] **Review & approval** — approve/reject from grid with optional note, A/B version compare panel, per-version reviewer notes; status changes emit append-only events
 - [ ] **Production overview** — sequence completion stats (% approved), project roll-up, shot-count and version-count summaries
@@ -213,4 +216,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-02 — v1.2 Phase 17 (Visual Thumbnails) complete. 5 plans shipped: engine thumbnail foundation (sharp sole-importer + format router + atomic FS cache), MP4 first-frame extraction (@ffmpeg-installer/ffmpeg sole-importer with brightness fallback + 10s SIGKILL timeout), engine wired into pipeline + C2PA redact-invalidation hook (D-05 ordering — invalidate AFTER atomicRename), dashboard `<Thumbnail/>` + `<C2paShield/>` (Adobe CR mark, Apache 2.0), and consumer wiring into VersionCard grid + TreeSidebar shot rows + HomeView. All VIS-01..06 satisfied. 7 human-UAT items pending in 17-HUMAN-UAT.md (visual perception checks). Phase 18 (sortable folder dropdown) and Phase 19 (AI conversational summary) unblocked. v1.2 milestone started 2026-04-30 (pivot from C2PA hardening based on artist feedback).*
+*Last updated: 2026-05-12 — v1.3 Phase 20 (Shot Status Engine) complete. 4 plans shipped: foundation (types + Drizzle schema + migration 0008 with 4 indexes), append-only shot-status-repo with transactional dual-write, engine event bus + SSE bridge for `shot.status_changed`, and pipeline facade + 3 shot-tool arms (`set_status` / `get_status` / `list_status_history`) preserving the 7-of-12 tool budget. All STAT-01..05 backend requirements satisfied (UI surfaces deferred to Phase 21). 6 advisory code-review warnings logged (none blocking); 0 critical findings. Phase 21 (Shot Grid View) unblocked.*
