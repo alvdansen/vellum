@@ -149,7 +149,7 @@ Plans:
 
 **5 phases, 22 requirements (5 STAT + 5 GRID + 5 REV + 3 OVR + 4 POL). Strict ordering 20 → 21 → 22 → 23 → 24. Phase 24 is highest-risk and requires adversarial review checklist before execute.**
 
-- [ ] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. (Not started)
+- [ ] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. **(Planned — 4 plans ready)**
 - [ ] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20)
 - [ ] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20)
 - [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
@@ -248,7 +248,7 @@ Plans:
 | 17    | v1.2      | 5/5   | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
-| 20    | v1.3      | 0/4   | Not started | —          |
+| 20    | v1.3      | 0/4   | Planned     | —          |
 | 21    | v1.3      | 0/TBD | Not started | —          |
 | 22    | v1.3      | 0/TBD | Not started | —          |
 | 23    | v1.3      | 0/TBD | Not started | —          |

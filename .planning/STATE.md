@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
-status: ready-to-plan
-stopped_at: roadmap complete; ready to plan Phase 20
+status: ready-to-execute
+stopped_at: Phase 20 planned (4 plans, 2 blockers fixed, plan-checker passed); ready to execute
 last_updated: "2026-05-11T00:00:00.000Z"
-last_activity: 2026-05-11 -- REQUIREMENTS.md + ROADMAP.md complete; next is /gsd-plan-phase 20
+last_activity: 2026-05-11 -- Phase 20 planned; 20-01..04 PLAN.md written; blockers resolved; next is execute 20-01
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** v1.3 milestone — research + requirements + roadmap complete; ready to plan Phase 20 (Shot Status Engine)
+**Current focus:** v1.3 milestone — Phase 20 (Shot Status Engine) planned and ready to execute
 
 ## Current Position
 
-Phase: 20 (Shot Status Engine) — not yet planned
-Plan: —
-Status: Ready to plan — run `/gsd-plan-phase 20`
-Last activity: 2026-05-11 -- REQUIREMENTS.md + ROADMAP.md written; all 5 research files complete
+Phase: 20 (Shot Status Engine) — planned, 4 plans ready to execute
+Plan: 20-01 (next)
+Status: Ready to execute — run `/gsd-execute-plan 20-01`
+Last activity: 2026-05-11 -- Phase 20 planning complete; 4 PLAN.md files written (20-01..04); 2 blockers fixed (4th index added to migration, makeInMemoryDb fixture question resolved)
 
 ## Performance Metrics
 
@@ -71,15 +71,17 @@ Prior milestone decisions:
 
 ### Pending Todos
 
-- [ ] Plan Phase 20 (Shot Status Engine) — run `/gsd-plan-phase 20`
+- [ ] Execute Phase 20-01 — run `/gsd-execute-plan 20-01`
+- [ ] Execute Phase 20-02 and 20-03 (parallel, both depend on 20-01)
+- [ ] Execute Phase 20-04 (depends on 20-02 + 20-03)
 
 ### Blockers/Concerns
 
-None. All research questions resolved. Key pitfall reminders for Phase 20:
+None. All blockers resolved. Key pitfall reminders for Phase 20 execution:
 - **Transaction wrapping**: UPDATE shots + INSERT shot_status_events must be in single db.transaction()
 - **Null-coalesce**: shots with zero history return 'wip', never null
 - **Append-only grep test**: `UPDATE shot_status_events` must return zero matches in CI
-- **4 indexes mandatory**: all 4 in migration 0008; staleness causes full-table scans on 200-shot grids
+- **4 indexes**: idx_shots_status, idx_shots_project_status (sequence_id proxy), idx_shot_status_events_shot_time, idx_shots_cursor
 
 ## Deferred Items
 
@@ -95,5 +97,5 @@ All v1.2 deferrals are now scoped into v1.3:
 ## Session Continuity
 
 Last session: 2026-05-11
-Stopped at: REQUIREMENTS.md + ROADMAP.md written; all 5 research files contain v1.3 content
-Resume: `/gsd-plan-phase 20`
+Stopped at: Phase 20 planning complete; 4 PLAN.md files (20-01..04) written and blocker-free
+Resume: `/gsd-execute-plan 20-01`
