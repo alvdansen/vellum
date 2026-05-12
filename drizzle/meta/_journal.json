@@ -50,6 +50,13 @@
       "when": 1778000000000,
       "tag": "0007_phase19_summary_generated_event",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1778500000000,
+      "tag": "0008_shot_status",
+      "breakpoints": true
     }
   ]
 }
