@@ -149,7 +149,7 @@ Plans:
 
 **5 phases, 22 requirements (5 STAT + 5 GRID + 5 REV + 3 OVR + 4 POL). Strict ordering 20 → 21 → 22 → 23 → 24. Phase 24 is highest-risk and requires adversarial review checklist before execute.**
 
-- [ ] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. **(Planned — 4 plans ready)**
+- [x] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. **(Planned — 4 plans ready)** (completed 2026-05-12)
 - [ ] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20)
 - [ ] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20)
 - [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
@@ -167,7 +167,7 @@ Plans:
   3. `shot.status_changed` SSE event fires on every status change and includes `{ shotId, fromStatus, toStatus, changedBy, note? }`. Tool count remains at 7 (`tool-budget.test.ts` assertion green).
   4. Grep test confirms `UPDATE shot_status_events` returns zero matches in `src/` (append-only invariant enforced in CI).
   5. 4 indexes exist in migration 0008: `idx_shots_status`, `idx_shot_status_events_shot_time`, `idx_shots_cursor`, and one additional covering index.
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -178,7 +178,7 @@ Plans:
 - [x] 20-03-PLAN.md — Events+SSE: ShotStatusChangedPayload + EngineEventMap extension + EVENT_TYPES extension + toDashboardPayload case
 
 **Wave 3** *(blocked on Waves 1+2)*
-- [ ] 20-04-PLAN.md — Integration: pipeline facade (setShotStatus/getShotStatus/listShotStatusHistory) + shot-tool 3 new arms + architecture-purity tests + shot-tool-status tests + [BLOCKING] drizzle-kit push + full suite regression
+- [x] 20-04-PLAN.md — Integration: pipeline facade (setShotStatus/getShotStatus/listShotStatusHistory) + shot-tool 3 new arms + architecture-purity tests + shot-tool-status tests + [BLOCKING] drizzle-kit push + full suite regression
 
 ### Phase 21: Shot Grid View
 **Goal**: Primary v1.3 user surface — VFX artists navigate to a sequence and see all shots in a visual grid with status badges, thumbnails, and filter controls.
@@ -248,7 +248,7 @@ Plans:
 | 17    | v1.2      | 5/5   | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
-| 20    | v1.3      | 3/4 | In Progress|  |
+| 20    | v1.3      | 4/4 | Complete   | 2026-05-12 |
 | 21    | v1.3      | 0/TBD | Not started | —          |
 | 22    | v1.3      | 0/TBD | Not started | —          |
 | 23    | v1.3      | 0/TBD | Not started | —          |
