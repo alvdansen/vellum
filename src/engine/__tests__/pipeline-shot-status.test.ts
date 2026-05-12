@@ -13,6 +13,15 @@ import { VersionRepo } from '../../store/version-repo.js';
 import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../pipeline.js';
 
+/**
+ * Sleep helper for newest-first ordering tests — repo orders by created_at
+ * (millisecond resolution). Two same-tick inserts can tie and SQLite has no
+ * stable secondary sort on the events table, so we space ordered inserts by
+ * 2ms when the test asserts on ordering. Real callers space transitions by
+ * at least one human reaction time, so this is not a production concern.
+ */
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 describe('Engine.setShotStatus / getShotStatus / listShotStatusHistory (STAT-04)', () => {
   let engine: Engine;
   let sequenceId: string;
@@ -123,8 +132,9 @@ describe('Engine.setShotStatus / getShotStatus / listShotStatusHistory (STAT-04)
       .toThrowTypedError('SHOT_NOT_FOUND');
   });
 
-  test('listShotStatusHistory returns { shotId, history, total } newest-first', () => {
+  test('listShotStatusHistory returns { shotId, history, total } newest-first', async () => {
     engine.setShotStatus(shotId, 'pending-review', 'alice', 'r1');
+    await sleep(2); // ensure distinct created_at for ordering assertion
     engine.setShotStatus(shotId, 'approved', 'supervisor', 'ok');
     const list = engine.listShotStatusHistory(shotId, 10);
     expect(list.shotId).toBe(shotId);
@@ -135,9 +145,11 @@ describe('Engine.setShotStatus / getShotStatus / listShotStatusHistory (STAT-04)
     expect(list.history[1].to_status).toBe('pending-review');
   });
 
-  test('listShotStatusHistory honours the limit parameter', () => {
+  test('listShotStatusHistory honours the limit parameter', async () => {
     engine.setShotStatus(shotId, 'pending-review', 'a');
+    await sleep(2);
     engine.setShotStatus(shotId, 'approved', 'b');
+    await sleep(2);
     engine.setShotStatus(shotId, 'on-hold', 'c');
     const list = engine.listShotStatusHistory(shotId, 2);
     expect(list.total).toBe(2);
