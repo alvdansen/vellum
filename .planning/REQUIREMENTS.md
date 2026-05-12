@@ -24,15 +24,15 @@ Each requirement maps to a single roadmap phase. User-centric, atomic, and testa
 
 ### Shot Status Workflow (STAT)
 
-- [ ] **STAT-01**: User sees a WCAG 2.1 AA compliant status badge (color + text, never color alone) on every shot card in the shot grid representing one of five production states: `wip | pending-review | approved | on-hold | omit`. Transitions are free-form (any → any, no guards) — supervisors must be able to reopen approved shots and override holds without workarounds.
+- [x] **STAT-01**: User sees a WCAG 2.1 AA compliant status badge (color + text, never color alone) on every shot card in the shot grid representing one of five production states: `wip | pending-review | approved | on-hold | omit`. Transitions are free-form (any → any, no guards) — supervisors must be able to reopen approved shots and override holds without workarounds.
 
-- [ ] **STAT-02**: User changes a shot's status (with optional free-text note) and the change is committed atomically: a single `db.transaction()` executes `UPDATE shots SET status = ?` and `INSERT INTO shot_status_events (...)` together. If the transaction fails, neither the status column nor the event row is written. The `changed_by` field captures `'user'` or the calling tool name.
+- [x] **STAT-02**: User changes a shot's status (with optional free-text note) and the change is committed atomically: a single `db.transaction()` executes `UPDATE shots SET status = ?` and `INSERT INTO shot_status_events (...)` together. If the transaction fails, neither the status column nor the event row is written. The `changed_by` field captures `'user'` or the calling tool name.
 
-- [ ] **STAT-03**: User (or MCP agent) queries a shot's status history and receives up to 50 events (performance-bounded) ordered newest-first, each showing `from_status`, `to_status`, `changed_by`, optional `note`, and `created_at`. Shots created before migration 0008 have zero history rows — the repo layer null-coalesces to `'wip'` as the implicit default; callers never receive `null`.
+- [x] **STAT-03**: User (or MCP agent) queries a shot's status history and receives up to 50 events (performance-bounded) ordered newest-first, each showing `from_status`, `to_status`, `changed_by`, optional `note`, and `created_at`. Shots created before migration 0008 have zero history rows — the repo layer null-coalesces to `'wip'` as the implicit default; callers never receive `null`.
 
-- [ ] **STAT-04**: Status changes push a `shot.status_changed` SSE event to all connected dashboard clients with `{ shotId, fromStatus, toStatus, changedBy, note? }`. Dashboard updates the shot card's status badge in-place without triggering a full grid re-fetch. Shot card component is keyed on `shotId` only — SSE-driven updates do not disrupt open review panels.
+- [x] **STAT-04**: Status changes push a `shot.status_changed` SSE event to all connected dashboard clients with `{ shotId, fromStatus, toStatus, changedBy, note? }`. Dashboard updates the shot card's status badge in-place without triggering a full grid re-fetch. Shot card component is keyed on `shotId` only — SSE-driven updates do not disrupt open review panels.
 
-- [ ] **STAT-05**: MCP tool budget stays at 7 of 12. All shot-status functionality ships as three new arms on the existing `shot` tool: `set_status`, `get_status`, `list_status_history` — no new `server.registerTool()` call; `tool-budget.test.ts` assertion `=== 7` is unchanged.
+- [x] **STAT-05**: MCP tool budget stays at 7 of 12. All shot-status functionality ships as three new arms on the existing `shot` tool: `set_status`, `get_status`, `list_status_history` — no new `server.registerTool()` call; `tool-budget.test.ts` assertion `=== 7` is unchanged.
 
 ### Shot Grid View (GRID)
 
