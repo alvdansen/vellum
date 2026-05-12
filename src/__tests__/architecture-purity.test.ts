@@ -725,6 +725,38 @@ describe('architecture purity', () => {
     // verifies anthropic-client.ts is the sole direct SDK importer.
     expect(grepCount('@anthropic-ai/sdk', 'src/engine/summary/telemetry.ts')).toBe(0);
   });
+
+  // ================================================================
+  // Phase 20 / Plan 20-04 — STAT-02 append-only invariant for the
+  // shot_status_events table + file-level MCP-SDK purity lock for the
+  // new shot-status repo. Mirrors the provenance-repo append-only guard
+  // (D-PROV-01) and the existing per-file MCP purity locks for assets,
+  // tag-repo, and metadata-repo above.
+  //
+  // The append-only guard is the structural enforcement of STAT-02:
+  // the repo MUST never UPDATE or DELETE shot_status_events rows.
+  // Implementation lives in src/store/shot-status-repo.ts; Plan 20-02
+  // also asserts the same via grep at the repo file itself, but the
+  // architecture-purity test is the canonical CI regression anchor
+  // that fires from a single well-known location.
+  // ================================================================
+  it('shot_status_events is never UPDATE-d or DELETE-d in src/store/shot-status-repo.ts', () => {
+    expect(
+      grepCount('UPDATE shot_status_events', 'src/store/shot-status-repo.ts'),
+    ).toBe(0);
+    expect(
+      grepCount('DELETE.*shot_status_events', 'src/store/shot-status-repo.ts'),
+    ).toBe(0);
+  });
+
+  // Phase 20 — file-level purity lock for shot-status-repo.ts. The
+  // directory-level src/store/ guard at line 38 already covers this
+  // transitively; the file-level assertion fires in isolation if
+  // someone adds an MCP import to this specific file — cheaper to
+  // debug than the directory-wide fail.
+  it('src/store/shot-status-repo.ts has zero imports from @modelcontextprotocol/sdk', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/store/shot-status-repo.ts')).toBe(0);
+  });
 });
 
 // ================================================================
