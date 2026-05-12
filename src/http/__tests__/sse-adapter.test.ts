@@ -218,7 +218,7 @@ describe('toDashboardPayload — metadata.changed', () => {
 });
 
 describe('toDashboardPayload — exhaustiveness', () => {
-  it('all 5 EngineEventMap keys are handled (runtime smoke)', () => {
+  it('all 6 EngineEventMap keys are handled (runtime smoke)', () => {
     // Type-level exhaustiveness is enforced by the never-default arm at
     // compile time; this test provides a runtime smoke check that every
     // key in the map routes through a case arm and does not hit default.
@@ -236,9 +236,21 @@ describe('toDashboardPayload — exhaustiveness', () => {
       'hierarchy.created': { entity_type: 'workspace', entity_id: 'e', parent_id: null, at: 't' },
       'tag.changed': { action: 'add', version_id: 'v', shot_id: 's', tag: 'x', at: 't' },
       'metadata.changed': { action: 'set', version_id: 'v', shot_id: 's', key: 'k', at: 't' },
+      // STAT-04: shot.status_changed payload — note is nullable; from_status
+      // is null when the shot has no prior history (default 'wip' materialized
+      // on shots.status but never persisted as an event row).
+      'shot.status_changed': {
+        shot_id: 'sh1',
+        sequence_id: 'sq1',
+        from_status: 'wip',
+        to_status: 'pending-review',
+        changed_by: 'user',
+        note: null,
+        at: 't',
+      },
     };
     const keys = Object.keys(minimalByType) as (keyof EngineEventMap)[];
-    expect(keys.length).toBe(5);
+    expect(keys.length).toBe(6);
     for (const key of keys) {
       // Each call must return an object (no throw from the default arm).
       // TypeScript can't narrow the payload for a dynamic `key` indexer, so
