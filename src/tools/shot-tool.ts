@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
-import { SHOT_NAME_REGEX } from '../types/hierarchy.js';
+import { SHOT_NAME_REGEX, SHOT_STATUSES } from '../types/hierarchy.js';
 import { toolOk, toolError } from './envelope.js';
 import {
   shapeCreateOrGet,
@@ -42,10 +42,38 @@ const GetInput = z.object({
   id: z.string().min(1).max(MAX_ID_LENGTH),
 });
 
+// Phase 20 / Plan 20-04 (STAT-05) — three new arms wired to the pipeline
+// facade (Engine.setShotStatus / getShotStatus / listShotStatusHistory).
+// SHOT_STATUSES is the single source of truth for the valid status set
+// (defined in src/types/hierarchy.ts alongside the ShotStatus type).
+const ShotStatusEnum = z.enum(SHOT_STATUSES);
+
+const SetStatusInput = z.object({
+  action: z.literal('set_status'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+  status: ShotStatusEnum,
+  changed_by: z.string().max(100).optional(),
+  note: z.string().max(500).optional(),
+});
+
+const GetStatusInput = z.object({
+  action: z.literal('get_status'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+});
+
+const ListStatusHistoryInput = z.object({
+  action: z.literal('list_status_history'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
 const ShotInputSchema = z.discriminatedUnion('action', [
   CreateInput,
   ListInput,
   GetInput,
+  SetStatusInput,
+  GetStatusInput,
+  ListStatusHistoryInput,
 ]);
 
 /**
@@ -66,19 +94,33 @@ export function registerShot(server: McpServer, engine: Engine) {
     {
       title: 'Shot',
       description:
-        "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get.",
+        "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get, set_status, get_status, list_status_history.",
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `ShotInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
-        action: z.enum(['create', 'list', 'get']),
+        action: z.enum([
+          'create',
+          'list',
+          'get',
+          'set_status',
+          'get_status',
+          'list_status_history',
+        ]),
         sequenceId: z.string().optional(),
         name: z.string().optional(),
         id: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
+        // Phase 20 — fields used by set_status (status/changed_by/note) and
+        // list_status_history (limit is shared with list above). All optional
+        // at the raw layer; the discriminated-union ShotInputSchema enforces
+        // per-arm shape inside the handler.
+        status: z.string().optional(),
+        changed_by: z.string().optional(),
+        note: z.string().optional(),
       },
     },
     async (rawInput) => {
@@ -95,6 +137,23 @@ export function registerShot(server: McpServer, engine: Engine) {
             );
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getShot(input.id)));
+          case 'set_status':
+            // Phase 20 (STAT-05) — three new arms wire directly to the pipeline
+            // facade. The engine throws SHOT_NOT_FOUND TypedError on missing
+            // shot; the outer catch's `toolError(err)` arm propagates that
+            // generically (no per-arm error handling needed).
+            return toolOk(
+              engine.setShotStatus(
+                input.id,
+                input.status,
+                input.changed_by ?? 'user',
+                input.note,
+              ),
+            );
+          case 'get_status':
+            return toolOk(engine.getShotStatus(input.id));
+          case 'list_status_history':
+            return toolOk(engine.listShotStatusHistory(input.id, input.limit));
           default: {
             const _exhaustive: never = input;
             throw new TypedError(
