@@ -167,11 +167,11 @@ Plans:
   3. `shot.status_changed` SSE event fires on every status change and includes `{ shotId, fromStatus, toStatus, changedBy, note? }`. Tool count remains at 7 (`tool-budget.test.ts` assertion green).
   4. Grep test confirms `UPDATE shot_status_events` returns zero matches in `src/` (append-only invariant enforced in CI).
   5. 4 indexes exist in migration 0008: `idx_shots_status`, `idx_shot_status_events_shot_time`, `idx_shots_cursor`, and one additional covering index.
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 20-01-PLAN.md — Foundation: ShotStatus type + SHOT_STATUSES const + Shot.status field + 'sse' IdPrefix + shotStatusEvents Drizzle table + shots.status column + migration 0008 SQL + journal entry
+- [x] 20-01-PLAN.md — Foundation: ShotStatus type + SHOT_STATUSES const + Shot.status field + 'sse' IdPrefix + shotStatusEvents Drizzle table + shots.status column + migration 0008 SQL + journal entry
 
 **Wave 2** *(parallel — both depend on Wave 1; no file overlap)*
 - [ ] 20-02-PLAN.md — Store: shot-status-repo.ts (insertStatusEvent transactional dual-write + getStatusHistory + getCurrentStatus null-coalesce + STALE_SHOT_DAYS) + repo test file
@@ -248,7 +248,7 @@ Plans:
 | 17    | v1.2      | 5/5   | Complete    | 2026-05-02 |
 | 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
-| 20    | v1.3      | 0/4   | Planned     | —          |
+| 20    | v1.3      | 1/4 | In Progress|  |
 | 21    | v1.3      | 0/TBD | Not started | —          |
 | 22    | v1.3      | 0/TBD | Not started | —          |
 | 23    | v1.3      | 0/TBD | Not started | —          |
