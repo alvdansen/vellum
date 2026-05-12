@@ -40,18 +40,20 @@ import type {
   TagChangedPayload,
   MetadataChangedPayload,
   HierarchyCreatedPayload,
+  ShotStatusChangedPayload,
 } from '../engine/events.js';
 
-// The 5 event types the dashboard subscribes to (D-WEBUI-06). Declared as a
-// `const` tuple so the subscribe/cleanup loops below get exact key-level
-// typing against EngineEventMap — adding a sixth event type would fail the
-// `satisfies` check until this list is updated.
+// The 6 event types the dashboard subscribes to (D-WEBUI-06, STAT-04).
+// Declared as a `const` tuple so the subscribe/cleanup loops below get exact
+// key-level typing against EngineEventMap — adding a seventh event type
+// would fail the `satisfies` check until this list is updated.
 const EVENT_TYPES = [
   'version.status_changed',
   'version.created',
   'tag.changed',
   'metadata.changed',
   'hierarchy.created',
+  'shot.status_changed',
 ] as const satisfies ReadonlyArray<keyof EngineEventMap>;
 
 // ================================================================
@@ -129,6 +131,21 @@ export function toDashboardPayload<T extends keyof EngineEventMap>(
       // ever gains one in a future engine extension. The adapter is the
       // second line of defense.
       return { entityId: p.version_id, key: p.key };
+    }
+    case 'shot.status_changed': {
+      const p = payload as ShotStatusChangedPayload;
+      // STAT-04 wire-shape: snake_case → camelCase per the dashboard contract.
+      // `note` coerces null → undefined to match the optional dashboard field
+      // (mirrors the parent_id?: pattern in hierarchy.created above). T-20-03-01
+      // is accepted (low-value disclosure on an already-authenticated stream).
+      return {
+        shotId: p.shot_id,
+        sequenceId: p.sequence_id,
+        fromStatus: p.from_status,
+        toStatus: p.to_status,
+        changedBy: p.changed_by,
+        note: p.note ?? undefined,
+      };
     }
     default: {
       // Exhaustiveness check — any unhandled key fails here.

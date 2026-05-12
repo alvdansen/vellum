@@ -24,6 +24,30 @@ export interface VersionStatusChangedPayload {
   at: string; // ISO 8601 timestamp
 }
 
+/**
+ * shot.status_changed — fires from Engine.setShotStatus (STAT-04).
+ *
+ * Carries the previous and new shot production states plus the sequence_id
+ * so SSE clients can filter to the currently-displayed sequence without an
+ * additional shot lookup. `from_status` is null on the first-ever status set
+ * for a shot whose history is empty (shots.status materialized default 'wip'
+ * has not yet been recorded as an event row). T-5-02 analogue: the optional
+ * `note` is user-authored free text but is not PII at a higher trust level
+ * than shot names themselves — supervisors author it for the team, and the
+ * SSE stream is already gated by the same origin allowlist + auth that
+ * shows shot identifiers. Included here so clients can render the audit
+ * trail without re-fetching history on every event.
+ */
+export interface ShotStatusChangedPayload {
+  shot_id: string;
+  sequence_id: string;         // for SSE client to filter by current sequence
+  from_status: string | null;  // null on first-ever status set
+  to_status: string;
+  changed_by: string;
+  note: string | null;
+  at: string; // ISO 8601 timestamp
+}
+
 /** version.created — fires from submitGeneration, reproduceVersion, iterateFromVersion. */
 export interface VersionCreatedPayload {
   version_id: string;
@@ -79,6 +103,7 @@ export interface EngineEventMap {
   'tag.changed': TagChangedPayload;
   'metadata.changed': MetadataChangedPayload;
   'hierarchy.created': HierarchyCreatedPayload;
+  'shot.status_changed': ShotStatusChangedPayload;
 }
 
 // ================================================================
