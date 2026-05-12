@@ -71,7 +71,17 @@ import {
   type Version,
   type Breadcrumb,
   type BreadcrumbEntry,
+  type ShotStatus,
 } from '../types/hierarchy.js';
+// Phase 20 / Plan 20-04 — STAT-04 facade dependencies. The repo functions write
+// the dual-mutation atomically (UPDATE shots + INSERT shot_status_events) inside
+// one transaction; getStatusHistory is the canonical read for both
+// listShotStatusHistory and lastChangedAt in getShotStatus.
+import {
+  insertStatusEvent,
+  getStatusHistory,
+  type ShotStatusEvent,
+} from '../store/shot-status-repo.js';
 import type {
   ProvenanceEvent,
   DiffSnapshot,
@@ -667,6 +677,118 @@ export class Engine {
       limit,
       offset,
     };
+  }
+
+  // ================================================================
+  // PHASE 20 — SHOT STATUS (STAT-04 facade over shot-status-repo + SSE event)
+  // ================================================================
+
+  /**
+   * STAT-04 — transition a shot to `toStatus`, emitting 'shot.status_changed'.
+   *
+   * The repo writes BOTH (UPDATE shots.status + INSERT shot_status_events) in
+   * one transaction so partial writes are impossible. The previousStatus is
+   * read from the in-memory shot.status (null-coalesced to 'wip' per the
+   * STAT-03 default) BEFORE the repo mutates it — this keeps the event payload
+   * accurate for cross-status transitions. Throws SHOT_NOT_FOUND when the shot
+   * does not exist.
+   */
+  setShotStatus(
+    shotId: string,
+    toStatus: ShotStatus,
+    changedBy: string,
+    note?: string,
+  ): {
+    shotId: string;
+    name: string;
+    previousStatus: ShotStatus;
+    newStatus: ShotStatus;
+    eventId: string;
+  } {
+    const shot = this.repo.getShot(shotId);
+    if (!shot) {
+      throw new TypedError(
+        'SHOT_NOT_FOUND',
+        `Shot '${shotId}' not found`,
+        `List shots with { tool: 'shot', action: 'list' }`,
+      );
+    }
+    const previousStatus = (shot.status as ShotStatus) ?? 'wip';
+    const event = insertStatusEvent(
+      this.db,
+      shotId,
+      previousStatus,
+      toStatus,
+      changedBy,
+      note,
+    );
+    this.events.emitEvent('shot.status_changed', {
+      shot_id: shotId,
+      sequence_id: shot.sequence_id,
+      from_status: previousStatus,
+      to_status: toStatus,
+      changed_by: changedBy,
+      note: note ?? null,
+      at: this.nowIso(),
+    });
+    return {
+      shotId,
+      name: shot.name,
+      previousStatus,
+      newStatus: toStatus,
+      eventId: event.id,
+    };
+  }
+
+  /**
+   * STAT-04 — read the current status of a shot plus the timestamp of the most
+   * recent status event. `status` is null-coalesced to 'wip' so callers never
+   * need to handle a null state. `lastChangedAt` is null for shots that have
+   * never been transitioned. Throws SHOT_NOT_FOUND when the shot does not exist.
+   */
+  getShotStatus(shotId: string): {
+    shotId: string;
+    name: string;
+    status: ShotStatus;
+    lastChangedAt: number | null;
+  } {
+    const shot = this.repo.getShot(shotId);
+    if (!shot) {
+      throw new TypedError(
+        'SHOT_NOT_FOUND',
+        `Shot '${shotId}' not found`,
+        `List shots with { tool: 'shot', action: 'list' }`,
+      );
+    }
+    const history = getStatusHistory(this.db, shotId, 1);
+    return {
+      shotId,
+      name: shot.name,
+      status: (shot.status as ShotStatus) ?? 'wip',
+      lastChangedAt: history[0]?.created_at ?? null,
+    };
+  }
+
+  /**
+   * STAT-04 — list up to `limit` shot status events for a shot, newest-first.
+   * Repo `getStatusHistory` uses the idx_shot_status_events_shot_time covering
+   * index for O(log n) bounded reads. Throws SHOT_NOT_FOUND when the shot does
+   * not exist.
+   */
+  listShotStatusHistory(
+    shotId: string,
+    limit: number,
+  ): { shotId: string; history: ShotStatusEvent[]; total: number } {
+    const shot = this.repo.getShot(shotId);
+    if (!shot) {
+      throw new TypedError(
+        'SHOT_NOT_FOUND',
+        `Shot '${shotId}' not found`,
+        `List shots with { tool: 'shot', action: 'list' }`,
+      );
+    }
+    const history = getStatusHistory(this.db, shotId, limit);
+    return { shotId, history, total: history.length };
   }
 
   // ================================================================
