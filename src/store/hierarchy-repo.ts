@@ -268,6 +268,11 @@ export class HierarchyRepo {
       sequence_id: sequenceId,
       name,
       created_at: Date.now(),
+      // Phase 20 (STAT-01): default 'wip' matches migration 0008 column
+      // DEFAULT and shotStatusEvents history null-coalesce. Repo writes the
+      // explicit value so SCHEMA_DDL bootstrap (which omits the status
+      // column) stays compatible — the actual DB column lands via 0008.
+      status: 'wip',
     };
     try {
       this.db.insert(shots).values(row).run();

@@ -37,6 +37,7 @@ export interface Shot {
   sequence_id: string;
   name: string;
   created_at: number;
+  status: ShotStatus; // added by migration 0008; default 'wip'
 }
 
 /**
@@ -48,6 +49,15 @@ export interface Shot {
  * a migration.
  */
 export type VersionStatus = 'submitted' | 'running' | 'completed' | 'failed';
+
+/**
+ * STAT-01: closed set of shot production states. Free DAG — no transition
+ * guards. Supervisors can transition any → any. The SQLite column stays
+ * TEXT with DEFAULT 'wip'; the SHOT_STATUSES constant is the single source
+ * of truth for the valid set (grep test enforces no inline string comparisons).
+ */
+export const SHOT_STATUSES = ['wip', 'pending-review', 'approved', 'on-hold', 'omit'] as const;
+export type ShotStatus = typeof SHOT_STATUSES[number];
 
 export interface Version {
   id: string;

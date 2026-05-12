@@ -148,7 +148,15 @@ export class FakeEngine {
     this.calls.push({ method: 'getShot', args: [id] });
     return (
       this.cans.shots.get(id) ?? {
-        entity: { id, sequence_id: 'seq_1', name: 'sh010', created_at: 0 } satisfies Shot,
+        entity: {
+          id,
+          sequence_id: 'seq_1',
+          name: 'sh010',
+          created_at: 0,
+          // Phase 20 (STAT-01): default 'wip' matches the production
+          // migration 0008 DEFAULT for shots.status.
+          status: 'wip',
+        } satisfies Shot,
         breadcrumb: EMPTY_BREADCRUMB,
       }
     );

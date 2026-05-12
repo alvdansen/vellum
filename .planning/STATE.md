@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
-status: ready-to-execute
-stopped_at: Phase 20 planned (4 plans, 2 blockers fixed, plan-checker passed); ready to execute
-last_updated: "2026-05-11T00:00:00.000Z"
-last_activity: 2026-05-11 -- Phase 20 planned; 20-01..04 PLAN.md written; blockers resolved; next is execute 20-01
+status: executing
+stopped_at: Phase 20 planning complete; 4 PLAN.md files (20-01..04) written and blocker-free
+last_updated: "2026-05-12T09:14:10.505Z"
+last_activity: 2026-05-12 -- Phase 20 execution started
 progress:
   total_phases: 5
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** v1.3 milestone — Phase 20 (Shot Status Engine) planned and ready to execute
+**Current focus:** Phase 20 — shot-status-engine
 
 ## Current Position
 
-Phase: 20 (Shot Status Engine) — planned, 4 plans ready to execute
-Plan: 20-01 (next)
-Status: Ready to execute — run `/gsd-execute-plan 20-01`
-Last activity: 2026-05-11 -- Phase 20 planning complete; 4 PLAN.md files written (20-01..04); 2 blockers fixed (4th index added to migration, makeInMemoryDb fixture question resolved)
+Phase: 20 (shot-status-engine) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 20
+Last activity: 2026-05-12 -- Phase 20 execution started
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Last activity: 2026-05-11 -- Phase 20 planning complete; 4 PLAN.md files written
 Decisions are logged in PROJECT.md Key Decisions table.
 
 Prior milestone decisions:
+
 - [v1.0 Roadmap, archived]: 5 v1 phases derived from 7 requirement categories
 - [v1.1 Roadmap]: 7 phases (10-16) derived from 10 requirements; strict C2PA dependency ordering
 - [v1.2 Roadmap]: 3 phases (17-19) for thumbnails → sortable dropdown → AI summary
@@ -78,6 +79,7 @@ Prior milestone decisions:
 ### Blockers/Concerns
 
 None. All blockers resolved. Key pitfall reminders for Phase 20 execution:
+
 - **Transaction wrapping**: UPDATE shots + INSERT shot_status_events must be in single db.transaction()
 - **Null-coalesce**: shots with zero history return 'wip', never null
 - **Append-only grep test**: `UPDATE shot_status_events` must return zero matches in CI

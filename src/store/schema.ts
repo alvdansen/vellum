@@ -59,6 +59,13 @@ export const shots = sqliteTable('shots', {
     .references(() => sequences.id),
   name: text('name').notNull(),
   created_at: integer('created_at').notNull(),
+  // Phase 20 addition — STAT-01. Mutable denorm for O(1) grid reads.
+  // Truth lives in shot_status_events (append-only); this column is a
+  // materialized cache updated in the SAME db.transaction() that appends
+  // a status event. Added by drizzle migrator via 0008_shot_status.sql;
+  // SCHEMA_DDL below intentionally does NOT declare this column —
+  // matches the Phase 2/3/12/14/19 additive split.
+  status: text('status').notNull().default('wip'),
 }, (t) => ({
   uniqueNamePerSequence: unique().on(t.sequence_id, t.name),
 }));
@@ -179,6 +186,38 @@ export const metadata = sqliteTable('metadata', {
 }, (t) => ({
   uniqueVersionKey: unique().on(t.version_id, t.key),
   idxKeyValue: index('idx_metadata_key_value').on(t.key, t.value),
+}));
+
+/**
+ * Phase 20 — STAT-02, STAT-03: append-only shot status events table
+ * (Drizzle export `shotStatusEvents`). One row per status transition
+ * for the parent shot, in monotonically increasing `created_at` order.
+ * Truth model: this table is canonical history; `shots.status` is a
+ * materialized cache rebuilt from the most recent shotStatusEvents row.
+ *
+ * Structural append-only invariant: the repo (src/store/shot-status-repo.ts,
+ * Plan 02) has ZERO update/delete methods. Architecture-purity test enforces
+ * `UPDATE shot_status_events` / `DELETE.*shot_status_events` do not appear
+ * in src/store/shot-status-repo.ts. Mirrors the Phase 3 provenance pattern.
+ *
+ * Pre-migration shots have zero rows here — repo null-coalesces to 'wip'.
+ *
+ * Added by drizzle migrator via 0008_shot_status.sql; SCHEMA_DDL above
+ * intentionally does NOT declare this table — matches the Phase 2/3/12/14/19
+ * additive split.
+ */
+export const shotStatusEvents = sqliteTable('shot_status_events', {
+  id: text('id').primaryKey(),
+  shot_id: text('shot_id')
+    .notNull()
+    .references(() => shots.id),
+  from_status: text('from_status'), // null on first-ever status set
+  to_status: text('to_status').notNull(),
+  changed_by: text('changed_by').notNull(),
+  note: text('note'),
+  created_at: integer('created_at').notNull(),
+}, (t) => ({
+  idxShotTime: index('idx_shot_status_events_shot_time').on(t.shot_id, t.created_at),
 }));
 
 /**
