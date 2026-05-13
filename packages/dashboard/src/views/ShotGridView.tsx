@@ -69,8 +69,10 @@ import {
   SHOT_GRID_EMPTY_FILTER_ALL_NO_OMITTED_PREFIX,
   SHOT_GRID_EMPTY_FILTER_OMIT_HIDDEN,
   SHOT_GRID_LOADING_LABEL,
+  SHOT_GRID_FETCH_ERROR,
   LOAD_MORE_ERROR_PREFIX_FAILED,
   LOAD_MORE_ERROR_PREFIX_NETWORK,
+  LOAD_MORE_RETRY_LABEL,
 } from '../lib/copy.js';
 
 /**
@@ -101,21 +103,44 @@ export function ShotGridView() {
   // `alive` latch protects against late-arriving promises when the sequence
   // changes rapidly (the previous fetch's then-handler would otherwise
   // overwrite the newer shotGrid value).
+  //
+  // Phase 21 / Plan 21-06 — Bugs 4 and 6 fix (21-AUDIT.md §1 rows 4, 6).
+  //
+  // Bug 4: previously this effect awaited fetchShotGrid before touching
+  // shotGrid.value, so a sequence change re-rendered the view with the
+  // PREVIOUS sequence's shots still in shotGrid until the new fetch resolved.
+  // Now we clear shotGrid.value AND gridLoadMoreError synchronously at the
+  // top — the next paint is a clean loading state.
+  //
+  // Bug 6: previously a fetch rejection only set gridLoadMoreError to the
+  // generic "Failed to load" copy, but that copy was wired through the
+  // LoadMoreButton pill which only renders when shotGrid is non-null AND
+  // has more pages. With shotGrid still null the entire pane was blank.
+  // Now the .catch() sets SHOT_GRID_FETCH_ERROR and the render switch
+  // checks for the error BEFORE the empty-state branch, producing a visible
+  // retry surface.
   useEffect(() => {
     const seqId = selectedSequenceForGrid.value;
     if (!seqId) return;
+    // Bug 4 fix — clear stale grid + any stale error BEFORE awaiting so the
+    // user sees a clean loading state during the switch, not the prior
+    // sequence's data bleeding through.
+    shotGrid.value = null;
+    gridLoadMoreError.value = null;
     let alive = true;
     gridIsFetching.value = true;
-    gridLoadMoreError.value = null;
     fetchShotGrid(seqId, { limit: 20 })
       .then((res) => {
         if (!alive) return;
         shotGrid.value = res;
         gridIsFetching.value = false;
       })
-      .catch((err) => {
+      .catch(() => {
         if (!alive) return;
-        gridLoadMoreError.value = mapFetchErrorToCopy(err);
+        // Bug 6 fix — full-pane error copy. We deliberately use the
+        // SHOT_GRID_FETCH_ERROR constant (not mapFetchErrorToCopy) because
+        // the error renders as the FULL pane state, not the inline pill.
+        gridLoadMoreError.value = SHOT_GRID_FETCH_ERROR;
         gridIsFetching.value = false;
       });
     return () => {
@@ -278,6 +303,38 @@ export function ShotGridView() {
           {!shotGrid.value && gridIsFetching.value && (
             <EmptyState message={SHOT_GRID_LOADING_LABEL} />
           )}
+          {/* Phase 21 / Plan 21-06 — Bug 6 fix: full-pane error state when
+           *  the initial fetch rejects (shotGrid still null, no fetch in
+           *  flight, but gridLoadMoreError set). Renders the error copy plus
+           *  a Retry button that re-triggers the fetch effect by re-writing
+           *  the sequence-id signal (assignment to its own value bumps the
+           *  effect's dependency identity). */}
+          {!shotGrid.value &&
+            !gridIsFetching.value &&
+            gridLoadMoreError.value && (
+              <div
+                role="alert"
+                class="flex flex-col items-center justify-center gap-3 py-16 text-[var(--color-fg-muted)]"
+              >
+                <span class="text-sm">{gridLoadMoreError.value}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Re-fire the init effect by re-assigning the seqId.
+                    // selectedSequenceForGrid.value === current val is a
+                    // no-op for signal subscribers, so we cycle through
+                    // null and back to force the effect's dep to change.
+                    const seq = selectedSequenceForGrid.value;
+                    if (!seq) return;
+                    selectedSequenceForGrid.value = null;
+                    selectedSequenceForGrid.value = seq;
+                  }}
+                  class="rounded border border-[var(--color-border)] px-3 py-1 text-xs font-medium text-[var(--color-fg)] hover:bg-[var(--color-bg-hover)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                >
+                  {LOAD_MORE_RETRY_LABEL}
+                </button>
+              </div>
+            )}
           {/* Empty state — sequence loaded but filtered set is empty. */}
           {shotGrid.value && emptyMessage !== null && (
             <EmptyState message={emptyMessage} />

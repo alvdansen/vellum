@@ -492,7 +492,18 @@ export function HomeView() {
             selectedSequenceForGrid.value = seqId;
             persistShotGridUrlState();
           }}
-          currentGridSequenceId={selectedSequenceForGrid.value ?? undefined}
+          // Phase 21 / Plan 21-06 — Bug 7 fix (21-AUDIT.md §1 row 7,
+          // codex_review). Only surface aria-current="page" + accent fill
+          // on the grid-icon when the user is ACTUALLY on the shot-grid
+          // view. Previously this prop was unconditional, so navigating to
+          // the grid and clicking the home button (back to home) left the
+          // grid icon visually + semantically marked "current" — incorrect.
+          // Gating on activeView clears the marker on return-to-home.
+          currentGridSequenceId={
+            activeView.value === 'shot-grid'
+              ? (selectedSequenceForGrid.value ?? undefined)
+              : undefined
+          }
         />
       </div>
       {/* RIGHT pane — grid sort strip + version list + LoadMoreButton */}

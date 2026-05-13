@@ -284,6 +284,19 @@ export const SHOT_GRID_LOADING_LABEL = 'Loading shots…';
 /** Error pill prefix — paired with LOAD_MORE_RETRY_LABEL CTA. */
 export const SHOT_GRID_FETCH_ERROR_PREFIX = 'Failed to load shots';
 
+/**
+ * Full-pane error state copy — surfaced when the initial shot-grid fetch
+ * rejects and there's no prior data to show. The retry CTA reuses
+ * LOAD_MORE_RETRY_LABEL ('Retry') and re-runs the fetch effect via a
+ * sequence-id re-trigger.
+ *
+ * Phase 21 / Plan 21-06 — added for Bug 6 (21-AUDIT.md): without this
+ * full-pane copy, an initial-fetch failure left ShotGridView rendering a
+ * blank pane (shotGrid===null + gridIsFetching===false matched no branch).
+ */
+export const SHOT_GRID_FETCH_ERROR =
+  "Couldn't load shots. Try refreshing the page.";
+
 // ---------- TreeSidebar grid-icon affordance (D-02, D-05) ----------
 
 /** Grid-icon button `aria-label` prefix. Caller concatenates sequence name. */
