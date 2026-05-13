@@ -18,6 +18,7 @@ import {
   fetchProjects,
   fetchSequences,
   fetchShots,
+  fetchShotGrid,
   DashboardApiError,
 } from '../lib/api.js';
 
@@ -187,5 +188,128 @@ describe('fetchProjects / fetchSequences / fetchShots — optional sort param', 
     const calledUrl = fetchSpy.mock.calls[0][0] as string;
     expect(calledUrl).toContain('sort=name%3Adesc');
     expect(calledUrl).toContain('/api/sequences/seq_id/shots');
+  });
+});
+
+// ================================================================
+// Phase 21 / Plan 21-02 Task 7 — fetchShotGrid GRID-04 consumer
+// ================================================================
+
+describe('fetchShotGrid (Phase 21 GRID-04)', () => {
+  const fetchSpy = vi.fn();
+
+  beforeEach(() => {
+    fetchSpy.mockReset();
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  it('makes a GET to /api/sequences/{id}/shot-grid with no query string when no params', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        sequence: { id: 'seq_1', name: 'SEQ_010' },
+        shots: [],
+        next_cursor: null,
+        total_count: 0,
+      }),
+    );
+
+    await fetchShotGrid('seq_1');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toBe('/api/sequences/seq_1/shot-grid');
+  });
+
+  it('appends ?limit=50 when params.limit=50', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        sequence: { id: 'seq_1', name: 'SEQ_010' },
+        shots: [],
+        next_cursor: null,
+        total_count: 0,
+      }),
+    );
+
+    await fetchShotGrid('seq_1', { limit: 50 });
+
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toBe('/api/sequences/seq_1/shot-grid?limit=50');
+  });
+
+  it('appends both cursor and limit when both provided', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        sequence: { id: 'seq_1', name: 'SEQ_010' },
+        shots: [],
+        next_cursor: null,
+        total_count: 0,
+      }),
+    );
+
+    await fetchShotGrid('seq_1', { cursor: 'abc123', limit: 20 });
+
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('cursor=abc123');
+    expect(calledUrl).toContain('limit=20');
+    expect(calledUrl).toContain('/api/sequences/seq_1/shot-grid');
+  });
+
+  it('cursor=null is omitted from URL (qs() skips undefined)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        sequence: { id: 'seq_1', name: 'SEQ_010' },
+        shots: [],
+        next_cursor: null,
+        total_count: 0,
+      }),
+    );
+
+    await fetchShotGrid('seq_1', { cursor: null });
+
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain('cursor=');
+  });
+
+  it('path-encodes sequenceId via encodeURIComponent', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        sequence: { id: 'id with spaces', name: 'SEQ_010' },
+        shots: [],
+        next_cursor: null,
+        total_count: 0,
+      }),
+    );
+
+    await fetchShotGrid('id with spaces');
+
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).not.toMatch(/ /);
+    expect(calledUrl).toBe('/api/sequences/id%20with%20spaces/shot-grid');
+  });
+
+  it('returns the typed ShotGridResponse from the server', async () => {
+    const mockResponse = {
+      sequence: { id: 'seq_1', name: 'SEQ_010' },
+      shots: [
+        {
+          id: 'shot_1',
+          name: 'sh010',
+          status: 'wip' as const,
+          version_count: 0,
+          latest_completed_version: null,
+        },
+      ],
+      next_cursor: null,
+      total_count: 1,
+    };
+    fetchSpy.mockResolvedValueOnce(jsonResponse(mockResponse));
+
+    const result = await fetchShotGrid('seq_1');
+
+    expect(result).toEqual(mockResponse);
+    expect(result.sequence.id).toBe('seq_1');
+    expect(result.shots).toHaveLength(1);
+    expect(result.next_cursor).toBeNull();
+    expect(result.total_count).toBe(1);
   });
 });
