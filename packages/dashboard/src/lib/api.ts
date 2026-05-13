@@ -24,6 +24,11 @@ import type {
 } from '../types/entities.js';
 import type { VersionSort, HierarchySort } from './sortTypes.js';
 import { serializeSortValue } from './sortHelpers.js';
+// Phase 21 / Plan 21-02 — D-13 wire shape for fetchShotGrid. The dashboard's
+// ShotGridView calls fetchShotGrid(seqId, { cursor, limit }) on mount and on
+// LoadMoreButton click; the engine builds thumbnail_url server-side so this
+// module never assembles URL strings.
+import type { ShotGridResponse } from '../types/shot-grid.js';
 
 /** Same-origin base. No hardcoded host; Vite dev server proxies to the API. */
 const BASE = '';
@@ -588,4 +593,53 @@ export interface DashboardHome {
 /** 18. GET /api/dashboard/home — aggregate for the home view. */
 export function getDashboardHome(): Promise<DashboardHome> {
   return fetchJson<DashboardHome>('/api/dashboard/home');
+}
+
+// ===== Phase 21 — shot grid fetch =====
+
+/**
+ * Parameters for GET /api/sequences/:id/shot-grid (D-13).
+ *
+ * Phase 21 narrows the surface deliberately (REQ-03 / D-08 / D-21 LOCKED):
+ * the endpoint takes ONLY `cursor` + `limit` query params. Status filter
+ * and Show-omitted gating are dashboard-side state mutations (see
+ * `state/shot-grid.ts`), not server params. Sort is fixed `name ASC` for
+ * Phase 21; Phase 24 POL-03 may introduce variability.
+ */
+export interface FetchShotGridParams {
+  /** Phase 21 GRID-04 — opaque cursor from a previous response's next_cursor;
+   *  null/undefined = page 1. The `?? undefined` collapse mirrors fetchVersions. */
+  cursor?: string | null;
+  /** Default 20 per CLAUDE.md "Paginate all list queries". */
+  limit?: number;
+}
+
+/**
+ * 19. GET /api/sequences/:id/shot-grid?cursor=&limit=
+ *
+ * Phase 21 / Plan 21-02 — denormalized shot grid surface backing
+ * ShotGridView. Returns `{ sequence, shots[], next_cursor, total_count }`
+ * per D-13; `latest_completed_version` is nested per row with a
+ * server-built `thumbnail_url` (the dashboard never assembles URL strings).
+ *
+ * `cursor: null` is intentionally collapsed to undefined so qs() omits the
+ * param from the URL — the server treats missing-cursor as page 1. Mirrors
+ * the fetchVersions precedent at api.ts:237.
+ *
+ * Error envelopes (translated via fetchJson → DashboardApiError):
+ *   - 400 INVALID_INPUT — malformed cursor or limit
+ *   - 404 SEQUENCE_NOT_FOUND — sequenceId not in workspace
+ */
+export function fetchShotGrid(
+  sequenceId: string,
+  params?: FetchShotGridParams,
+): Promise<ShotGridResponse> {
+  const queryParams: Record<string, unknown> = {
+    // null collapses to undefined → qs() skips it (fetchVersions:237 precedent)
+    cursor: params?.cursor ?? undefined,
+    limit: params?.limit,
+  };
+  return fetchJson<ShotGridResponse>(
+    `/api/sequences/${encodeURIComponent(sequenceId)}/shot-grid${qs(queryParams)}`,
+  );
 }
