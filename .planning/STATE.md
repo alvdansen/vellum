@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
 status: executing
-stopped_at: Phase 21 planned (5 plans, plan-checker APPROVE)
-last_updated: "2026-05-13T11:57:19.917Z"
-last_activity: 2026-05-13 -- Phase 21 execution started
+stopped_at: Phase 21 — Wave 5 paused at T02 human-verify gate (manual browser smoke + WCAG)
+last_updated: "2026-05-13T16:30:00.000Z"
+last_activity: 2026-05-13 -- Phase 21 Waves 1-4 complete; Wave 5 T01 auto-checks green; awaiting T02 human smoke
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
-  completed_plans: 4
-  percent: 44
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -25,10 +25,25 @@ See: .planning/PROJECT.md
 
 ## Current Position
 
-Phase: 21 (shot-grid-view) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 21
-Last activity: 2026-05-13 -- Phase 21 execution started
+Phase: 21 (shot-grid-view) — PAUSED AT WAVE 5 T02 HUMAN GATE
+Plan: 5 of 5 (21-05 in-flight; 21-01..21-04 ✓ complete)
+Status: T01 automated checks green; awaiting T02 manual browser smoke before T03 (ROADMAP/STATE write)
+Last activity: 2026-05-13 -- All component code committed and merged; visual smoke pending user verification
+
+### Wave 5 T01 — Automated checks (all green)
+- Full server suite: 1853 passed, 21 pre-existing failures (validation-flags / generation-tool / Phase 18 SORT-03 attribution — pre-date Phase 21)
+- Dashboard suite: 361/361 passed (34 files)
+- architecture-purity: 54/54 (unchanged)
+- tool-budget: 3/3 (=== 7 unchanged)
+- D-22 / D-04 / D-09 / REQ-03 server-param / Phase-21-MCP-tool-cap greps: all clean (one D-22 hit is a JSDoc comment, not code)
+- Theme tokens: 10 (== 10 required)
+- Copy.ts exports: 51 (≥ 46 required)
+- Vite production build: ✓ 200ms, 127KB JS / 29KB CSS
+
+### Wave 5 T02 — Human gate (awaiting)
+- Part A (WCAG hex audit): hex values in theme.css match UI-SPEC §"Color" tables exactly — orchestrator pre-verified
+- Part B (browser smoke): 12-step checklist in 21-05-PLAN.md awaiting user
+- Resume: run `npx tsx src/server.ts --http` + `cd packages/dashboard && npx vite`, follow the 12-step smoke in 21-05-PLAN.md lines 200-265, then `/gsd-execute-phase 21` will resume from T02
 
 ## Performance Metrics
 
