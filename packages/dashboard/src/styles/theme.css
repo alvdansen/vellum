@@ -50,6 +50,13 @@
   --color-status-completed: #6ee7b7;
   --color-status-failed: #ff4444;
 
+  /* ===== Phase 21 — shot production-state pill colors (5 statuses). WCAG 2.1 AA against --color-bg. ===== */
+  --color-shot-status-wip:             #94a3b8;  /* slate-400 — in progress */
+  --color-shot-status-pending-review:  #fbbf24;  /* amber-400 — pending action */
+  --color-shot-status-approved:        #4ade80;  /* green-400 — terminal success */
+  --color-shot-status-on-hold:         #60a5fa;  /* blue-400 — paused/blocked */
+  --color-shot-status-omit:            #64748b;  /* slate-500 — dimmed/excluded */
+
   /* Layout fixed widths */
   --sidebar-width: 280px;
   --drawer-version-width: 560px;
@@ -94,6 +101,13 @@
   --color-accent: #7b61c9;
   --color-accent-secondary: #c94ac4;
   --color-destructive: #d73535;
+
+  /* ===== Phase 21 — light-theme shot status overrides ===== */
+  --color-shot-status-wip:             #64748b;
+  --color-shot-status-pending-review:  #d97706;
+  --color-shot-status-approved:        #16a34a;
+  --color-shot-status-on-hold:         #2563eb;
+  --color-shot-status-omit:            #94a3b8;
 }
 
 /* =============================================================================

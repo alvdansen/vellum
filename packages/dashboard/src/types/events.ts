@@ -53,10 +53,39 @@ export interface HierarchyCreatedPayload {
   parentId?: string;
 }
 
+// ===== Phase 21 — shot grid SSE wire shape =====
+
 /**
- * EngineEventMap — the 5 SSE event types the dashboard listens for (D-WEBUI-06).
+ * shot.status_changed — a shot's production status transitioned (Phase 20 STAT-04).
+ * Wire shape is camelCase per src/http/sse.ts:135-148 toDashboardPayload case.
+ * `note` coerces null → undefined (optional field) at the adapter; never null on the wire.
+ *
+ * The 5-value status union is inline-duplicated here per D-WEBUI-31 architecture-
+ * purity (dashboard does NOT import from src/types/hierarchy.js). It MUST match
+ * the server-side SHOT_STATUSES constant exactly; misalignment surfaces at compile
+ * time in any consumer that subscribes via onSseEvent('shot.status_changed', ...).
+ *
+ * `fromStatus` is the 5-value union ∪ null — null occurs when the shot transitions
+ * out of its default 'wip' state for the first time (no prior history row).
+ * `toStatus` is the 5-value union, never null.
+ */
+export interface ShotStatusChangedPayload {
+  shotId: string;
+  sequenceId: string;
+  fromStatus: 'wip' | 'pending-review' | 'approved' | 'on-hold' | 'omit' | null;
+  toStatus: 'wip' | 'pending-review' | 'approved' | 'on-hold' | 'omit';
+  changedBy: string;
+  note?: string;
+}
+
+/**
+ * EngineEventMap — the SSE event types the dashboard listens for (D-WEBUI-06).
  * Keys are the literal `event` strings on the wire; values are the parsed JSON
  * payload shapes the dashboard renders.
+ *
+ * Phase 21 closes the load-bearing gap: 'shot.status_changed' was emitted server-
+ * side in Phase 20 (src/http/sse.ts:50-57 EVENT_TYPES tuple + :135-148 adapter)
+ * but missing from the dashboard's local mirror until now.
  */
 export type EngineEventMap = {
   'version.status_changed': VersionStatusChangedPayload;
@@ -64,4 +93,5 @@ export type EngineEventMap = {
   'tag.changed': TagChangedPayload;
   'metadata.changed': MetadataChangedPayload;
   'hierarchy.created': HierarchyCreatedPayload;
+  'shot.status_changed': ShotStatusChangedPayload;
 };
