@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/preact';
+import { render, fireEvent, cleanup, waitFor } from '@testing-library/preact';
 
 /**
  * In-memory localStorage polyfill — Node 25+ ships an experimental native
@@ -84,6 +84,28 @@ vi.mock('../lib/api.js', async (importOriginal) => {
     fetchShots: vi.fn(() => new Promise(() => {})),
     fetchVersions: vi.fn(() => new Promise(() => {})),
     fetchShotGrid: vi.fn(() => new Promise(() => {})),
+    // Phase 21 / Plan 21-06 — fetchVersion stub for the URL deep-link
+    // integration test below. VersionDrawerHost calls this on a cache miss
+    // (shot-grid card click → version id not in versions.value).
+    fetchVersion: vi.fn(() => new Promise(() => {})),
+    // VersionDrawer mount-time fetches — never-resolving so the drawer's
+    // initial state shows up immediately for assertions.
+    getProvenance: vi.fn(() => new Promise(() => {})),
+    getC2paStatus: vi.fn(() => Promise.resolve({ status: 'unknown' })),
+    diffVersion: vi.fn(() => new Promise(() => {})),
+    getOutputUrl: (id: string) => `/api/versions/${id}/output`,
+  };
+});
+
+// Stub state/summaries so VersionDrawer's auto-fetch effect is a no-op
+// during the deep-link integration test (avoids real network).
+vi.mock('../state/summaries.js', async () => {
+  const { signal } = (await vi.importActual('@preact/signals')) as {
+    signal: <T>(v: T) => { value: T };
+  };
+  return {
+    summarySignal: signal(new Map()),
+    fetchSummary: vi.fn(() => new Promise(() => {})),
   };
 });
 
@@ -98,9 +120,15 @@ import {
   gridLoadMoreError,
 } from '../state/shot-grid.js';
 import { selectedShotId } from '../state/hierarchy.js';
-import { selectedVersionId } from '../state/versions.js';
+import { selectedVersionId, versions } from '../state/versions.js';
 import * as events from '../lib/events.js';
+import {
+  fetchShotGrid,
+  fetchVersion,
+} from '../lib/api.js';
 import { FILTER_BAR_STATUS_LABEL, HEADER_HOME_ARIA_LABEL } from '../lib/copy.js';
+import type { ShotGridResponse } from '../types/shot-grid.js';
+import type { Version } from '../types/entities.js';
 
 beforeEach(() => {
   // Reset module-singleton signals to known defaults.
@@ -113,14 +141,19 @@ beforeEach(() => {
   gridLoadMoreError.value = null;
   selectedShotId.value = null;
   selectedVersionId.value = null;
+  versions.value = [];
   vi.mocked(events.onSseEvent).mockReset();
   vi.mocked(events.offSseEvent).mockReset();
   vi.mocked(events.startSse).mockReset();
   vi.mocked(events.stopSse).mockReset();
+  vi.mocked(fetchShotGrid).mockReset();
+  vi.mocked(fetchVersion).mockReset();
   // Reset window.location.search so a prior test's persistShotGridUrlState()
   // doesn't leak URL state into hydrateShotGridUrlState() at the next mount.
   // jsdom does not let us assign to window.location.search directly; the
   // history.replaceState path mirrors what persist does, just clearing params.
+  // Tests that NEED a seeded URL (e.g. the deep-link integration test)
+  // re-set window.location.search AFTER beforeEach runs.
   try {
     history.replaceState(null, '', window.location.pathname);
   } catch {
@@ -230,5 +263,105 @@ describe('App SSE registration (Phase 21 GRID-02 D-22)', () => {
       'version.status_changed',
       expect.any(Function),
     );
+  });
+});
+
+// ============================================================================
+// URL deep-link integration (Phase 21 / Plan 21-06 — single test that catches
+// the 3 cross-view-seam bugs from 21-AUDIT.md: Bug 1 hydrate-on-boot,
+// Bug 2 VersionDrawer scope, Bug 5 drawer data model from non-cached version)
+// ============================================================================
+
+describe('App URL deep-link integration (Phase 21 GRID-04 / 21-AUDIT.md Bugs 1+2+5)', () => {
+  /**
+   * Builds a minimal ShotGridResponse with a single shot that has a latest
+   * completed version. The ShotGridCard's onSelect fires with that
+   * version's id when the card is clicked.
+   */
+  function buildResponse(): ShotGridResponse {
+    return {
+      sequence: { id: 'seq_1', name: 'SEQ_010' },
+      shots: [
+        {
+          id: 'shot_a',
+          name: 'SHOT_A',
+          status: 'wip',
+          version_count: 3,
+          latest_completed_version: {
+            id: 'ver_a',
+            thumbnail_url: '/api/versions/ver_a/thumbnail',
+            completed_at: 1_700_000_000_000,
+          },
+        },
+      ],
+      next_cursor: null,
+      total_count: 1,
+    };
+  }
+
+  /**
+   * Returns a complete Version object — VersionDrawerHost's fetchVersion
+   * resolves to this when the grid-card click writes a version id that's
+   * not in versions.value (the Bug 5 scenario).
+   */
+  function buildVersion(): Version {
+    return {
+      id: 'ver_a',
+      shot_id: 'shot_a',
+      version_number: 1,
+      status: 'complete',
+    };
+  }
+
+  it('URL ?view=shot-grid&seq=seq_1 → mount → click card → drawer renders (catches Bugs 1+2+5)', async () => {
+    // 1. Seed the URL BEFORE render so hydrateShotGridUrlState() picks it up
+    //    on App mount. The default beforeEach above already cleared
+    //    window.location.search — this assignment runs AFTER beforeEach.
+    history.replaceState(null, '', '?view=shot-grid&seq=seq_1');
+
+    // 2. Wire the fetch mocks. fetchShotGrid resolves with the seq_1 grid;
+    //    fetchVersion resolves with ver_a (the grid-card scenario writes a
+    //    version id that's not in versions.value, so the host must fall
+    //    back to the API).
+    vi.mocked(fetchShotGrid).mockResolvedValue(buildResponse());
+    vi.mocked(fetchVersion).mockResolvedValue(buildVersion());
+
+    // 3. Render <App/>, NOT a leaf view. The URL hydrate has to flow
+    //    activeView → 'shot-grid' BEFORE the body's view switch decides
+    //    which subtree to mount. This is the chicken-and-egg seam (Bug 1).
+    const { container } = render(<App />);
+
+    // 4. Bug 1 check: shot-grid surface mounted on URL alone. The
+    //    FILTER_BAR_STATUS_LABEL ('Status') is unique to ShotGridView's
+    //    ShotGridFilterBar — its presence is proof that activeView flipped.
+    await waitFor(() => {
+      expect(container.textContent).toContain(FILTER_BAR_STATUS_LABEL);
+    });
+
+    // 5. Wait for the grid card to render (fetchShotGrid resolution lands
+    //    on a microtask after mount).
+    await waitFor(() => {
+      const card = container.querySelector(
+        'button[aria-label="Open version drawer for SHOT_A"]',
+      );
+      expect(card).toBeTruthy();
+    });
+
+    // 6. Click the card. The handler writes selectedVersionId='ver_a'.
+    const card = container.querySelector(
+      'button[aria-label="Open version drawer for SHOT_A"]',
+    ) as HTMLButtonElement;
+    fireEvent.click(card);
+
+    // 7. Bug 2 + 5 check: the VersionDrawerHost overlay (mounted at App
+    //    scope, NOT inside HomeView) reads selectedVersionId, sees the
+    //    cache miss, calls fetchVersion('ver_a'), and renders <VersionDrawer/>
+    //    once the fetch resolves. Without the 21-06 refactor the drawer
+    //    would never render — HomeView is unmounted (activeView='shot-grid')
+    //    so its render-time <VersionDrawer/> never fires.
+    await waitFor(() => {
+      expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+    });
+    expect(vi.mocked(fetchVersion)).toHaveBeenCalledWith('ver_a');
   });
 });

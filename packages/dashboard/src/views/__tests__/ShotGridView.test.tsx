@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/preact';
+import { render, fireEvent, cleanup, waitFor } from '@testing-library/preact';
 
 // Hoisted partial mock for the api module — fetchShotGrid is a vi.fn we set
 // per test; all other exports (getThumbnailUrl, etc.) keep their real impl so
@@ -60,6 +60,7 @@ import {
   SHOT_GRID_EMPTY_FILTER_PREFIX,
   SHOT_GRID_EMPTY_FILTER_OMIT_HIDDEN,
   SHOT_GRID_LOADING_LABEL,
+  SHOT_GRID_FETCH_ERROR,
 } from '../../lib/copy.js';
 
 // ---------- Fixtures ----------
@@ -322,5 +323,87 @@ describe('ShotGridView — Show omitted toggle auto-reset (D-07)', () => {
     fireEvent.click(toggle!);
     expect(showOmitted.value).toBe(false);
     expect(statusFilter.value).toBe('all');
+  });
+});
+
+// ============================================================================
+// Phase 21 / Plan 21-06 — Bug 4 (sequence switch clears stale grid) +
+// Bug 6 (initial fetch rejection renders error state, not blank pane).
+// ============================================================================
+
+describe('ShotGridView — sequence switch clears stale grid (21-AUDIT.md Bug 4)', () => {
+  it('switching to a new sequence clears the previous sequence shots before the new fetch resolves', async () => {
+    // 1. Load seq A first. renderAndWait resolves A's fetch and writes
+    //    shotGrid.value with shots SHOT_A1, SHOT_A2.
+    const seqA = buildResponse({
+      sequence: { id: 'seq_a', name: 'SEQ_A' },
+      shots: [
+        makeShot('shot_a1', 'wip'),
+        makeShot('shot_a2', 'wip'),
+      ],
+      total_count: 2,
+    });
+    const { container } = await renderAndWait(seqA);
+    expect(
+      container.querySelector('button[aria-label="Open version drawer for SHOT_A1"]'),
+    ).toBeTruthy();
+
+    // 2. Switch to seq B. Mock fetchShotGrid to return a never-resolving
+    //    promise — this simulates seq B's network being slow. The init
+    //    effect re-fires when selectedSequenceForGrid changes.
+    vi.mocked(fetchShotGrid).mockReturnValue(new Promise(() => {}));
+    selectedSequenceForGrid.value = 'seq_b';
+
+    // 3. After the signal change, await a microtask flush so the new effect
+    //    runs. The Bug 4 fix synchronously clears shotGrid.value=null at the
+    //    top of the effect — so the prior sequence's shots disappear from
+    //    the DOM even though the new fetch is still pending.
+    await waitFor(() => {
+      expect(
+        container.querySelector(
+          'button[aria-label="Open version drawer for SHOT_A1"]',
+        ),
+      ).toBeFalsy();
+    });
+
+    // 4. Final state assertion: the loading-state copy is shown (shotGrid
+    //    null + gridIsFetching true). Critically: NO shot-A cards visible
+    //    while we wait for seq B.
+    expect(shotGrid.value).toBeNull();
+    expect(container.textContent).toContain(SHOT_GRID_LOADING_LABEL);
+  });
+});
+
+describe('ShotGridView — initial fetch rejection renders error state (21-AUDIT.md Bug 6)', () => {
+  it('initial fetchShotGrid rejection renders the full-pane error copy + retry button (NOT a blank pane)', async () => {
+    selectedSequenceForGrid.value = 'seq_1';
+    // Reject the initial fetch. With the Bug 6 fix, the .catch() sets
+    // gridLoadMoreError.value = SHOT_GRID_FETCH_ERROR and the render switch
+    // shows the full-pane error branch BEFORE the empty-state check.
+    vi.mocked(fetchShotGrid).mockRejectedValue(
+      new Error('simulated 500 from server'),
+    );
+    const { container } = render(<ShotGridView />);
+
+    // Wait for the .catch() to settle and the error pane to render.
+    await waitFor(() => {
+      expect(container.textContent).toContain(SHOT_GRID_FETCH_ERROR);
+    });
+
+    // The error pane is wrapped in role="alert" (SR-friendly announcement).
+    expect(container.querySelector('[role="alert"]')).toBeTruthy();
+
+    // Retry button rendered with the LOAD_MORE_RETRY_LABEL ('Retry') copy.
+    const retryButton = Array.from(
+      container.querySelectorAll('button'),
+    ).find((b) => b.textContent?.includes('Retry'));
+    expect(retryButton).toBeTruthy();
+
+    // Bug 6 regression: BEFORE the fix, gridLoadMoreError was the inline
+    // pill copy ("Failed to load") which was attached to the LoadMoreButton
+    // pill — only renders when shotGrid is non-null. shotGrid was still
+    // null so the pane was blank. Now the error state has its own branch.
+    expect(shotGrid.value).toBeNull();
+    expect(gridLoadMoreError.value).toBe(SHOT_GRID_FETCH_ERROR);
   });
 });
