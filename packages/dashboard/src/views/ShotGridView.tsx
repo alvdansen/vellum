@@ -124,18 +124,45 @@ export function ShotGridView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSequenceForGrid.value]);
 
-  // Load-more click handler (D-21 LoadMoreButton reuse). Appends to the
-  // existing buffer; preserves total_count + advances next_cursor.
+  /**
+   * Load-more click handler (D-21 LoadMoreButton reuse). Appends to the
+   * existing buffer; preserves total_count + advances next_cursor.
+   *
+   * Phase 21 / Plan 21-06 — Bug 3 BLOCKING race-condition fix
+   * (21-AUDIT.md §1 row 3, codex_challenge). Without a sequence-id guard
+   * the following sequence corrupts data:
+   *
+   *   1. user on seq A clicks Load more → fetch A page-2 dispatched
+   *   2. user clicks grid-icon for seq B (selectedSequenceForGrid flips)
+   *   3. fetch A page-2 resolves AFTER the seq-B init effect has already
+   *      populated shotGrid.value with B's page-1
+   *   4. the stale .then() appends A's shots into B's grid + B's
+   *      next_cursor is replaced with A's cursor
+   *
+   * The `requestSeqId` capture + post-await equality check rejects any
+   * response whose dispatch-time sequence no longer matches the current
+   * sequence. Idempotent under the gridIsFetching guard at entry, and
+   * race-safe under the seqId guard after await.
+   */
   function loadMore(): void {
-    const seqId = selectedSequenceForGrid.value;
+    const requestSeqId = selectedSequenceForGrid.value;
     const current = shotGrid.value;
     const cursor = current?.next_cursor ?? null;
-    if (!seqId || !cursor) return;
+    if (!requestSeqId || !cursor) return;
     if (gridIsFetching.value) return; // idempotency guard
     gridIsFetching.value = true;
     gridLoadMoreError.value = null;
-    fetchShotGrid(seqId, { cursor, limit: 20 })
+    fetchShotGrid(requestSeqId, { cursor, limit: 20 })
       .then((res) => {
+        // Bug 3 guard: drop late responses for a sequence the user has
+        // navigated away from. Without this check, A's late page-2 would
+        // overwrite B's freshly-loaded shotGrid.value.
+        if (selectedSequenceForGrid.value !== requestSeqId) {
+          // Clear the in-flight flag for this stale request — the active
+          // sequence's own fetch (if any) will reset it on resolve.
+          gridIsFetching.value = false;
+          return;
+        }
         const existing = shotGrid.value;
         if (!existing) {
           shotGrid.value = res;
@@ -150,6 +177,12 @@ export function ShotGridView() {
         gridIsFetching.value = false;
       })
       .catch((err) => {
+        // Same Bug 3 guard on the failure path — a stale rejection must
+        // not flash an error pill on the new sequence's grid.
+        if (selectedSequenceForGrid.value !== requestSeqId) {
+          gridIsFetching.value = false;
+          return;
+        }
         gridLoadMoreError.value = mapFetchErrorToCopy(err);
         gridIsFetching.value = false;
       });
