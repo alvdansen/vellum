@@ -251,7 +251,12 @@ export function fetchVersions(
 
 /** 10. GET /api/versions/:id */
 export function fetchVersion(id: string): Promise<Version> {
-  return fetchJson<Version>(`/api/versions/${encodeURIComponent(id)}`);
+  // The server envelopes the response as `{ entity: Version, breadcrumb }`.
+  // First real consumer (VersionDrawerHost, Plan 21-06) infinite-looped on
+  // `v.id === undefined`; envelope unwrap restores the declared type.
+  return fetchJson<{ entity: Version; breadcrumb?: unknown }>(
+    `/api/versions/${encodeURIComponent(id)}`,
+  ).then((r) => r.entity);
 }
 
 /** 11. GET /api/versions/:id/provenance */
