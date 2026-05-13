@@ -14,8 +14,9 @@
  *   - OVERLAY: VersionDrawer when `selectedVersionId` is non-null.
  *
  * Phase 18 / Plan 18-05 Task 2 — Sortable folder dropdown integration:
- *   - Mount-time hydrateSortState() reconciles URL > localStorage > defaults
- *     for both gridSort and treeSort signals (D-13/D-15/D-16).
+ *   - Sort hydration runs in App.tsx's boot useEffect (moved here from
+ *     HomeView in Phase 21 / Plan 21-06 per the 21-AUDIT.md root pattern);
+ *     gridSort and treeSort signals are stable before this view mounts.
  *   - Two SortDropdown instances (D-08 reuse) render above tree + grid; the
  *     same component handles both with TField generic constraint.
  *   - LoadMoreButton renders at the version-list bottom ONLY when
@@ -29,8 +30,9 @@
  *     replace on shot/sort change, append on Load more click.
  *
  * Data hydration:
- *   - On mount: hydrateSortState() (signals URL > localStorage > default) AND
- *     fetchWorkspaces() → workspaces signal (top of tree).
+ *   - On App mount (App.tsx boot useEffect, hoisted in 21-06): sort signals
+ *     reconcile URL > localStorage > defaults.
+ *   - On HomeView mount: fetchWorkspaces() → workspaces signal (top of tree).
  *   - On workspace expand: fetchProjects(id, treeSort.value) → children cache.
  *   - On project expand: fetchSequences(id, treeSort.value) → children cache.
  *   - On sequence expand: fetchShots(id, treeSort.value) → children cache.
@@ -68,7 +70,6 @@ import {
 import {
   GRID_SORT_OPTIONS,
   TREE_SORT_OPTIONS,
-  hydrateSortState,
   persistGridSort,
   persistTreeSort,
   compareTreeNodes,
@@ -174,14 +175,12 @@ export function HomeView() {
   const [children, setChildren] = useState<ChildrenCache>(emptyChildren);
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
-  // Mount-time hydration: URL > localStorage > defaults reconciliation
-  // (D-13/D-15/D-16). Runs ONCE; subsequent sort changes flow through
-  // persistGridSort/persistTreeSort.
-  useEffect(() => {
-    const { gridSort: initGrid, treeSort: initTree } = hydrateSortState();
-    gridSort.value = initGrid;
-    treeSort.value = initTree;
-  }, []);
+  // Phase 21 / Plan 21-06 — hydrate moved to App.tsx boot scope (21-AUDIT.md
+  // §3 / §5 Bug 1). gridSort + treeSort signals are now hydrated once on App
+  // mount, BEFORE any view component mounts. This makes deep links like
+  // `?treeSort=name-asc` work regardless of which view is active on first
+  // paint (previously, on a shot-grid deep link, the tree-sort param was
+  // silently ignored because HomeView's useEffect never ran).
 
   // Hydrate workspaces list on mount. Errors leave `workspaces.value` as [] —
   // TreeSidebar then renders the empty state implicitly (no treeitems).

@@ -71,6 +71,13 @@ import {
   DEFAULT_VERSION_SORT,
   DEFAULT_HIERARCHY_SORT,
 } from '../lib/sortTypes.js';
+// eslint-disable-next-line import/first
+import { hydrateSortState } from '../lib/sortHelpers.js';
+// Phase 21 / Plan 21-06 — `hydrateSortState()` was previously invoked inside
+// HomeView's mount useEffect. The 21-AUDIT.md root pattern moved it to
+// App.tsx's boot useEffect (see 21-06-PLAN.md Task T01). These tests render
+// HomeView directly (not App), so they must drive hydrate explicitly in
+// setup to mirror what App.tsx now does on real mount.
 
 interface SetupOpts {
   urlSearch?: string;
@@ -158,6 +165,13 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
     });
   });
   vi.stubGlobal('fetch', fetchSpy);
+
+  // Phase 21 / Plan 21-06 — hydrate explicitly because the call moved out of
+  // HomeView and into App.tsx's boot useEffect. These tests render HomeView
+  // directly so we drive hydrate here to mirror real boot behavior.
+  const { gridSort: initGrid, treeSort: initTree } = hydrateSortState();
+  gridSort.value = initGrid;
+  treeSort.value = initTree;
 
   return { replaceStateSpy, fetchSpy };
 }
