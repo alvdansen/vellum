@@ -94,6 +94,13 @@ import {
   gridIsFetching,
   gridLoadMoreError,
 } from '../state/versions.js';
+// Phase 21 / Plan 21-04 Task T02 — TreeSidebar grid-icon click flips
+// activeView via the Wave-2 signals + mirrors into URL state (D-01, D-02).
+import {
+  activeView,
+  selectedSequenceForGrid,
+  persistShotGridUrlState,
+} from '../state/shot-grid.js';
 import type {
   Workspace,
   Project,
@@ -485,6 +492,18 @@ export function HomeView() {
           }}
           expandedIds={expandedIds}
           onToggleExpand={toggleExpand}
+          // Phase 21 / D-01, D-02, D-05 — TreeSidebar grid-icon affordance
+          // wires to the shot-grid view state. Click flips activeView,
+          // points selectedSequenceForGrid at the clicked sequence, and
+          // mirrors both into the URL via replaceState. The active sequence
+          // (whose grid is currently displayed) gets aria-current="page" +
+          // accent fill via the currentGridSequenceId prop.
+          onOpenGrid={(seqId) => {
+            activeView.value = 'shot-grid';
+            selectedSequenceForGrid.value = seqId;
+            persistShotGridUrlState();
+          }}
+          currentGridSequenceId={selectedSequenceForGrid.value ?? undefined}
         />
       </div>
       {/* RIGHT pane — grid sort strip + version list + LoadMoreButton */}
