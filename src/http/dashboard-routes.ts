@@ -99,6 +99,13 @@ export type EngineForDashboard = Pick<
   // error-middleware Pattern G). POST regenerate is gated by an in-memory
   // 60s throttle keyed by versionId (SUM-04).
   | 'summarizeVersion'
+  // Phase 21 / Plan 21-02 — GRID-04 denormalized shot grid surface. The route
+  // at GET /api/sequences/:id/shot-grid delegates to engine.listShotGrid
+  // which composes the single-pass window-function CTE (no N+1) and returns
+  // the wire payload locked by 21-CONTEXT.md D-13. TypedError('SEQUENCE_NOT_FOUND')
+  // → 404 via global typedErrorHandler; cursor decode failures surface as
+  // 400 INVALID_INPUT via parseShotGridCursorParam.
+  | 'listShotGrid'
 >;
 
 /**

@@ -81,6 +81,13 @@ import {
   insertStatusEvent,
   getStatusHistory,
   type ShotStatusEvent,
+  // Phase 21 / Plan 21-02 — GRID-04 denormalized shot grid reader. The repo
+  // does the single-pass window-function CTE join (shots + latest-completed
+  // version + status null-coalesce); the engine facade re-maps the row shape
+  // into the dashboard's payload contract (D-13) and builds thumbnail_url
+  // server-side per RESEARCH Example 1 + PATTERNS §10.
+  listShotsForGrid,
+  type ShotGridCursor,
 } from '../store/shot-status-repo.js';
 import type {
   ProvenanceEvent,
@@ -789,6 +796,81 @@ export class Engine {
     }
     const history = getStatusHistory(this.db, shotId, limit);
     return { shotId, history, total: history.length };
+  }
+
+  // ===== Phase 21 — GRID-04 denormalized shot grid (Engine.listShotGrid) =====
+
+  /**
+   * `listShotGrid` — GRID-04 facade — return a denormalized shot grid payload for the
+   * dashboard's ShotGridView. Delegates the single-pass window-function CTE
+   * join to `listShotsForGrid` (shot-status-repo) and re-maps the raw repo
+   * rows into the wire contract locked by 21-CONTEXT.md D-13 (server builds
+   * `thumbnail_url` so the dashboard never assembles URL strings; see
+   * 21-PATTERNS.md §10 for the rationale and 21-RESEARCH.md Example 1 for
+   * the verbatim facade body).
+   *
+   * The repo's `status` field is null-coalesced to 'wip' at the repo layer
+   * (shot-status-repo:getCurrentStatus inheritance); the facade does NOT
+   * re-coalesce. Shots with zero completed versions surface as
+   * `latest_completed_version: null` (D-19 / Phase 17 SkeletonThumbnail
+   * fallback path).
+   *
+   * Throws TypedError('SEQUENCE_NOT_FOUND') for unknown sequenceId — the
+   * HTTP layer (dashboard-routes.ts) translates this to 404 via the
+   * global typedErrorHandler (no try/catch needed in the route).
+   */
+  listShotGrid(
+    sequenceId: string,
+    opts: { cursor: ShotGridCursor | null; limit: number },
+  ): {
+    sequence: { id: string; name: string };
+    shots: Array<{
+      id: string;
+      name: string;
+      status: ShotStatus;
+      version_count: number;
+      latest_completed_version: {
+        id: string;
+        thumbnail_url: string;
+        completed_at: number;
+      } | null;
+    }>;
+    next_cursor: string | null;
+    total_count: number;
+  } {
+    const sequence = this.repo.getSequence(sequenceId);
+    if (!sequence) {
+      throw new TypedError(
+        'SEQUENCE_NOT_FOUND',
+        `Sequence '${sequenceId}' not found`,
+        `List sequences with { tool: 'sequence', action: 'list' }`,
+      );
+    }
+    const { items, next_cursor, total_count } = listShotsForGrid(
+      this.db,
+      sequenceId,
+      opts,
+    );
+    const shots = items.map((r) => ({
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      version_count: r.version_count,
+      latest_completed_version:
+        r.lcv_id !== null && r.lcv_completed_at !== null
+          ? {
+              id: r.lcv_id,
+              thumbnail_url: `/api/versions/${encodeURIComponent(r.lcv_id)}/thumbnail`,
+              completed_at: r.lcv_completed_at,
+            }
+          : null,
+    }));
+    return {
+      sequence: { id: sequence.id, name: sequence.name },
+      shots,
+      next_cursor,
+      total_count,
+    };
   }
 
   // ================================================================
