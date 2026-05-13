@@ -44,6 +44,23 @@ import type { ShotGridResponse, ShotStatus } from '../types/shot-grid.js';
 export const activeView = signal<'home' | 'shot-grid'>('home');
 
 /**
+ * Sequence-header expanded/collapsed state. Open by default (D-15 contract).
+ *
+ * Phase 21 / Plan 21-06 (gap closure for 21-AUDIT.md root pattern):
+ *   Moved from `useState` inside `<ShotGridView/>` because ShotGridView is
+ *   unmounted whenever `activeView === 'home'`, which silently resets a
+ *   useState back to its default. The audit (§4) treats this as a
+ *   view-independent concern — D-15 says "session-only state (no
+ *   localStorage)" which is exactly what a module-singleton signal provides:
+ *   survives view remounts, resets on full page reload.
+ *
+ * Writers: <SequenceHeader/> chevron toggle inside ShotGridView. Readers:
+ * ShotGridView's render branches that decide whether to render the body
+ * (collapsed = hide grid + load-more footer).
+ */
+export const headerExpanded = signal<boolean>(true);
+
+/**
  * Sequence id whose grid is currently displayed. Written by the
  * TreeSidebar grid-icon click handler (D-02). Independent of HomeView's
  * `selectedShotId` (D-04).

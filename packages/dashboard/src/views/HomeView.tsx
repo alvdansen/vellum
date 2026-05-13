@@ -11,11 +11,14 @@
  *   - RIGHT pane: sort strip (SORT_STRIP_LABEL + grid SortDropdown) +
  *     scrollable shot-detail panel (VersionCard list driven by the `versions`
  *     signal under the currently-selected shot) + LoadMoreButton footer.
- *   - OVERLAY: VersionDrawer when `selectedVersionId` is non-null.
+ *   - OVERLAY: the version-detail drawer renders at App.tsx scope via
+ *     <VersionDrawerHost/> (Phase 21 / Plan 21-06 — moved out of HomeView).
+ *     HomeView writes `selectedVersionId.value` via VersionCard onSelect.
  *
  * Phase 18 / Plan 18-05 Task 2 — Sortable folder dropdown integration:
- *   - Mount-time hydrateSortState() reconciles URL > localStorage > defaults
- *     for both gridSort and treeSort signals (D-13/D-15/D-16).
+ *   - Sort hydration runs in App.tsx's boot useEffect (moved here from
+ *     HomeView in Phase 21 / Plan 21-06 per the 21-AUDIT.md root pattern);
+ *     gridSort and treeSort signals are stable before this view mounts.
  *   - Two SortDropdown instances (D-08 reuse) render above tree + grid; the
  *     same component handles both with TField generic constraint.
  *   - LoadMoreButton renders at the version-list bottom ONLY when
@@ -29,8 +32,9 @@
  *     replace on shot/sort change, append on Load more click.
  *
  * Data hydration:
- *   - On mount: hydrateSortState() (signals URL > localStorage > default) AND
- *     fetchWorkspaces() → workspaces signal (top of tree).
+ *   - On App mount (App.tsx boot useEffect, hoisted in 21-06): sort signals
+ *     reconcile URL > localStorage > defaults.
+ *   - On HomeView mount: fetchWorkspaces() → workspaces signal (top of tree).
  *   - On workspace expand: fetchProjects(id, treeSort.value) → children cache.
  *   - On project expand: fetchSequences(id, treeSort.value) → children cache.
  *   - On sequence expand: fetchShots(id, treeSort.value) → children cache.
@@ -57,7 +61,6 @@ import { VersionCard } from '../components/VersionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { SortDropdown } from '../components/SortDropdown.js';
 import { LoadMoreButton } from '../components/LoadMoreButton.js';
-import { VersionDrawer } from './VersionDrawer.js';
 import {
   fetchWorkspaces,
   fetchProjects,
@@ -68,7 +71,6 @@ import {
 import {
   GRID_SORT_OPTIONS,
   TREE_SORT_OPTIONS,
-  hydrateSortState,
   persistGridSort,
   persistTreeSort,
   compareTreeNodes,
@@ -174,14 +176,12 @@ export function HomeView() {
   const [children, setChildren] = useState<ChildrenCache>(emptyChildren);
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
-  // Mount-time hydration: URL > localStorage > defaults reconciliation
-  // (D-13/D-15/D-16). Runs ONCE; subsequent sort changes flow through
-  // persistGridSort/persistTreeSort.
-  useEffect(() => {
-    const { gridSort: initGrid, treeSort: initTree } = hydrateSortState();
-    gridSort.value = initGrid;
-    treeSort.value = initTree;
-  }, []);
+  // Phase 21 / Plan 21-06 — hydrate moved to App.tsx boot scope (21-AUDIT.md
+  // §3 / §5 Bug 1). gridSort + treeSort signals are now hydrated once on App
+  // mount, BEFORE any view component mounts. This makes deep links like
+  // `?treeSort=name-asc` work regardless of which view is active on first
+  // paint (previously, on a shot-grid deep link, the tree-sort param was
+  // silently ignored because HomeView's useEffect never ran).
 
   // Hydrate workspaces list on mount. Errors leave `workspaces.value` as [] —
   // TreeSidebar then renders the empty state implicitly (no treeitems).
@@ -446,21 +446,10 @@ export function HomeView() {
     }));
 
   const versionsList = versions.value;
-  const selectedVersion =
-    versionsList.find((v) => v.id === selectedVersionId.value) ?? null;
-  const priorVersion =
-    selectedVersion && typeof selectedVersion.version_number === 'number'
-      ? versionsList
-          .filter(
-            (v) =>
-              typeof v.version_number === 'number' &&
-              v.version_number < (selectedVersion.version_number as number),
-          )
-          .sort(
-            (a, b) =>
-              (b.version_number as number) - (a.version_number as number),
-          )[0] ?? null
-      : null;
+  // Phase 21 / Plan 21-06 — selectedVersion + priorVersion derivation moved
+  // to <VersionDrawerHost/> (21-AUDIT.md §3 + §5 Bug 5). HomeView still
+  // writes selectedVersionId via the VersionCard onSelect callback below;
+  // the overlay reads that signal at App-scope.
 
   const remaining = Math.max(0, gridTotalCount.value - versionsList.length);
 
@@ -558,15 +547,10 @@ export function HomeView() {
           )}
         </div>
       </main>
-      {selectedVersion && (
-        <VersionDrawer
-          version={selectedVersion}
-          priorVersion={priorVersion}
-          onClose={() => {
-            selectedVersionId.value = null;
-          }}
-        />
-      )}
+      {/* Phase 21 / Plan 21-06 — version-detail drawer render hoisted to
+       *  App.tsx via <VersionDrawerHost/>. The selectedVersionId signal is
+       *  the shared key; click handlers below still set it, but the overlay
+       *  itself mounts at App scope (21-AUDIT.md Bugs 2 + 5). */}
     </div>
   );
 }

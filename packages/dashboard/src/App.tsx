@@ -2,6 +2,7 @@
  * App — root component. Owns:
  *   - Top-level layout (header with home button + brand + ThemeToggle;
  *     flexible body)
+ *   - Boot hydration (Phase 21 / Plan 21-06 gap closure — see below)
  *   - SSE lifecycle (startSse on mount, stopSse on unmount per D-WEBUI-03)
  *   - SSE → signals bridge:
  *       onSseEvent('version.created', onVersionCreated)
@@ -10,6 +11,10 @@
  *   - View routing (signal-driven; D-03):
  *       activeView === 'home'      → <HomeView/>
  *       activeView === 'shot-grid' → <ShotGridView/>
+ *   - Global overlays (Phase 21 / 21-06): <VersionDrawerHost/> reads
+ *     selectedVersionId and renders the version drawer regardless of
+ *     activeView. Pattern: any future overlay keyed on a global signal
+ *     mounts as a sibling of <AppBody> here, not inside a view.
  *
  * Phase 21 / Plan 21-04 Task T02:
  *   - Home button is a <button aria-label="Back to home view"> with the
@@ -25,6 +30,15 @@
  *     consumer (the TreeSidebar grid-icon via HomeView, the home button
  *     above, URL hydrateShotGridUrlState) writing to it flips the view.
  *
+ * Phase 21 / Plan 21-06 (gap closure — 21-AUDIT.md root pattern):
+ *   - URL hydration runs HERE, before SSE subscription. Previously each
+ *     view called its own hydrate function inside a useEffect in the view
+ *     component, so the URL-keyed signals (activeView, treeSort, gridSort)
+ *     could not flip until the matching view had already mounted —
+ *     chicken-and-egg for `?view=shot-grid` deep links. Hoisting hydrate
+ *     into App.tsx makes mount-time URL state authoritative for view
+ *     routing.
+ *
  * Pure glue — no fetch (views own their own hydration), no mutation other
  * than signal updates via the SSE bridge + the home button click handler.
  *
@@ -37,6 +51,7 @@ import { Home } from 'lucide-preact';
 import { HomeView } from './views/HomeView.js';
 import { ShotGridView } from './views/ShotGridView.js';
 import { ActiveGenerationsPanel } from './views/ActiveGenerationsPanel.js';
+import { VersionDrawerHost } from './views/VersionDrawerHost.js';
 import { ThemeToggle } from './components/ThemeToggle.js';
 import { startSse, stopSse, onSseEvent, offSseEvent } from './lib/events.js';
 import {
@@ -47,11 +62,27 @@ import {
   activeView,
   onShotStatusChanged,
   persistShotGridUrlState,
+  hydrateShotGridUrlState,
 } from './state/shot-grid.js';
+import { hydrateSortState } from './lib/sortHelpers.js';
+import { gridSort } from './state/versions.js';
+import { treeSort } from './state/hierarchy.js';
 import { HEADER_HOME_ARIA_LABEL } from './lib/copy.js';
 
 export function App() {
   useEffect(() => {
+    // Phase 21 / Plan 21-06 — hydrate URL state BEFORE SSE bridges.
+    // The order matters: hydrateShotGridUrlState() may flip activeView
+    // before any view component mounts, ensuring the correct view surface
+    // renders on first paint for a deep link like `?view=shot-grid&seq=…`.
+    // hydrateSortState() reconciles URL > localStorage > defaults for
+    // gridSort/treeSort signals (D-13/D-15/D-16); applied here so the
+    // values are stable before HomeView's page-1 fetch effect runs.
+    hydrateShotGridUrlState();
+    const { gridSort: initGrid, treeSort: initTree } = hydrateSortState();
+    gridSort.value = initGrid;
+    treeSort.value = initTree;
+
     onSseEvent('version.created', onVersionCreated);
     onSseEvent('version.status_changed', onVersionStatusChanged);
     // Phase 21 / D-22 — module-scope onShotStatusChanged reference. The
@@ -106,6 +137,10 @@ export function App() {
         </div>
         <ActiveGenerationsPanel />
       </div>
+      {/* Phase 21 / Plan 21-06 — view-independent overlay. Mounts at App
+       *  level so the VersionDrawer survives view switches (21-AUDIT.md
+       *  Bugs 2 + 5). VersionDrawerHost reads selectedVersionId directly. */}
+      <VersionDrawerHost />
     </div>
   );
 }
