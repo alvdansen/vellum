@@ -182,3 +182,117 @@ export function regenerateButtonAriaLabel(versionLabel: string): string {
 export function regenerateButtonCooldownLabel(cooldownSeconds: number): string {
   return `Regenerate (${cooldownSeconds}s)`;
 }
+
+// ================================================================
+// Phase 21 — shot grid copy
+// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+//
+// All Phase 21 surfaces — filter bar, sequence header, shot card, time
+// helper, empty/loading/error states, TreeSidebar grid icon, header
+// home button — import from this block. Zero inline string literals in
+// component files (architectural rule).
+// ================================================================
+
+// ---------- Filter bar (D-11, UI-SPEC lines 173-185) ----------
+
+/** Filter bar prefix label rendered with `.label-uppercase` utility. */
+export const FILTER_BAR_STATUS_LABEL = 'Status';
+
+/** Filter pill label — show all shots regardless of status. */
+export const FILTER_PILL_ALL = 'All';
+
+/** Filter pill label — wip status. Lowercase verbatim; CSS uppercases at render. */
+export const FILTER_PILL_WIP = 'wip';
+export const FILTER_PILL_PENDING_REVIEW = 'pending-review';
+export const FILTER_PILL_APPROVED = 'approved';
+export const FILTER_PILL_ON_HOLD = 'on-hold';
+/** Only appears in the bar when `showOmitted === true` (D-07). */
+export const FILTER_PILL_OMIT = 'omit';
+
+/** "Show omitted" toggle visible label. Native <button role="switch" aria-checked>. */
+export const SHOW_OMITTED_TOGGLE_LABEL = 'Show omitted';
+
+/** "Show omitted" toggle ARIA label — full-sentence verb form for SR users. */
+export const SHOW_OMITTED_TOGGLE_ARIA = 'Toggle omitted shots';
+
+// ---------- Sequence header (D-15, UI-SPEC lines 191-194) ----------
+
+/** Sequence header chevron `aria-label` prefix when expanded. Caller concatenates sequence name. */
+export const SEQUENCE_HEADER_TOGGLE_ARIA_PREFIX_OPEN = 'Collapse ';
+
+/** Sequence header chevron `aria-label` prefix when collapsed. Caller concatenates sequence name. */
+export const SEQUENCE_HEADER_TOGGLE_ARIA_PREFIX_CLOSED = 'Expand ';
+
+/** Aggregate counts mini-pill row region label prefix. Caller concatenates sequence name. */
+export const AGGREGATE_COUNTS_REGION_LABEL_PREFIX = 'Status counts for ';
+
+// ---------- Shot grid card (D-19, UI-SPEC lines 200-204) ----------
+
+/** ShotGridCard button `aria-label` prefix. Caller concatenates shot name. */
+export const SHOT_CARD_OPEN_ARIA_PREFIX = 'Open version drawer for ';
+
+/** Version-count copy — exact singular form. */
+export const SHOT_CARD_VERSION_COUNT_SINGULAR = '1 version';
+
+/** Version-count plural suffix. Caller renders `${n}${SUFFIX}` when n !== 1. */
+export const SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX = ' versions';
+
+/** Copy shown when a shot has zero versions (D-19 disables click in this branch). */
+export const SHOT_CARD_NO_VERSIONS = 'No versions yet';
+
+/** Last-updated prefix — caller concatenates with `formatRelativeTime(epoch)`. */
+export const SHOT_CARD_LAST_UPDATED_PREFIX = 'Updated ';
+
+// ---------- Time helper (UI-SPEC lines 208-216) ----------
+
+/** Relative-time bucket: < 60s. Bare constant, no suffix. */
+export const TIME_JUST_NOW = 'just now';
+
+/** Relative-time bucket: 1–59 minutes. Caller renders `${n}${SUFFIX}` e.g. "5m ago". */
+export const TIME_MINUTES_SUFFIX = 'm ago';
+
+/** Relative-time bucket: 1–23 hours. */
+export const TIME_HOURS_SUFFIX = 'h ago';
+
+/** Relative-time bucket: 1–6 days. */
+export const TIME_DAYS_SUFFIX = 'd ago';
+
+/** Relative-time bucket: 1–3 weeks. */
+export const TIME_WEEKS_SUFFIX = 'w ago';
+
+/** Relative-time bucket: 1+ months (approx 30-day buckets, UI-SPEC-accepted). */
+export const TIME_MONTHS_SUFFIX = 'mo ago';
+
+// ---------- Empty / loading / error states (D-18, UI-SPEC lines 218-231) ----------
+
+/** Empty state — sequence has zero shots. */
+export const SHOT_GRID_EMPTY_NO_SHOTS =
+  'No shots in this sequence yet. Shots are created via the MCP agent.';
+
+/** Empty state — current statusFilter matches zero shots. Caller concatenates `${status}' in ${seq}.` */
+export const SHOT_GRID_EMPTY_FILTER_PREFIX = "No shots with status '";
+
+/** Empty state — All filter active, showOmitted off, all shots are omitted. */
+export const SHOT_GRID_EMPTY_FILTER_ALL_NO_OMITTED_PREFIX = 'No active shots in ';
+
+/** Empty state — single omit-only shot hidden by showOmitted toggle. */
+export const SHOT_GRID_EMPTY_FILTER_OMIT_HIDDEN = 'Hidden. Toggle "Show omitted" to view.';
+
+/** Loading state — initial fetch in flight. U+2026 ellipsis matches LOAD_MORE_LOADING_LABEL tone. */
+export const SHOT_GRID_LOADING_LABEL = 'Loading shots…';
+
+/** Error pill prefix — paired with LOAD_MORE_RETRY_LABEL CTA. */
+export const SHOT_GRID_FETCH_ERROR_PREFIX = 'Failed to load shots';
+
+// ---------- TreeSidebar grid-icon affordance (D-02, D-05) ----------
+
+/** Grid-icon button `aria-label` prefix. Caller concatenates sequence name. */
+export const TREE_GRID_ICON_ARIA_PREFIX = 'Open shot grid for ';
+
+/** Grid-icon button ARIA suffix when active (`aria-current="page"`). */
+export const TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX = ' (current)';
+
+// ---------- Header home button (D-03) ----------
+
+/** Home button `aria-label`. Surfaces when activeView === 'shot-grid'. */
+export const HEADER_HOME_ARIA_LABEL = 'Back to home view';
