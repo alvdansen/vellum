@@ -35,6 +35,15 @@ import {
   type VersionCursor,
   type HierarchySort,
 } from '../store/sort.js';
+// Phase 21 / Plan 21-02 — GRID-04 cursor decoder. Mirrors parseCursorParam's
+// 4xx behavior: malformed input → TypedError('INVALID_INPUT'), never throws
+// a 5xx. The decode helper itself returns null on any failure path; the
+// route helper translates null → 400 envelope so the dashboard's pagination
+// state machine surfaces a recoverable error.
+import {
+  decodeShotGridCursor,
+  type ShotGridCursor,
+} from '../store/shot-status-repo.js';
 
 /**
  * Extension → Content-Type map (D-WEBUI-33). Unknown extensions fall through
@@ -234,6 +243,31 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     return decoded;
   }
 
+  /**
+   * Phase 21 / Plan 21-02 — parse ?cursor= against decodeShotGridCursor.
+   * Same 4xx contract as parseCursorParam: decode failure → TypedError
+   * (INVALID_INPUT) → 400 via typedErrorHandler. NEVER echoes the malformed
+   * input back verbatim (T-18-03 information-disclosure hygiene).
+   *
+   * The Wave 1 decodeShotGridCursor returns null on every failure path
+   * (non-base64, non-JSON, missing fields) — this helper is the HTTP
+   * translator that surfaces the null as a structured 400 envelope.
+   */
+  function parseShotGridCursorParam(
+    raw: string | undefined,
+  ): ShotGridCursor | null {
+    if (raw === undefined || raw === '') return null;
+    const decoded = decodeShotGridCursor(raw);
+    if (decoded === null) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Malformed cursor — drop the ?cursor= param to start from page 1`,
+        `Cursors are opaque base64url strings issued in the response's next_cursor field`,
+      );
+    }
+    return decoded;
+  }
+
   // --- Workspaces ---
   app.get('/api/workspaces', (c) => {
     const limit = qNum(c.req.query('limit'), 20, 'limit');
@@ -277,6 +311,32 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     const sortRaw = c.req.query('sort');
     const opts = sortRaw !== undefined ? { sort: parseHierarchySortParam(sortRaw) } : undefined;
     return c.json(engine.listShots(c.req.param('id'), limit, offset, opts));
+  });
+
+  // ===== Phase 21 — GRID-04 denormalized shot grid endpoint =====
+  //
+  // GET /api/sequences/:id/shot-grid?cursor=&limit=
+  //
+  // Deliberately narrow query surface (REQ-03 / D-08 LOCKED):
+  //   - NO status-filter query param — client-side filter per REQ-03;
+  //     dashboard reads the filter from a signal and computes the visible
+  //     subset locally.
+  //   - NO show-omitted query param — client-side dataset gating per D-08 /
+  //     A2; the endpoint always returns every shot regardless of status,
+  //     and the dashboard's toggle controls whether `omit` shots render.
+  //   - NO sort query param — Phase 21 ships fixed sort `name ASC` (D-21);
+  //     Phase 24 POL-03 introduces sort variability if artist feedback
+  //     demands it.
+  //
+  // The engine.listShotGrid call throws TypedError('SEQUENCE_NOT_FOUND') for
+  // unknown sequenceId; the global typedErrorHandler translates that to 404.
+  // Cursor decode failures surface as 400 INVALID_INPUT via
+  // parseShotGridCursorParam. No try/catch needed at this seam.
+  app.get('/api/sequences/:id/shot-grid', (c) => {
+    const sequenceId = c.req.param('id');
+    const limit = qNum(c.req.query('limit'), 20, 'limit');
+    const cursor = parseShotGridCursorParam(c.req.query('cursor'));
+    return c.json(engine.listShotGrid(sequenceId, { cursor, limit }));
   });
 
   // --- Shots ---
