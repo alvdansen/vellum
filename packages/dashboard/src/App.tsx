@@ -11,6 +11,10 @@
  *   - View routing (signal-driven; D-03):
  *       activeView === 'home'      → <HomeView/>
  *       activeView === 'shot-grid' → <ShotGridView/>
+ *   - Global overlays (Phase 21 / 21-06): <VersionDrawerHost/> reads
+ *     selectedVersionId and renders the version drawer regardless of
+ *     activeView. Pattern: any future overlay keyed on a global signal
+ *     mounts as a sibling of <AppBody> here, not inside a view.
  *
  * Phase 21 / Plan 21-04 Task T02:
  *   - Home button is a <button aria-label="Back to home view"> with the
@@ -47,6 +51,7 @@ import { Home } from 'lucide-preact';
 import { HomeView } from './views/HomeView.js';
 import { ShotGridView } from './views/ShotGridView.js';
 import { ActiveGenerationsPanel } from './views/ActiveGenerationsPanel.js';
+import { VersionDrawerHost } from './views/VersionDrawerHost.js';
 import { ThemeToggle } from './components/ThemeToggle.js';
 import { startSse, stopSse, onSseEvent, offSseEvent } from './lib/events.js';
 import {
@@ -132,6 +137,10 @@ export function App() {
         </div>
         <ActiveGenerationsPanel />
       </div>
+      {/* Phase 21 / Plan 21-06 — view-independent overlay. Mounts at App
+       *  level so the VersionDrawer survives view switches (21-AUDIT.md
+       *  Bugs 2 + 5). VersionDrawerHost reads selectedVersionId directly. */}
+      <VersionDrawerHost />
     </div>
   );
 }

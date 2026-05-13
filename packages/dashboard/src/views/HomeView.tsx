@@ -11,7 +11,9 @@
  *   - RIGHT pane: sort strip (SORT_STRIP_LABEL + grid SortDropdown) +
  *     scrollable shot-detail panel (VersionCard list driven by the `versions`
  *     signal under the currently-selected shot) + LoadMoreButton footer.
- *   - OVERLAY: VersionDrawer when `selectedVersionId` is non-null.
+ *   - OVERLAY: the version-detail drawer renders at App.tsx scope via
+ *     <VersionDrawerHost/> (Phase 21 / Plan 21-06 — moved out of HomeView).
+ *     HomeView writes `selectedVersionId.value` via VersionCard onSelect.
  *
  * Phase 18 / Plan 18-05 Task 2 — Sortable folder dropdown integration:
  *   - Sort hydration runs in App.tsx's boot useEffect (moved here from
@@ -59,7 +61,6 @@ import { VersionCard } from '../components/VersionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { SortDropdown } from '../components/SortDropdown.js';
 import { LoadMoreButton } from '../components/LoadMoreButton.js';
-import { VersionDrawer } from './VersionDrawer.js';
 import {
   fetchWorkspaces,
   fetchProjects,
@@ -445,21 +446,10 @@ export function HomeView() {
     }));
 
   const versionsList = versions.value;
-  const selectedVersion =
-    versionsList.find((v) => v.id === selectedVersionId.value) ?? null;
-  const priorVersion =
-    selectedVersion && typeof selectedVersion.version_number === 'number'
-      ? versionsList
-          .filter(
-            (v) =>
-              typeof v.version_number === 'number' &&
-              v.version_number < (selectedVersion.version_number as number),
-          )
-          .sort(
-            (a, b) =>
-              (b.version_number as number) - (a.version_number as number),
-          )[0] ?? null
-      : null;
+  // Phase 21 / Plan 21-06 — selectedVersion + priorVersion derivation moved
+  // to <VersionDrawerHost/> (21-AUDIT.md §3 + §5 Bug 5). HomeView still
+  // writes selectedVersionId via the VersionCard onSelect callback below;
+  // the overlay reads that signal at App-scope.
 
   const remaining = Math.max(0, gridTotalCount.value - versionsList.length);
 
@@ -557,15 +547,10 @@ export function HomeView() {
           )}
         </div>
       </main>
-      {selectedVersion && (
-        <VersionDrawer
-          version={selectedVersion}
-          priorVersion={priorVersion}
-          onClose={() => {
-            selectedVersionId.value = null;
-          }}
-        />
-      )}
+      {/* Phase 21 / Plan 21-06 — version-detail drawer render hoisted to
+       *  App.tsx via <VersionDrawerHost/>. The selectedVersionId signal is
+       *  the shared key; click handlers below still set it, but the overlay
+       *  itself mounts at App scope (21-AUDIT.md Bugs 2 + 5). */}
     </div>
   );
 }
