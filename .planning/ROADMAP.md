@@ -190,10 +190,10 @@ Plans:
   3. Shot grid renders with CSS Grid `minmax(220px, 1fr)`; each card has a 16:9 aspect-ratio container; lazy-loaded thumbnail (`loading="lazy"`) with explicit width/height for CLS=0.
   4. Status filter bar filters to single-status views client-side (no re-fetch); "Show omitted" toggle reveals `omit`-status shots with dimmed treatment (`opacity-40`).
   5. SSE `shot.status_changed` event updates the affected card's status badge in-place; no full grid re-fetch; open VersionDrawer panels are not disrupted (keyed on `shotId`).
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
-- [ ] 21-01-PLAN.md — Wave 1 foundations (gap closure `ShotStatusChangedPayload` + 5 theme tokens + repo SQL CTE + copy block + time helper + types)
+- [x] 21-01-PLAN.md — Wave 1 foundations (gap closure `ShotStatusChangedPayload` + 5 theme tokens + repo SQL CTE + copy block + time helper + types)
 - [ ] 21-02-PLAN.md — Wave 2 backend + state plumbing (Engine facade + HTTP route + `ShotStatusPill` + `state/shot-grid` + `fetchShotGrid`)
 - [ ] 21-03-PLAN.md — Wave 3 component layer (`ShotGridCard` + `ShotGridFilterBar` + `SequenceHeader` + TreeSidebar grid-icon affordance)
 - [ ] 21-04-PLAN.md — Wave 4 view + root integration (`ShotGridView` + `App.tsx` `activeView` routing + SSE handler subscription)
@@ -256,7 +256,7 @@ Plans:
 | 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
-| 21    | v1.3      | 0/5   | Planned     | —          |
+| 21    | v1.3      | 1/5 | In Progress|  |
 | 22    | v1.3      | 0/TBD | Not started | —          |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
