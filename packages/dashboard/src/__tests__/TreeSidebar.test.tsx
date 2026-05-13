@@ -308,3 +308,147 @@ describe('TreeSidebar', () => {
     expect(seqRow?.querySelector('[role="presentation"][aria-hidden="true"]')).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// Phase 21 / Plan 21-03 Task T04 — grid-icon affordance on sequence rows
+// (D-01: per-sequence grid icon; D-02: click flips activeView,
+//  stopPropagation; D-05: active state via aria-current="page" + accent fill)
+// ─────────────────────────────────────────────────────────────
+
+/* Multi-sequence fixture so we can test the inactive-vs-active grid icon
+ * branch on two different sequences. */
+const WORKSPACE_MULTI_SEQUENCE: TreeWorkspace = {
+  id: 'ws1',
+  name: 'Test Workspace',
+  projects: [
+    {
+      id: 'p1',
+      name: 'Test Project',
+      sequences: [
+        { id: 'sq1', name: 'SQ010', shots: [{ id: 'sh1', name: 'SH0010' }] },
+        { id: 'sq2', name: 'SQ020', shots: [{ id: 'sh2', name: 'SH0020' }] },
+      ],
+    },
+  ],
+};
+
+describe('TreeSidebar — Phase 21 grid-icon affordance (D-01/D-02/D-05)', () => {
+  it('renders a grid icon on every sequence row when onOpenGrid is provided', () => {
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1'])}
+        onToggleExpand={vi.fn()}
+        onOpenGrid={vi.fn()}
+      />,
+    );
+    const gridIcons = screen.getAllByLabelText(/^Open shot grid for /);
+    // Two sequences → two grid icons
+    expect(gridIcons.length).toBe(2);
+  });
+
+  it('clicking the grid icon invokes onOpenGrid(sequence.id) and does NOT toggle expand (D-02 stopPropagation)', () => {
+    const onOpenGrid = vi.fn();
+    const onToggleExpand = vi.fn();
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1'])}
+        onToggleExpand={onToggleExpand}
+        onOpenGrid={onOpenGrid}
+      />,
+    );
+    const sq1Icon = screen.getByLabelText(/^Open shot grid for SQ010/);
+    fireEvent.click(sq1Icon);
+    // onOpenGrid called with the sequence id
+    expect(onOpenGrid).toHaveBeenCalledWith('sq1');
+    // The sequence row's onClick is onToggleExpand('sq1') — stopPropagation
+    // must prevent that from firing when the grid icon is clicked.
+    expect(onToggleExpand).not.toHaveBeenCalledWith('sq1');
+  });
+
+  it("active state: aria-current='page' + text-[var(--color-accent)] fill when currentGridSequenceId matches (D-05)", () => {
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1'])}
+        onToggleExpand={vi.fn()}
+        onOpenGrid={vi.fn()}
+        currentGridSequenceId="sq1"
+      />,
+    );
+    // The active sequence's aria-label includes the ' (current)' suffix
+    const activeIcon = screen.getByLabelText(/^Open shot grid for SQ010 \(current\)$/);
+    expect(activeIcon.getAttribute('aria-current')).toBe('page');
+    expect(activeIcon.className).toContain('text-[var(--color-accent)]');
+  });
+
+  it("inactive state: no aria-current + text-[var(--color-fg-muted)] fill on non-active sequences", () => {
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1'])}
+        onToggleExpand={vi.fn()}
+        onOpenGrid={vi.fn()}
+        currentGridSequenceId="sq1"
+      />,
+    );
+    // SQ020 is not the active sequence — no '(current)' suffix
+    const inactiveIcon = screen.getByLabelText(/^Open shot grid for SQ020$/);
+    expect(inactiveIcon.getAttribute('aria-current')).toBeNull();
+    expect(inactiveIcon.className).toContain('text-[var(--color-fg-muted)]');
+    expect(inactiveIcon.className).not.toContain('text-[var(--color-accent)]');
+  });
+
+  it('does NOT render any grid icon when onOpenGrid is undefined (graceful absence)', () => {
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1'])}
+        onToggleExpand={vi.fn()}
+      />,
+    );
+    const gridIcons = screen.queryAllByLabelText(/^Open shot grid for /);
+    expect(gridIcons.length).toBe(0);
+  });
+
+  it('grid icon is rendered ONLY on sequence rows (NOT workspace/project/shot — D-01)', () => {
+    render(
+      <TreeSidebar
+        workspaces={[WORKSPACE_MULTI_SEQUENCE]}
+        selectedShotId={null}
+        onSelectShot={vi.fn()}
+        expandedIds={new Set(['ws1', 'p1', 'sq1', 'sq2'])}
+        onToggleExpand={vi.fn()}
+        onOpenGrid={vi.fn()}
+      />,
+    );
+    // 2 sequences → exactly 2 grid icons. Workspace + Project + 2 Shots
+    // do NOT add grid-icon buttons.
+    const gridIcons = screen.getAllByLabelText(/^Open shot grid for /);
+    expect(gridIcons.length).toBe(2);
+
+    // Defensive: the workspace row + project row + shot rows must NOT have a
+    // grid-icon button child. The grid-icon aria-labels start with 'Open
+    // shot grid for ' — looking for any inside non-sequence rows confirms.
+    const wsRow = screen.getByText('Test Workspace').closest('[role="treeitem"]');
+    const projRow = screen.getByText('Test Project').closest('[role="treeitem"]');
+    const sh1Row = screen.getByText('SH0010').closest('[role="treeitem"]');
+    const sh2Row = screen.getByText('SH0020').closest('[role="treeitem"]');
+
+    expect(wsRow?.querySelector('[aria-label^="Open shot grid for "]')).toBeNull();
+    expect(projRow?.querySelector('[aria-label^="Open shot grid for "]')).toBeNull();
+    expect(sh1Row?.querySelector('[aria-label^="Open shot grid for "]')).toBeNull();
+    expect(sh2Row?.querySelector('[aria-label^="Open shot grid for "]')).toBeNull();
+  });
+});

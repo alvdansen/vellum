@@ -25,11 +25,21 @@
  * Sequence + Project + Workspace rows stay text-only (D-16 LOCKED — exactly
  * one thumbnail-rendering caller in this file, in the shot.map() context).
  *
+ * Phase 21 / Plan 21-03 — sequence rows gain a TRAILING grid-icon affordance
+ * (D-01: per-sequence; D-02: click flips activeView via parent callback;
+ * D-05: active sequence visualized via aria-current="page" + accent fill).
+ * Only the depth=2 SequenceNode passes a non-empty `trailing` prop to TreeRow
+ * (workspace/project/shot rows remain unchanged). The icon is hidden when
+ * onOpenGrid is undefined (graceful absence — keeps the tree pure for
+ * consumers that don't surface the shot-grid view yet).
+ *
  * Accessibility:
  *   - Root <nav aria-label="Project hierarchy">
  *   - Each expandable row: role="treeitem", aria-expanded reflects state
  *   - Shots (terminal leaves): no aria-expanded
  *   - Selected shot: aria-selected="true"
+ *   - Active grid-icon: aria-current="page" (WCAG-blessed "you are here";
+ *     NOT aria-selected which is reserved for listbox semantics)
  *
  * SECURITY — T-5-06: Workspace/project/sequence/shot names are rendered as
  * JSX text children (auto-escaped by Preact). dangerouslySetInnerHTML is
@@ -37,9 +47,13 @@
  */
 
 import type { VNode } from 'preact';
-import { ChevronRight, ChevronDown } from 'lucide-preact';
+import { ChevronRight, ChevronDown, LayoutGrid } from 'lucide-preact';
 import { Thumbnail } from './Thumbnail.js';
 import { SkeletonThumbnail } from './SkeletonThumbnail.js';
+import {
+  TREE_GRID_ICON_ARIA_PREFIX,
+  TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX,
+} from '../lib/copy.js';
 
 /* ---------- Minimal structural types (owned by this component) ---------- */
 
@@ -82,6 +96,21 @@ export interface TreeSidebarProps {
   onSelectShot: (shotId: string) => void;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  /**
+   * Phase 21 / Plan 21-03 (D-01, D-02) — when provided, every sequence row
+   * gets a trailing grid-icon button; clicking it invokes onOpenGrid(seqId)
+   * (with `e.stopPropagation` so the row-expand chevron does NOT also fire).
+   * When undefined, no grid icons render — keeps the tree pure for consumers
+   * that don't surface the shot-grid view yet.
+   */
+  onOpenGrid?: (sequenceId: string) => void;
+  /**
+   * Phase 21 / Plan 21-03 (D-05) — the sequence id whose grid is currently
+   * displayed in the parent's ShotGridView (or undefined / null when the
+   * shot-grid view is not active). The matching sequence's grid icon
+   * receives aria-current="page" and the accent-fill class.
+   */
+  currentGridSequenceId?: string;
 }
 
 /* ---------- Top-level component ---------- */
@@ -92,6 +121,8 @@ export function TreeSidebar({
   onSelectShot,
   expandedIds,
   onToggleExpand,
+  onOpenGrid,
+  currentGridSequenceId,
 }: TreeSidebarProps) {
   return (
     <nav
@@ -107,6 +138,8 @@ export function TreeSidebar({
           onSelectShot={onSelectShot}
           expandedIds={expandedIds}
           onToggleExpand={onToggleExpand}
+          onOpenGrid={onOpenGrid}
+          currentGridSequenceId={currentGridSequenceId}
         />
       ))}
     </nav>
@@ -121,6 +154,8 @@ interface WorkspaceNodeProps {
   onSelectShot: (id: string) => void;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  onOpenGrid?: (sequenceId: string) => void;
+  currentGridSequenceId?: string;
 }
 
 function WorkspaceNode({
@@ -129,6 +164,8 @@ function WorkspaceNode({
   onSelectShot,
   expandedIds,
   onToggleExpand,
+  onOpenGrid,
+  currentGridSequenceId,
 }: WorkspaceNodeProps) {
   const expanded = expandedIds.has(workspace.id);
   const hasChildren = !!workspace.projects?.length;
@@ -152,6 +189,8 @@ function WorkspaceNode({
             onSelectShot={onSelectShot}
             expandedIds={expandedIds}
             onToggleExpand={onToggleExpand}
+            onOpenGrid={onOpenGrid}
+            currentGridSequenceId={currentGridSequenceId}
           />
         ))}
     </>
@@ -164,6 +203,8 @@ interface ProjectNodeProps {
   onSelectShot: (id: string) => void;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  onOpenGrid?: (sequenceId: string) => void;
+  currentGridSequenceId?: string;
 }
 
 function ProjectNode({
@@ -172,6 +213,8 @@ function ProjectNode({
   onSelectShot,
   expandedIds,
   onToggleExpand,
+  onOpenGrid,
+  currentGridSequenceId,
 }: ProjectNodeProps) {
   const expanded = expandedIds.has(project.id);
   const hasChildren = !!project.sequences?.length;
@@ -195,6 +238,8 @@ function ProjectNode({
             onSelectShot={onSelectShot}
             expandedIds={expandedIds}
             onToggleExpand={onToggleExpand}
+            onOpenGrid={onOpenGrid}
+            currentGridSequenceId={currentGridSequenceId}
           />
         ))}
     </>
@@ -207,6 +252,8 @@ interface SequenceNodeProps {
   onSelectShot: (id: string) => void;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  onOpenGrid?: (sequenceId: string) => void;
+  currentGridSequenceId?: string;
 }
 
 function SequenceNode({
@@ -215,9 +262,14 @@ function SequenceNode({
   onSelectShot,
   expandedIds,
   onToggleExpand,
+  onOpenGrid,
+  currentGridSequenceId,
 }: SequenceNodeProps) {
   const expanded = expandedIds.has(sequence.id);
   const hasChildren = !!sequence.shots?.length;
+  // Phase 21 — D-05: active state when the parent's ShotGridView is currently
+  // displaying THIS sequence. Drives both aria-current and the accent fill.
+  const isCurrentGrid = currentGridSequenceId === sequence.id;
   return (
     <>
       <TreeRow
@@ -228,6 +280,32 @@ function SequenceNode({
         isSelected={false}
         onClick={() => onToggleExpand(sequence.id)}
         onToggle={() => onToggleExpand(sequence.id)}
+        // Phase 21 — D-01: grid-icon affordance (sequence rows only).
+        trailing={
+          onOpenGrid ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                // D-02: stopPropagation prevents the row's onClick
+                // (onToggleExpand) from firing when the grid icon is clicked.
+                e.stopPropagation();
+                onOpenGrid(sequence.id);
+              }}
+              aria-label={
+                `${TREE_GRID_ICON_ARIA_PREFIX}${sequence.name}` +
+                (isCurrentGrid ? TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX : '')
+              }
+              aria-current={isCurrentGrid ? 'page' : undefined}
+              class={`flex h-6 w-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
+                isCurrentGrid
+                  ? 'text-[var(--color-accent)]'
+                  : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
+              }`}
+            >
+              <LayoutGrid size={16} />
+            </button>
+          ) : undefined
+        }
       />
       {expanded &&
         sequence.shots?.map((shot) => (
@@ -275,6 +353,14 @@ interface TreeRowProps {
    * not rendered and the row stays text-only.
    */
   thumbnail?: VNode;
+  /**
+   * Phase 21 / Plan 21-03 — optional trailing slot (mirrors `thumbnail` for
+   * the right-edge affordance). Only SequenceNode passes a non-empty trailing
+   * (the grid-icon button). Workspace/Project/Shot rows leave this undefined.
+   * Rendered with `ml-auto` so it always sits flush against the right edge
+   * of the row's flex container.
+   */
+  trailing?: VNode;
 }
 
 function TreeRow({
@@ -286,6 +372,7 @@ function TreeRow({
   onClick,
   onToggle,
   thumbnail,
+  trailing,
 }: TreeRowProps) {
   const Icon = expanded ? ChevronDown : ChevronRight;
   return (
@@ -324,6 +411,7 @@ function TreeRow({
       )}
       {thumbnail ? <span class="flex-shrink-0">{thumbnail}</span> : null}
       <span class="truncate">{label}</span>
+      {trailing ? <span class="ml-auto flex-shrink-0">{trailing}</span> : null}
     </div>
   );
 }
