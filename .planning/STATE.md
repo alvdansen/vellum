@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
 status: planning
-stopped_at: Phase 21 context gathered
-last_updated: "2026-05-12T20:44:37.059Z"
-last_activity: 2026-05-12
+stopped_at: Phase 21 planned (5 plans, plan-checker APPROVE)
+last_updated: "2026-05-13T11:00:00.000Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 5
   completed_phases: 1
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 20 — shot-status-engine
+**Current focus:** Phase 21 — shot-grid-view
 
 ## Current Position
 
 Phase: 21
-Plan: Not started
-Status: Ready to plan
+Plan: 21-01 (Wave 1 foundations)
+Status: Ready to execute
 Last activity: 2026-05-12
 
 ## Performance Metrics
@@ -99,6 +99,6 @@ All v1.2 deferrals are now scoped into v1.3:
 
 ## Session Continuity
 
-Last session: 2026-05-12T20:44:37.055Z
-Stopped at: Phase 21 context gathered
-Resume: `/gsd-execute-plan 20-01`
+Last session: 2026-05-13T11:00:00.000Z
+Stopped at: Phase 21 planned (5 plans, plan-checker APPROVE)
+Resume: `/gsd-execute-plan 21-01` (Wave 1 foundations — `ShotStatusChangedPayload` gap closure + theme tokens + SQL CTE + copy + time + types)
