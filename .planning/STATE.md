@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Production Shot Grid
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-05-14T10:22:21.286Z"
-last_activity: 2026-05-14 -- Phase 22 planning complete
+last_updated: "2026-05-14T10:25:39.445Z"
+last_activity: 2026-05-14 -- Phase 22 execution started
 progress:
   total_phases: 5
   completed_phases: 2
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A VFX artist tells their AI familiar what they need in natural language, and it manages the entire production pipeline -- routing, versioning, provenance, organization -- so they never touch a folder structure or lose track of what generated what.
-**Current focus:** Phase 21 — shot-grid-view
+**Current focus:** Phase 22 — review-and-approval
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-14 -- Phase 22 planning complete
+Phase: 22 (review-and-approval) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 22
+Last activity: 2026-05-14 -- Phase 22 execution started
 
 ### Wave 5 T01 — Automated checks (all green)
 
