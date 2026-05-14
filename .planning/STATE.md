@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
-status: ready_to_plan
-stopped_at: Phase 21 — Wave 5 paused at T02 human-verify gate (manual browser smoke + WCAG)
-last_updated: "2026-05-13T16:30:00.000Z"
-last_activity: 2026-05-13 -- Phase 21 Waves 1-4 complete; Wave 5 T01 auto-checks green; awaiting T02 human smoke
+status: planning
+stopped_at: Phase 22 context gathered
+last_updated: "2026-05-14T09:12:06.025Z"
+last_activity: 2026-05-14
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 8
-  percent: 40
+  total_plans: 10
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -31,6 +31,7 @@ Status: Ready to plan
 Last activity: 2026-05-14
 
 ### Wave 5 T01 — Automated checks (all green)
+
 - Full server suite: 1853 passed, 21 pre-existing failures (validation-flags / generation-tool / Phase 18 SORT-03 attribution — pre-date Phase 21)
 - Dashboard suite: 361/361 passed (34 files)
 - architecture-purity: 54/54 (unchanged)
@@ -41,6 +42,7 @@ Last activity: 2026-05-14
 - Vite production build: ✓ 200ms, 127KB JS / 29KB CSS
 
 ### Wave 5 T02 — Human gate (awaiting)
+
 - Part A (WCAG hex audit): hex values in theme.css match UI-SPEC §"Color" tables exactly — orchestrator pre-verified
 - Part B (browser smoke): 12-step checklist in 21-05-PLAN.md awaiting user
 - Resume: run `npx tsx src/server.ts --http` + `cd packages/dashboard && npx vite`, follow the 12-step smoke in 21-05-PLAN.md lines 200-265, then `/gsd-execute-phase 21` will resume from T02
@@ -115,6 +117,6 @@ All v1.2 deferrals are now scoped into v1.3:
 
 ## Session Continuity
 
-Last session: 2026-05-13T11:00:00.000Z
-Stopped at: Phase 21 planned (5 plans, plan-checker APPROVE)
+Last session: 2026-05-14T09:12:06.020Z
+Stopped at: Phase 22 context gathered
 Resume: `/gsd-execute-plan 21-01` (Wave 1 foundations — `ShotStatusChangedPayload` gap closure + theme tokens + SQL CTE + copy + time + types)
