@@ -25,3 +25,4 @@ packages/dashboard/node_modules/
 # src/engine/c2pa/__tests__/signer.test.ts via openssl shell-out. Each
 # fixture is a one-shot disposable cert + key — never committed.
 tests/fixtures/c2pa/algorithms/
+.gstack/
