@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
-status: executing
+status: ready_to_plan
 stopped_at: Phase 21 — Wave 5 paused at T02 human-verify gate (manual browser smoke + WCAG)
 last_updated: "2026-05-13T16:30:00.000Z"
 last_activity: 2026-05-13 -- Phase 21 Waves 1-4 complete; Wave 5 T01 auto-checks green; awaiting T02 human smoke
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
   completed_plans: 8
-  percent: 89
+  percent: 40
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md
 
 ## Current Position
 
-Phase: 21 (shot-grid-view) — PAUSED AT WAVE 5 T02 HUMAN GATE
-Plan: 5 of 5 (21-05 in-flight; 21-01..21-04 ✓ complete)
-Status: T01 automated checks green; awaiting T02 manual browser smoke before T03 (ROADMAP/STATE write)
-Last activity: 2026-05-13 -- All component code committed and merged; visual smoke pending user verification
+Phase: 22
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-14
 
 ### Wave 5 T01 — Automated checks (all green)
 - Full server suite: 1853 passed, 21 pre-existing failures (validation-flags / generation-tool / Phase 18 SORT-03 attribution — pre-date Phase 21)
@@ -49,7 +49,7 @@ Last activity: 2026-05-13 -- All component code committed and merged; visual smo
 
 **Velocity:**
 
-- Total plans completed: 65 (v1.0: 43, v1.1: 0 tracked, v1.2: 18)
+- Total plans completed: 71 (v1.0: 43, v1.1: 0 tracked, v1.2: 18)
 - Average duration: --
 - Total execution time: 0 hours
 
@@ -69,6 +69,7 @@ Last activity: 2026-05-13 -- All component code committed and merged; visual smo
 | 18 | 5 | - | - |
 | 19 | 8 | - | - |
 | 20 | 4 | - | - |
+| 21 | 6 | - | - |
 
 ## Accumulated Context
 

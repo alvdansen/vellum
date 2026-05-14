@@ -36,15 +36,15 @@ Each requirement maps to a single roadmap phase. User-centric, atomic, and testa
 
 ### Shot Grid View (GRID)
 
-- [ ] **GRID-01**: User navigates to a sequence via the tree sidebar grid icon and sees a full-width shot grid view (`ShotGridView`). Shots are displayed in a CSS Grid (`minmax(220px, 1fr)`, `16:9` aspect-ratio containers), grouped under a collapsible sequence header that shows the sequence name and aggregate status counts. The existing home view (`HomeView`) is preserved and reachable from the sidebar home icon — no router is added; signal-driven view switch via `activeView` in `App.tsx`.
+- [x] **GRID-01**: User navigates to a sequence via the tree sidebar grid icon and sees a full-width shot grid view (`ShotGridView`). Shots are displayed in a CSS Grid (`minmax(220px, 1fr)`, `16:9` aspect-ratio containers), grouped under a collapsible sequence header that shows the sequence name and aggregate status counts. The existing home view (`HomeView`) is preserved and reachable from the sidebar home icon — no router is added; signal-driven view switch via `activeView` in `App.tsx`.
 
-- [ ] **GRID-02**: Each shot card in the grid shows: the latest completed version's lazy-loaded thumbnail (existing thumbnail pipeline; `loading="lazy"`, explicit width/height for CLS=0), shot name, status badge (`ShotStatusPill`), and a version count badge. Cards missing a completed version render a `<SkeletonThumbnail/>`. Shot cards link to the VersionDrawer on click.
+- [x] **GRID-02**: Each shot card in the grid shows: the latest completed version's lazy-loaded thumbnail (existing thumbnail pipeline; `loading="lazy"`, explicit width/height for CLS=0), shot name, status badge (`ShotStatusPill`), and a version count badge. Cards missing a completed version render a `<SkeletonThumbnail/>`. Shot cards link to the VersionDrawer on click.
 
-- [ ] **GRID-03**: User filters shots by status via a status filter bar at the top of the shot grid (one pill per status; "All" resets). Filtering is client-side (no re-fetch) using existing shot grid signals. The filter selection persists in the `activeView` signal state for the session.
+- [x] **GRID-03**: User filters shots by status via a status filter bar at the top of the shot grid (one pill per status; "All" resets). Filtering is client-side (no re-fetch) using existing shot grid signals. The filter selection persists in the `activeView` signal state for the session.
 
-- [ ] **GRID-04**: Shot grid data loads from a single `GET /api/sequences/:id/shot-grid` endpoint that returns a denormalized payload (shot rows joined with latest-completed-version thumbnail + status) via a single SQL query — no N+1. Cursor pagination applies for sequences with > 50 shots.
+- [x] **GRID-04**: Shot grid data loads from a single `GET /api/sequences/:id/shot-grid` endpoint that returns a denormalized payload (shot rows joined with latest-completed-version thumbnail + status) via a single SQL query — no N+1. Cursor pagination applies for sequences with > 50 shots.
 
-- [ ] **GRID-05**: `omit`-status shots are hidden from the default shot grid view. A "Show omitted" toggle in the filter bar reveals them. Omitted shots render with a visual dimming treatment (`opacity-40` overlay) to distinguish them from active shots.
+- [x] **GRID-05**: `omit`-status shots are hidden from the default shot grid view. A "Show omitted" toggle in the filter bar reveals them. Omitted shots render with a visual dimming treatment (`opacity-40` overlay) to distinguish them from active shots.
 
 ### Review and Approval (REV)
 

@@ -150,7 +150,7 @@ Plans:
 **5 phases, 22 requirements (5 STAT + 5 GRID + 5 REV + 3 OVR + 4 POL). Strict ordering 20 → 21 → 22 → 23 → 24. Phase 24 is highest-risk and requires adversarial review checklist before execute.**
 
 - [x] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. (completed 2026-05-12)
-- [ ] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20)
+- [x] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20) (completed 2026-05-14)
 - [ ] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20)
 - [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
 - [ ] **Phase 24: UX Polish Bundle** — Sprite sheet lazy generation + CSS scrub in `ShotGridCard`, hover-to-zoom for image stills, SSE token streaming for AI Regenerate path (`void + .catch()` universally applied, AbortController wired), per-shot sort persistence, cross-version comparison summary in A/B panel. **Adversarial review required at plan stage.** (Not started — requires Phase 20; sequential after 23 to avoid file conflicts)
@@ -190,14 +190,14 @@ Plans:
   3. Shot grid renders with CSS Grid `minmax(220px, 1fr)`; each card has a 16:9 aspect-ratio container; lazy-loaded thumbnail (`loading="lazy"`) with explicit width/height for CLS=0.
   4. Status filter bar filters to single-status views client-side (no re-fetch); "Show omitted" toggle reveals `omit`-status shots with dimmed treatment (`opacity-40`).
   5. SSE `shot.status_changed` event updates the affected card's status badge in-place; no full grid re-fetch; open VersionDrawer panels are not disrupted (keyed on `shotId`).
-**Plans:** 4/5 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 - [x] 21-01-PLAN.md — Wave 1 foundations (gap closure `ShotStatusChangedPayload` + 5 theme tokens + repo SQL CTE + copy block + time helper + types)
 - [x] 21-02-PLAN.md — Wave 2 backend + state plumbing (Engine facade + HTTP route + `ShotStatusPill` + `state/shot-grid` + `fetchShotGrid`)
 - [x] 21-03-PLAN.md — Wave 3 component layer (`ShotGridCard` + `ShotGridFilterBar` + `SequenceHeader` + TreeSidebar grid-icon affordance)
 - [x] 21-04-PLAN.md — Wave 4 view + root integration (`ShotGridView` + `App.tsx` `activeView` routing + SSE handler subscription)
-- [ ] 21-05-PLAN.md — Wave 5 phase gate (full-suite green + architecture-purity + tool-budget + WCAG manual + visual smoke)
+- [x] 21-05-PLAN.md — Wave 5 phase gate (full-suite green + architecture-purity + tool-budget + WCAG manual + visual smoke)
 **UI hint**: yes
 
 ### Phase 22: Review and Approval
@@ -256,7 +256,7 @@ Plans:
 | 18    | v1.2      | 5/5   | Complete    | 2026-05-08 |
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
-| 21    | v1.3      | 4/5 | In Progress|  |
+| 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
 | 22    | v1.3      | 0/TBD | Not started | —          |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
