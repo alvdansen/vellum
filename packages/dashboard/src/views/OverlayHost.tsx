@@ -33,15 +33,27 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { fetchVersion } from '../lib/api.js';
+import {
+  fetchVersion,
+  fetchVersions,
+  fetchShotStatusHistory,
+} from '../lib/api.js';
 import { selectedVersionId, versions } from '../state/versions.js';
 import {
   activeOverlay,
   activeReviewShotId,
 } from '../state/review-panel.js';
+import { shotGrid } from '../state/shot-grid.js';
 import { VersionDrawer } from './VersionDrawer.js';
+import { ReviewPanel } from './ReviewPanel.js';
 import type { Version } from '../types/entities.js';
-import { REVIEW_PANEL_ARIA_LABEL_PREFIX } from '../lib/copy.js';
+import type { ShotStatusEvent } from '../types/review-panel.js';
+import type { ShotStatus } from '../types/shot-grid.js';
+import {
+  REVIEW_PANEL_ARIA_LABEL_PREFIX,
+  REVIEW_PANEL_LOADING_LABEL,
+  REVIEW_HISTORY_FETCH_ERROR,
+} from '../lib/copy.js';
 
 // ============================================================================
 // VersionDrawerHostInternal — Phase 21 VersionDrawerHost logic, verbatim.
@@ -126,10 +138,12 @@ function VersionDrawerHostInternal(): JSX.Element | null {
 }
 
 // ============================================================================
-// ReviewPanelHostInternal — Phase 22 review panel placeholder.
-// Plan 22-05 replaces this with the full ReviewPanel composition. For now,
-// renders a minimal aside so OverlayHost integration tests can assert
-// shotId pass-through.
+// ReviewPanelHostInternal — Phase 22 ReviewPanel mount + cache-miss fetch.
+// Replaces the 22-04 placeholder with the real composition. Fetches the
+// shot's versions + status history in parallel; renders a loading shell
+// (aside with REVIEW_PANEL_LOADING_LABEL) until both resolve, then mounts
+// <ReviewPanel/>. SSE updates flow via shotGrid.value reads (header pill
+// keys on currentShot.status so it re-renders on every store mutation).
 // ============================================================================
 
 function ReviewPanelHostInternal({
@@ -137,17 +151,73 @@ function ReviewPanelHostInternal({
 }: {
   shotId: string;
 }): JSX.Element {
+  const currentShot = shotGrid.value?.shots.find((s) => s.id === shotId);
+  const shotName = currentShot?.name ?? shotId;
+  const currentStatus: ShotStatus =
+    (currentShot?.status as ShotStatus | undefined) ?? 'wip';
+
+  const [data, setData] = useState<{
+    versions: Version[];
+    statusHistory: ShotStatusEvent[];
+  } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setData(null);
+    setLoadError(null);
+    Promise.all([
+      fetchVersions(shotId, {}),
+      fetchShotStatusHistory(shotId),
+    ])
+      .then(([versionsResp, historyResp]) => {
+        if (!alive) return;
+        setData({
+          versions: versionsResp.items ?? [],
+          statusHistory: historyResp.history,
+        });
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        if (typeof console !== 'undefined') {
+          console.warn(
+            'vfx-familiar: ReviewPanelHost fetch failed.',
+            err,
+          );
+        }
+        setLoadError(REVIEW_HISTORY_FETCH_ERROR);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [shotId]);
+
+  if (data === null) {
+    return (
+      <aside
+        role="dialog"
+        aria-label={`${REVIEW_PANEL_ARIA_LABEL_PREFIX}${shotName}`}
+        aria-busy={loadError === null ? 'true' : 'false'}
+        class="fixed inset-y-0 right-0 z-10 flex flex-col gap-4 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-xl"
+        style={{ width: 'var(--drawer-version-width)' }}
+        data-testid="review-panel-loading"
+      >
+        <p class="text-sm text-[var(--color-fg-muted)]">
+          {loadError ?? REVIEW_PANEL_LOADING_LABEL}
+        </p>
+      </aside>
+    );
+  }
+
   return (
-    <aside
-      role="dialog"
-      aria-label={`${REVIEW_PANEL_ARIA_LABEL_PREFIX}${shotId}`}
-      data-testid="review-panel-placeholder"
-      data-shot-id={shotId}
-      class="fixed inset-y-0 right-0 z-10 flex flex-col gap-4 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-xl"
-      style={{ width: 'var(--drawer-version-width)' }}
-    >
-      Review for {shotId}
-    </aside>
+    <ReviewPanel
+      shotId={shotId}
+      shotName={shotName}
+      currentStatus={currentStatus}
+      versions={data.versions}
+      statusHistory={data.statusHistory}
+      onClose={closeOverlay}
+    />
   );
 }
 

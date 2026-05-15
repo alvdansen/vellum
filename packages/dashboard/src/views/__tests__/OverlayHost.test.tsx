@@ -40,9 +40,9 @@ import {
 } from '../../state/review-panel.js';
 import { selectedVersionId, versions } from '../../state/versions.js';
 
-// Mock the fetchVersion path — version-drawer branch isn't the focus of
-// these tests but OverlayHost may dispatch a fetch when selectedVersionId
-// is set without a cache entry.
+// Mock the fetchVersion + fetchVersions + fetchShotStatusHistory paths.
+// OverlayHost's ReviewPanelHostInternal kicks off a Promise.all on mount;
+// stubs let us assert on either the loading shell or the loaded ReviewPanel.
 vi.mock('../../lib/api.js', async () => {
   const actual =
     await vi.importActual<typeof import('../../lib/api.js')>(
@@ -51,8 +51,22 @@ vi.mock('../../lib/api.js', async () => {
   return {
     ...actual,
     fetchVersion: vi.fn().mockResolvedValue(null),
+    fetchVersions: vi
+      .fn()
+      .mockResolvedValue({ items: [], next_cursor: null, total_count: 0 }),
+    fetchShotStatusHistory: vi
+      .fn()
+      .mockResolvedValue({ shotId: 'mock', history: [], total: 0 }),
   };
 });
+
+// Stub ReviewPanel itself so we don't drag in the entire review-panel
+// composition for these mount-host tests.
+vi.mock('../ReviewPanel.js', () => ({
+  ReviewPanel: ({ shotId }: { shotId: string }) => (
+    <div data-testid="review-panel-stub" data-shot-id={shotId} />
+  ),
+}));
 
 // VersionDrawer itself dispatches a lot of side effects on mount (provenance,
 // c2pa, summary) — stub the entire subtree to a noop div so we can assert on
@@ -102,12 +116,13 @@ describe('OverlayHost — backward-compat fallback', () => {
 });
 
 describe('OverlayHost — review panel branch', () => {
-  it('renders ReviewPanel placeholder when activeOverlay=review AND activeReviewShotId!==null', () => {
+  it('renders ReviewPanel loading shell when activeOverlay=review AND activeReviewShotId!==null', () => {
     activeOverlay.value = 'review';
     activeReviewShotId.value = 'shot-xyz';
     const { getByTestId } = render(<OverlayHost />);
-    const panel = getByTestId('review-panel-placeholder');
-    expect(panel.getAttribute('data-shot-id')).toBe('shot-xyz');
+    // Before the Promise.all resolves, the loading shell renders.
+    const shell = getByTestId('review-panel-loading');
+    expect(shell.getAttribute('role')).toBe('dialog');
   });
 
   it('defensive: activeOverlay=review but activeReviewShotId=null → null + console.warn', () => {
@@ -182,12 +197,14 @@ describe('OverlayHost — mutex invariant (D-02)', () => {
     const { rerender, queryByTestId } = render(<OverlayHost />);
     // First render: version drawer mounted
     expect(queryByTestId('version-drawer-stub')).not.toBeNull();
-    expect(queryByTestId('review-panel-placeholder')).toBeNull();
+    expect(queryByTestId('review-panel-loading')).toBeNull();
+    expect(queryByTestId('review-panel-stub')).toBeNull();
 
-    // Open the review panel (mutex)
+    // Open the review panel (mutex) — version drawer must unmount; review
+    // panel mounts (initially showing the loading shell pre-resolve).
     openReviewPanel('sh-77');
     rerender(<OverlayHost />);
     expect(queryByTestId('version-drawer-stub')).toBeNull();
-    expect(queryByTestId('review-panel-placeholder')).not.toBeNull();
+    expect(queryByTestId('review-panel-loading')).not.toBeNull();
   });
 });
