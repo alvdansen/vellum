@@ -151,7 +151,7 @@ Plans:
 
 - [x] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. (completed 2026-05-12)
 - [x] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20) (completed 2026-05-14)
-- [ ] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20)
+- [x] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20) (completed 2026-05-15)
 - [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
 - [ ] **Phase 24: UX Polish Bundle** — Sprite sheet lazy generation + CSS scrub in `ShotGridCard`, hover-to-zoom for image stills, SSE token streaming for AI Regenerate path (`void + .catch()` universally applied, AbortController wired), per-shot sort persistence, cross-version comparison summary in A/B panel. **Adversarial review required at plan stage.** (Not started — requires Phase 20; sequential after 23 to avoid file conflicts)
 
@@ -210,7 +210,7 @@ Plans:
   3. A/B comparison view loads any two user-selected versions; both thumbnails are preloaded via `new Image().src` before the comparison panel mounts (no sequential flash).
   4. "Restore Shot" action in review panel is available only when `currentStatus === 'omit'`; writes `{ to_status: 'wip', note: 'Restored from omit' }` to `shot_status_events`.
   5. Notes stored as `null` (not empty string) when no note provided; notes displayed in timeline with `changed_by` attribution.
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1** *(parallel — no file overlap)*
@@ -226,7 +226,7 @@ Plans:
 - [x] 22-06-PLAN.md — ABCompareView modal + replace ABCompareHost placeholder (REV-03 parallel preload + Pitfall 7 fallback)
 
 **Wave 4** *(depends on 22-05 + 22-06; phase gate)*
-- [ ] 22-07-PLAN.md — ShotGridCard refactor (D-13) + ShotStatusPill dual-mode + QuickApproveButton (REV-02 optimistic + 5s WarningPill) + ReviewTimeline compare-mode (D-14 LRU-2) + phase-gate verification checkpoint
+- [x] 22-07-PLAN.md — ShotGridCard refactor (D-13) + ShotStatusPill dual-mode + QuickApproveButton (REV-02 optimistic + 5s WarningPill) + ReviewTimeline compare-mode (D-14 LRU-2) + phase-gate verification checkpoint
 **UI hint**: yes
 
 ### Phase 23: Production Stats
@@ -273,6 +273,6 @@ Plans:
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
 | 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
-| 22    | v1.3      | 6/7 | In Progress|  |
+| 22    | v1.3      | 7/7 | Complete   | 2026-05-15 |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
