@@ -27,6 +27,7 @@ import { Readable } from 'node:stream';
 import * as path from 'node:path';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
+import { SHOT_STATUSES } from '../types/hierarchy.js';
 import {
   decodeVersionCursor,
   DEFAULT_VERSION_SORT,
@@ -115,6 +116,20 @@ export type EngineForDashboard = Pick<
   // → 404 via global typedErrorHandler; cursor decode failures surface as
   // 400 INVALID_INPUT via parseShotGridCursorParam.
   | 'listShotGrid'
+  // Phase 22 / Plan 22-01 — REV-04, REV-05, D-19. The route at
+  // PATCH /api/shots/:id/status delegates to engine.setShotStatus (positional
+  // args per RESEARCH Pitfall 1: shotId, toStatus, changedBy, note?). The
+  // engine wraps UPDATE shots + INSERT shot_status_events in a single
+  // db.transaction() (Phase 20 STAT-02), and the repo writes `note ?? null`
+  // so the route's null/empty-string coercion ('' → undefined) collapses to
+  // the REV-04 invariant (DB row.note IS NULL when blank).
+  | 'setShotStatus'
+  // Phase 22 / Plan 22-01 — RESEARCH Q1. The route at
+  // GET /api/shots/:id/status-history wraps engine.listShotStatusHistory so
+  // the dashboard's unified timeline (D-04) can read append-only events
+  // alongside version events. Phase 20 already paginates via the limit param;
+  // the route uses the existing qNum helper for closed-set integer parsing.
+  | 'listShotStatusHistory'
 >;
 
 /**
@@ -178,6 +193,26 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
 
   const VERSION_FIELDS_LIST = VersionSortFieldEnum.options.join(', ');
   const HIERARCHY_FIELDS_LIST = HierarchySortFieldEnum.options.join(', ');
+
+  // ==========================================================================
+  // Phase 22 / Plan 22-01 — REV-04 + REV-05 + D-19. Closed-set body schema for
+  // PATCH /api/shots/:id/status. The `to_status` field is gated by z.enum
+  // against the canonical SHOT_STATUSES list — non-members surface as 400
+  // INVALID_INPUT via TypedError, never reach the engine. `note` accepts
+  // string | null | undefined with a 500-char ceiling that mirrors the MCP
+  // tool's note.max(500) at shot-tool.ts:56 (T-22-02 + T-22-05 mitigations).
+  // `changed_by` is a free-text attribution string capped at 100 chars; the
+  // route defaults to 'user' when absent (single-artist scope — no auth).
+  //
+  // T-22-06 hygiene: the route returns the Zod path[0] in the error message,
+  // never the raw input value. The dashboard renders the route's error.message
+  // as JSX children (Preact auto-escape — no innerHTML).
+  // ==========================================================================
+  const SetShotStatusBody = z.object({
+    to_status: z.enum(SHOT_STATUSES),
+    note: z.string().max(500).nullable().optional(),
+    changed_by: z.string().max(100).optional(),
+  });
 
   /** Parse "field:dir" against the version-grid whitelist. Defaults to Latest when undefined. */
   function parseVersionSortParam(raw: string | undefined): VersionSort {
@@ -367,6 +402,52 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     );
   });
 
+  // Phase 22 / Plan 22-01 — PATCH delegates to engine.setShotStatus (positional
+  // args per RESEARCH Pitfall 1). Engine wraps UPDATE shots + INSERT
+  // shot_status_events in a single db.transaction() (Phase 20 STAT-02), and the
+  // repo writes `note ?? null` — the route coerces null → undefined before
+  // calling engine so the DB row ends up with `note IS NULL` when blank (REV-04).
+  // The REV-05 Restore path is structurally identical: to_status='wip' +
+  // note='Restored from omit' commits without engine extension.
+  app.patch('/api/shots/:id/status', async (c) => {
+    const shotId = c.req.param('id');
+    const rawBody = await c.req.json().catch(() => ({}));
+    const parsed = SetShotStatusBody.safeParse(rawBody);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Invalid PATCH body at '${first.path.join('.')}'`,
+        `Expected { to_status: <one of: ${SHOT_STATUSES.join(', ')}>, note?: string|null, changed_by?: string }`,
+      );
+    }
+    // REV-04: coerce null OR '' → undefined; engine repo writes `note ?? null`
+    // so blank inputs land as IS NULL in the DB row, never '' (empty string).
+    const note =
+      parsed.data.note === null || parsed.data.note === ''
+        ? undefined
+        : parsed.data.note;
+    const result = engine.setShotStatus(
+      shotId,
+      parsed.data.to_status,
+      parsed.data.changed_by ?? 'user',
+      note,
+    );
+    const { history } = engine.listShotStatusHistory(shotId, 50);
+    return c.json({ status: result.newStatus, history });
+  });
+
+  // Phase 22 / Plan 22-01 — wraps engine.listShotStatusHistory for the unified
+  // review timeline (D-04). RESEARCH Q1 — Phase 20 added the engine method but
+  // not an HTTP route; this is the dashboard-side exposure. Reuses qNum (line
+  // 155-167) for closed-set integer parsing — bare 'abc' surfaces as
+  // 400 INVALID_INPUT via TypedError before reaching the engine.
+  app.get('/api/shots/:id/status-history', (c) => {
+    const shotId = c.req.param('id');
+    const limit = qNum(c.req.query('limit'), 50, 'limit');
+    return c.json(engine.listShotStatusHistory(shotId, limit));
+  });
+
   // --- Versions ---
   app.get('/api/versions/:id', (c) => {
     return c.json(engine.getVersion(c.req.param('id')));
@@ -389,6 +470,17 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     // hashes when B is reproduce-lineage). Hono coerces the awaited Promise
     // into the response body via c.json.
     return c.json(await engine.diffVersions(c.req.param('id'), against));
+  });
+
+  // Phase 22 / Plan 22-01 — REV-03 cross-version diff for the A/B compare modal.
+  // Pass-through to engine.diffVersions which ALREADY accepts arbitrary pair
+  // (RESEARCH Pitfall 2 — verified at src/engine/diff.ts:172). NO engine
+  // signature change; same-shot constraint stays at the engine layer, where it
+  // throws TypedError('INVALID_INPUT') → 400 for cross-shot pairs.
+  app.get('/api/versions/:a/diff-with/:b', async (c) => {
+    const a = c.req.param('a');
+    const b = c.req.param('b');
+    return c.json(await engine.diffVersions(a, b));
   });
 
   // ==========================================================================
