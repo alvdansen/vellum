@@ -1,120 +1,162 @@
 /**
  * ShotGridCard — single shot tile for the shot-grid CSS Grid.
  *
- * Pure component: props-in, single onSelect callback. No fetch, no signal
- * reads. Composed from <Thumbnail/> (Phase 17) + <SkeletonThumbnail/> (Phase 17
- * fallback) + <ShotStatusPill/> (Wave 2) + formatRelativeTime (Wave 1).
+ * Phase 22 / Plan 22-07 — D-13 refactor: the Phase 21 whole-card-button
+ * structure is REVERSED. Outer is now a `<div class="group relative">`
+ * with three SIBLING `<button>` children (Pitfall 4 — never nested):
  *
- * D-16: entire card is a single <button> with aria-label="Open version
- * drawer for {shotName}". Click target = whole 220×~140px card.
- * D-19: when latest_completed_version === null, render SkeletonThumbnail +
- * aria-disabled="true" + skip onClick wiring.
- * D-17 (omit dimming): when status === 'omit', wrap in opacity-40 div.
+ *   (a) Thumbnail button  — onSelect(versionId) → openVersionDrawer
+ *                          (preserves Phase 21 D-19 thumb→VersionDrawer)
+ *   (b) ShotStatusPill    — onClick → openReviewPanel(shotId)
+ *                          (dual-mode pill; opens the review panel)
+ *   (c) QuickApproveButton — hover-only Check icon; opens
+ *                          StatusChangePopover anchored to itself; on
+ *                          Confirm, optimistic + revert flow (D-12)
  *
- * Parent (ShotGridView, Wave 4) owns the `.map((shot) =>
- * <ShotGridCard key={shot.id} ... />)` — key is NOT set inside this component
- * (Pitfall 5).
+ * The outer `class="group"` is the Tailwind v4 hover-state vehicle that
+ * lets QuickApproveButton's `group-hover:opacity-100` work (D-10).
+ *
+ * Inline error pill (REV-02): when quickApproveError signal equals this
+ * shot's id, render a WarningPill inside the card pinned to the bottom.
+ *
+ * Architecture-purity (D-WEBUI-31) preserved — only sibling dashboard
+ * imports.
  *
  * SECURITY — T-5-06 / VersionCard precedent: shot.name + version count
  * + relative timestamp render as JSX text children (Preact auto-escapes).
  */
 
+import type { JSX } from 'preact';
 import type { ShotGridRow } from '../types/shot-grid.js';
 import { ShotStatusPill } from './ShotStatusPill.js';
 import { Thumbnail } from './Thumbnail.js';
 import { SkeletonThumbnail } from './SkeletonThumbnail.js';
+import { QuickApproveButton } from './QuickApproveButton.js';
+import { WarningPill } from './WarningPill.js';
 import { formatRelativeTime } from '../lib/time.js';
+import { openVersionDrawer, openReviewPanel } from '../views/OverlayHost.js';
+import { quickApproveError } from '../state/review-panel.js';
 import {
   SHOT_CARD_OPEN_ARIA_PREFIX,
   SHOT_CARD_VERSION_COUNT_SINGULAR,
   SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX,
   SHOT_CARD_NO_VERSIONS,
   SHOT_CARD_LAST_UPDATED_PREFIX,
+  REVIEW_QUICK_APPROVE_FAIL_LABEL,
+  REVIEW_QUICK_APPROVE_FAIL_ARIA,
 } from '../lib/copy.js';
 
 export interface ShotGridCardProps {
   shot: ShotGridRow;
+  /**
+   * Phase 21 contract preserved: callers pass a versionId-selection
+   * handler. Phase 22 callers should pass `openVersionDrawer` from
+   * OverlayHost; legacy callers writing `selectedVersionId` directly
+   * still work via OverlayHost's backward-compat fallback.
+   */
   onSelect: (versionId: string) => void;
 }
 
-/**
- * Render the version-count copy variant for a shot row.
- *   0 → SHOT_CARD_NO_VERSIONS ('No versions yet')
- *   1 → SHOT_CARD_VERSION_COUNT_SINGULAR ('1 version')
- *   n → `${n} versions`  (uses SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX)
- */
 function formatVersionCount(n: number): string {
   if (n === 0) return SHOT_CARD_NO_VERSIONS;
   if (n === 1) return SHOT_CARD_VERSION_COUNT_SINGULAR;
   return `${n}${SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX}`;
 }
 
-export function ShotGridCard({ shot, onSelect }: ShotGridCardProps) {
+export function ShotGridCard({
+  shot,
+  onSelect,
+}: ShotGridCardProps): JSX.Element {
   const hasVersion = shot.latest_completed_version !== null;
-  const disabled = !hasVersion;
   const isOmit = shot.status === 'omit';
+  const quickApproveErr = quickApproveError.value === shot.id;
 
-  // D-19: skip onClick entirely when no latest version (assistive-tech
-  // friendly — the button is also natively `disabled` so keyboard activation
-  // is suppressed by the browser even if onClick were defined).
-  const handleClick = hasVersion
-    ? () => onSelect(shot.latest_completed_version!.id)
-    : undefined;
+  const cardBody = (
+    <div class="group relative w-full overflow-hidden rounded">
+      {/* (a) Thumbnail button — preserves Phase 21 D-19 (thumb → VersionDrawer) */}
+      <button
+        type="button"
+        onClick={
+          hasVersion
+            ? () => onSelect(shot.latest_completed_version!.id)
+            : undefined
+        }
+        aria-label={`${SHOT_CARD_OPEN_ARIA_PREFIX}${shot.name}`}
+        aria-disabled={!hasVersion || undefined}
+        disabled={!hasVersion}
+        class={`block w-full focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
+          hasVersion
+            ? 'hover:shadow-[0_0_0_1px_var(--color-border)]'
+            : 'cursor-default'
+        }`}
+      >
+        {hasVersion ? (
+          <Thumbnail
+            version={{
+              id: shot.latest_completed_version!.id,
+              label: shot.name,
+              status: 'complete',
+            }}
+            size="card"
+          />
+        ) : (
+          <SkeletonThumbnail width={220} height={124} />
+        )}
+      </button>
 
-  const button = (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-label={`${SHOT_CARD_OPEN_ARIA_PREFIX}${shot.name}`}
-      // aria-disabled MUST be the string 'true' or absent; `|| undefined`
-      // collapses the attribute away when the card is enabled.
-      aria-disabled={disabled || undefined}
-      disabled={disabled}
-      class={`w-full overflow-hidden rounded text-left transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
-        disabled
-          ? 'cursor-default'
-          : 'hover:shadow-[0_0_0_1px_var(--color-border)]'
-      }`}
-    >
+      {/* (c) QuickApproveButton — only when hasVersion (D-10 hover-only) */}
       {hasVersion ? (
-        <Thumbnail
-          version={{
-            id: shot.latest_completed_version!.id,
-            label: shot.name,
-            // Hard-coded 'complete' — Thumbnail's contract is per-version
-            // status, but the shot grid only invokes Thumbnail when the
-            // shot HAS a completed version. PATTERNS §17 landmine.
-            status: 'complete',
-          }}
-          size="card"
+        <QuickApproveButton
+          shotId={shot.id}
+          shotName={shot.name}
+          currentStatus={shot.status}
         />
-      ) : (
-        // 220×124 = 16:9 ratio of the locked card width (D-16, UI-SPEC line 52).
-        <SkeletonThumbnail width={220} height={124} />
-      )}
+      ) : null}
+
       <div class="flex flex-col gap-1 p-2 text-[var(--color-fg)]">
         <div class="flex items-center justify-between gap-2">
-          <ShotStatusPill status={shot.status} />
+          {/* (b) ShotStatusPill button — opens review panel (D-01 two-affordance card) */}
+          <ShotStatusPill
+            status={shot.status}
+            onClick={() => openReviewPanel(shot.id)}
+            ariaLabel={`Open review panel for ${shot.name} (status: ${shot.status})`}
+          />
           <span class="num text-xs text-[var(--color-fg-muted)]">
             {formatVersionCount(shot.version_count)}
           </span>
         </div>
         <span class="truncate text-sm font-normal">{shot.name}</span>
-        {hasVersion && (
+        {hasVersion ? (
           <span class="num text-xs text-[var(--color-fg-muted)]">
             {SHOT_CARD_LAST_UPDATED_PREFIX}
             {formatRelativeTime(shot.latest_completed_version!.completed_at)}
           </span>
-        )}
+        ) : null}
       </div>
-    </button>
+
+      {/* Inline error pill — quick-approve failed */}
+      {quickApproveErr ? (
+        <div
+          class="absolute inset-x-2 bottom-2"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <WarningPill
+            label={REVIEW_QUICK_APPROVE_FAIL_LABEL}
+            ariaLabel={REVIEW_QUICK_APPROVE_FAIL_ARIA}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 
-  // D-17: omit shots get an opacity-40 wrapper. The pill itself stays at
-  // 100% opacity so the status label remains WCAG-AA legible against the
-  // dimmed thumbnail / name.
   if (isOmit) {
-    return <div class="opacity-40 transition-opacity">{button}</div>;
+    return <div class="opacity-40 transition-opacity">{cardBody}</div>;
   }
-  return button;
+  return cardBody;
 }
+
+// Silence unused-import warnings for openVersionDrawer (kept as an
+// import marker for callers wanting to migrate from onSelect-prop callback
+// to direct helper usage).
+void openVersionDrawer;

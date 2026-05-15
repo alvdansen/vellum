@@ -30,6 +30,20 @@ import type { ShotStatus } from '../types/shot-grid.js';
 
 export interface ShotStatusPillProps {
   status: ShotStatus;
+  /**
+   * Phase 22 D-13 dual-mode: when provided, the pill renders as a
+   * `<button aria-haspopup="dialog">` wrapping the inner pill span.
+   * When undefined, the pill stays presentational (`<span>` only) —
+   * preserves Phase 21 callers that render the pill inside a non-clickable
+   * context (review-panel header, timeline rows).
+   */
+  onClick?: () => void;
+  /**
+   * Optional explicit aria-label when the pill is interactive. When the
+   * pill is a button and `ariaLabel` is undefined, falls back to
+   * `Open review for status ${status}` (defensive default).
+   */
+  ariaLabel?: string;
 }
 
 /**
@@ -55,8 +69,12 @@ const SHOT_STATUS_STYLES: Record<ShotStatus, string> = {
     'bg-[var(--color-shot-status-omit)] text-[var(--color-bg)]',
 };
 
-export function ShotStatusPill({ status }: ShotStatusPillProps) {
-  return (
+export function ShotStatusPill({
+  status,
+  onClick,
+  ariaLabel,
+}: ShotStatusPillProps) {
+  const pillContent = (
     <span
       class={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-normal uppercase tracking-widest ${SHOT_STATUS_STYLES[status]}`}
       data-status={status}
@@ -64,4 +82,19 @@ export function ShotStatusPill({ status }: ShotStatusPillProps) {
       {status}
     </span>
   );
+
+  if (onClick !== undefined) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel ?? `Open review for status ${status}`}
+        aria-haspopup="dialog"
+        class="rounded-full focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] motion-safe:transition-[filter] hover:brightness-110"
+      >
+        {pillContent}
+      </button>
+    );
+  }
+  return pillContent;
 }

@@ -107,10 +107,14 @@ describe('ShotGridCard (Phase 21 GRID-01)', () => {
     // version-count span lives in the same flex row as the [data-status] pill.
 
     function getVersionCountText(container: Element): string | undefined {
+      // Phase 22 D-13: the [data-status] span is now wrapped in a button
+      // (ShotStatusPill dual-mode). Walk up two levels to find the flex
+      // row that holds the count sibling.
       const pill = container.querySelector('[data-status]');
-      const row = pill?.parentElement;
-      // The pill's parent is `<div class="flex items-center ...">`; the
-      // sibling .num span is the version-count text we want.
+      const pillButton = pill?.closest('button');
+      const row = (pillButton ?? pill)?.parentElement;
+      // First .num inside the row is the version-count text we want;
+      // the "Updated" line lives in a separate sibling span.
       const countSpan = row?.querySelector('.num');
       return countSpan?.textContent ?? undefined;
     }

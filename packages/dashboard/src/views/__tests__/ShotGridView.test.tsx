@@ -200,11 +200,18 @@ describe('ShotGridView — client-side filter (REQ-03 + D-08)', () => {
     );
     expect(cards.length).toBe(3); // omit included
     // The omit card's ancestor should have opacity-40 class.
+    // Phase 22 D-13: card structure is now
+    //   <div class="opacity-40 ..."> ← wrapper (this assertion target)
+    //     <div class="group relative ...">  ← cardBody
+    //       <button aria-label="Open version drawer for ...">  ← omitButton
+    //         ...
+    // Walk up to the `.opacity-40` ancestor via `.closest()`.
     const omitButton = container.querySelector(
       'button[aria-label="Open version drawer for SHOT_3"]',
     ) as HTMLElement | null;
     expect(omitButton).toBeTruthy();
-    const wrapper = omitButton?.parentElement as HTMLElement | null;
+    const wrapper = omitButton?.closest('.opacity-40') as HTMLElement | null;
+    expect(wrapper).not.toBeNull();
     expect(wrapper?.className).toContain('opacity-40');
   });
 
