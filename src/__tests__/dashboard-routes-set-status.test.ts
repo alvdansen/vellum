@@ -157,9 +157,18 @@ describe('PATCH /api/shots/:id/status — REV-05 Restore path', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as PatchOk;
     expect(body.status).toBe('wip');
-    // Newest-first ordering: the Restore event is index 0; the prior omit is index 1.
-    expect(body.history[0].to_status).toBe('wip');
-    expect(body.history[0].note).toBe('Restored from omit');
+    // REV-05 invariant: the Restore event is recorded with the canonical note.
+    // (Position in history isn't part of REV-05 — when both events land on the
+    // same millisecond, the STAT-03 DESC ordering is non-deterministic between
+    // ties. The invariant under test is "wip event with Restored-from-omit note
+    // exists in history", which `.find()` captures cleanly.)
+    const restoreEvent = body.history.find(
+      (h) => h.to_status === 'wip' && h.note === 'Restored from omit',
+    );
+    expect(restoreEvent).toBeDefined();
+    // Both events should be present (Restore writes a row; the prior omit row stays).
+    expect(body.history.length).toBe(2);
+    expect(body.history.some((h) => h.to_status === 'omit')).toBe(true);
   });
 });
 
