@@ -152,7 +152,7 @@ Plans:
 - [x] **Phase 20: Shot Status Engine** — Migration 0008 (ALTER TABLE shots + CREATE TABLE shot_status_events + 4 indexes), `shot-status-repo.ts`, 3 `shot` tool arms (`set_status | get_status | list_status_history`), `shot.status_changed` SSE event type, `ShotStatus` TypeScript type. Pure backend, no dashboard changes. (completed 2026-05-12)
 - [x] **Phase 21: Shot Grid View** — `GET /api/sequences/:id/shot-grid` endpoint, `ShotGridView.tsx`, `ShotGridCard.tsx`, `ShotStatusPill.tsx`, `activeView` signal, sequence-grouped layout, status filter bar, "Show omitted" toggle, TreeSidebar grid-icon navigation. (Not started — requires Phase 20) (completed 2026-05-14)
 - [x] **Phase 22: Review and Approval** — Review panel with approve/retake/hold/omit/restore actions + confirmation popovers, notes per status change (append-only), two-panel A/B version comparison (any two versions, thumbnails preloaded in parallel), inline quick-approve from grid. (Not started — requires Phase 20) (completed 2026-05-15)
-- [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Not started — requires Phase 20 + 21)
+- [ ] **Phase 23: Production Stats** — Sequence-level stats widget (% approved, status counts, pending-review backlog, stale-shot detection at 14 days), SSE-driven counter update on `shot.status_changed`, single GROUP BY query — no N+1. (Planned — 4 plans — requires Phase 20 + 21)
 - [ ] **Phase 24: UX Polish Bundle** — Sprite sheet lazy generation + CSS scrub in `ShotGridCard`, hover-to-zoom for image stills, SSE token streaming for AI Regenerate path (`void + .catch()` universally applied, AbortController wired), per-shot sort persistence, cross-version comparison summary in A/B panel. **Adversarial review required at plan stage.** (Not started — requires Phase 20; sequential after 23 to avoid file conflicts)
 
 ## Phase Details (v1.3)
@@ -237,7 +237,20 @@ Plans:
   1. Stats widget appears in `ShotGridView` header showing total shots, % approved, per-status counts, pending-review backlog. Stats computed via single `GROUP BY` query (verified by EXPLAIN — no per-shot subquery).
   2. Stale shot cards display amber "Stale" indicator for shots with `status IN ('wip','pending-review')` and no completed version in last 14 days. Threshold is `STALE_SHOT_DAYS = 14` named constant.
   3. Stats widget updates counters when `shot.status_changed` SSE event fires for a shot in the current sequence — no full re-fetch, signal-derived computed value.
-**Plans:** TBD (estimated 2-3 plans)
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+- [ ] 23-01-PLAN.md — Foundations: SequenceStats type + is_stale type + theme token + getSequenceStats repo + listShotsForGrid is_stale CASE + EXPLAIN tests
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 23-02-PLAN.md — Engine composition (engine.listShotGrid extended with stats + approved_pct TypeScript arithmetic) + HTTP envelope test extension + ProgressBar primitive + 9 copy constants
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 23-03-PLAN.md — State extension (sequenceStats signal + applyStatsDelta + recomputeIsStaleClient + extend onShotStatusChanged in place) + SequenceHeader stats subrow (D-04 augment) + ShotGridCard amber stale border + ShotGridView seed wire-up
+
+**Wave 4** *(blocked on Wave 3; phase gate)*
+- [ ] 23-04-PLAN.md — Full-suite regression gate (server + dashboard + arch-purity + tool-budget + Pitfall 6 grep + Vite build) + 12-step human-verify visual smoke + VALIDATION.md nyquist_compliant flip + phase commit
 **UI hint**: yes
 
 ### Phase 24: UX Polish Bundle
@@ -274,5 +287,5 @@ Plans:
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
 | 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
 | 22    | v1.3      | 7/7 | Complete    | 2026-05-15 |
-| 23    | v1.3      | 0/TBD | Not started | —          |
+| 23    | v1.3      | 0/4   | Planned     | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
