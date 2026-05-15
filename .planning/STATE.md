@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Shot Grid
-status: planning
-stopped_at: Phase 23 context gathered
-last_updated: "2026-05-15T14:04:31.295Z"
-last_activity: 2026-05-15
+status: executing
+stopped_at: Phase 23 UI-SPEC approved
+last_updated: "2026-05-15T21:13:10.846Z"
+last_activity: 2026-05-15 -- Phase 23 planning complete
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 17
+  total_plans: 21
   completed_plans: 17
   percent: 60
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md
 
 Phase: 23
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-05-15
+Status: Ready to execute
+Last activity: 2026-05-15 -- Phase 23 planning complete
 
 ### Wave 5 T01 — Automated checks (all green)
 
@@ -118,6 +118,6 @@ All v1.2 deferrals are now scoped into v1.3:
 
 ## Session Continuity
 
-Last session: 2026-05-15T14:04:31.292Z
-Stopped at: Phase 23 context gathered
+Last session: 2026-05-15T20:12:18.266Z
+Stopped at: Phase 23 UI-SPEC approved
 Resume: `/gsd-execute-plan 21-01` (Wave 1 foundations — `ShotStatusChangedPayload` gap closure + theme tokens + SQL CTE + copy + time + types)
