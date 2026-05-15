@@ -11,8 +11,8 @@
  *   - View routing (signal-driven; D-03):
  *       activeView === 'home'      → <HomeView/>
  *       activeView === 'shot-grid' → <ShotGridView/>
- *   - Global overlays (Phase 21 / 21-06): <VersionDrawerHost/> reads
- *     selectedVersionId and renders the version drawer regardless of
+ *   - Global overlays (Phase 22 / 22-04): <OverlayHost/> branches on
+ *     activeOverlay between ReviewPanel and VersionDrawer regardless of
  *     activeView. Pattern: any future overlay keyed on a global signal
  *     mounts as a sibling of <AppBody> here, not inside a view.
  *
@@ -51,7 +51,8 @@ import { Home } from 'lucide-preact';
 import { HomeView } from './views/HomeView.js';
 import { ShotGridView } from './views/ShotGridView.js';
 import { ActiveGenerationsPanel } from './views/ActiveGenerationsPanel.js';
-import { VersionDrawerHost } from './views/VersionDrawerHost.js';
+import { OverlayHost } from './views/OverlayHost.js';
+import { ABCompareHost } from './views/ABCompareHost.js';
 import { ThemeToggle } from './components/ThemeToggle.js';
 import { startSse, stopSse, onSseEvent, offSseEvent } from './lib/events.js';
 import {
@@ -137,10 +138,15 @@ export function App() {
         </div>
         <ActiveGenerationsPanel />
       </div>
-      {/* Phase 21 / Plan 21-06 — view-independent overlay. Mounts at App
-       *  level so the VersionDrawer survives view switches (21-AUDIT.md
-       *  Bugs 2 + 5). VersionDrawerHost reads selectedVersionId directly. */}
-      <VersionDrawerHost />
+      {/* Phase 22 / Plan 22-04 — generalised overlay host (D-02 mutex).
+       *  OverlayHost branches on activeOverlay between ReviewPanel and
+       *  VersionDrawer; backward-compat fallback covers legacy
+       *  selectedVersionId direct-mutation flow (21-AUDIT.md Bugs 2 + 5
+       *  invariants preserved). ABCompareHost sibling renders the z-30
+       *  A/B compare modal when compareModalOpen=true (placeholder until
+       *  Plan 22-06 ships the real ABCompareView composition). */}
+      <OverlayHost />
+      <ABCompareHost />
     </div>
   );
 }
