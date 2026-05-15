@@ -210,7 +210,7 @@ Plans:
   3. A/B comparison view loads any two user-selected versions; both thumbnails are preloaded via `new Image().src` before the comparison panel mounts (no sequential flash).
   4. "Restore Shot" action in review panel is available only when `currentStatus === 'omit'`; writes `{ to_status: 'wip', note: 'Restored from omit' }` to `shot_status_events`.
   5. Notes stored as `null` (not empty string) when no note provided; notes displayed in timeline with `changed_by` attribution.
-**Plans:** 2/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 **Wave 1** *(parallel — no file overlap)*
@@ -218,8 +218,8 @@ Plans:
 - [x] 22-02-PLAN.md — Dashboard foundation (types/review-panel.ts + 3 lib/api.ts helpers + ~66 copy constants per UI-SPEC)
 
 **Wave 2** *(parallel — depend on 22-02; no file overlap)*
-- [ ] 22-03-PLAN.md — StatusChangePopover + MetadataDiff extraction + DiffDrawer refactor + 2 test files
-- [ ] 22-04-PLAN.md — state/review-panel signals + OverlayHost mutex (D-02) + ABCompareHost placeholder + theme.css z-ladder + App.tsx swap
+- [x] 22-03-PLAN.md — StatusChangePopover + MetadataDiff extraction + DiffDrawer refactor + 2 test files
+- [x] 22-04-PLAN.md — state/review-panel signals + OverlayHost mutex (D-02) + ABCompareHost placeholder + theme.css z-ladder + App.tsx swap
 
 **Wave 3** *(parallel — depend on 22-03 + 22-04; no file overlap)*
 - [ ] 22-05-PLAN.md — Review panel composition (ReviewPanel + Header + ActionBar + ActionButton + Timeline + mergeHistory + 3 test files)
@@ -273,6 +273,6 @@ Plans:
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
 | 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
-| 22    | v1.3      | 2/7 | In Progress|  |
+| 22    | v1.3      | 4/7 | In Progress|  |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
