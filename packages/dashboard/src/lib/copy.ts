@@ -433,3 +433,60 @@ export const REVIEW_PANEL_ACTION_FAIL_PREFIX = 'Failed to change status: ';
 export const REVIEW_HISTORY_FETCH_ERROR =
   "Couldn't load shot history. Try refreshing the page.";
 export const REVIEW_PANEL_LOADING_LABEL = 'Loading review panel…';
+
+// ================================================================
+// Phase 23 — production stats copy
+// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+//
+// All Phase 23 surfaces — <ProgressBar/>, the new stats subrow inside
+// <SequenceHeader/>, and the new stale aria-suffix on <ShotGridCard/> —
+// import from this block. Zero inline string literals in component files
+// (architectural rule).
+// ================================================================
+
+// ---------- ProgressBar (% approved) ----------
+
+/** Caller concatenates: `${STATS_PROGRESS_ARIA_PREFIX}${sequenceName}` for the bar's aria-label. */
+export const STATS_PROGRESS_ARIA_PREFIX = 'Approval progress for ';
+
+/** Caller concatenates: `${stats.approved_pct}${STATS_APPROVED_LABEL_SUFFIX}` → "60% approved". */
+export const STATS_APPROVED_LABEL_SUFFIX = '% approved';
+
+// ---------- Backlog callout (pending-review) ----------
+
+/**
+ * Singular/plural pair (English: "1 awaiting review" / "3 awaiting review" —
+ * verb-noun phrasing, both forms identical). Kept as TWO constants for
+ * future i18n and to mirror Phase 21 SHOT_CARD_VERSION_COUNT_SINGULAR /
+ * SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX precedent.
+ */
+export const STATS_BACKLOG_CALLOUT_SINGULAR = 'awaiting review';
+export const STATS_BACKLOG_CALLOUT_PLURAL = 'awaiting review';
+
+/** Caller concatenates: `${STATS_BACKLOG_CALLOUT_ARIA_PREFIX}${n} ${noun}` → SR announce. */
+export const STATS_BACKLOG_CALLOUT_ARIA_PREFIX = 'Pending review backlog: ';
+
+// ---------- Inline stale count ----------
+
+/**
+ * Singular/plural pair (English: "1 stale" / "3 stale" — terse v1.3 form;
+ * both forms identical). Kept as TWO constants for future i18n.
+ */
+export const STATS_STALE_INLINE_SINGULAR = 'stale';
+export const STATS_STALE_INLINE_PLURAL = 'stale';
+
+/** Caller concatenates: `${STATS_STALE_INLINE_ARIA_PREFIX}${n}` → "Stale shots: 1". */
+export const STATS_STALE_INLINE_ARIA_PREFIX = 'Stale shots: ';
+
+// ---------- Per-shot stale indicator ARIA suffix ----------
+
+/**
+ * Caller appends to existing thumbnail aria-label when `shot.is_stale === true`:
+ *   `${SHOT_CARD_OPEN_ARIA_PREFIX}${shot.name}${SHOT_CARD_STALE_ARIA_SUFFIX}`
+ *   → "Open version drawer for SH_020 — stale".
+ *
+ * Codepoints: space (0x20) + em-dash (U+2014) + space (0x20) + "stale".
+ * The em-dash discipline matches Phase 22 REVIEW_QUICK_APPROVE_FAIL_LABEL
+ * and UI-SPEC §"Copywriting Contract" line 230 verbatim.
+ */
+export const SHOT_CARD_STALE_ARIA_SUFFIX = ' — stale';
