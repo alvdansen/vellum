@@ -24,6 +24,7 @@
 
 import { VersionCard } from '../components/VersionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { MetadataDiff } from '../components/MetadataDiff.js';
 import type { VersionCardVersion } from '../components/VersionCard.js';
 
 /**
@@ -98,14 +99,7 @@ export function DiffDrawer({ before, after, diff, onClose }: DiffDrawerProps) {
         </section>
       </div>
 
-      {diff ? (
-        <section>
-          <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Summary</h3>
-          <p class="rounded bg-[var(--color-surface-alt)] p-3 text-sm text-[var(--color-fg)]">
-            {diff.summary}
-          </p>
-        </section>
-      ) : null}
+      {diff ? <MetadataDiff summary={diff.summary} /> : null}
     </aside>
   );
 }
