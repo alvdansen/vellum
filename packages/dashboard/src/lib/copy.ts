@@ -309,3 +309,127 @@ export const TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX = ' (current)';
 
 /** Home button `aria-label`. Surfaces when activeView === 'shot-grid'. */
 export const HEADER_HOME_ARIA_LABEL = 'Back to home view';
+
+// ================================================================
+// Phase 22 — review and approval copy
+// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+//
+// All Phase 22 surfaces — ReviewPanel, StatusChangePopover, ABCompareView,
+// QuickApproveButton, ReviewActionBar, ReviewTimeline — import from this
+// block. Zero inline string literals in component files (architectural rule).
+// ================================================================
+
+// ---------- Action bar labels (review panel) ----------
+
+export const REVIEW_ACTION_APPROVE_LABEL = 'Approve';
+export const REVIEW_ACTION_RETAKE_LABEL = 'Request Retake';
+export const REVIEW_ACTION_HOLD_LABEL = 'Hold';
+export const REVIEW_ACTION_OMIT_LABEL = 'Omit';
+export const REVIEW_ACTION_RESTORE_LABEL = 'Restore Shot';
+
+// ---------- Action bar aria-labels (5 — D-08 ARIA discipline) ----------
+
+export const REVIEW_ACTION_APPROVE_ARIA = 'Approve this shot';
+export const REVIEW_ACTION_RETAKE_ARIA = 'Request retake of this shot';
+export const REVIEW_ACTION_HOLD_ARIA = 'Place this shot on hold';
+export const REVIEW_ACTION_OMIT_ARIA = 'Omit this shot';
+export const REVIEW_ACTION_RESTORE_ARIA = 'Restore this shot from omit';
+
+// ---------- Action button in-flight states (U+2026 verbatim) ----------
+
+export const REVIEW_ACTION_APPROVE_PENDING = 'Approving…';
+export const REVIEW_ACTION_RETAKE_PENDING = 'Requesting…';
+export const REVIEW_ACTION_HOLD_PENDING = 'Holding…';
+export const REVIEW_ACTION_OMIT_PENDING = 'Omitting…';
+export const REVIEW_ACTION_RESTORE_PENDING = 'Restoring…';
+
+// ---------- Confirmation popover prompts (LOCKED D-08 — prompt is the only differentiator) ----------
+
+export const REVIEW_APPROVE_PROMPT = 'Approve this shot?';
+export const REVIEW_RETAKE_PROMPT = 'Request retake?';
+export const REVIEW_HOLD_PROMPT = 'Hold this shot?';
+export const REVIEW_OMIT_PROMPT = 'Omit this shot?';
+export const REVIEW_RESTORE_PROMPT = 'Restore this shot to wip?';
+
+// ---------- Popover controls ----------
+
+export const POPOVER_CANCEL_LABEL = 'Cancel';
+export const POPOVER_CONFIRM_LABEL = 'Confirm';
+export const POPOVER_CONFIRM_PENDING = 'Submitting…';
+export const POPOVER_NOTE_PLACEHOLDER = 'Add a note (optional)';
+export const POPOVER_NOTE_LABEL = 'Note (optional)';
+/** Composed at render: `${POPOVER_DIALOG_ARIA_LABEL_PREFIX}${promptText}`. */
+export const POPOVER_DIALOG_ARIA_LABEL_PREFIX = 'Confirm status change: ';
+
+// ---------- Quick-approve hover affordance on ShotGridCard (D-10) ----------
+
+/** Composed: `${REVIEW_QUICK_APPROVE_ARIA_PREFIX}${shotName}`. */
+export const REVIEW_QUICK_APPROVE_ARIA_PREFIX = 'Quick approve ';
+/** Verbatim <WarningPill/> label per D-12. U+2014 em-dash. */
+export const REVIEW_QUICK_APPROVE_FAIL_LABEL = 'Approve failed — retry';
+export const REVIEW_QUICK_APPROVE_FAIL_ARIA =
+  'Quick approve failed; click to retry';
+
+// ---------- Review panel header + sections ----------
+
+export const REVIEW_PANEL_TITLE_PREFIX = 'Review: ';
+export const REVIEW_PANEL_ARIA_LABEL_PREFIX = 'Review panel for ';
+export const REVIEW_PANEL_CLOSE_ARIA = 'Close review panel';
+export const REVIEW_SECTION_ACTIONS = 'ACTIONS';
+export const REVIEW_SECTION_HISTORY = 'HISTORY';
+export const REVIEW_HISTORY_EMPTY =
+  'No history yet. Status changes and versions will appear here.';
+
+// ---------- Timeline row attribution (unified version + status events, D-04) ----------
+
+export const TIMELINE_CHANGED_BY_PREFIX = 'by ';
+export const TIMELINE_VERSION_CREATED_PREFIX = 'Version ';
+export const TIMELINE_VERSION_CREATED_SUFFIX = ' created';
+export const TIMELINE_VERSION_COMPLETED_PREFIX = 'Version ';
+export const TIMELINE_VERSION_COMPLETED_SUFFIX = ' completed';
+export const TIMELINE_STATUS_CHANGED_PREFIX = 'Status → ';
+export const TIMELINE_VERSION_ROW_ARIA_PREFIX = 'Open version ';
+export const TIMELINE_VERSION_ROW_ARIA_SUFFIX = ' in version drawer';
+/**
+ * Verbatim string persisted to `shot_status_events.note` on REV-05 Restore
+ * (D-09 lock — Restore popover has no textarea; route writes this constant).
+ * Also rendered verbatim in the timeline row's note slot for the Restore event.
+ */
+export const RESTORE_NOTE_SYSTEM_TEXT = 'Restored from omit';
+
+// ---------- Compare mode (D-14 — entry CTA + selection state) ----------
+
+/** Uses U+2026 ellipsis ("opens a sub-flow" UX tone). */
+export const COMPARE_MODE_ENTER_LABEL = 'Compare versions…';
+export const COMPARE_MODE_ENTER_ARIA = 'Enter compare-versions mode';
+export const COMPARE_MODE_CTA_LABEL = 'Compare';
+export const COMPARE_MODE_CTA_DISABLED_ARIA = 'Select two versions to compare';
+export const COMPARE_MODE_CTA_READY_ARIA = 'Compare selected versions';
+export const COMPARE_MODE_CANCEL_LABEL = 'Cancel compare';
+/** Composed: `${COMPARE_MODE_CHECKBOX_ARIA_PREFIX}${versionLabel}`. */
+export const COMPARE_MODE_CHECKBOX_ARIA_PREFIX = 'Select version ';
+export const COMPARE_MODE_HINT = 'Pick 2 versions';
+
+// ---------- A/B compare view modal (D-15, D-23) ----------
+
+export const COMPARE_MODAL_TITLE_PREFIX = 'Compare ';
+export const COMPARE_MODAL_TITLE_INFIX = ' vs ';
+export const COMPARE_MODAL_ARIA_LABEL_PREFIX = 'Version comparison: ';
+export const COMPARE_MODAL_CLOSE_ARIA = 'Close comparison';
+export const COMPARE_MODAL_SECTION_THUMBNAILS = 'THUMBNAILS';
+export const COMPARE_MODAL_SECTION_METADATA = 'METADATA DIFF';
+export const COMPARE_MODAL_LOADING_LABEL = 'Loading thumbnails…';
+export const COMPARE_MODAL_DIFF_LOADING = 'Loading metadata diff…';
+export const COMPARE_MODAL_DIFF_ERROR =
+  "Couldn't load metadata diff. Try again.";
+export const COMPARE_MODAL_DIFF_EMPTY = 'No metadata differences.';
+export const COMPARE_MODAL_THUMB_LOAD_FAIL =
+  "Couldn't load one or both versions. Try again.";
+
+// ---------- Error / loading ----------
+
+/** Executor concatenates with error-shape detail; final UI string is `${prefix}${detail} — retry`. */
+export const REVIEW_PANEL_ACTION_FAIL_PREFIX = 'Failed to change status: ';
+export const REVIEW_HISTORY_FETCH_ERROR =
+  "Couldn't load shot history. Try refreshing the page.";
+export const REVIEW_PANEL_LOADING_LABEL = 'Loading review panel…';
