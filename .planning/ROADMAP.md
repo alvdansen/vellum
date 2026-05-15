@@ -210,7 +210,7 @@ Plans:
   3. A/B comparison view loads any two user-selected versions; both thumbnails are preloaded via `new Image().src` before the comparison panel mounts (no sequential flash).
   4. "Restore Shot" action in review panel is available only when `currentStatus === 'omit'`; writes `{ to_status: 'wip', note: 'Restored from omit' }` to `shot_status_events`.
   5. Notes stored as `null` (not empty string) when no note provided; notes displayed in timeline with `changed_by` attribution.
-**Plans:** 4/7 plans executed
+**Plans:** 6/7 plans executed
 
 Plans:
 **Wave 1** *(parallel — no file overlap)*
@@ -222,8 +222,8 @@ Plans:
 - [x] 22-04-PLAN.md — state/review-panel signals + OverlayHost mutex (D-02) + ABCompareHost placeholder + theme.css z-ladder + App.tsx swap
 
 **Wave 3** *(parallel — depend on 22-03 + 22-04; no file overlap)*
-- [ ] 22-05-PLAN.md — Review panel composition (ReviewPanel + Header + ActionBar + ActionButton + Timeline + mergeHistory + 3 test files)
-- [ ] 22-06-PLAN.md — ABCompareView modal + replace ABCompareHost placeholder (REV-03 parallel preload + Pitfall 7 fallback)
+- [x] 22-05-PLAN.md — Review panel composition (ReviewPanel + Header + ActionBar + ActionButton + Timeline + mergeHistory + 3 test files)
+- [x] 22-06-PLAN.md — ABCompareView modal + replace ABCompareHost placeholder (REV-03 parallel preload + Pitfall 7 fallback)
 
 **Wave 4** *(depends on 22-05 + 22-06; phase gate)*
 - [ ] 22-07-PLAN.md — ShotGridCard refactor (D-13) + ShotStatusPill dual-mode + QuickApproveButton (REV-02 optimistic + 5s WarningPill) + ReviewTimeline compare-mode (D-14 LRU-2) + phase-gate verification checkpoint
@@ -273,6 +273,6 @@ Plans:
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
 | 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
-| 22    | v1.3      | 4/7 | In Progress|  |
+| 22    | v1.3      | 6/7 | In Progress|  |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
