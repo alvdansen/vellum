@@ -273,6 +273,6 @@ Plans:
 | 19    | v1.2      | 8/8   | Complete    | 2026-05-09 |
 | 20    | v1.3      | 4/4 | Complete    | 2026-05-12 |
 | 21    | v1.3      | 6/6 | Complete    | 2026-05-14 |
-| 22    | v1.3      | 7/7 | Complete   | 2026-05-15 |
+| 22    | v1.3      | 7/7 | Complete    | 2026-05-15 |
 | 23    | v1.3      | 0/TBD | Not started | —          |
 | 24    | v1.3      | 0/TBD | Not started | —          |
