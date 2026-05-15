@@ -29,6 +29,8 @@ function buildShot(overrides: Partial<ShotGridRow> = {}): ShotGridRow {
     name: 'sh010',
     status: 'approved',
     version_count: 3,
+    // Phase 23 — D-03 default per-row stale flag (overridable by callers).
+    is_stale: false,
     latest_completed_version: {
       id: 'ver_abc',
       thumbnail_url: '/api/versions/ver_abc/thumbnail',

@@ -287,6 +287,7 @@ describe('App URL deep-link integration (Phase 21 GRID-04 / 21-AUDIT.md Bugs 1+2
           name: 'SHOT_A',
           status: 'wip',
           version_count: 3,
+          is_stale: false,
           latest_completed_version: {
             id: 'ver_a',
             thumbnail_url: '/api/versions/ver_a/thumbnail',
@@ -294,6 +295,14 @@ describe('App URL deep-link integration (Phase 21 GRID-04 / 21-AUDIT.md Bugs 1+2
           },
         },
       ],
+      // Phase 23 — D-02 sequence-wide stats envelope (single GROUP BY result).
+      stats: {
+        total: 1,
+        approved_pct: 0,
+        counts: { wip: 1, 'pending-review': 0, approved: 0, 'on-hold': 0, omit: 0 },
+        pending_review_backlog: 0,
+        stale_count: 0,
+      },
       next_cursor: null,
       total_count: 1,
     };
