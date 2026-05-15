@@ -41,6 +41,7 @@ function seedShotGrid(): ShotGridResponse {
         name: 'sh010',
         status: 'wip',
         version_count: 0,
+        is_stale: false,
         latest_completed_version: null,
       },
       {
@@ -48,9 +49,18 @@ function seedShotGrid(): ShotGridResponse {
         name: 'sh020',
         status: 'wip',
         version_count: 0,
+        is_stale: false,
         latest_completed_version: null,
       },
     ],
+    // Phase 23 — D-02 sequence-wide stats envelope (default to 2 wip).
+    stats: {
+      total: 2,
+      approved_pct: 0,
+      counts: { wip: 2, 'pending-review': 0, approved: 0, 'on-hold': 0, omit: 0 },
+      pending_review_backlog: 0,
+      stale_count: 0,
+    },
     next_cursor: null,
     total_count: 2,
   };
@@ -206,6 +216,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh1',
           status: 'wip',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -213,6 +224,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh2',
           status: 'wip',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -220,6 +232,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh3',
           status: 'approved',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -227,6 +240,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh4',
           status: 'omit',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -234,9 +248,18 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh5',
           status: 'omit',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
       ],
+      // Phase 23 — D-02 sequence-wide stats (not asserted in this test).
+      stats: {
+        total: 5,
+        approved_pct: 20,
+        counts: { wip: 2, 'pending-review': 0, approved: 1, 'on-hold': 0, omit: 2 },
+        pending_review_backlog: 0,
+        stale_count: 0,
+      },
       next_cursor: null,
       total_count: 5,
     };
@@ -259,6 +282,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh1',
           status: 'wip',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -266,6 +290,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh2',
           status: 'wip',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -273,6 +298,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh3',
           status: 'approved',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -280,6 +306,7 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh4',
           status: 'omit',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
         {
@@ -287,9 +314,18 @@ describe('aggregateCounts (D-14 computed)', () => {
           name: 'sh5',
           status: 'omit',
           version_count: 0,
+          is_stale: false,
           latest_completed_version: null,
         },
       ],
+      // Phase 23 — D-02 sequence-wide stats (not asserted in this test).
+      stats: {
+        total: 5,
+        approved_pct: 20,
+        counts: { wip: 2, 'pending-review': 0, approved: 1, 'on-hold': 0, omit: 2 },
+        pending_review_backlog: 0,
+        stale_count: 0,
+      },
       next_cursor: null,
       total_count: 5,
     };

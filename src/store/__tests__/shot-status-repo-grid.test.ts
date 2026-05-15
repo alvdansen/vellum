@@ -8,6 +8,7 @@ import {
   listShotsForGridSqlText,
   encodeShotGridCursor,
   decodeShotGridCursor,
+  STALE_SHOT_DAYS,
   type ShotGridCursor,
   type ShotGridQueryRow,
 } from '../shot-status-repo.js';
@@ -85,10 +86,15 @@ describe('listShotsForGrid — EXPLAIN QUERY PLAN (GRID-04 N+1 lock)', () => {
     }
   });
 
+  // Phase 23 — listShotsForGridSqlText placeholder count is 7 (cutoff added
+  // for the is_stale CASE expression). Pass cutoff as bind #1, then the
+  // original 6 cursor/limit binds.
+  const cutoff = Date.now() - STALE_SHOT_DAYS * 86_400_000;
+
   test('plan rows do NOT contain CORRELATED SCALAR SUBQUERY referencing the ranked CTE', () => {
     const planRows = testDb.sqlite
       .prepare('EXPLAIN QUERY PLAN ' + listShotsForGridSqlText())
-      .all(sequenceId, null, null, null, null, 21) as Array<{ detail: string }>;
+      .all(cutoff, sequenceId, null, null, null, null, 21) as Array<{ detail: string }>;
     const correlatedRanked = planRows.filter(
       (r) => r.detail.includes('CORRELATED') && r.detail.includes('ranked'),
     );
@@ -98,7 +104,7 @@ describe('listShotsForGrid — EXPLAIN QUERY PLAN (GRID-04 N+1 lock)', () => {
   test('plan rows reference CTE materialization (CO-ROUTINE / MATERIALIZE / ranked)', () => {
     const planRows = testDb.sqlite
       .prepare('EXPLAIN QUERY PLAN ' + listShotsForGridSqlText())
-      .all(sequenceId, null, null, null, null, 21) as Array<{ detail: string }>;
+      .all(cutoff, sequenceId, null, null, null, null, 21) as Array<{ detail: string }>;
     const hasCteEvidence = planRows.some(
       (r) =>
         r.detail.includes('CO-ROUTINE') ||
@@ -106,6 +112,23 @@ describe('listShotsForGrid — EXPLAIN QUERY PLAN (GRID-04 N+1 lock)', () => {
         r.detail.includes('ranked'),
     );
     expect(hasCteEvidence).toBe(true);
+  });
+
+  test('Phase 23 invariant — is_stale CASE introduces NO CORRELATED subquery on the ranked CTE', () => {
+    // Phase 23 — D-03 added an inline `is_stale` CASE column to the CTE
+    // outer SELECT. Per 23-RESEARCH Pitfall 4 + Open Question 3 resolution,
+    // the CASE phrasing (`r.completed_at IS NOT NULL AND r.completed_at < ?`)
+    // reuses the existing LEFT JOIN ranked relation — no new EXISTS or
+    // correlated SCALAR/LIST subquery should appear referencing `ranked`.
+    // This test extends the Phase 21 GRID-04 single-scan invariant to assert
+    // that the Phase 23 CASE does NOT regress the planner output.
+    const planRows = testDb.sqlite
+      .prepare('EXPLAIN QUERY PLAN ' + listShotsForGridSqlText())
+      .all(cutoff, sequenceId, null, null, null, null, 21) as Array<{ detail: string }>;
+    const correlatedOnRanked = planRows.filter(
+      (r) => r.detail.includes('CORRELATED') && r.detail.includes('ranked'),
+    );
+    expect(correlatedOnRanked).toEqual([]);
   });
 });
 

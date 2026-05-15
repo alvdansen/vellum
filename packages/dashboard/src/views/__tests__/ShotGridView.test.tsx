@@ -75,6 +75,8 @@ function makeShot(
     name: id.toUpperCase(),
     status,
     version_count: hasVersion ? 3 : 0,
+    // Phase 23 — D-03 default per-row stale flag (callers override as needed).
+    is_stale: false,
     latest_completed_version: hasVersion
       ? {
           id: `ver_${id}`,
@@ -94,6 +96,14 @@ function buildResponse(overrides: Partial<ShotGridResponse> = {}): ShotGridRespo
         makeShot('shot_2', 'approved'),
         makeShot('shot_3', 'omit'),
       ],
+    // Phase 23 — D-02 sequence-wide stats envelope (default empty; callers override via spread).
+    stats: overrides.stats ?? {
+      total: 3,
+      approved_pct: 33,
+      counts: { wip: 1, 'pending-review': 0, approved: 1, 'on-hold': 0, omit: 1 },
+      pending_review_backlog: 0,
+      stale_count: 0,
+    },
     next_cursor:
       'next_cursor' in overrides ? overrides.next_cursor ?? null : null,
     total_count: overrides.total_count ?? 3,
