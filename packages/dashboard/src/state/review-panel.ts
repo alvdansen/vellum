@@ -13,8 +13,8 @@
  *  - Review-panel state is NEVER mirrored into the URL (UI-SPEC L728-732).
  *    Reload returns to the default view; overlays are session-local.
  *
- * Architecture-purity (D-WEBUI-31): zero imports from `../../src/` or
- * `../src/`; ReviewAction is sibling-imported from ../types/review-panel.js.
+ * Architecture-purity (D-WEBUI-31): no server-tree imports;
+ * ReviewAction is sibling-imported from ./types/review-panel.js.
  *
  * D-02 mutex invariant: `activeOverlay` is the single source of truth for
  * which right-rail overlay is mounted. OverlayHost (views/OverlayHost.tsx)
