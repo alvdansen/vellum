@@ -75,6 +75,15 @@
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* z-index ladder (documented per Phase 22 RESEARCH Q4):
+   *   --z-drawer: 10  (VersionDrawer, ReviewPanel right-rail overlays)
+   *   --z-diff:   20  (DiffDrawer — Phase 12 two-column comparison)
+   *   --z-modal:  30  (ABCompareView backdrop + modal — added Phase 22)
+   * No functional tokens are added — z-index values are written as numeric
+   * literals directly in component class strings (Tailwind v4 z-10 / z-20 /
+   * z-30). This comment is the single source of truth for the ladder.
+   */
 }
 
 /* =============================================================================
