@@ -57,6 +57,9 @@
   --color-shot-status-on-hold:         #60a5fa;  /* blue-400 — paused/blocked */
   --color-shot-status-omit:            #64748b;  /* slate-500 — dimmed/excluded */
 
+  /* ===== Phase 23 — sequence stats. WCAG 2.1 AA UI-component contrast vs --color-bg ≥ 3:1. ===== */
+  --color-shot-stale: #f97316;  /* orange-500 — DISTINCT from pending-review amber per D-08 */
+
   /* Layout fixed widths */
   --sidebar-width: 280px;
   --drawer-version-width: 560px;
@@ -117,6 +120,9 @@
   --color-shot-status-approved:        #16a34a;
   --color-shot-status-on-hold:         #2563eb;
   --color-shot-status-omit:            #94a3b8;
+
+  /* ===== Phase 23 — light-theme stale border (4.62:1 vs #fafafa per UI-SPEC L122). ===== */
+  --color-shot-stale: #b45309;  /* amber-700 — passes 4.62:1 vs #fafafa; distinct from pending-review #d97706 */
 }
 
 /* =============================================================================
