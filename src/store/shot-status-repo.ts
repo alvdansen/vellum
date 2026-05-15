@@ -182,6 +182,11 @@ export function decodeShotGridCursor(s: string): ShotGridCursor | null {
  * versions). The engine facade (Pattern 10) nests these into a single
  * `latest_completed_version: { id, completed_at, thumbnail_url } | null`
  * object before returning to the HTTP route.
+ *
+ * Phase 23 — D-03 adds `is_stale` (0 or 1 from the CASE expression in the
+ * CTE SELECT). The engine facade coerces this to a real boolean before
+ * shipping to the dashboard (per the wire-type `ShotGridRow.is_stale: boolean`
+ * at `packages/dashboard/src/types/shot-grid.ts`).
  */
 export interface ShotGridQueryRow {
   id: string;
@@ -190,6 +195,16 @@ export interface ShotGridQueryRow {
   version_count: number;
   lcv_id: string | null;
   lcv_completed_at: number | null;
+  /**
+   * Phase 23 — D-03 per-row staleness flag. SQLite returns 0|1 from the
+   * `CASE WHEN ... THEN 1 ELSE 0 END` expression; the engine layer coerces
+   * to `Boolean(is_stale)` before emitting on the wire. Computed inline in
+   * the CTE outer SELECT using:
+   *   - `s.status IN ('wip','pending-review')` (OVR-02 status filter)
+   *   - `r.completed_at IS NOT NULL` (D-15 grace: zero-version shots NEVER stale)
+   *   - `r.completed_at < cutoff` (the 14-day threshold, bound at query time)
+   */
+  is_stale: number;
 }
 
 /**
@@ -241,6 +256,11 @@ export function listShotsForGrid(
 
   const cursorName = cursor?.n ?? null;
   const cursorSid = cursor?.sid ?? null;
+  // Phase 23 — D-03 + D-15 cutoff for the inline `is_stale` CASE. Computed
+  // ONCE per call so the planner sees a literal placeholder, not two
+  // separate Date.now() calls (which would re-evaluate inside the SQL
+  // template). Mirrors the cutoff binding used by getSequenceStats below.
+  const cutoff = Date.now() - STALE_SHOT_DAYS * 86_400_000;
 
   // limit+1 fetch for has_more (mirrors src/store/version-repo.ts limit+1 probe).
   const rows = db.all(sql`
@@ -259,7 +279,20 @@ export function listShotsForGrid(
       s.status    AS status,
       (SELECT COUNT(*) FROM versions vc WHERE vc.shot_id = s.id) AS version_count,
       r.id           AS lcv_id,
-      r.completed_at AS lcv_completed_at
+      r.completed_at AS lcv_completed_at,
+      -- Phase 23 -- D-03 + D-15 inline is_stale (no extra query). Per OVR-02
+      -- + D-15 pragmatic: status IN (wip, pending-review) AND latest completed
+      -- version exists AND it is older than STALE_SHOT_DAYS days. Zero-version
+      -- shots fall out via r.completed_at IS NOT NULL (the LEFT JOIN ranked
+      -- produces NULL when no completed version exists). Reuses the existing
+      -- ranked CTE join -- adds NO new correlated subquery in the EXPLAIN
+      -- plan, preserving the Phase 21 GRID-04 single-scan invariant.
+      CASE
+        WHEN s.status IN ('wip','pending-review')
+          AND r.completed_at IS NOT NULL
+          AND r.completed_at < ${cutoff}
+        THEN 1 ELSE 0
+      END AS is_stale
     FROM shots s
     LEFT JOIN ranked r ON r.shot_id = s.id AND r.rn = 1
     WHERE s.sequence_id = ${sequenceId}
@@ -290,13 +323,14 @@ export function listShotsForGrid(
  * planner output without duplicating SQL strings between the prod path and
  * the test path.
  *
- * Placeholder order (6 total binds):
- *   1. sequenceId           — s.sequence_id = ?
- *   2. cursorName  ($IS NULL$) — ? IS NULL
- *   3. cursorName  (>)        — s.name > ?
- *   4. cursorName  (= tiebreak) — s.name = ?
- *   5. cursorSid              — s.id > ?
- *   6. limit                  — LIMIT ?
+ * Placeholder order (7 total binds — Phase 23 adds cutoff after sequenceId):
+ *   1. cutoff               — r.completed_at < ? (Phase 23 — is_stale CASE)
+ *   2. sequenceId           — s.sequence_id = ?
+ *   3. cursorName  ($IS NULL$) — ? IS NULL
+ *   4. cursorName  (>)        — s.name > ?
+ *   5. cursorName  (= tiebreak) — s.name = ?
+ *   6. cursorSid              — s.id > ?
+ *   7. limit                  — LIMIT ?
  */
 export function listShotsForGridSqlText(): string {
   return /* sql */ `
@@ -312,12 +346,169 @@ export function listShotsForGridSqlText(): string {
       s.status    AS status,
       (SELECT COUNT(*) FROM versions vc WHERE vc.shot_id = s.id) AS version_count,
       r.id           AS lcv_id,
-      r.completed_at AS lcv_completed_at
+      r.completed_at AS lcv_completed_at,
+      CASE
+        WHEN s.status IN ('wip','pending-review')
+          AND r.completed_at IS NOT NULL
+          AND r.completed_at < ?
+        THEN 1 ELSE 0
+      END AS is_stale
     FROM shots s
     LEFT JOIN ranked r ON r.shot_id = s.id AND r.rn = 1
     WHERE s.sequence_id = ?
       AND (? IS NULL OR s.name > ? OR (s.name = ? AND s.id > ?))
     ORDER BY s.name ASC, s.id ASC
     LIMIT ?
+  `;
+}
+
+// ===== Phase 23 — getSequenceStats (OVR-01 + OVR-02 whole-sequence stats) =====
+
+/**
+ * Phase 23 — D-02 LOCKED return shape from the repo layer. The engine facade
+ * (Plan 23-02) composes this with sequence metadata and computes the
+ * approved-percentage in TypeScript (per D-14 — Math.round at the engine
+ * boundary, NOT in SQL) before shipping the dashboard-facing `SequenceStats`
+ * envelope.
+ *
+ * - `total`: derived in TS as Σ counts (saves one extra COUNT(*) roundtrip).
+ * - `counts`: ALL 5 ShotStatus keys initialized to 0 — sparse GROUP BY rows
+ *   are merged on top, so consumers can safely read any key without
+ *   undefined-checks.
+ * - `stale_count`: separate EXISTS-clause query (Q2 below).
+ */
+export interface SequenceStatsRaw {
+  total: number;
+  counts: Record<ShotStatus, number>;
+  stale_count: number;
+}
+
+/**
+ * OVR-01 + OVR-02 — whole-sequence stats for the dashboard
+ * `<SequenceHeader/>` subrow. Computed via TWO independent queries:
+ *
+ *   Q1: SELECT status, COUNT(*) FROM shots WHERE sequence_id=? GROUP BY status
+ *     Uses `idx_shots_status (sequence_id, status)` covering index (from
+ *     migration 0008 — see drizzle/0008_shot_status.sql:25). The planner can
+ *     satisfy the entire query from the index without a table fetch.
+ *
+ *   Q2: SELECT COUNT(*) FROM shots WHERE shots.sequence_id=?
+ *         AND shots.status IN ('wip','pending-review')
+ *         AND EXISTS (SELECT 1 FROM versions v
+ *           WHERE v.shot_id=shots.id
+ *             AND v.status='completed'
+ *             AND v.completed_at IS NOT NULL
+ *             AND v.completed_at < ?)
+ *     The cutoff timestamp is bound at query time (Date.now() - STALE_SHOT_DAYS
+ *     * 86_400_000). EXISTS short-circuits on first matching version per shot;
+ *     uses the versions PK autoindex on (shot_id, version_number) for the
+ *     inner search. D-15 pragmatic — zero-completed-version shots are excluded
+ *     from stale_count by the EXISTS clause (they "haven't started yet" — not
+ *     "went idle"). See SUMMARY.md for the deviation from a literal reading of
+ *     OVR-02.
+ *
+ * `total` is derived in TypeScript as Σ counts — saves one extra COUNT(*)
+ * roundtrip. Returns a plain object (no envelope) — the engine facade
+ * (Plan 23-02) computes the approved-percentage via Math.round at the
+ * boundary and wraps the result in the dashboard's `SequenceStats` shape.
+ *
+ * Error behavior: returns `{ total: 0, counts: {...all zero}, stale_count: 0 }`
+ * for an unknown sequenceId. The engine layer's `getSequence(sequenceId)`
+ * lookup throws `SEQUENCE_NOT_FOUND` for unknown IDs — this function is the
+ * repo primitive, not the user-facing surface.
+ *
+ * EXPLAIN QUERY PLAN invariant: NO `CORRELATED SCALAR SUBQUERY` for Q1
+ * (single GROUP BY, no subqueries); Q2's EXISTS clause IS allowed to surface
+ * as a CORRELATED LIST SUBQUERY (that's the EXISTS short-circuit's intended
+ * plan). The test in shot-status-repo-stats.test.ts asserts only the absence
+ * of `SCAN versions` (full-table scan) — presence of `SEARCH versions USING`
+ * is the signal that the autoindex is used.
+ */
+export function getSequenceStats(db: Db, sequenceId: string): SequenceStatsRaw {
+  // Q1: per-status GROUP BY counts.
+  const countRows = db.all(sql`
+    SELECT status AS status, COUNT(*) AS c
+    FROM shots
+    WHERE sequence_id = ${sequenceId}
+    GROUP BY status
+  `) as Array<{ status: ShotStatus; c: number }>;
+
+  // Initialize all 5 statuses at 0 — GROUP BY emits only non-empty buckets.
+  const counts: Record<ShotStatus, number> = {
+    'wip': 0,
+    'pending-review': 0,
+    'approved': 0,
+    'on-hold': 0,
+    'omit': 0,
+  };
+  let total = 0;
+  for (const row of countRows) {
+    counts[row.status] = Number(row.c);
+    total += Number(row.c);
+  }
+
+  // Q2: stale_count via EXISTS — D-15 pragmatic (zero-version shots excluded).
+  const cutoff = Date.now() - STALE_SHOT_DAYS * 86_400_000;
+  const staleRow = db.get(sql`
+    SELECT COUNT(*) AS c
+    FROM shots
+    WHERE shots.sequence_id = ${sequenceId}
+      AND shots.status IN ('wip', 'pending-review')
+      AND EXISTS (
+        SELECT 1 FROM versions v
+        WHERE v.shot_id = shots.id
+          AND v.status = 'completed'
+          AND v.completed_at IS NOT NULL
+          AND v.completed_at < ${cutoff}
+      )
+  `) as { c: number } | undefined;
+
+  return {
+    total,
+    counts,
+    stale_count: Number(staleRow?.c ?? 0),
+  };
+}
+
+/**
+ * Returns the EXACT raw SQL text (with `?` placeholders) for the
+ * getSequenceStats Q2 stale-count query, so the EXPLAIN QUERY PLAN test can
+ * introspect without duplicating SQL strings. Mirrors `listShotsForGridSqlText`
+ * precedent at line 301.
+ *
+ * Placeholder order (2 binds):
+ *   1. sequenceId — shots.sequence_id = ?
+ *   2. cutoff     — v.completed_at < ?
+ */
+export function getSequenceStatsStaleSqlText(): string {
+  return /* sql */ `
+    SELECT COUNT(*) AS c
+    FROM shots
+    WHERE shots.sequence_id = ?
+      AND shots.status IN ('wip', 'pending-review')
+      AND EXISTS (
+        SELECT 1 FROM versions v
+        WHERE v.shot_id = shots.id
+          AND v.status = 'completed'
+          AND v.completed_at IS NOT NULL
+          AND v.completed_at < ?
+      )
+  `;
+}
+
+/**
+ * Returns the EXACT raw SQL text (with `?` placeholders) for the
+ * getSequenceStats Q1 GROUP BY counts query — the EXPLAIN test asserts that
+ * the planner picks `idx_shots_status` for this path.
+ *
+ * Placeholder order (1 bind):
+ *   1. sequenceId — sequence_id = ?
+ */
+export function getSequenceStatsGroupBySqlText(): string {
+  return /* sql */ `
+    SELECT status AS status, COUNT(*) AS c
+    FROM shots
+    WHERE sequence_id = ?
+    GROUP BY status
   `;
 }
