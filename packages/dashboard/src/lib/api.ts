@@ -29,6 +29,13 @@ import { serializeSortValue } from './sortHelpers.js';
 // LoadMoreButton click; the engine builds thumbnail_url server-side so this
 // module never assembles URL strings.
 import type { ShotGridResponse } from '../types/shot-grid.js';
+// Phase 22 / Plan 22-02 — wire shapes for the 3 new review-and-approval
+// fetch helpers (setShotStatus, fetchShotStatusHistory, diffVersionsAB).
+import type {
+  SetShotStatusBody,
+  SetShotStatusResponse,
+  StatusHistoryResponse,
+} from '../types/review-panel.js';
 
 /** Same-origin base. No hardcoded host; Vite dev server proxies to the API. */
 const BASE = '';
@@ -646,5 +653,79 @@ export function fetchShotGrid(
   };
   return fetchJson<ShotGridResponse>(
     `/api/sequences/${encodeURIComponent(sequenceId)}/shot-grid${qs(queryParams)}`,
+  );
+}
+
+// ===== Phase 22 — review and approval =====
+
+/**
+ * 20. PATCH /api/shots/:id/status
+ *
+ * Phase 22 / Plan 22-02 — mutates shot status via the new HTTP route
+ * defined in 22-01. The route's Zod whitelist gates `to_status` to the
+ * closed SHOT_STATUSES set and coerces `note: null | ''` → DB IS NULL
+ * (REV-04). Returns the updated shot status plus the freshly-fetched
+ * 50-row history envelope for the unified review timeline (D-04).
+ *
+ * Mirrors `reproduceVersion(id)`'s mutation pattern verbatim — same
+ * `Content-Type: application/json` + JSON.stringify body shape; only
+ * the HTTP verb and body type differ.
+ *
+ * Error envelopes (translated via fetchJson → DashboardApiError):
+ *   - 400 INVALID_INPUT — body fails Zod whitelist (bad to_status, note > 500)
+ *   - 404 SHOT_NOT_FOUND — shotId not in workspace
+ */
+export function setShotStatus(
+  shotId: string,
+  body: SetShotStatusBody,
+): Promise<SetShotStatusResponse> {
+  return fetchJson<SetShotStatusResponse>(
+    `/api/shots/${encodeURIComponent(shotId)}/status`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+/**
+ * 21. GET /api/shots/:id/status-history?limit=
+ *
+ * Phase 22 / Plan 22-02 — wraps engine.listShotStatusHistory via the new
+ * HTTP route from 22-01 (RESEARCH Q1 closure). Used by ReviewPanel's
+ * timeline (D-04) to fetch the append-only status event log alongside
+ * version events. Default limit = 50 mirrors the server-side default.
+ *
+ * Error envelopes (translated via fetchJson → DashboardApiError):
+ *   - 400 INVALID_INPUT — limit is not a positive integer
+ *   - 404 SHOT_NOT_FOUND — shotId not in workspace
+ */
+export function fetchShotStatusHistory(
+  shotId: string,
+  limit: number = 50,
+): Promise<StatusHistoryResponse> {
+  return fetchJson<StatusHistoryResponse>(
+    `/api/shots/${encodeURIComponent(shotId)}/status-history?limit=${limit}`,
+  );
+}
+
+/**
+ * 22. GET /api/versions/:a/diff-with/:b
+ *
+ * Phase 22 / Plan 22-02 — cross-version diff helper for the A/B compare
+ * modal (22-06). Pass-through to engine.diffVersions which already
+ * accepts an arbitrary pair (RESEARCH Pitfall 2). Returns `unknown` so
+ * the consumer (ABCompareView) narrows at use-site against the engine's
+ * DiffResponseShape — mirrors the existing `diffVersion(versionId, against)`
+ * return type to stay consistent.
+ *
+ * Error envelopes (translated via fetchJson → DashboardApiError):
+ *   - 400 INVALID_INPUT — cross-shot pair (engine.diffVersions guard)
+ *   - 404 VERSION_NOT_FOUND — either :a or :b missing
+ */
+export function diffVersionsAB(a: string, b: string): Promise<unknown> {
+  return fetchJson<unknown>(
+    `/api/versions/${encodeURIComponent(a)}/diff-with/${encodeURIComponent(b)}`,
   );
 }
