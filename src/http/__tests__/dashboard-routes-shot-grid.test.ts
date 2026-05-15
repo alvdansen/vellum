@@ -44,6 +44,12 @@ function buildApp(engine: FakeEngine): Hono {
 /**
  * Sample happy-path response shape that the engine returns to the route.
  * Matches D-13 envelope verbatim: { sequence, shots[], next_cursor, total_count }.
+ *
+ * Phase 23 / Plan 23-02 — D-01 + D-02 + D-03: extended with top-level `stats`
+ * envelope (whole-sequence) AND per-row `is_stale: boolean`. The empty
+ * stats fixture (all-zeros) is a valid envelope for the GRID-04 happy path
+ * tests; the Phase 23 OVR-01/OVR-02 tests override `stats` and `shots[]`
+ * per-test to assert on the new field paths.
  */
 const EMPTY_GRID_RESPONSE = {
   sequence: { id: 'seq_1', name: 'SEQ_010' },
@@ -52,12 +58,26 @@ const EMPTY_GRID_RESPONSE = {
     name: string;
     status: 'wip' | 'pending-review' | 'approved' | 'on-hold' | 'omit';
     version_count: number;
+    is_stale: boolean;
     latest_completed_version: {
       id: string;
       thumbnail_url: string;
       completed_at: number;
     } | null;
   }>,
+  stats: {
+    total: 0,
+    approved_pct: 0,
+    counts: {
+      wip: 0,
+      'pending-review': 0,
+      approved: 0,
+      'on-hold': 0,
+      omit: 0,
+    },
+    pending_review_backlog: 0,
+    stale_count: 0,
+  },
   next_cursor: null as string | null,
   total_count: 0,
 };
@@ -196,5 +216,90 @@ describe('GET /api/sequences/:id/shot-grid (GRID-04)', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('INVALID_INPUT');
+  });
+
+  // ================================================================
+  // Phase 23 / Plan 23-02 — D-01 envelope widening assertions.
+  //
+  // The route handler is byte-identical (passthrough). These tests
+  // assert Hono auto-serializes the new top-level `stats` field AND
+  // the per-row `is_stale: boolean` field VERBATIM (snake_case, real
+  // booleans — not 0|1 numbers, not camelCase).
+  // ================================================================
+
+  it('response envelope includes top-level stats field (Phase 23 OVR-01)', async () => {
+    const STUBBED_STATS = {
+      total: 10,
+      approved_pct: 60,
+      counts: {
+        wip: 4,
+        'pending-review': 0,
+        approved: 6,
+        'on-hold': 0,
+        omit: 0,
+      },
+      pending_review_backlog: 0,
+      stale_count: 2,
+    };
+    (engine as unknown as { listShotGrid: unknown }).listShotGrid = ((
+      seqId: string,
+      opts: { cursor: unknown; limit: number },
+    ) => {
+      engine.calls.push({ method: 'listShotGrid', args: [seqId, opts] });
+      return {
+        ...EMPTY_GRID_RESPONSE,
+        sequence: { id: seqId, name: 'SEQ_010' },
+        stats: STUBBED_STATS,
+      };
+    }) as never;
+    const app = buildApp(engine);
+
+    const res = await app.request('/api/sequences/seq_1/shot-grid');
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stats: typeof STUBBED_STATS };
+    // Top-level stats field present + JSON serialization roundtrips
+    // snake_case verbatim (no camelCase rewriting by Hono).
+    expect(body.stats).toEqual(STUBBED_STATS);
+  });
+
+  it('shot rows include per-row is_stale field (Phase 23 OVR-02)', async () => {
+    (engine as unknown as { listShotGrid: unknown }).listShotGrid = ((
+      seqId: string,
+      opts: { cursor: unknown; limit: number },
+    ) => {
+      engine.calls.push({ method: 'listShotGrid', args: [seqId, opts] });
+      return {
+        ...EMPTY_GRID_RESPONSE,
+        sequence: { id: seqId, name: 'SEQ_010' },
+        shots: [
+          {
+            id: 'shot_1',
+            name: 'sh010',
+            status: 'wip' as const,
+            version_count: 1,
+            is_stale: true,
+            latest_completed_version: {
+              id: 'ver_old',
+              thumbnail_url: '/api/versions/ver_old/thumbnail',
+              completed_at: Date.now() - 30 * 86_400_000,
+            },
+          },
+        ],
+        total_count: 1,
+      };
+    }) as never;
+    const app = buildApp(engine);
+
+    const res = await app.request('/api/sequences/seq_1/shot-grid');
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      shots: Array<{ id: string; is_stale: boolean }>;
+    };
+    expect(body.shots).toHaveLength(1);
+    // Boolean serializes as JSON true (not 1) per snake_case + boolean coercion.
+    expect(body.shots[0]!.is_stale).toBe(true);
+    expect(typeof body.shots[0]!.is_stale).toBe('boolean');
   });
 });
