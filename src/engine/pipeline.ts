@@ -87,11 +87,6 @@ import {
   // into the dashboard's payload contract (D-13) and builds thumbnail_url
   // server-side per RESEARCH Example 1 + PATTERNS §10.
   listShotsForGrid,
-  // Phase 23 / Plan 23-02 — D-01 + D-14: whole-sequence GROUP BY counts +
-  // EXISTS-clause stale_count. Engine composes the raw repo result with
-  // approved_pct math (Math.round in TypeScript) into the dashboard's
-  // SequenceStats wire shape before returning from `listShotGrid`.
-  getSequenceStats,
   type ShotGridCursor,
 } from '../store/shot-status-repo.js';
 import type {
@@ -834,28 +829,12 @@ export class Engine {
       name: string;
       status: ShotStatus;
       version_count: number;
-      // Phase 23 — D-03 per-row staleness flag, coerced from the repo's
-      // SQLite 0|1 to a real boolean before emitting on the wire.
-      is_stale: boolean;
       latest_completed_version: {
         id: string;
         thumbnail_url: string;
         completed_at: number;
       } | null;
     }>;
-    // Phase 23 — D-02 LOCKED SequenceStats envelope shape. Inlined mirror of
-    // `SequenceStats` from packages/dashboard/src/types/shot-grid.ts — the
-    // architecture-purity test (src/__tests__/architecture-purity.test.ts)
-    // forbids dashboard→server imports; we keep the server tree free of
-    // cross-tree imports in BOTH directions by inlining here. Keep in sync
-    // with the dashboard type definition.
-    stats: {
-      total: number;
-      approved_pct: number;
-      counts: Record<ShotStatus, number>;
-      pending_review_backlog: number;
-      stale_count: number;
-    };
     next_cursor: string | null;
     total_count: number;
   } {
@@ -872,39 +851,11 @@ export class Engine {
       sequenceId,
       opts,
     );
-    // Phase 23 / Plan 23-02 — D-01 single-endpoint composition: alongside the
-    // paginated `listShotsForGrid` result, run the whole-sequence
-    // getSequenceStats query and assemble the wire-shape envelope. The
-    // dashboard's `sequenceStats` signal seeds from `body.stats` on every
-    // fetchShotGrid call (independent of `shots[]` pagination).
-    const rawStats = getSequenceStats(this.db, sequenceId);
-    // D-14 — approved_pct is computed in TypeScript (not SQL) with explicit
-    // divide-by-zero guard. `Math.round((approved/total)*100)` yields an
-    // integer in [0..100]; `total === 0 → 0` (never NaN). The repo function
-    // initializes all 5 ShotStatus keys to 0, so `rawStats.counts.approved`
-    // is always defined.
-    const approved = rawStats.counts.approved;
-    const approved_pct =
-      rawStats.total === 0 ? 0 : Math.round((approved / rawStats.total) * 100);
-    // Pitfall 10 — `pending-review` is a hyphenated ShotStatus key so it
-    // MUST use bracket access (dot access would parse as `counts.pending`
-    // followed by a subtraction `- review`).
-    const stats = {
-      total: rawStats.total,
-      approved_pct,
-      counts: rawStats.counts,
-      pending_review_backlog: rawStats.counts['pending-review'],
-      stale_count: rawStats.stale_count,
-    };
     const shots = items.map((r) => ({
       id: r.id,
       name: r.name,
       status: r.status,
       version_count: r.version_count,
-      // D-03 + Phase 23 wire-shape coercion: SQLite returns is_stale as
-      // 0|1 (number); the wire shape is `is_stale: boolean`. Boolean(0) ===
-      // false; Boolean(1) === true.
-      is_stale: Boolean(r.is_stale),
       latest_completed_version:
         r.lcv_id !== null && r.lcv_completed_at !== null
           ? {
@@ -917,7 +868,6 @@ export class Engine {
     return {
       sequence: { id: sequence.id, name: sequence.name },
       shots,
-      stats,
       next_cursor,
       total_count,
     };
