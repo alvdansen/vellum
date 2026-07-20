@@ -77,11 +77,39 @@ const IterateInput = z.object({
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 
+/**
+ * Pivot Phase D — register input. An external agent or provider webhook reports a
+ * finished asset (produced OUTSIDE this server — ComfyUI, Replicate, FAL, Scenario,
+ * Layer, or a sibling Claude Code workflow) into a shot. Each output is a public
+ * https URL fetched under the ingest trust boundary (host allowlist + size cap).
+ * `provider` is the reporting backend id; `provenance` is caller-asserted neutral
+ * params/models stored verbatim in the completed event's neutral column.
+ */
+const RegisterInput = z.object({
+  action: z.literal('register'),
+  shot_id: z.string().min(1).max(MAX_ID_LENGTH),
+  provider: z.string().min(1).max(64),
+  outputs: z
+    .array(
+      z.object({
+        url: z.string().url().max(2048),
+        filename: z.string().max(255).optional(),
+        content_type: z.string().max(128).optional(),
+      }),
+    )
+    .min(1)
+    .max(20),
+  provenance: z.record(z.string(), z.unknown()).optional(),
+  external_job_ref: z.string().max(MAX_ID_LENGTH).optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
 const GenerationInputSchema = z.discriminatedUnion('action', [
   SubmitInput,
   StatusInput,
   ReproduceInput,
   IterateInput,
+  RegisterInput,
 ]);
 
 /**
@@ -165,7 +193,8 @@ export function registerGeneration(server: McpServer, engine: Engine) {
     {
       title: 'Generation',
       description:
-        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status, reproduce, iterate. " +
+        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status, reproduce, iterate, register. " +
+        "register (provider-agnostic): report an output produced OUTSIDE this server (ComfyUI, Replicate, FAL, Scenario, Layer, or a sibling workflow) into a shot — pass { shot_id, provider, outputs: [{ url }], provenance? }; each https URL is fetched under an ingest host-allowlist + size cap and stored as a new completed version stamped with `provider`. " +
         "State machine (D-GEN-18): submitted → running → completed | failed. " +
         "Dual error model (IAC-03): submit/status/reproduce/iterate return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found, version-not-completed, reproduce-blocked, iterate-invalid-patch). " +
         "reproduce re-submits a completed version's resolved prompt blob verbatim (byte-identical) and returns a new version with lineage_type='reproduce' plus an always-present reproduction_warnings: string[] array (empty when no drift indicators — D-PROV-28 honesty). " +
@@ -176,7 +205,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
       // short-circuits — the handler's `GenerationInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
-        action: z.enum(['submit', 'status', 'reproduce', 'iterate']),
+        action: z.enum(['submit', 'status', 'reproduce', 'iterate', 'register']),
         shot_id: z.string().optional(),
         workflow_json: z.record(z.string(), z.unknown()).optional(),
         notes: z.string().optional(),
@@ -189,6 +218,19 @@ export function registerGeneration(server: McpServer, engine: Engine) {
           }),
         ).optional(),
         seed: z.number().int().optional(),
+        // Pivot Phase D — register (inbound output ingestion).
+        provider: z.string().optional(),
+        outputs: z
+          .array(
+            z.object({
+              url: z.string(),
+              filename: z.string().optional(),
+              content_type: z.string().optional(),
+            }),
+          )
+          .optional(),
+        provenance: z.record(z.string(), z.unknown()).optional(),
+        external_job_ref: z.string().optional(),
       },
     },
     async (rawInput) => {
@@ -231,6 +273,20 @@ export function registerGeneration(server: McpServer, engine: Engine) {
                   input.seed,
                   input.notes,
                 ),
+              ),
+            );
+          case 'register':
+            // Pivot Phase D — inbound registration of an externally-produced output.
+            return toolOk(
+              shapeVersionEntity(
+                await engine.registerExternalOutput({
+                  shotId: input.shot_id,
+                  providerId: input.provider,
+                  outputs: input.outputs,
+                  provenance: input.provenance,
+                  notes: input.notes,
+                  externalJobRef: input.external_job_ref,
+                }),
               ),
             );
           default: {

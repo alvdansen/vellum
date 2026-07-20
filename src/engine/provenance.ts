@@ -190,6 +190,9 @@ export class ProvenanceWriter {
     versionId: string,
     promptBlob: Record<string, unknown> | null,
     outputsJson: string,
+    // Pivot Phase B/D — optional serialized NeutralProvenance for non-ComfyUI
+    // backends and externally-registered outputs. Stored in generation_result_json.
+    neutralResultJson?: string | null,
   ): void {
     const models = promptBlob ? extractModels(promptBlob) : [];
     const seed = promptBlob ? extractSeed(promptBlob) : null;
@@ -199,6 +202,7 @@ export class ProvenanceWriter {
       seed,
       models_json: JSON.stringify(models),
       outputs_json: outputsJson,
+      generation_result_json: neutralResultJson ?? null,
     });
   }
 

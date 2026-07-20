@@ -280,6 +280,12 @@ async function main(): Promise<void> {
   const outputsDir = process.env.VELLUM_OUTPUTS_DIR ?? 'outputs';
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
+    // Pivot Phase D — operator-supplied extra ingest hosts for registerExternalOutput
+    // (additive to the built-in known provider delivery hosts). Comma-separated.
+    ingestAllowedHosts: (process.env.VELLUM_INGEST_ALLOWED_HOSTS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
     // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
     // ships with this unset; local-dev / self-host can populate hashes by

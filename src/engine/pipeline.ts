@@ -18,7 +18,7 @@ import { TagRepo } from '../store/tag-repo.js';
 import { MetadataRepo } from '../store/metadata-repo.js';
 import type { GenerationProvider } from '../providers/provider.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
-import { GenerationEngine } from './generation.js';
+import { GenerationEngine, type RegisterExternalOutputInput } from './generation.js';
 import { ProvenanceWriter } from './provenance.js';
 import { AssetsEngine } from './assets.js';
 import { diffVersions as pureDiffVersions, buildReproductionDivergence } from './diff.js';
@@ -449,6 +449,9 @@ export class Engine {
       modelsDir?: string | null;
       c2paConfig?: C2paConfig | null;
       anthropicConfig?: { apiKey: string } | null;
+      // Pivot Phase D — inbound ingest trust boundary (registerExternalOutput).
+      ingestAllowedHosts?: readonly string[];
+      ingestFetchImpl?: typeof fetch;
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
@@ -469,7 +472,11 @@ export class Engine {
       client,
       this.breadcrumb,
       outputRoot,
-      { maxConcurrentPollers: options.maxConcurrentPollers },
+      {
+        maxConcurrentPollers: options.maxConcurrentPollers,
+        ingestAllowedHosts: options.ingestAllowedHosts,
+        ingestFetchImpl: options.ingestFetchImpl,
+      },
       // Phase 13 — fire-and-forget hook delegates to the async background
       // fingerprinter. The hook itself returns synchronously (returns a void
       // expression of a Promise.catch) so GenerationEngine.downloadAndPersist
@@ -935,6 +942,24 @@ export class Engine {
     const result = await this.generation.submitGeneration(shotId, workflowJson, notes);
     // D-WEBUI-29: version.created fires AFTER the row is inserted. The
     // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
+    this.events.emitEvent('version.created', {
+      version_id: result.entity.id,
+      shot_id: result.entity.shot_id,
+      breadcrumb: result.breadcrumb.text,
+      at: this.nowIso(),
+    });
+    return result;
+  }
+
+  /**
+   * Pivot Phase D — inbound registration wrapper. Delegates to the GenerationEngine
+   * and emits version.created (same dashboard signal as submit) so a registered
+   * external output shows up in the grid like any other completed version.
+   */
+  async registerExternalOutput(
+    input: RegisterExternalOutputInput,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    const result = await this.generation.registerExternalOutput(input);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
       shot_id: result.entity.shot_id,

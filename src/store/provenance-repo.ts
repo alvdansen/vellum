@@ -63,6 +63,11 @@ export type ProvenanceCompletedPayload = {
   seed: number | null;
   models_json: string;
   outputs_json: string;
+  // Pivot Phase B/D — neutral, provider-agnostic provenance for backends with no
+  // ComfyUI prompt graph (Replicate/FAL/…) and for externally-registered outputs.
+  // Optional; omitted ⇒ NULL (legacy/ComfyUI completed events).
+  generation_request_json?: string | null;
+  generation_result_json?: string | null;
 };
 export type ProvenanceFailedPayload = { error_code: string; error_message: string };
 /** Phase 13 — PROV-V-03. Sibling event written by the background fingerprinter
@@ -128,6 +133,12 @@ export class ProvenanceRepo {
       // payload in the new summary_generated_json column (migration 0007).
       summary_generated_json:
         payload.event_type === 'summary_generated' ? payload.summary_generated_json : null,
+      // Pivot Phase B/D — neutral provenance columns, populated only on 'completed'
+      // events that carry them (non-ComfyUI + externally-registered outputs).
+      generation_request_json:
+        payload.event_type === 'completed' ? (payload.generation_request_json ?? null) : null,
+      generation_result_json:
+        payload.event_type === 'completed' ? (payload.generation_result_json ?? null) : null,
       timestamp: Date.now(),
     };
     try {

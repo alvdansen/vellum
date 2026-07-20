@@ -21,6 +21,37 @@ import {
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
 import type { ModelRef, IterateOverride } from '../types/provenance.js';
 import type { ComfyOutput, StatusResponse, StoredOutput } from '../comfyui/types.js';
+import {
+  ingestDownloadToPath,
+  assertIngestUrlAllowed,
+  DEFAULT_INGEST_ALLOWED_HOSTS,
+} from './ingest.js';
+
+/** Pivot Phase D — inbound registration input (an external agent/webhook
+ *  reporting a finished asset by URL). */
+export interface RegisterExternalOutputInput {
+  shotId: string;
+  providerId: string;
+  outputs: Array<{ url: string; filename?: string; content_type?: string }>;
+  provenance?: Record<string, unknown>;
+  notes?: string;
+  externalJobRef?: string;
+}
+
+/** Sanitize a registered output's on-disk basename (from provided name or URL). */
+function safeRegisteredFilename(provided: string | undefined, url: string, index: number): string {
+  let name = (provided ?? '').trim();
+  if (!name) {
+    try {
+      name = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+    } catch {
+      name = '';
+    }
+  }
+  name = name.replace(/[^A-Za-z0-9._-]/g, '');
+  if (!name || name === '.' || name === '..') name = `output_${index}`;
+  return name;
+}
 
 const GENERATION_TIMEOUT_MS = 600_000; // D-GEN-25: 10 minutes
 /**
@@ -68,6 +99,10 @@ const POLLER_BOOT_JITTER_MAX_MS = 800;
 export class GenerationEngine {
   private pollers = new Map<string, AbortController>();
   private readonly maxConcurrentPollers: number;
+  // Pivot Phase D — inbound ingest trust boundary. Built-in known hosts plus any
+  // operator additions (VELLUM_INGEST_ALLOWED_HOSTS). fetchImpl is test-injectable.
+  private readonly ingestAllowedHosts: readonly string[];
+  private readonly ingestFetchImpl?: typeof fetch;
 
   constructor(
     private hierarchy: HierarchyRepo,
@@ -77,7 +112,11 @@ export class GenerationEngine {
     private client: GenerationProvider | null,
     private breadcrumb: BreadcrumbResolver,
     private outputRoot: string = 'outputs',
-    options: { maxConcurrentPollers?: number } = {},
+    options: {
+      maxConcurrentPollers?: number;
+      ingestAllowedHosts?: readonly string[];
+      ingestFetchImpl?: typeof fetch;
+    } = {},
     /** Phase 13 — PROV-V-03. Optional fire-and-forget hook fired from
      *  downloadAndPersist immediately AFTER writeCompletedEvent + markCompleted
      *  in the success branch only (failed-download branch never fires it).
@@ -89,6 +128,99 @@ export class GenerationEngine {
     const cap = options.maxConcurrentPollers ?? DEFAULT_MAX_CONCURRENT_POLLERS;
     // Clamp to a sane range: at least 1, at most 20 (Pro tier × 4 buffer).
     this.maxConcurrentPollers = Math.max(1, Math.min(20, cap));
+    this.ingestAllowedHosts = [
+      ...DEFAULT_INGEST_ALLOWED_HOSTS,
+      ...(options.ingestAllowedHosts ?? []),
+    ];
+    this.ingestFetchImpl = options.ingestFetchImpl;
+  }
+
+  /**
+   * Pivot Phase D — inbound registration. An external agent (or provider webhook)
+   * reports a finished asset by URL; we create a COMPLETED version stamped with the
+   * reporting provider, ingest each output under the SSRF-guarded trust boundary,
+   * and record neutral provenance. This is how "any output can speak to it" — it
+   * converges on the same completed-event + markCompleted machinery as the outbound
+   * path, skipping submit/poll.
+   */
+  async registerExternalOutput(
+    input: RegisterExternalOutputInput,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    const shot = this.hierarchy.getShot(input.shotId);
+    if (!shot) {
+      throw new TypedError(
+        'SHOT_NOT_FOUND',
+        `Shot '${input.shotId}' not found`,
+        `Verify the shot id with { tool: 'shot', action: 'get' }`,
+      );
+    }
+    if (!input.providerId) {
+      throw new TypedError('INVALID_INPUT', 'register requires a non-empty provider id');
+    }
+    if (!input.outputs || input.outputs.length === 0) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        'register requires at least one output',
+        'Pass outputs: [{ url: "https://…" }].',
+      );
+    }
+    // Pre-flight the trust boundary BEFORE any DB write — a rejected URL must not
+    // leave an orphaned version row behind.
+    for (const out of input.outputs) {
+      assertIngestUrlAllowed(out.url, this.ingestAllowedHosts);
+    }
+
+    const seq = this.hierarchy.getSequence(shot.sequence_id)!;
+    const proj = this.hierarchy.getProject(seq.project_id)!;
+    const row = this.versions.insertVersion(input.shotId, input.notes, undefined, input.providerId);
+    if (input.externalJobRef) this.versions.setJobId(row.id, input.externalJobRef);
+    const vLabel = versionLabel(row.version_number);
+
+    const stored: StoredOutput[] = [];
+    for (let i = 0; i < input.outputs.length; i++) {
+      const out = input.outputs[i]!;
+      const baseName = safeRegisteredFilename(out.filename, out.url, i);
+      const relPath = buildOutputPath({
+        projectName: proj.name,
+        sequenceName: seq.name,
+        shotName: shot.name,
+        versionLabel: vLabel,
+        filename: baseName,
+        root: this.outputRoot,
+      });
+      const dir = path.dirname(relPath);
+      await ensureDir(dir);
+      const finalName = await resolveCollisionSuffix(dir, baseName);
+      const finalPath = path.join(dir, finalName);
+      try {
+        const dl = await ingestDownloadToPath(out.url, finalPath, {
+          allowedHosts: this.ingestAllowedHosts,
+          fetchImpl: this.ingestFetchImpl,
+        });
+        stored.push({
+          filename: finalName,
+          path: dl.path,
+          url: out.url,
+          content_type: out.content_type ?? dl.contentType,
+          size_bytes: dl.sizeBytes,
+        });
+      } catch (err) {
+        // A mid-ingest failure marks the version failed (audit trail) and surfaces.
+        const code: ErrorCode = err instanceof TypedError ? err.code : 'DOWNLOAD_FAILED';
+        const msg = err instanceof TypedError ? err.message : String(err);
+        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+        this.versions.markFailed(row.id, code, msg);
+        if (err instanceof TypedError) throw err;
+        throw new TypedError('DOWNLOAD_FAILED', msg);
+      }
+    }
+
+    // Neutral provenance: caller-asserted params/models + the reporting provider id.
+    const neutralJson = JSON.stringify({ provider_id: input.providerId, ...(input.provenance ?? {}) });
+    this.provenanceWriter.writeCompletedEvent(row.id, null, JSON.stringify(stored), neutralJson);
+    this.versions.markCompleted(row.id, JSON.stringify(stored));
+    const refreshed = this.versions.getVersion(row.id)!;
+    return { entity: refreshed, breadcrumb: this.breadcrumb.resolve('version', row.id) };
   }
 
   /**
