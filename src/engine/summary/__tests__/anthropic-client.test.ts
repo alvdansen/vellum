@@ -191,7 +191,7 @@ vi.mock('@anthropic-ai/sdk', async () => {
 // ---------------------------------------------------------------------------
 
 const PROMPT_INPUT = {
-  system: 'You are a VFX Supervisor.',
+  system: 'You are an art director.',
   userTurn: '<provenance><model_name>flux1-dev</model_name></provenance>',
 };
 

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-An open-source MCP server that layers VFX production structure over ComfyUI Cloud's API. TypeScript, single process, dual transport (stdio + Streamable HTTP).
+An open-source, provider-agnostic MCP server that layers production structure + provenance over any asset-generation backend (ComfyUI, Replicate, and more). TypeScript, single process, dual transport (stdio + Streamable HTTP).
 
 ## Stack
 
@@ -51,7 +51,7 @@ cd packages/dashboard && npx vite build
 ## Conventions
 
 - Use `nanoid()` for all entity IDs
-- VFX naming: zero-padded versions (`v001`), underscore separators
+- Production naming: zero-padded versions (`v001`), underscore separators
 - Error responses must be human-readable with actionable guidance
 - Never return raw JSON dumps to agents — structure responses with context
 - Paginate all list queries (default 20, include total count)

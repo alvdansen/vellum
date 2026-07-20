@@ -56,7 +56,7 @@ export async function judgeLineageRelationship(
     return { ok: true, score: 5 };
   }
 
-  const judgeRubric = `You are evaluating a VFX summary for lineage-relationship correctness.
+  const judgeRubric = `You are evaluating a production summary for lineage-relationship correctness.
 
 Summary: "${summary}"
 
@@ -108,7 +108,7 @@ export async function judgeVoiceRegister(summary: string): Promise<JudgeResult> 
     return { ok: true, score: 5 };
   }
 
-  const judgeRubric = `You are evaluating a VFX summary for Supervisor voice authenticity.
+  const judgeRubric = `You are evaluating a production summary for art-director voice authenticity.
 
 Summary: "${summary}"
 

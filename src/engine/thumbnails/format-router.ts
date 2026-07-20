@@ -40,7 +40,7 @@ export type FormatRoute =
 
 /**
  * Image extensions sharp can decode for thumbnail derivation. PNG/JPEG/WebP
- * are universal; TIFF is included because ComfyUI VFX outputs sometimes
+ * are universal; TIFF is included because generation outputs sometimes
  * land as multi-page TIFF (Phase 14 already routes TIFF for c2pa signing,
  * and sharp's libvips backend handles TIFF natively).
  */

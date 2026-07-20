@@ -60,8 +60,8 @@ describe('template constants (D-LLM-1..6)', () => {
 });
 
 describe('SYSTEM_PROMPT (D-LLM-2 voice anchor + D-PRIV-5 untrusted-block + banned-lexicon)', () => {
-  it('Test 5: SYSTEM_PROMPT contains "VFX Supervisor" (voice anchor)', () => {
-    expect(SYSTEM_PROMPT).toContain('VFX Supervisor');
+  it('Test 5: SYSTEM_PROMPT contains "art director" (voice anchor)', () => {
+    expect(SYSTEM_PROMPT).toContain('art director');
   });
 
   it('Test 6: SYSTEM_PROMPT contains "redacted" rule (D-VAL-3 disclosure mandate visible to LLM)', () => {

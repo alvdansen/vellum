@@ -2,7 +2,7 @@
 // ZERO imports — this file is the canonical type source consumed by engine, store, and tools.
 
 /**
- * MNT-04: single source of truth for the VFX shot naming convention (D-07).
+ * MNT-04: single source of truth for the shot naming convention (D-07).
  * Lowercase `sh` prefix + at least 3 digits (e.g. `sh010`, `sh0200`). The engine
  * enforces the regex before any DB work (pipeline.ts); the shot tool's Zod
  * schema enforces it at the tool boundary for early rejection. Keeping both

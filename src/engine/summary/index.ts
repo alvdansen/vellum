@@ -319,7 +319,7 @@ export async function summarizeVersion(
   if (version.parent_version_id) {
     const parent = deps.versionRepo.getVersion(version.parent_version_id);
     if (parent) {
-      // Phase 3 convention: zero-padded `v001` labels (PROJECT.md VFX naming).
+      // Phase 3 convention: zero-padded `v001` labels (PROJECT.md naming convention).
       parentVersionLabel = `v${String(parent.version_number).padStart(3, '0')}`;
     }
   }

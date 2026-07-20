@@ -64,7 +64,7 @@ export function parseCliFlags(argv: string[]): CliArgs {
 }
 
 export function printHelp(): void {
-  console.error(`vellum — MCP server for VFX project hierarchy
+  console.error(`vellum — MCP server for creative-production hierarchy, generation & provenance
 
 Usage:
   vellum [--http] [--port <N>] [--db <path>] [--help] [--version]

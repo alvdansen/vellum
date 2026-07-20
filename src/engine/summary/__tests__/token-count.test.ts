@@ -101,7 +101,7 @@ describe('Phase 19 — Haiku 4.5 cached-prefix token-count assertion (BLOCKER #2
     // The CACHED prefix (system) is identical across requests — only the
     // userTurn varies. This is the prerequisite for cache_control to work.
     expect(prefixA).toBe(prefixB);
-    expect(prefixA).toContain('VFX Supervisor'); // SYSTEM_PROMPT anchor
+    expect(prefixA).toContain('art director'); // SYSTEM_PROMPT anchor
     expect(prefixA).toContain('flux1-dev'); // Few-shot example #1 anchor
     expect(prefixA).toContain('cinematic_fantasy'); // Few-shot example #2 anchor (voice fingerprint)
     expect(prefixA).toContain('<example_notes>'); // BLOCKER #2 expansion anchor (5 occurrences)

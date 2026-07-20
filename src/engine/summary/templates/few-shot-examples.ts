@@ -76,7 +76,7 @@ composition to life. The lineage begins with this striking image." (AI-register
 slop: "stunning", "captures the essence", "powerful", "bring to life",
 "striking image" all describe the rendered image rather than the workflow,
 violating SYSTEM_PROMPT rule 4.) The "first iterate" phrasing is intentional —
-"iterate" is VFX team vocabulary (a versioned attempt at a shot), not
+"iterate" is production team vocabulary (a versioned attempt at a shot), not
 "iteration" (generic ML training-loop register). A peer Supervisor leaving a
 Frame.io comment uses "iterate" because the version is a discrete snapshot in
 the project hierarchy, not a continuous-improvement step. The phrase "this is
@@ -142,7 +142,7 @@ in workflow vocabulary (env map = environment / IBL / lighting capture).
 "HDRI" is industry-standard (high-dynamic-range image-based lighting); a
 peer would not paraphrase this to "high-quality lighting" or "better
 lighting". Tense check: "is", "swapping" — present-tense / present-participle
-throughout. Audience check: a Sequence Lead at SpinVFX or Method Studios
+throughout. Audience check: a production lead at a studio
 reviewing the v003 frame in a Frame.io session would read this and know
 exactly which parent to compare against and what the delta tested. Voice
 register check: zero AI-slop, no "captures the essence", no "vibrant" or
@@ -183,7 +183,7 @@ the C2PA chain. Banned-lexicon check: zero "stunning"/"vibrant"/"delve"
 slop. Word count: 33.
 
 NDA / studio confidentiality discipline (LOAD-BEARING per AI-SPEC §1b
-"Soft norms"). VFX production routinely operates under client/studio NDAs:
+"Soft norms"). Creative production routinely operates under client/studio NDAs:
 project codenames, character IP names, plot details, client identity. Phase 16
 redaction is the existing primitive that protects this; Phase 19 must compose
 with it. Two defensive layers operate here. Layer 1 (architectural): the
@@ -199,7 +199,7 @@ C2PA-signed manifest for the full lineage" routes the reviewer to the
 authoritative cryptographic source: the manifest's redacted_assertions
 preserve the FACT that redaction occurred (per Phase 16 vellum.redacted
 vendor assertion) without echoing the redacted content. Voice fingerprint
-check: a Studio Pipeline TD reviewing this for SpinVFX's C2PA prototyping
+check: a studio pipeline TD reviewing this for a studio's C2PA prototyping
 pipeline would accept this phrasing — it surfaces redaction without leaking,
 preserves lineage context, and points to the manifest as ground truth. What
 this summary WOULD NOT do: paraphrase the redacted prompt ("a dragon scene"
@@ -247,7 +247,7 @@ longer than the others because the LoRA list eats word budget; still within
 the 25-50-word peer-comment range.
 
 LoRA-fidelity discipline (HIGH-IMPACT per AI-SPEC §1b "Hallucinated or
-dropped LoRAs"). LoRAs ARE the creative-decision surface for VFX-generative
+dropped LoRAs"). LoRAs ARE the creative-decision surface for generative asset
 work — they encode style transfer, character lock, lighting register, etc.
 A Supervisor reviewing this version needs to know which LoRAs are stacked
 and in what order so they can compare to the project bible's approved LoRA

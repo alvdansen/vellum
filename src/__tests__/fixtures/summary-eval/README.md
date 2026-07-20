@@ -46,10 +46,10 @@ provenance schema change (Phase 13 / 15 / 16) changes the canonical shape of
 
 ## Authoring Roles
 
-- VFX Supervisor / Sequence Lead authors voice-fingerprint reference summaries.
+- An art director / production lead authors voice-fingerprint reference summaries.
 - Studio Pipeline TD owns redacted fixtures (08, 09) for NDA / leak-scan calibration.
-- VFX Generalist / Compositor reviews fact-fidelity dimensions.
-- Open-source contributors propose edge cases via PR with VFX-practitioner sign-off.
+- A generalist / compositor reviews fact-fidelity dimensions.
+- Open-source contributors propose edge cases via PR with practitioner sign-off.
 
 ## CI Integration
 

@@ -5,7 +5,7 @@
 <h1 align="center">Vellum</h1>
 
 <p align="center">
-  <strong>Production-grade VFX pipeline structure, layered over ComfyUI Cloud, surfaced as MCP tools.</strong><br/>
+  <strong>Provider-agnostic production structure + provenance for AI asset generation, surfaced as MCP tools.</strong><br/>
   <em>Workspace → project → sequence → shot → version. Append-only provenance. Reproduce anything.</em>
 </p>
 
@@ -40,7 +40,7 @@ Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven co
 | `workspace`  | Top-level container (one studio, one client, one project group)        | `create`, `list`, `get`                                       |
 | `project`    | A film, episode, spot, or campaign within a workspace                  | `create`, `list`, `get`                                       |
 | `sequence`   | A scene or shot group within a project                                 | `create`, `list`, `get`                                       |
-| `shot`       | An individual shot — VFX naming convention (`v001`, underscore-separated) | `create`, `list`, `get`                              |
+| `shot`       | An individual shot — zero-padded version naming (`v001`, underscore-separated) | `create`, `list`, `get`                              |
 | `generation` | Submit + check ComfyUI Cloud jobs; reproduce or iterate from a version | `submit`, `status`, `reproduce`, `iterate`                   |
 | `version`    | Read versions, full provenance, and structured diffs between any two    | `get`, `list`, `provenance`, `diff`                          |
 | `asset`      | Tag versions, attach arbitrary metadata, and query across the hierarchy | `add_tag`, `remove_tag`, `set_metadata`, `remove_metadata`, `query`, `list_tags`, `list_metadata_keys` |
