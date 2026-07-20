@@ -1,4 +1,5 @@
 import path from 'node:path/posix';
+import { unlink } from 'node:fs/promises';
 import type { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
@@ -48,7 +49,10 @@ function safeRegisteredFilename(provided: string | undefined, url: string, index
       name = '';
     }
   }
-  name = name.replace(/[^A-Za-z0-9._-]/g, '');
+  // Strip unsafe chars, then collapse any run of 2+ dots to a single dot so a
+  // name like 'boom..png' can never carry a '..' traversal segment into
+  // buildOutputPath (which would otherwise throw past the version row).
+  name = name.replace(/[^A-Za-z0-9._-]/g, '').replace(/\.{2,}/g, '.');
   if (!name || name === '.' || name === '..') name = `output_${index}`;
   return name;
 }
@@ -179,20 +183,24 @@ export class GenerationEngine {
     const stored: StoredOutput[] = [];
     for (let i = 0; i < input.outputs.length; i++) {
       const out = input.outputs[i]!;
-      const baseName = safeRegisteredFilename(out.filename, out.url, i);
-      const relPath = buildOutputPath({
-        projectName: proj.name,
-        sequenceName: seq.name,
-        shotName: shot.name,
-        versionLabel: vLabel,
-        filename: baseName,
-        root: this.outputRoot,
-      });
-      const dir = path.dirname(relPath);
-      await ensureDir(dir);
-      const finalName = await resolveCollisionSuffix(dir, baseName);
-      const finalPath = path.join(dir, finalName);
+      // Path-building (buildOutputPath / ensureDir / resolveCollisionSuffix) is
+      // INSIDE the try: any pre-fetch failure (a malformed filename, mkdir EACCES/
+      // ENOSPC, a readdir error) must route through markFailed — never escape past
+      // the version row and strand it at 'submitted'.
       try {
+        const baseName = safeRegisteredFilename(out.filename, out.url, i);
+        const relPath = buildOutputPath({
+          projectName: proj.name,
+          sequenceName: seq.name,
+          shotName: shot.name,
+          versionLabel: vLabel,
+          filename: baseName,
+          root: this.outputRoot,
+        });
+        const dir = path.dirname(relPath);
+        await ensureDir(dir);
+        const finalName = await resolveCollisionSuffix(dir, baseName);
+        const finalPath = path.join(dir, finalName);
         const dl = await ingestDownloadToPath(out.url, finalPath, {
           allowedHosts: this.ingestAllowedHosts,
           fetchImpl: this.ingestFetchImpl,
@@ -205,7 +213,9 @@ export class GenerationEngine {
           size_bytes: dl.sizeBytes,
         });
       } catch (err) {
-        // A mid-ingest failure marks the version failed (audit trail) and surfaces.
+        // Best-effort: remove files already committed by earlier outputs so a
+        // failed registration leaves no dangling assets with no provenance pointer.
+        await Promise.all(stored.map((s) => unlink(s.path).catch(() => undefined)));
         const code: ErrorCode = err instanceof TypedError ? err.code : 'DOWNLOAD_FAILED';
         const msg = err instanceof TypedError ? err.message : String(err);
         this.provenanceWriter.writeFailedEvent(row.id, code, msg);

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
@@ -128,5 +128,67 @@ describe('registerExternalOutput', () => {
     await expect(
       engine.registerExternalOutput({ shotId, providerId: 'replicate', outputs: [] }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  test("a filename containing '..' is sanitized and still registers (no orphan version)", async () => {
+    const { entity } = await engine.registerExternalOutput({
+      shotId,
+      providerId: 'replicate',
+      outputs: [{ url: 'https://replicate.delivery/pbxt/xyz/render.png', filename: 'boom..png' }],
+    });
+    expect(entity.status).toBe('completed');
+    const outputs = JSON.parse(entity.outputs_json ?? '[]') as Array<{ filename: string }>;
+    expect(outputs[0].filename).not.toContain('..');
+    expect(outputs[0].filename).toBe('boom.png');
+  });
+
+  test('partial multi-output failure marks the version failed AND cleans up already-downloaded files', async () => {
+    // A fresh engine whose fetch serves the first URL then 404s the second.
+    const { db } = makeInMemoryDb();
+    const dir = mkdtempSync(join(tmpdir(), 'vellum-register-partial-'));
+    const hierarchy = new HierarchyRepo(db);
+    const vRepo = new VersionRepo(db);
+    const pRepo = new ProvenanceRepo(db);
+    const fetchImpl = (async (input: URL | RequestInfo) => {
+      const u = input instanceof URL ? input.href : String(input);
+      if (u.includes('good.png')) {
+        return new Response(new Uint8Array([1, 2, 3, 4]) as unknown as BodyInit, {
+          status: 200,
+          headers: { 'content-type': 'image/png', 'content-length': '4' },
+        });
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+    const eng = new GenerationEngine(
+      hierarchy,
+      vRepo,
+      pRepo,
+      new ProvenanceWriter(pRepo),
+      null,
+      new BreadcrumbResolver(hierarchy, vRepo),
+      dir,
+      { ingestFetchImpl: fetchImpl },
+    );
+    const ws = hierarchy.createWorkspace('wp');
+    const proj = hierarchy.createProject(ws.id, 'pp');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const sh = hierarchy.createShot(seq.id, 'sh010');
+
+    await expect(
+      eng.registerExternalOutput({
+        shotId: sh.id,
+        providerId: 'replicate',
+        outputs: [
+          { url: 'https://replicate.delivery/a/good.png' },
+          { url: 'https://replicate.delivery/a/bad.png' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'DOWNLOAD_FAILED' });
+
+    // The version is terminal-failed, and the first (already-downloaded) file was
+    // unlinked — no dangling .png remains under the outputs dir.
+    const pngs = readdirSync(dir, { recursive: true }) as string[];
+    expect(pngs.filter((f) => String(f).endsWith('.png'))).toHaveLength(0);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

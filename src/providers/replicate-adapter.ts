@@ -79,16 +79,32 @@ function safeOutputName(url: string, index: number): string {
   return name;
 }
 
-/** Flatten Replicate's `output` (string | string[] | object) into ComfyOutput[]. */
+/**
+ * Flatten Replicate's `output` into ComfyOutput[]. Replicate output schemas vary
+ * widely by model — a bare URL string, an array of URLs, an object of URLs, but
+ * ALSO nested shapes like { video: ["https://…"] } or [{ image: "https://…" }].
+ * So we RECURSE through arrays/objects and collect every https URL, regardless of
+ * nesting depth (a shallow scan silently drops the real asset — see the pivot
+ * adversarial review). Non-https values (data: URIs, numbers, text) are ignored;
+ * status() treats a completed prediction with zero extractable URLs as a failure
+ * rather than a silent empty success.
+ */
 export function extractReplicateOutputs(output: unknown): ComfyOutput[] {
   const urls: string[] = [];
-  const pushIfUrl = (v: unknown): void => {
-    if (typeof v === 'string' && /^https:\/\//i.test(v)) urls.push(v);
+  const visit = (v: unknown): void => {
+    if (typeof v === 'string') {
+      if (/^https:\/\//i.test(v)) urls.push(v);
+      return;
+    }
+    if (Array.isArray(v)) {
+      for (const el of v) visit(el);
+      return;
+    }
+    if (v && typeof v === 'object') {
+      for (const val of Object.values(v as Record<string, unknown>)) visit(val);
+    }
   };
-  if (typeof output === 'string') pushIfUrl(output);
-  else if (Array.isArray(output)) for (const o of output) pushIfUrl(o);
-  else if (output && typeof output === 'object')
-    for (const v of Object.values(output as Record<string, unknown>)) pushIfUrl(v);
+  visit(output);
   return urls.map((u, i) => ({ filename: safeOutputName(u, i), subfolder: '', type: u }));
 }
 
@@ -207,8 +223,22 @@ export class ReplicateAdapter implements GenerationProvider {
     }
     const p = (await res.json().catch(() => ({}))) as ReplicatePrediction;
     const state = mapReplicateStatus(p.status);
+    if (state === 'completed') {
+      const outputs = extractReplicateOutputs(p.output);
+      // A prediction that succeeds but yields no downloadable https URL (e.g. a
+      // model returning text/data-URIs) must NOT strand a version as terminally
+      // 'completed' with zero assets. Surface it as a failure with an actionable
+      // message so the engine records a FAILED version, not a silent empty success.
+      if (outputs.length === 0) {
+        return {
+          status: 'failed',
+          error:
+            'Replicate prediction succeeded but returned no downloadable https output URL — Vellum could not persist an asset. Output was not an https URL (or nested set of URLs).',
+        };
+      }
+      return { status: 'completed', outputs };
+    }
     const out: StatusResponse = { status: state };
-    if (state === 'completed') out.outputs = extractReplicateOutputs(p.output);
     if (state === 'failed' && p.error != null) out.error = p.error;
     return out;
   }

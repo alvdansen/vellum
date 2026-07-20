@@ -135,6 +135,33 @@ describe('ReplicateAdapter', () => {
     }
   });
 
+  describe('status — completed-with-no-asset guard', () => {
+    test('nested-array output is extracted, not dropped', async () => {
+      const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        fetchImpl: mockFetch({
+          'GET /v1/predictions/pred_n': () =>
+            json({ id: 'pred_n', status: 'succeeded', output: { video: ['https://replicate.delivery/a/out.mp4'] } }),
+        }),
+      });
+      const s = await a.status('pred_n');
+      expect(s.status).toBe('completed');
+      expect(s.outputs).toHaveLength(1);
+      expect(s.outputs![0].type).toBe('https://replicate.delivery/a/out.mp4');
+    });
+
+    test('succeeded but no downloadable https URL → failed (not a silent empty success)', async () => {
+      const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        fetchImpl: mockFetch({
+          'GET /v1/predictions/pred_x': () =>
+            json({ id: 'pred_x', status: 'succeeded', output: 'data:image/png;base64,AAAA' }),
+        }),
+      });
+      const s = await a.status('pred_x');
+      expect(s.status).toBe('failed');
+      expect(String(s.error)).toMatch(/no downloadable/i);
+    });
+  });
+
   describe('downloadToPath', () => {
     let dir: string;
     beforeEach(() => {
@@ -216,6 +243,22 @@ describe('extractReplicateOutputs', () => {
     expect(extractReplicateOutputs(['https://replicate.delivery/a/1.png', 'https://replicate.delivery/a/2.png'])).toHaveLength(2);
     expect(extractReplicateOutputs({ image: 'https://replicate.delivery/a/1.png', seed: 42 })).toHaveLength(1);
     expect(extractReplicateOutputs(['not-a-url', 42, null])).toHaveLength(0);
+  });
+
+  test('recurses into nested arrays and objects (would otherwise silently drop the asset)', () => {
+    expect(extractReplicateOutputs({ video: ['https://replicate.delivery/a/out.mp4'] })).toHaveLength(1);
+    expect(
+      extractReplicateOutputs([
+        { image: 'https://replicate.delivery/a/1.png' },
+        { image: 'https://replicate.delivery/a/2.png' },
+      ]),
+    ).toHaveLength(2);
+    expect(extractReplicateOutputs({ a: { b: { url: 'https://replicate.delivery/a/deep.png' } } })).toHaveLength(1);
+  });
+
+  test('drops data: URIs (no https) — status() turns this into a failure, not empty success', () => {
+    expect(extractReplicateOutputs('data:image/png;base64,AAAA')).toHaveLength(0);
+    expect(extractReplicateOutputs({ image: 'data:image/png;base64,AAAA' })).toHaveLength(0);
   });
 
   test('derives a safe basename and carries the URL in type', () => {
