@@ -78,6 +78,11 @@ export interface Version {
   // Phase 12 addition — DEMO-03 (D-CTX-5). JSON-encoded string[] persisted
   // at engine.reproduceVersion time. NULL on legacy rows.
   reproduction_warnings_json: string | null;
+  // Pivot Phase B addition. The GenerationProvider adapter id that produced this
+  // version ('comfyui-cloud', 'replicate', …). Optional in the TS view because
+  // additive/dual-read: DB rows post-migration always carry it (value-or-null),
+  // but hand-built literals predating the pivot may omit it (absent ≡ null).
+  provider?: string | null;
 }
 
 export type EntityType = 'workspace' | 'project' | 'sequence' | 'shot' | 'version';

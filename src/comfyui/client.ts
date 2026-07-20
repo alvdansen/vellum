@@ -244,6 +244,8 @@ export const MAX_ERROR_MESSAGE_CHARS = 1_000;
 // The `implements` clause makes it a compile-time error for this client to drift
 // from the contract the engine depends on. See src/providers/provider.ts.
 export class ComfyUIClient implements GenerationProvider {
+  /** GenerationProvider adapter id (pivot Phase B) — stamped onto versions.provider. */
+  readonly id = 'comfyui-cloud';
   private allowed: RegExp[];
   /**
    * IS-01: admin-supplied allowed hosts are matched by EXACT or SUFFIX

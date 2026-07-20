@@ -56,6 +56,14 @@ export interface DownloadToPathResult {
  */
 export interface GenerationProvider {
   /**
+   * Stable adapter id, stamped onto versions.provider so multi-provider status /
+   * reproduce can route by origin (e.g. 'comfyui-cloud', 'replicate'). Also
+   * surfaced in vellum://capabilities so a cold agent learns which backends are
+   * configured and which support reproduce. (Added in pivot Phase B.)
+   */
+  readonly id: string;
+
+  /**
    * Submit a generation request and return its job handle. The engine stores the
    * returned id verbatim in `versions.job_id` and later passes it to `status()`.
    * ComfyUI: POST /api/prompt where `request` is the resolved node graph.

@@ -162,6 +162,13 @@ export interface ProvenanceEvent {
    *  the JSON-encoded SummaryGeneratedPayloadFields. Pre-Phase-19 rows always
    *  read NULL here (migration 0007 added the column as nullable). */
   summary_generated_json: string | null;
+  // Pivot Phase B additions. Neutral analogs of workflow_json / prompt_json for
+  // non-ComfyUI backends. generation_result_json carries a serialized
+  // NeutralProvenance (src/providers/provenance.ts). Optional in the TS view
+  // (additive/dual-read): DB rows post-migration carry them (value-or-null),
+  // pre-pivot literals may omit them (absent ≡ null). Migration 0009 added both.
+  generation_request_json?: string | null;
+  generation_result_json?: string | null;
   timestamp: number;              // epoch ms
 }
 

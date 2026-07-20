@@ -65,10 +65,11 @@ export class VersionRepo {
     shotId: string,
     notes?: string,
     lineage?: { parent_version_id?: string; lineage_type?: 'reproduce' | 'iterate' },
+    provider?: string | null,
   ): Version {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return this.doInsert(shotId, notes, lineage);
+        return this.doInsert(shotId, notes, lineage, provider);
       } catch (err) {
         if (isUniqueViolation(err) && attempt === 0) continue;
         if (isUniqueViolation(err)) {
@@ -88,6 +89,7 @@ export class VersionRepo {
     shotId: string,
     notes?: string,
     lineage?: { parent_version_id?: string; lineage_type?: 'reproduce' | 'iterate' },
+    provider?: string | null,
   ): Version {
     return this.db.transaction((tx) => {
       const maxRow = tx
@@ -117,6 +119,10 @@ export class VersionRepo {
         // engine.reproduceVersion via VersionRepo.setReproductionWarnings
         // immediately after the row INSERT for reproduce-lineage versions.
         reproduction_warnings_json: null,
+        // Pivot Phase B: the provider that produced this version, stamped at
+        // INSERT time from the active GenerationProvider.id. NULL when the caller
+        // does not supply one (legacy/test paths).
+        provider: provider ?? null,
       };
       tx.insert(versions).values(row).run();
       return row;

@@ -53,6 +53,8 @@ export interface FakeDownloadResult {
 // actually satisfiable by a non-ComfyUI backend. If the contract and this fake
 // ever drift, the build breaks here (the point of Phase A).
 export class FakeComfyUIClient implements GenerationProvider {
+  /** Mirrors the real ComfyUI adapter id (pivot Phase B) — the fake stands in for it. */
+  readonly id = 'comfyui-cloud';
   calls: FakeCall[] = [];
   scenario: FakeScenario = 'happy';
 

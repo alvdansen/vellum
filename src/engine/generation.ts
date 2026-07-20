@@ -141,7 +141,9 @@ export class GenerationEngine {
       args.parentVersionId && args.lineageType
         ? { parent_version_id: args.parentVersionId, lineage_type: args.lineageType }
         : undefined;
-    const row = this.versions.insertVersion(args.shotId, args.notes, lineage);
+    // Pivot Phase B: stamp the originating provider on the version row. `this.client`
+    // is guaranteed non-null here (checked above), so `.id` is safe.
+    const row = this.versions.insertVersion(args.shotId, args.notes, lineage, this.client.id);
 
     // Submit-event provenance BEFORE HTTP so D-PROV-04 holds even if ComfyUI rejects.
     this.provenanceWriter.writeSubmitEvent(row.id, args.workflowJson);

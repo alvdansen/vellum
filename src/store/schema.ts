@@ -99,6 +99,11 @@ export const versions = sqliteTable('versions', {
   // "no warnings recorded". Added by drizzle migrator via
   // 0005_phase12_reproduction_warnings.sql.
   reproduction_warnings_json: text('reproduction_warnings_json'),
+  // Pivot Phase B addition (nullable). The GenerationProvider adapter id that
+  // produced this version ('comfyui-cloud', 'replicate', …). NULL on pre-pivot
+  // rows. Added by drizzle migrator via 0009_pivot_neutral_provenance.sql;
+  // SCHEMA_DDL below intentionally does NOT declare it — additive-split pattern.
+  provider: text('provider'),
 }, (t) => ({
   uniqueVersionPerShot: unique().on(t.shot_id, t.version_number),
   // Supports listPendingVersions() — called at every server boot by the recovery
@@ -141,6 +146,13 @@ export const provenance = sqliteTable('provenance', {
   // 0007_phase19_summary_generated_event.sql; SCHEMA_DDL above intentionally
   // does NOT declare this column — matches the Phase 2/3/12/14 additive split.
   summary_generated_json: text('summary_generated_json'),
+  // Pivot Phase B additions (nullable). Neutral, provider-agnostic analogs of
+  // workflow_json / prompt_json for backends with no ComfyUI prompt graph.
+  // generation_result_json holds a serialized NeutralProvenance
+  // (src/providers/provenance.ts). ComfyUI keeps populating the legacy columns;
+  // readers dual-read. Added by 0009_pivot_neutral_provenance.sql — NOT in SCHEMA_DDL.
+  generation_request_json: text('generation_request_json'),
+  generation_result_json: text('generation_result_json'),
   timestamp: integer('timestamp').notNull(),
 }, (t) => ({
   // D-PROV-35: two-column index supports both "all events for version in order"
