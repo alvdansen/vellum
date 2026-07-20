@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Vellum — Structured production for AI pipelines" width="900" />
+  <img src="docs/assets/hero.png" alt="Vellum — Provenance for AI asset generation" width="900" />
 </p>
 
 <h1 align="center">Vellum</h1>
@@ -50,7 +50,7 @@ Every response carries the full hierarchy breadcrumb (`workspace > project > seq
 ## Architecture
 
 <p align="center">
-  <img src="docs/assets/architecture.png" alt="Four-tier architecture: MCP tools, Engine facade, ComfyUI Cloud client, SQLite WAL store" width="780" />
+  <img src="docs/assets/architecture.svg" alt="Four-tier architecture: MCP tools → Engine facade → Provider adapters (ComfyUI, Replicate, …) → SQLite WAL append-only store" width="780" />
 </p>
 
 Four layers, each independently testable:

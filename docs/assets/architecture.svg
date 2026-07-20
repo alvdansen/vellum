@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" font-family="'Archivo','Arial Narrow','Helvetica Neue',Arial,sans-serif">
+  <rect width="1000" height="800" fill="#15323d"/>
+  <defs>
+    <marker id="none"/>
+  </defs>
+
+  <!-- helper style: cream sticker with ink shadow, bold ink text -->
+  <!-- ===== Tier 1: MCP TOOLS ===== -->
+  <g>
+    <rect x="299" y="49" width="440" height="150" rx="10" fill="#0f1a20"/>
+    <rect x="290" y="40" width="440" height="150" rx="10" fill="#f2e8d3" stroke="#0f1a20" stroke-width="6"/>
+    <rect x="322" y="66" width="376" height="66" rx="6" fill="none" stroke="#0f1a20" stroke-width="5"/>
+    <!-- 7 tool glyphs, evenly spaced inside the inset (centers 355..655) -->
+    <g fill="#0f1a20">
+      <rect x="339" y="83" width="32" height="32"/>
+      <path d="M405 80 l18 10 v20 l-18 10 -18-10 v-20 z"/>
+      <path d="M455 82 l18 34 -36 0 z"/>
+      <path d="M505 80 l19 15 -7 22 -24 0 -7-22 z"/>
+      <path d="M555 81 l18 18 -18 18 -18-18 z"/>
+      <circle cx="605" cy="99" r="17"/>
+      <path d="M645 83 h20 l10 10 v12 l-10 10 h-20 l-10-10 v-12 z"/>
+    </g>
+    <text x="510" y="172" text-anchor="middle" fill="#0f1a20" font-size="34" font-weight="800" letter-spacing="2">MCP TOOLS</text>
+  </g>
+
+  <!-- arrow 1 -->
+  <g fill="#ee6a4b"><rect x="494" y="196" width="22" height="42"/><path d="M470 232 h70 l-35 34 z"/></g>
+
+  <!-- ===== Tier 2: ENGINE FACADE ===== -->
+  <g>
+    <rect x="329" y="279" width="360" height="92" rx="16" fill="#0f1a20"/>
+    <rect x="320" y="270" width="360" height="92" rx="16" fill="#f2e8d3" stroke="#0f1a20" stroke-width="6"/>
+    <text x="500" y="329" text-anchor="middle" fill="#0f1a20" font-size="34" font-weight="800" letter-spacing="2">ENGINE FACADE</text>
+  </g>
+
+  <!-- arrow 2 -->
+  <g fill="#ee6a4b"><rect x="494" y="368" width="22" height="42"/><path d="M470 404 h70 l-35 34 z"/></g>
+
+  <!-- ===== Tier 3: PROVIDER ADAPTERS (was ComfyUI Cloud client) ===== -->
+  <g>
+    <path d="M309 451 h432 l40 61 -40 61 h-432 l-40-61 z" fill="#0f1a20"/>
+    <path d="M300 442 h432 l40 61 -40 61 h-432 l-40-61 z" fill="#f2e8d3" stroke="#0f1a20" stroke-width="6"/>
+    <text x="500" y="497" text-anchor="middle" fill="#0f1a20" font-size="32" font-weight="800" letter-spacing="1.5">PROVIDER ADAPTERS</text>
+    <text x="500" y="531" text-anchor="middle" fill="#2a4a55" font-size="21" font-weight="700" letter-spacing="1">ComfyUI · Replicate · …</text>
+  </g>
+
+  <!-- arrow 3 -->
+  <g fill="#ee6a4b"><rect x="494" y="570" width="22" height="42"/><path d="M470 606 h70 l-35 34 z"/></g>
+
+  <!-- ===== Tier 4: SQLITE WAL STORE (append-only) ===== -->
+  <g>
+    <path d="M300 700 l440 0 -26 66 -440 0 z" fill="#0f1a20" opacity="0.85" transform="translate(14,14)"/>
+    <path d="M300 686 l440 0 -26 66 -440 0 z" fill="#0f1a20" transform="translate(7,7)"/>
+    <path d="M300 686 l440 0 -26 66 -440 0 z" fill="#f2e8d3" stroke="#0f1a20" stroke-width="6"/>
+    <text x="500" y="728" text-anchor="middle" fill="#0f1a20" font-size="30" font-weight="800" letter-spacing="1.5">SQLITE · WAL · APPEND-ONLY</text>
+  </g>
+</svg>
