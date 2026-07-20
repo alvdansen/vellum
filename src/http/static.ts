@@ -43,10 +43,10 @@ const FALLBACK_HTML = `<!DOCTYPE html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VFX Familiar</title>
+    <title>Vellum</title>
   </head>
   <body>
-    <h1>VFX Familiar</h1>
+    <h1>Vellum</h1>
     <p>Dashboard not built. Run: <code>npm run build:dashboard</code></p>
     <p>The MCP server and <code>/api/*</code> routes are still available.</p>
   </body>

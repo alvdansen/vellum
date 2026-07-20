@@ -474,7 +474,7 @@ export class GenerationEngine {
       this.fingerprintHook?.(row.id);
     } catch (err) {
       console.error(
-        `vfx-familiar: fingerprint hook synchronous error for ${row.id}:`,
+        `vellum: fingerprint hook synchronous error for ${row.id}:`,
         (err as Error).message,
       );
     }

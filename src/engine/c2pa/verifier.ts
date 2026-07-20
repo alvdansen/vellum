@@ -20,7 +20,7 @@
 //   - c2pa-rs read() throws / returns null → signature_status='no_manifest'
 //   - native binding load throws → signature_status='no_manifest' (graceful-fail)
 //   - signingCredential.untrusted (D-PLAN-5):
-//       VFX_FAMILIAR_C2PA_TRUST_DEV_CERT='1' → filtered (dev-mode); valid
+//       VELLUM_C2PA_TRUST_DEV_CERT='1' → filtered (dev-mode); valid
 //       otherwise → signature_status='untrusted_root' (production default)
 //   - claimSignature.algorithmUnsupported → 'unsupported_algorithm'
 //   - any other validation_status code → 'invalid'
@@ -73,7 +73,7 @@ export type VerifyManifestInput =
 // D-PLAN-5 dev-acceptable codes (mirror Phase 14
 // src/__tests__/c2pa-verification.test.ts:241-247). Filtered from
 // validation_status BEFORE classification when
-// VFX_FAMILIAR_C2PA_TRUST_DEV_CERT='1'.
+// VELLUM_C2PA_TRUST_DEV_CERT='1'.
 const DEV_ACCEPTABLE_CODES: ReadonlySet<string> = new Set([
   'signingCredential.untrusted',
   'signingCredential.expired',
@@ -84,7 +84,7 @@ const DEV_ACCEPTABLE_CODES: ReadonlySet<string> = new Set([
 
 const EXPECTED_ASSERTION_LABELS: readonly string[] = [
   'c2pa.actions',
-  'vfx_familiar.input',
+  'vellum.input',
 ];
 
 /**
@@ -202,9 +202,9 @@ async function readAndClassify(
   const validationStatus: ValidationStatusMin[] =
     (store.validation_status ?? []) as ValidationStatusMin[];
 
-  // D-PLAN-5: when VFX_FAMILIAR_C2PA_TRUST_DEV_CERT='1', the dev-acceptable
+  // D-PLAN-5: when VELLUM_C2PA_TRUST_DEV_CERT='1', the dev-acceptable
   // codes are filtered from validationStatus BEFORE classification.
-  const trustDevCert = process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT === '1';
+  const trustDevCert = process.env.VELLUM_C2PA_TRUST_DEV_CERT === '1';
   const effectiveValidationStatus: ValidationStatusMin[] = trustDevCert
     ? validationStatus.filter((v: ValidationStatusMin) => !DEV_ACCEPTABLE_CODES.has(v.code ?? ''))
     : validationStatus;

@@ -14,7 +14,7 @@
  *
  * Both paths are guaranteed by the loader (src/utils/c2pa-config.ts) to be:
  *   - Absolute (post-realpathSync)
- *   - Inside the configured allowlist root (cwd, or VFX_FAMILIAR_C2PA_CERT_ROOT)
+ *   - Inside the configured allowlist root (cwd, or VELLUM_C2PA_CERT_ROOT)
  *   - Existing + readable + non-empty at boot time
  *
  * Signing-time consumers (Plan 14-02's signer wrapper) re-read the file bytes
@@ -34,7 +34,7 @@ export interface C2paConfig {
   readonly privateKeyPemPath: string;
   /** Phase 14 fix MR-01: optional RFC 3161 Time-Stamp Authority endpoint.
    *  When `null` (the default when the operator has not set the
-   *  VFX_FAMILIAR_C2PA_TSA_URL env var), the signer wrapper builds a
+   *  VELLUM_C2PA_TSA_URL env var), the signer wrapper builds a
    *  LocalSigner WITHOUT the tsaUrl property — matching c2pa-node v0.5.26's
    *  no-TSA branch. When non-null (operator has opted in to a TSA), the
    *  string is passed through verbatim to c2pa-node; air-gapped or

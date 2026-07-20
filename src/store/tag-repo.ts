@@ -66,7 +66,7 @@ function buildScopeFragment(scope: ScopeFilter): {
 }
 
 /**
- * Repository for VFX Familiar `tags` table (Phase 4 — D-ASST-07, D-ASST-28).
+ * Repository for Vellum `tags` table (Phase 4 — D-ASST-07, D-ASST-28).
  * Plain CRUD (DELETE allowed, unlike provenance-repo which is structurally
  * append-only). Idempotent mutators per D-ASST-03: insertTag uses ON CONFLICT
  * DO NOTHING, deleteTag is a plain DELETE (0 rows affected = success).

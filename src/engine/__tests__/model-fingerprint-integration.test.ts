@@ -20,10 +20,10 @@ import type { ModelRef } from '../../types/provenance.js';
  * Drives the full submit→completed→fingerprint→diff chain against the
  * real Engine + ProvenanceRepo + ProvenanceWriter wiring with a fake
  * ComfyUI client. Proves:
- *  - Test 1: criterion #1 — populated model_hash when VFX_FAMILIAR_MODELS_DIR
+ *  - Test 1: criterion #1 — populated model_hash when VELLUM_MODELS_DIR
  *            is set with fixture files.
  *  - Test 2: criterion #2 — every entry records 'models_dir_not_configured'
- *            when VFX_FAMILIAR_MODELS_DIR is unset.
+ *            when VELLUM_MODELS_DIR is unset.
  *  - Test 3: criterion #3 — content-addressed across versions (same bytes
  *            yield same hash regardless of version_id).
  *  - Test 4: diff path sees the post-fingerprint view (loadDiffSnapshot
@@ -107,7 +107,7 @@ describe('Phase 13 (PROV-V-03) — submit→completed→fingerprint→diff integ
     await ctx.cleanup();
   });
 
-  test('Test 1 (criterion #1): submit→completed→fingerprint flow populates model_hash when VFX_FAMILIAR_MODELS_DIR is set', async () => {
+  test('Test 1 (criterion #1): submit→completed→fingerprint flow populates model_hash when VELLUM_MODELS_DIR is set', async () => {
     // Build the D-CTX-2 layout: <modelsDir>/<subdir>/<basename(modelName)>
     const tmp = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-fp-resolved-${nanoid(6)}-`));
     try {
@@ -156,7 +156,7 @@ describe('Phase 13 (PROV-V-03) — submit→completed→fingerprint→diff integ
     }
   });
 
-  test('Test 2 (criterion #2): submit→completed→fingerprint flow records models_dir_not_configured when VFX_FAMILIAR_MODELS_DIR is unset', async () => {
+  test('Test 2 (criterion #2): submit→completed→fingerprint flow records models_dir_not_configured when VELLUM_MODELS_DIR is unset', async () => {
     ctx = await setupEngine({ modelsDir: null });
     const models: ModelRef[] = [
       {

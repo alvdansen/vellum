@@ -17,7 +17,7 @@ import { runMigrations } from '../migrate.js';
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
-  return path.join(os.tmpdir(), `vfx-familiar-${label}-${rand}.db`);
+  return path.join(os.tmpdir(), `vellum-${label}-${rand}.db`);
 }
 
 function cleanup(dbPath: string): void {

@@ -150,17 +150,17 @@ async function connectStdio(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
     // D-PLAN-5 — accept dev cert codes during tests so signature_status='valid'
     // returns from c2pa-rs against the bundled es256 cert chain.
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
   } else {
-    delete env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    delete env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    delete env.VELLUM_C2PA_CERT_PEM_PATH;
+    delete env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
   }
   const transport = new StdioClientTransport({
     command: 'npx',
@@ -194,12 +194,12 @@ async function connectHttp(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
   }
   const proc = spawn(
     'npx',

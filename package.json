@@ -1,11 +1,11 @@
 {
-  "name": "vfx-familiar",
+  "name": "vellum",
   "version": "0.1.0",
-  "description": "Open-source MCP server layering VFX production structure over ComfyUI Cloud",
+  "description": "Open-source MCP server: a provider-agnostic, provenance-first production layer for AI asset generation",
   "type": "module",
   "main": "src/server.ts",
   "bin": {
-    "vfx-familiar": "src/server.ts"
+    "vellum": "src/server.ts"
   },
   "workspaces": [
     "packages/*"
@@ -29,8 +29,10 @@
   },
   "keywords": [
     "mcp",
-    "vfx",
-    "comfyui",
+    "asset-production",
+    "provenance",
+    "generative-ai",
+    "c2pa",
     "pipeline"
   ],
   "license": "MIT",

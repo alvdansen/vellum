@@ -146,7 +146,7 @@ describe('version redact_manifest — Zod validation', () => {
       redaction_policy: [
         'claim_generator',
         'assertions[*].data.prompt_positive',
-        "assertions[label='vfx_familiar.input'].data.prompt_negative",
+        "assertions[label='vellum.input'].data.prompt_negative",
       ],
     });
     expect(res.isError).toBe(true);
@@ -521,11 +521,11 @@ describe('version redact_manifest — C-08 cross-layer invariants', () => {
     expect(decoded.equals(ENGINE_BYTES)).toBe(true);
 
     // Step 2: feed decoded bytes into verify_manifest (bytes form). Mock the
-    // verifier to return a valid report with vfx_familiar.redacted in matched.
+    // verifier to return a valid report with vellum.redacted in matched.
     const verifyReport: VerificationReport = {
       valid: true,
       signature_status: 'valid',
-      matched_assertions: ['c2pa.actions', 'vfx_familiar.redacted'],
+      matched_assertions: ['c2pa.actions', 'vellum.redacted'],
       gaps: [],
       failures: [],
       cert_subject: 'CN=Dev Cert',
@@ -545,17 +545,17 @@ describe('version redact_manifest — C-08 cross-layer invariants', () => {
     expect(verifyArg.manifestBytes.equals(ENGINE_BYTES)).toBe(true);
     expect(verifyArg.format).toBe('image/png');
     // Assertion (b): verify report is valid + matched_assertions includes
-    // 'vfx_familiar.redacted' (proves redact-then-verify round-trip works).
+    // 'vellum.redacted' (proves redact-then-verify round-trip works).
     const verifySc = verifyRes.structuredContent as Record<string, unknown>;
     expect(verifySc.valid).toBe(true);
-    expect(verifySc.matched_assertions).toContain('vfx_familiar.redacted');
+    expect(verifySc.matched_assertions).toContain('vellum.redacted');
   });
 
   it('Test 22 — C-08: 3-way equivalence — input policy ↔ envelope.redacted_fields ↔ engine RedactionResult', async () => {
     // Simulates the chain: caller-supplied policy entry → engine RedactionResult.redactedFields
     // → envelope.redacted_fields. The 3-way equivalence catches drift at any layer.
     const versionId = seedCompleted(stack, stack.shotId);
-    const inputPolicy = ["assertions[label='vfx_familiar.input'].data.prompt_positive"];
+    const inputPolicy = ["assertions[label='vellum.input'].data.prompt_positive"];
     // Engine returns the SAME path string in redactedFields.
     const engineRedactedFields = [...inputPolicy];
     vi.spyOn(stack.engine, 'redactManifestForVersion').mockResolvedValue({
@@ -592,12 +592,12 @@ describe('version redact_manifest — C-08 cross-layer invariants', () => {
     const inputPolicy = [
       'claim_generator',
       'title',
-      "assertions[label='vfx_familiar.input'].data.seed",
+      "assertions[label='vellum.input'].data.seed",
     ];
     // Engine returns a DIFFERENT order — say title first, then nested, then claim_generator.
     const engineOrder = [
       'title',
-      "assertions[label='vfx_familiar.input'].data.seed",
+      "assertions[label='vellum.input'].data.seed",
       'claim_generator',
     ];
     vi.spyOn(stack.engine, 'redactManifestForVersion').mockResolvedValue({

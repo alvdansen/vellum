@@ -1,4 +1,4 @@
-// Pure type definitions for VFX Familiar asset management (Phase 4).
+// Pure type definitions for Vellum asset management (Phase 4).
 // ZERO imports from drizzle/zod/mcp — engine, store, and tools all consume these.
 // Refs: D-ASST-07 (Tag), D-ASST-08 (MetadataEntry), D-ASST-12 (AssetsQueryFilter),
 //       D-ASST-22 (VersionWithAssets), D-ASST-06 (ScopeFilter / TagCount /

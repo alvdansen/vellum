@@ -127,7 +127,7 @@ export function App() {
             class="text-sm font-semibold text-[var(--color-accent)]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            VFX Familiar
+            Vellum
           </span>
         </div>
         <ThemeToggle />

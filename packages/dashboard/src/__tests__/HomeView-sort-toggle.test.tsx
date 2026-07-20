@@ -235,7 +235,7 @@ describe('HomeView — Plan 18-05 sort-toggle interactions', () => {
     });
     const calls = setItemSpy.mock.calls;
     const valueWrite = calls.find(
-      (c) => c[0] === 'vfx-familiar:sort:grid',
+      (c) => c[0] === 'vellum:sort:grid',
     );
     expect(valueWrite).toBeTruthy();
     expect(JSON.parse(valueWrite![1] as string)).toEqual({
@@ -424,7 +424,7 @@ describe('HomeView — Plan 18-05 sort-toggle interactions', () => {
     );
     expect(writtenUrl).toContain('treeSort=name%3Adesc');
     const treeWrite = setItemSpy.mock.calls.find(
-      (c) => c[0] === 'vfx-familiar:sort:tree',
+      (c) => c[0] === 'vellum:sort:tree',
     );
     expect(treeWrite).toBeTruthy();
     expect(JSON.parse(treeWrite![1] as string)).toEqual({

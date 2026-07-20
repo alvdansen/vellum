@@ -27,7 +27,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
- * Repository for VFX Familiar hierarchy entities. Owns every SQL read/write for
+ * Repository for Vellum hierarchy entities. Owns every SQL read/write for
  * workspaces/projects/sequences/shots. Returns plain typed objects (never raw
  * Drizzle rows). Wraps SQLite UNIQUE violations into TypedError('DUPLICATE_NAME')
  * and missing-parent pre-checks into TypedError('PARENT_NOT_FOUND').

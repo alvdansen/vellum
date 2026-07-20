@@ -78,7 +78,7 @@ async function getSharp(): Promise<SharpDefaultExport | null> {
     if (!cachedSharpFailed.loggedOnce) {
       // eslint-disable-next-line no-console
       console.warn(
-        `vfx-familiar: sharp load failed — thumbnails disabled. ${cachedSharpFailed.reason}`,
+        `vellum: sharp load failed — thumbnails disabled. ${cachedSharpFailed.reason}`,
       );
       cachedSharpFailed.loggedOnce = true;
     }

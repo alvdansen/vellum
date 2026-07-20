@@ -15,7 +15,7 @@ const EXPECTED_MIGRATIONS = 8; // +0008_shot_status (Phase 20 — STAT-01..05: s
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
-  return path.join(os.tmpdir(), `vfx-familiar-${label}-${rand}.db`);
+  return path.join(os.tmpdir(), `vellum-${label}-${rand}.db`);
 }
 
 function cleanup(dbPath: string): void {

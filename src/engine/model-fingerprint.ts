@@ -16,7 +16,7 @@
 // 'file_unreadable' | 'unsupported_class_type'.
 //
 // ComfyUI Cloud reality: model files do NOT live on the local file system
-// in production. The default deployment runs with VFX_FAMILIAR_MODELS_DIR
+// in production. The default deployment runs with VELLUM_MODELS_DIR
 // unset and every entry records 'models_dir_not_configured'. Local-dev /
 // self-host paths can populate hashes by setting the env var.
 
@@ -125,7 +125,7 @@ export async function fingerprintModel(
   // exhaustion. Not a structured event; Phase 14 may surface fingerprint
   // status via a health endpoint, but that is out of scope here.
   console.error(
-    `vfx-familiar: model fingerprint unreadable after ${FINGERPRINT_MAX_ATTEMPTS} attempts: ${fullPath} (last code: ${lastErrCode ?? 'UNKNOWN'})`,
+    `vellum: model fingerprint unreadable after ${FINGERPRINT_MAX_ATTEMPTS} attempts: ${fullPath} (last code: ${lastErrCode ?? 'UNKNOWN'})`,
   );
   return { model_hash_unavailable: 'file_unreadable' };
 }

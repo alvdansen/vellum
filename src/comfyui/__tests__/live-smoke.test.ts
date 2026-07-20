@@ -98,7 +98,7 @@ const MINIMAL_WORKFLOW = (checkpoint: string): Record<string, unknown> => ({
   },
   '9': {
     class_type: 'SaveImage',
-    inputs: { filename_prefix: 'vfx-familiar-smoke', images: ['8', 0] },
+    inputs: { filename_prefix: 'vellum-smoke', images: ['8', 0] },
   },
 });
 

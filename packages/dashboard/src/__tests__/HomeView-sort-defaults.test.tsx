@@ -116,10 +116,10 @@ function setupHomeView(opts: SetupOpts = {}): SetupResult {
   memoryStorage.clear();
   vi.stubGlobal('localStorage', memoryStorage);
   if (opts.localStorageGrid) {
-    memoryStorage.setItem('vfx-familiar:sort:grid', opts.localStorageGrid);
+    memoryStorage.setItem('vellum:sort:grid', opts.localStorageGrid);
   }
   if (opts.localStorageTree) {
-    memoryStorage.setItem('vfx-familiar:sort:tree', opts.localStorageTree);
+    memoryStorage.setItem('vellum:sort:tree', opts.localStorageTree);
   }
 
   // Stub window.location to the test URL. jsdom's location is read-only by
@@ -212,10 +212,10 @@ describe('HomeView — Plan 18-05 first-load hydration', () => {
       expect(treeSort.value).toEqual({ field: 'name', dir: 'desc' });
     });
     // D-13: URL wins → localStorage left untouched.
-    expect(memoryStorage.getItem('vfx-familiar:sort:grid')).toBe(
+    expect(memoryStorage.getItem('vellum:sort:grid')).toBe(
       JSON.stringify({ field: 'name', dir: 'asc' }),
     );
-    expect(memoryStorage.getItem('vfx-familiar:sort:tree')).toBe(
+    expect(memoryStorage.getItem('vellum:sort:tree')).toBe(
       JSON.stringify({ field: 'created_at', dir: 'desc' }),
     );
   });

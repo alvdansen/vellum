@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VFX Familiar</title>
+    <title>Vellum</title>
     <script>
       // D-WEBUI-16: read theme preference BEFORE any render to avoid FOUC.
       // Falls back to 'dark' default if absent. Set data-theme on <html>
       // immediately so theme.css variables resolve to the correct values.
       (function () {
         try {
-          var t = localStorage.getItem('vfx-familiar:theme');
+          var t = localStorage.getItem('vellum:theme');
           if (t === 'light' || t === 'dark') {
             document.documentElement.setAttribute('data-theme', t);
           }
         } catch (_) { /* localStorage may be blocked — keep default */ }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DJbgjyy6.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-COrFnFrY.css">
+    <script type="module" crossorigin src="/assets/index-Zvq5tM29.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DzV-9Igr.css">
   </head>
   <body>
     <div id="app"></div>

@@ -9,7 +9,7 @@
  *   - structural sentinel walk (C-01 fix — Test 15a) — every leaf becomes
  *     the REDACTED sentinel; no original-value leakage through container
  *     shapes
- *   - vfx_familiar.redacted assertion shape (D-CTX-1) appended in every
+ *   - vellum.redacted assertion shape (D-CTX-1) appended in every
  *     redaction call
  *   - idempotent on already-redacted manifests
  *   - buildRedactedManifestDefinition reflects the redacted JSON
@@ -30,7 +30,7 @@ const STUB_NOW = (): string => '2026-04-30T12:00:00.000Z';
 
 function makeManifest(over: Partial<ManifestDefinition> = {}): ManifestDefinition {
   return {
-    claim_generator: 'vfx-familiar/0.1 c2pa-node/0.5.26',
+    claim_generator: 'vellum/0.1 c2pa-node/0.5.26',
     format: 'image/png',
     title: 'Version ver_xyz',
     assertions: [],
@@ -40,22 +40,22 @@ function makeManifest(over: Partial<ManifestDefinition> = {}): ManifestDefinitio
 
 describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
   it('Test 1 — top-level redaction (claim_generator)', () => {
-    const manifest = makeManifest({ claim_generator: 'vfx-familiar/0.1' });
+    const manifest = makeManifest({ claim_generator: 'vellum/0.1' });
     const r = applyRedactionPolicy(manifest, ['claim_generator'], STUB_NOW);
     expect(r.redactedFields).toEqual(['claim_generator']);
     expect(r.notFound).toEqual([]);
     expect(r.redactedJson.claim_generator).toBe('[REDACTED]');
     expect(r.redactedJson.title).toBe('Version ver_xyz'); // untouched
-    // vfx_familiar.redacted appended.
+    // vellum.redacted appended.
     const last = r.redactedJson.assertions[r.redactedJson.assertions.length - 1]!;
-    expect(last.label).toBe('vfx_familiar.redacted');
+    expect(last.label).toBe('vellum.redacted');
   });
 
   it('Test 2 — wildcard array index (assertions[*].data.prompt_positive)', () => {
     const manifest = makeManifest({
       assertions: [
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data: { prompt_positive: 'cat', seed: 42 } as any,
         },
@@ -78,7 +78,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     const manifest = makeManifest({
       assertions: [
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data: { prompt_negative: 'blurry', seed: 7 } as any,
         },
@@ -91,11 +91,11 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     });
     const r = applyRedactionPolicy(
       manifest,
-      ["assertions[label='vfx_familiar.input'].data.prompt_negative"],
+      ["assertions[label='vellum.input'].data.prompt_negative"],
       STUB_NOW,
     );
     expect(r.redactedFields).toEqual([
-      "assertions[label='vfx_familiar.input'].data.prompt_negative",
+      "assertions[label='vellum.input'].data.prompt_negative",
     ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputData = (r.redactedJson.assertions[0] as any).data as Record<string, unknown>;
@@ -113,7 +113,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
       title: 'b',
       assertions: [
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data: { prompt_positive: 'p' } as any,
         },
@@ -145,9 +145,9 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     expect(r.notFound).toEqual([
       "assertions[label='nonexistent.label'].data.foo",
     ]);
-    // vfx_familiar.redacted still appended (audit trail).
+    // vellum.redacted still appended (audit trail).
     const last = r.redactedJson.assertions[r.redactedJson.assertions.length - 1]!;
-    expect(last.label).toBe('vfx_familiar.redacted');
+    expect(last.label).toBe('vellum.redacted');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((last as any).data.redacted_fields).toEqual([]);
   });
@@ -233,18 +233,18 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     const r = applyRedactionPolicy(manifest, ['title'], STUB_NOW);
     const stringified = JSON.stringify(r.redactedJson);
     expect(stringified).not.toContain('SECRET_VALUE_42_XYZ');
-    // vfx_familiar.redacted assertion carries the PATH, not the value
+    // vellum.redacted assertion carries the PATH, not the value
     expect(stringified).toContain('"redacted_fields":["title"]');
   });
 
-  it('Test 13 — vfx_familiar.redacted assertion has parseable ISO timestamp', () => {
+  it('Test 13 — vellum.redacted assertion has parseable ISO timestamp', () => {
     const r = applyRedactionPolicy(
       makeManifest(),
       ['claim_generator'],
       () => '2026-04-30T12:00:00.000Z',
     );
     const last = r.redactedJson.assertions[r.redactedJson.assertions.length - 1]!;
-    expect(last.label).toBe('vfx_familiar.redacted');
+    expect(last.label).toBe('vellum.redacted');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = (last as any).data;
     expect(data.redacted_at).toBe('2026-04-30T12:00:00.000Z');
@@ -258,9 +258,9 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     const r2 = applyRedactionPolicy(r1.redactedJson, ['title'], STUB_NOW);
     expect(r2.redactedFields).toEqual(['title']);
     expect(r2.redactedJson.title).toBe('[REDACTED]');
-    // Two vfx_familiar.redacted assertions appended (one per redaction).
+    // Two vellum.redacted assertions appended (one per redaction).
     const redactedAssertions = r2.redactedJson.assertions.filter(
-      (a) => a.label === 'vfx_familiar.redacted',
+      (a) => a.label === 'vellum.redacted',
     );
     expect(redactedAssertions.length).toBe(2);
   });
@@ -279,7 +279,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     const manifest = makeManifest({
       assertions: [
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           data: {
             prompt_positive: 'cat',
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -293,11 +293,11 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     });
     const r = applyRedactionPolicy(
       manifest,
-      ["assertions[label='vfx_familiar.input'].data"],
+      ["assertions[label='vellum.input'].data"],
       STUB_NOW,
     );
     expect(r.redactedFields).toEqual([
-      "assertions[label='vfx_familiar.input'].data",
+      "assertions[label='vellum.input'].data",
     ]);
     // The whole `data` was redacted at leaf-level recursively.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -329,7 +329,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
       claim_generator: 'original',
       assertions: [
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data: { prompt_positive: 'cat' } as any,
         },
@@ -338,7 +338,7 @@ describe('Plan 16-02 Task 1 — applyRedactionPolicy pure helper', () => {
     const before = JSON.stringify(manifest);
     applyRedactionPolicy(
       manifest,
-      ['claim_generator', "assertions[label='vfx_familiar.input'].data.prompt_positive"],
+      ['claim_generator', "assertions[label='vellum.input'].data.prompt_positive"],
       STUB_NOW,
     );
     const after = JSON.stringify(manifest);
@@ -442,11 +442,11 @@ describe.skipIf(!haveOpenssl)(
     beforeAll(async () => {
       // Dev-cert opt-in so signed-by-dev-cert tests pass through verifier-style
       // checks without hitting untrusted_root.
-      process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT = '1';
+      process.env.VELLUM_C2PA_TRUST_DEV_CERT = '1';
     });
 
     afterAll(async () => {
-      delete process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT;
+      delete process.env.VELLUM_C2PA_TRUST_DEV_CERT;
     });
 
     beforeEach(async () => {
@@ -541,7 +541,7 @@ describe.skipIf(!haveOpenssl)(
 
       // c2pa.read on the result.redactedBytes must show:
       //   - claim_generator === '[REDACTED]'
-      //   - vfx_familiar.redacted assertion
+      //   - vellum.redacted assertion
       //   - c2pa.actions assertion (round-tripped through normalization)
       const c2paNode = await import('c2pa-node');
       const c2pa = c2paNode.createC2pa();
@@ -555,13 +555,13 @@ describe.skipIf(!haveOpenssl)(
       // c2pa-rs APPENDS its own generator suffix (`c2pa-node/x.x c2pa-rs/y.y`)
       // to claim_generator on every sign — so the redacted value starts with
       // '[REDACTED]' rather than equaling it exactly. The redaction is
-      // structurally correct: the original `vfx-familiar/0.1` substring is
+      // structurally correct: the original `vellum/0.1` substring is
       // GONE; only the c2pa-rs-appended self-identification remains after
       // the sentinel.
       expect(manifest.claim_generator).toMatch(/^\[REDACTED\]/);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const labels = (manifest.assertions ?? []).map((a: any) => a.label);
-      expect(labels).toContain('vfx_familiar.redacted');
+      expect(labels).toContain('vellum.redacted');
       // c2pa-rs normalizes label on read; allowlist either form.
       const hasActions =
         labels.includes('c2pa.actions') || labels.includes('c2pa.actions.v2');
@@ -577,7 +577,7 @@ describe.skipIf(!haveOpenssl)(
             data: { actions: [{ action: 'c2pa.created' }] },
           },
           {
-            label: 'vfx_familiar.input',
+            label: 'vellum.input',
             data: { prompt_positive: 'foo' },
           },
           {
@@ -591,7 +591,7 @@ describe.skipIf(!haveOpenssl)(
       // Unknown label dropped; v2 normalized.
       const labels = out.map((a) => a.label);
       expect(labels).toContain('c2pa.actions');
-      expect(labels).toContain('vfx_familiar.input');
+      expect(labels).toContain('vellum.input');
       expect(labels).not.toContain('unknown.label');
       expect(labels).not.toContain('c2pa.actions.v2');
     });
@@ -615,7 +615,7 @@ describe.skipIf(!haveOpenssl)(
       //
       // The redaction primitive's contract is bounded to the ACTIVE manifest:
       // (a) the active_manifest fields show redacted values
-      // (b) a vfx_familiar.redacted assertion is appended
+      // (b) a vellum.redacted assertion is appended
       // (c) the redaction policy paths actually applied are recorded
       const c2paNode = await import('c2pa-node');
       const c2pa = c2paNode.createC2pa();
@@ -639,12 +639,12 @@ describe.skipIf(!haveOpenssl)(
         mimeType: 'image/png',
       });
       expect(redactedStore!.active_manifest!.title).toBe('[REDACTED]');
-      // (b) vfx_familiar.redacted assertion present.
+      // (b) vellum.redacted assertion present.
       const labels = (redactedStore!.active_manifest!.assertions ?? []).map(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (a: any) => a.label,
       );
-      expect(labels).toContain('vfx_familiar.redacted');
+      expect(labels).toContain('vellum.redacted');
       // (c) redactedFields recorded.
       expect(result.redactedFields).toEqual(['title']);
     });

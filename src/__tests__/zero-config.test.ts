@@ -12,7 +12,7 @@ const tmpDb = resolve(__dirname, `__zero-config-${Date.now()}.db`);
 /**
  * Asserts TRNS-04: zero-config startup.
  *  - Start the server with no flags except --db (to an explicit tmp path, so
- *    the test doesn't collide with a real ./vfx-familiar.db) and with an
+ *    the test doesn't collide with a real ./vellum.db) and with an
  *    env-bag stripped of app-specific variables.
  *  - Verify the db file is created.
  *  - Verify WAL mode is active on the file.

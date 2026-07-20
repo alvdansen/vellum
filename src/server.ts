@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 /**
- * vfx-familiar entry point.
+ * vellum entry point.
  *
  * Dual-transport bootstrap:
  *   - stdio transport ALWAYS, long-lived (D-15)
@@ -57,6 +57,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { toReqRes, toFetchResponse } from 'fetch-to-node';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { parseCliFlags, printHelp } from './utils/cli.js';
 import { openDb } from './store/db.js';
 import { HierarchyRepo } from './store/hierarchy-repo.js';
@@ -105,7 +106,7 @@ async function readVersion(): Promise<string> {
  */
 function buildServer(engine: Engine, version: string): McpServer {
   const server = new McpServer(
-    { name: 'vfx-familiar', version },
+    { name: 'vellum', version },
     {
       instructions:
         'VFX project hierarchy management + ComfyUI generation + provenance/versioning + asset management. ' +
@@ -153,9 +154,20 @@ async function main(): Promise<void> {
   // Db init — auto-creates if missing, applies WAL + schema (D-18, TRNS-04).
   // openDb() returns { db, sqlite } — always destructure. Passing the object
   // directly to HierarchyRepo crashes on first query (db.select undefined).
-  const dbPath = args.db ?? './vfx-familiar.db';
+  //
+  // Rename back-compat (VFX Familiar -> Vellum): the default filename moved from
+  // ./vfx-familiar.db to ./vellum.db. When no --db is given and ONLY the legacy
+  // file exists, adopt it in place so a pre-rename database is not silently
+  // orphaned behind an empty new default. An explicit --db always wins.
+  const LEGACY_DB_PATH = './vfx-familiar.db';
+  const DEFAULT_DB_PATH = './vellum.db';
+  const dbPath =
+    args.db ??
+    (!existsSync(DEFAULT_DB_PATH) && existsSync(LEGACY_DB_PATH)
+      ? LEGACY_DB_PATH
+      : DEFAULT_DB_PATH);
   const { db } = openDb(dbPath);
-  console.error(`vfx-familiar: db=${dbPath}`);
+  console.error(`vellum: db=${dbPath}`);
 
   const repo = new HierarchyRepo(db);
   const versionRepo = new VersionRepo(db);
@@ -186,7 +198,7 @@ async function main(): Promise<void> {
   if (apiKey) {
     const last4 = apiKey.slice(-4);
     console.error(
-      `vfx-familiar: ComfyUI credentials loaded (key ****${last4}, base ${apiBase})`,
+      `vellum: ComfyUI credentials loaded (key ****${last4}, base ${apiBase})`,
     );
   }
 
@@ -204,7 +216,7 @@ async function main(): Promise<void> {
   // Returns null when both env vars are unset → signing is disabled silently.
   // Concern #4 mitigation (path-traversal / arbitrary-file-disclosure): the
   // helper realpath-resolves both paths and asserts they live inside the
-  // allowlist root (cwd by default; VFX_FAMILIAR_C2PA_CERT_ROOT optional override).
+  // allowlist root (cwd by default; VELLUM_C2PA_CERT_ROOT optional override).
   // Concern #11 mitigation (native-binding-load resilience): server boot does
   // NOT eagerly load c2pa-node here — the native module load is deferred to
   // Plan 14-02's signer module on first sign attempt.
@@ -212,15 +224,15 @@ async function main(): Promise<void> {
   if (c2paConfig) {
     // Concern #4: log basenames ONLY, never the full resolved path.
     // MR-01 fix: surface TSA URL choice (operator-controllable via
-    // VFX_FAMILIAR_C2PA_TSA_URL). When unset, the engine passes null to
+    // VELLUM_C2PA_TSA_URL). When unset, the engine passes null to
     // loadSigner — c2pa-node v0.5.26's binding bug then surfaces as
     // status_reason='sign_call_failed' on every sign attempt. Operators
     // who haven't configured a TSA see a clear breadcrumb here.
     const tsaSummary = c2paConfig.tsaUrl
       ? `tsa ${c2paConfig.tsaUrl}`
-      : 'tsa <unset — set VFX_FAMILIAR_C2PA_TSA_URL to enable RFC 3161 timestamping>';
+      : 'tsa <unset — set VELLUM_C2PA_TSA_URL to enable RFC 3161 timestamping>';
     console.error(
-      `vfx-familiar: C2PA signing enabled (cert ${basename(c2paConfig.certPemPath)}, key ${basename(c2paConfig.privateKeyPemPath)}, ${tsaSummary})`,
+      `vellum: C2PA signing enabled (cert ${basename(c2paConfig.certPemPath)}, key ${basename(c2paConfig.privateKeyPemPath)}, ${tsaSummary})`,
     );
   }
 
@@ -241,23 +253,23 @@ async function main(): Promise<void> {
     // (D-PRIV-4 mirrors c2pa-config basename-only path discipline).
     const last4 = anthropicConfig.apiKey.slice(-4);
     console.error(
-      `vfx-familiar: AI summary enabled (Anthropic ****${last4}, model claude-haiku-4-5-20251001)`,
+      `vellum: AI summary enabled (Anthropic ****${last4}, model claude-haiku-4-5-20251001)`,
     );
   }
 
   // Phase 14 Plan 14-05 — outputs root is configurable via
-  // VFX_FAMILIAR_OUTPUTS_DIR for ops + multi-tenant deployments. Default
+  // VELLUM_OUTPUTS_DIR for ops + multi-tenant deployments. Default
   // 'outputs' relative to cwd (D-WEBUI-26 stable download root pattern).
   // Tests rely on this to redirect outputs to a temp dir. Mirrors the
-  // VFX_FAMILIAR_MODELS_DIR convention.
-  const outputsDir = process.env.VFX_FAMILIAR_OUTPUTS_DIR ?? 'outputs';
+  // VELLUM_MODELS_DIR convention.
+  const outputsDir = process.env.VELLUM_OUTPUTS_DIR ?? 'outputs';
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
     // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
     // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
     // ships with this unset; local-dev / self-host can populate hashes by
-    // setting VFX_FAMILIAR_MODELS_DIR to the local checkpoints/loras root.
-    modelsDir: process.env.VFX_FAMILIAR_MODELS_DIR ?? null,
+    // setting VELLUM_MODELS_DIR to the local checkpoints/loras root.
+    modelsDir: process.env.VELLUM_MODELS_DIR ?? null,
     // Phase 14 — PROV-V-01 (D-CTX-2). NULL means signing is disabled
     // (graceful degradation). Plan 14-02's signer wrapper is the SOLE
     // consumer of the cert/key bytes — read lazily on first sign attempt.
@@ -277,11 +289,11 @@ async function main(): Promise<void> {
   // Shutdown handlers (D-GEN-29) — abort all AbortControllers in the engine,
   // then exit 0. Stops the process cleanly even with in-flight pollers.
   const shutdown = async (signal: string): Promise<void> => {
-    console.error(`vfx-familiar: ${signal} received — shutting down`);
+    console.error(`vellum: ${signal} received — shutting down`);
     try {
       await engine.stop();
     } catch (err) {
-      console.error('vfx-familiar: stop error:', err);
+      console.error('vellum: stop error:', err);
     }
     process.exit(0);
   };
@@ -296,7 +308,7 @@ async function main(): Promise<void> {
   const stdio = new StdioServerTransport();
   const stdioServer = buildServer(engine, version);
   await stdioServer.connect(stdio);
-  console.error('vfx-familiar: stdio transport connected');
+  console.error('vellum: stdio transport connected');
 
   // Transport 2 — Streamable HTTP, opt-in via --http (D-16).
   // Per the MCP SDK stateless pattern, a fresh McpServer + transport is spawned
@@ -410,12 +422,12 @@ async function main(): Promise<void> {
       },
       (info) => {
         console.error(
-          `vfx-familiar: http transport listening on http://${info.address}:${info.port}/mcp`,
+          `vellum: http transport listening on http://${info.address}:${info.port}/mcp`,
         );
       },
     );
     httpServer.on('error', (err: Error) => {
-      console.error(`vfx-familiar: HTTP bind failed on port ${port}: ${err.message}`);
+      console.error(`vellum: HTTP bind failed on port ${port}: ${err.message}`);
       process.exit(1);
     });
   }
@@ -423,6 +435,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   // Any boot-time error to stderr, non-zero exit.
-  console.error('vfx-familiar: fatal boot error:', err);
+  console.error('vellum: fatal boot error:', err);
   process.exit(1);
 });

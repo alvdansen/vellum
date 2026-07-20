@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, unique, index } from 'drizzle-orm/sqlite-core';
 
-// VFX Familiar hierarchy schema: workspaces → projects → sequences → shots → versions.
+// Vellum hierarchy schema: workspaces → projects → sequences → shots → versions.
 // IDs are nanoid-prefixed text (`ws_`, `proj_`, `seq_`, `shot_`, `ver_`);
 // timestamps are epoch-ms integers.
 //

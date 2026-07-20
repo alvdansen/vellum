@@ -1,6 +1,6 @@
 // Phase 16 / Plan 16-02 — PROV-V-06. Redaction primitive: strip named
 // fields from a manifest JSON, emit a vendor-namespaced
-// vfx_familiar.redacted assertion (D-CTX-1) preserving the FACT of
+// vellum.redacted assertion (D-CTX-1) preserving the FACT of
 // redaction (NOT the original values), then re-sign the asset bytes
 // with the same cert (Phase 14 D-CTX-2 single-cert config).
 //
@@ -11,8 +11,8 @@
 //     LAZY native-binding loading via dynamic import — same discipline as
 //     signer.ts (see signer.ts ensureC2paNode pattern for reference)
 //
-// D-CTX-1: the vfx_familiar.redacted assertion shape mirrors Phase 15's
-//   vfx_familiar.input pattern: {label: 'vfx_familiar.redacted',
+// D-CTX-1: the vellum.redacted assertion shape mirrors Phase 15's
+//   vellum.input pattern: {label: 'vellum.redacted',
 //   data: {redacted_fields: string[], redacted_at: ISO8601}}. Original
 //   values appear NOWHERE in the redacted MANIFEST JSON output — this is
 //   a structural invariant tested at every layer (helper, integration,
@@ -39,7 +39,7 @@
 //
 // The redaction primitive's contract is bounded to the ACTIVE manifest:
 //   (a) the active_manifest fields show redacted values
-//   (b) a vfx_familiar.redacted assertion is appended
+//   (b) a vellum.redacted assertion is appended
 //   (c) the redaction policy paths actually applied are recorded
 // Tests at the helper layer verify the manifest-JSON invariant via a
 // multi-encoding scan; tests at the integration layer verify the
@@ -71,7 +71,7 @@ const MAX_WALK_DEPTH = 32;
 /** Output of applyRedactionPolicy — the helper that does the actual stripping. */
 export interface RedactionApplied {
   /** Manifest JSON with redacted fields replaced by REDACTED_SENTINEL +
-   *  vfx_familiar.redacted assertion appended to assertions[]. */
+   *  vellum.redacted assertion appended to assertions[]. */
   redactedJson: ManifestDefinition;
   /** Policy paths that matched at least one location in the manifest. */
   redactedFields: string[];
@@ -88,7 +88,7 @@ export interface RedactionResult {
   redactedFields: string[];
   /** Policy paths that did not match — soft warnings. */
   notFound: string[];
-  /** ISO-8601 — emitted into the vfx_familiar.redacted assertion AND
+  /** ISO-8601 — emitted into the vellum.redacted assertion AND
    *  recorded on the new manifest_signed event. */
   signedAt: string;
   /** MIME type of the redacted asset (mirror of the original). */
@@ -126,12 +126,12 @@ export function applyRedactionPolicy(
     }
   }
 
-  // Append vfx_familiar.redacted assertion (D-CTX-1).
+  // Append vellum.redacted assertion (D-CTX-1).
   // Even when redactedFields is empty (every path was not_found), we still
   // append the assertion so the audit trail records that a redaction was
   // attempted; Plan 16-04's tool layer surfaces this as a soft warning.
   const redactedAssertion: ManifestAssertion = {
-    label: 'vfx_familiar.redacted',
+    label: 'vellum.redacted',
     data: {
       redacted_fields: [...redactedFields],
       redacted_at: now(),
@@ -496,9 +496,9 @@ export function __resetRedactionStateForTests(): void {
  *  Replaces the unsafe `as ManifestAssertion` cast with proper validation. */
 const KNOWN_ASSERTION_LABELS: ReadonlySet<string> = new Set([
   'c2pa.actions',
-  'vfx_familiar.input',
-  'vfx_familiar.unavailable_ingredient',
-  'vfx_familiar.redacted',
+  'vellum.input',
+  'vellum.unavailable_ingredient',
+  'vellum.redacted',
 ]);
 
 export function extractAssertions(
@@ -780,7 +780,7 @@ export async function redactManifestForVersionImpl(
         // outdated 304 until the user navigates away. Log + continue so the
         // append-only manifest_signed event still emits below.
         console.warn(
-          `vfx-familiar: thumb invalidate after redact failed (versionId=${versionId}, filename=${filename}): ${(err as Error).message}`,
+          `vellum: thumb invalidate after redact failed (versionId=${versionId}, filename=${filename}): ${(err as Error).message}`,
         );
       }
     } catch (err) {

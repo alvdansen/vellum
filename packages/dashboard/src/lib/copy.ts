@@ -160,11 +160,11 @@ export const SUMMARY_FIRST_USE_DISCLOSURE = 'AI summary uses your prompt text';
 
 /**
  * localStorage key for "user has dismissed first-use disclosure". Namespaced
- * (`vfx-familiar:`) to avoid cross-app collisions on shared origins.
+ * (`vellum:`) to avoid cross-app collisions on shared origins.
  * D-PRIV-2 + UI-SPEC.
  */
 export const SUMMARY_FIRST_USE_LOCALSTORAGE_KEY =
-  'vfx-familiar:summary:first-use-acked';
+  'vellum:summary:first-use-acked';
 
 /**
  * Template builder for the Regenerate button ARIA label. Caller passes the

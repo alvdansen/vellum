@@ -133,7 +133,7 @@ export { BUFFER_SIGNING_MAX_BYTES };
 
 /**
  * Phase 14 — Plan 14-02 manifest-builder claim_generator includes the
- * vfx-familiar app version. Read from package.json once at module load to
+ * vellum app version. Read from package.json once at module load to
  * keep the signOutput hot path allocation-free. Mirrors the appVersion field
  * surfaced via the buildManifestDefinition contract.
  *
@@ -195,11 +195,11 @@ async function streamSha256(filePath: string): Promise<string | null> {
 
 /**
  * Phase 15 — count ingredients_summary fields from a BuildManifestResult.
- * unavailable_count = number of vfx_familiar.unavailable_ingredient
+ * unavailable_count = number of vellum.unavailable_ingredient
  * assertions emitted (parent + components combined). Lockstep with
  * buildManifestWithIngredients (Plan 15-02): every spec lands in
  * ingredientSpecs[]; specs with assetRef.kind='unavailable' also have a
- * matching vfx_familiar.unavailable_ingredient assertion in
+ * matching vellum.unavailable_ingredient assertion in
  * definition.assertions[] (the audit channel).
  */
 function summariseIngredientsFromResult(
@@ -271,7 +271,7 @@ export class Engine {
   /** Phase 13 — PROV-V-03 (D-CTX-2). Optional models root for SHA-256
    *  fingerprinting at completion. NULL in production (ComfyUI Cloud has
    *  no local model files) → every entry records 'models_dir_not_configured'
-   *  per D-CTX-5. Set via VFX_FAMILIAR_MODELS_DIR env var in src/server.ts. */
+   *  per D-CTX-5. Set via VELLUM_MODELS_DIR env var in src/server.ts. */
   private readonly modelsDir: string | null;
   /** Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Optional C2PA
    *  signing config. NULL means signing is disabled — graceful degradation
@@ -478,7 +478,7 @@ export class Engine {
       (versionId: string) => {
         void this.fingerprintModelsForVersion(versionId).catch((err) => {
           console.error(
-            `vfx-familiar: background fingerprint failed for ${versionId}:`,
+            `vellum: background fingerprint failed for ${versionId}:`,
             (err as Error).message,
           );
         });
@@ -1186,7 +1186,7 @@ export class Engine {
         // for operator visibility; never throw — the diff envelope must
         // still return so the user can see the warnings array.
         console.error(
-          `vfx-familiar: output-hash unreadable: ${vid}/${fname} (${code}): ${msg}`,
+          `vellum: output-hash unreadable: ${vid}/${fname} (${code}): ${msg}`,
         );
         return null;
       }
@@ -1617,7 +1617,7 @@ export class Engine {
       return result;
     } catch (err) {
       console.error(
-        `vfx-familiar: C2PA signing failed for ${versionId}/${filename}: ${(err as Error).message}`,
+        `vellum: C2PA signing failed for ${versionId}/${filename}: ${(err as Error).message}`,
       );
       this.provenanceRepo.appendManifestSignedEvent(versionId, {
         filename,
@@ -1773,7 +1773,7 @@ export class Engine {
       throw new TypedError(
         'REDACT_SIGNING_DISABLED',
         'C2PA signing is not configured — cannot redact',
-        'Set VFX_FAMILIAR_C2PA_CERT_PEM_PATH + VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH and restart. Redaction requires a signing key to re-sign the redacted manifest.',
+        'Set VELLUM_C2PA_CERT_PEM_PATH + VELLUM_C2PA_PRIVATE_KEY_PEM_PATH and restart. Redaction requires a signing key to re-sign the redacted manifest.',
       );
     }
     const signerOrCode = await this.getOrLoadSigner();
@@ -1823,7 +1823,7 @@ export class Engine {
 
     try {
       // Phase 14 fix MR-01: thread tsaUrl through C2paConfig so the operator
-      // can opt in to a TSA via VFX_FAMILIAR_C2PA_TSA_URL without source-level
+      // can opt in to a TSA via VELLUM_C2PA_TSA_URL without source-level
       // changes. Default is null (no TSA — fully offline-friendly).
       const signer = await loadSigner(
         this.c2paConfig.certPemPath,
@@ -1840,7 +1840,7 @@ export class Engine {
         ? 'native_binding_unavailable'
         : 'cert_load_failed';
       this.signerLoadFailedReason = { code, message: msg };
-      console.error(`vfx-familiar: C2PA signer load failed (${code}): ${msg}`);
+      console.error(`vellum: C2PA signer load failed (${code}): ${msg}`);
       return { errorCode: code };
     }
   }
@@ -2004,7 +2004,7 @@ export class Engine {
           // octet-stream inside addIngredientsToBuilder, which would propagate
           // as C2PA_SIGNING_FAILED / status_reason='sign_call_failed'. Routing
           // to unavailable lets the manifest still sign cleanly with a clear
-          // audit (vfx_familiar.unavailable_ingredient + reason
+          // audit (vellum.unavailable_ingredient + reason
           // 'mime_type_unsupported').
           const parentMime = getMimeForExtensionOrNull(parentFilename);
           if (parentMime === null) {
@@ -2413,7 +2413,7 @@ export class Engine {
       }
     } catch (err) {
       console.warn(
-        `vfx-familiar: thumbnail derivation failed for ${versionId}/${filename}: ${
+        `vellum: thumbnail derivation failed for ${versionId}/${filename}: ${
           (err as Error).message
         }`,
       );

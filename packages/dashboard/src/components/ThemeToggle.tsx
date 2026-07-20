@@ -4,7 +4,7 @@
  * This component is self-contained per UI-SPEC.md D-WEBUI-16:
  *   - Reads `[data-theme]` from <html> on mount
  *   - Toggles between 'dark' and 'light'
- *   - Persists to localStorage['vfx-familiar:theme']
+ *   - Persists to localStorage['vellum:theme']
  *   - No props, no callbacks (it owns its own local state)
  *
  * This component is the one exception to the "no side effects" rule for
@@ -23,7 +23,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Sun, Moon } from 'lucide-preact';
 
-const STORAGE_KEY = 'vfx-familiar:theme';
+const STORAGE_KEY = 'vellum:theme';
 const DEFAULT_THEME: Theme = 'dark';
 
 type Theme = 'dark' | 'light';

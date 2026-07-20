@@ -68,7 +68,7 @@ export type ManifestSignedPayloadFields = {
    *
    * unavailable_count = parent_count + component_count − reachable_count;
    * a non-zero value means at least one ingredient surfaced as a
-   * vfx_familiar.unavailable_ingredient assertion (ROADMAP criterion #5).
+   * vellum.unavailable_ingredient assertion (ROADMAP criterion #5).
    */
   ingredients_summary?: {
     parent_count: 0 | 1;

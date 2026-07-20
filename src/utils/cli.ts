@@ -1,5 +1,5 @@
 /**
- * Hand-rolled CLI parser for vfx-familiar (D-19).
+ * Hand-rolled CLI parser for vellum (D-19).
  *
  * Exhaustive 5-flag set: --http, --port <N>, --db <path>, --help, --version.
  * Supports both space-separated and `=` forms for --port and --db.
@@ -64,10 +64,10 @@ export function parseCliFlags(argv: string[]): CliArgs {
 }
 
 export function printHelp(): void {
-  console.error(`vfx-familiar — MCP server for VFX project hierarchy
+  console.error(`vellum — MCP server for VFX project hierarchy
 
 Usage:
-  vfx-familiar [--http] [--port <N>] [--db <path>] [--help] [--version]
+  vellum [--http] [--port <N>] [--db <path>] [--help] [--version]
 
 Transports:
   stdio      (default — for Claude Desktop / Claude CLI / Cursor)
@@ -77,7 +77,7 @@ Flags:
   --http              Enable HTTP transport in addition to stdio
   --port <N>          HTTP port (default: 3000)
   --port=N            Same, equals form
-  --db <path>         SQLite database path (default: ./vfx-familiar.db)
+  --db <path>         SQLite database path (default: ./vellum.db)
   --db=<path>         Same, equals form
   --help, -h          Print this help and exit
   --version, -v       Print version and exit

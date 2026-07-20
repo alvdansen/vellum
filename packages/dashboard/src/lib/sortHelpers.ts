@@ -138,7 +138,7 @@ export function serializeSortValue(s: { field: string; dir: SortDirection }): st
 // localStorage scope keys (D-23 — global per-pane, NOT per-shot)
 // ============================================================================
 
-const STORAGE_PREFIX = 'vfx-familiar';
+const STORAGE_PREFIX = 'vellum';
 const GRID_SORT_KEY = 'sort:grid';
 const TREE_SORT_KEY = 'sort:tree';
 const LRU_KEY_SUFFIX = '_lru';
@@ -230,7 +230,7 @@ export function hydrateSortState(): {
     // URL parse failure — fall through to localStorage path. Log for diagnosis.
     if (typeof console !== 'undefined') {
       console.warn(
-        'vfx-familiar: hydrateSortState URL parse failed; falling back to localStorage.',
+        'vellum: hydrateSortState URL parse failed; falling back to localStorage.',
         err,
       );
     }

@@ -211,7 +211,7 @@ export function hydrateShotGridUrlState(): void {
   } catch (err) {
     if (typeof console !== 'undefined') {
       console.warn(
-        'vfx-familiar: hydrateShotGridUrlState URL parse failed.',
+        'vellum: hydrateShotGridUrlState URL parse failed.',
         err,
       );
     }
@@ -223,7 +223,7 @@ export function hydrateShotGridUrlState(): void {
   if (!parsed.success) {
     if (typeof console !== 'undefined') {
       console.warn(
-        'vfx-familiar: shot-grid URL params invalid; using defaults.',
+        'vellum: shot-grid URL params invalid; using defaults.',
         parsed.error,
       );
     }

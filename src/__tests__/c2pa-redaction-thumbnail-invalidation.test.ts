@@ -85,7 +85,7 @@ function assertNotInBuffer(buf: Buffer, secret: string, label: string): void {
 // Seed helper — builds a real signed v1 manifest with a sentinel value AND
 // a generated .thumb.webp on disk. The sentinel is embedded into the prompt
 // blob so Phase 15's extractInputAssertion lifts it into the
-// vfx_familiar.input.data.prompt_positive assertion.
+// vellum.input.data.prompt_positive assertion.
 // ============================================================================
 
 interface RedactSeed {
@@ -188,7 +188,7 @@ async function seedSignedVersionWithThumb(opts: {
     outputs_json: JSON.stringify([{ filename }]),
   });
 
-  // Sign — engine reads completed.prompt_json + extracts vfx_familiar.input.
+  // Sign — engine reads completed.prompt_json + extracts vellum.input.
   const signResult = await engine.signOutput(ver.id, filename, { bytes: TINY_PNG });
   const verDir = join(outputsDir, ver.id);
   await mkdir(verDir, { recursive: true });
@@ -262,7 +262,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
       const preMtime = (await fsStat(seed.sourcePath)).mtimeMs;
 
       const result = await seed.engine.redactManifestForVersion(seed.versionId, [
-        "assertions[label='vfx_familiar.input'].data.prompt_positive",
+        "assertions[label='vellum.input'].data.prompt_positive",
       ]);
       expect(result).toBeTruthy();
 
@@ -287,7 +287,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
       expect(existsSync(seed.sentinelPath)).toBe(false);
       // Should not throw.
       const result = await seed.engine.redactManifestForVersion(seed.versionId, [
-        "assertions[label='vfx_familiar.input'].data.prompt_positive",
+        "assertions[label='vellum.input'].data.prompt_positive",
       ]);
       expect(result).toBeTruthy();
       expect(existsSync(seed.cachePath)).toBe(false);
@@ -303,7 +303,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
     try {
       const preMtime = (await fsStat(seed.cachePath)).mtimeMs;
       await seed.engine.redactManifestForVersion(seed.versionId, [
-        "assertions[label='vfx_familiar.input'].data.prompt_positive",
+        "assertions[label='vellum.input'].data.prompt_positive",
       ]);
       // Post-redact: cache gone.
       expect(existsSync(seed.cachePath)).toBe(false);
@@ -329,7 +329,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
     try {
       // 1. Redact away the sentinel.
       await seed.engine.redactManifestForVersion(seed.versionId, [
-        "assertions[label='vfx_familiar.input'].data.prompt_positive",
+        "assertions[label='vellum.input'].data.prompt_positive",
       ]);
 
       // 2. Regenerate the thumbnail from the redacted source.
@@ -381,7 +381,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
         let caught: { code?: string; message?: string } | null = null;
         try {
           await seed.engine.redactManifestForVersion(seed.versionId, [
-            "assertions[label='vfx_familiar.input'].data.prompt_positive",
+            "assertions[label='vellum.input'].data.prompt_positive",
           ]);
         } catch (err) {
           caught = err as { code?: string; message?: string };
@@ -414,7 +414,7 @@ describe.skipIf(!haveOpenssl)('Phase 17 Plan 03 Task 2 — redact → invalidate
       );
 
       const result = await seed.engine.redactManifestForVersion(seed.versionId, [
-        "assertions[label='vfx_familiar.input'].data.prompt_positive",
+        "assertions[label='vellum.input'].data.prompt_positive",
       ]);
       // Redact returned — the synthetic invalidate failure did NOT propagate.
       expect(result).toBeTruthy();

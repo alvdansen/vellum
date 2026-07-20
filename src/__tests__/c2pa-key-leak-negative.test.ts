@@ -406,10 +406,10 @@ describe.skipIf(!haveOpenssl)('C2PA key-leak negative — T-14-04 file-mode warn
       const { loadC2paConfigFromEnv } = await import('../utils/c2pa-config.js');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const env: any = {
-        VFX_FAMILIAR_C2PA_CERT_PEM_PATH: tempCertPath,
-        VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH: tempKeyPath,
+        VELLUM_C2PA_CERT_PEM_PATH: tempCertPath,
+        VELLUM_C2PA_PRIVATE_KEY_PEM_PATH: tempKeyPath,
         // Allow the temp dir as the cert root.
-        VFX_FAMILIAR_C2PA_CERT_ROOT: tempDir,
+        VELLUM_C2PA_CERT_ROOT: tempDir,
       };
       try {
         loadC2paConfigFromEnv(env);

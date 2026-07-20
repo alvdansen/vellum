@@ -197,7 +197,7 @@ reviewer what the prompt WOULD have told them about (creative direction)
 without leaking what the prompt CONTAINED. The handoff sentence "check the
 C2PA-signed manifest for the full lineage" routes the reviewer to the
 authoritative cryptographic source: the manifest's redacted_assertions
-preserve the FACT that redaction occurred (per Phase 16 vfx_familiar.redacted
+preserve the FACT that redaction occurred (per Phase 16 vellum.redacted
 vendor assertion) without echoing the redacted content. Voice fingerprint
 check: a Studio Pipeline TD reviewing this for SpinVFX's C2PA prototyping
 pipeline would accept this phrasing — it surfaces redaction without leaking,

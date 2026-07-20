@@ -4,7 +4,7 @@
  * Drives Phase 14 sign + Phase 15 ingredient graph + Phase 16 export/verify/
  * redact through the REAL Engine in-process. Each describe block stands up its
  * own SQLite DB + outputs dir + signed v1 manifest containing a known
- * `vfx_familiar.input.data.prompt_positive` sentinel value (resolved through
+ * `vellum.input.data.prompt_positive` sentinel value (resolved through
  * the Phase 15 KSampler edge walk over a real prompt blob).
  *
  * Scenarios:
@@ -17,7 +17,7 @@
  *      Engine.exportManifestForVersion, asserting the disk was atomically
  *      updated by the redact flow (no manual writeFile in beforeAll). Then
  *      drive verifyManifestForVersion against the bytes form and assert
- *      valid=true under VFX_FAMILIAR_C2PA_TRUST_DEV_CERT=1.
+ *      valid=true under VELLUM_C2PA_TRUST_DEV_CERT=1.
  *   C. Not-found soft warning: policy with paths that don't match the manifest
  *      produce notFound entries, NEW manifest_signed event row written with
  *      `not_found:<path>` audit prefix.
@@ -95,7 +95,7 @@ function assertNotInBuffer(buf: Buffer, secret: string, label: string): void {
 // Seed helper — builds a real v1 signed manifest with a synthetic prompt blob
 // whose CLIPTextEncode positive text contains the sentinel. Phase 15's
 // extractInputAssertion edge-walks KSampler.positive to that node and lifts
-// the text into vfx_familiar.input.data.prompt_positive.
+// the text into vellum.input.data.prompt_positive.
 // ============================================================================
 
 interface E2ESeed {
@@ -194,7 +194,7 @@ async function seedSignedV1Manifest(opts: {
     outputs_json: JSON.stringify([{ filename }]),
   });
 
-  // Sign — engine reads completed.prompt_json + extracts vfx_familiar.input.
+  // Sign — engine reads completed.prompt_json + extracts vellum.input.
   const signResult = await engine.signOutput(ver.id, filename, { bytes: TINY_PNG });
   const verDir = join(outputsDir, ver.id);
   await mkdir(verDir, { recursive: true });
@@ -262,13 +262,13 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
   });
 
   it('Test 1 — D-CTX-1 + D-CTX-5 + actions chain survival + multi-encoding scan over active projection', async () => {
-    const policyPath = "assertions[label='vfx_familiar.input'].data.prompt_positive";
+    const policyPath = "assertions[label='vellum.input'].data.prompt_positive";
     const result = await seed.engine.redactManifestForVersion(seed.versionId, [policyPath]);
 
     // (a) redactedFields contains the policy path
     expect(result.redactedFields).toContain(policyPath);
 
-    // (b) c2pa.read on the redactedBytes shows BOTH vfx_familiar.redacted AND
+    // (b) c2pa.read on the redactedBytes shows BOTH vellum.redacted AND
     //     a c2pa.actions[.v2] assertion with a c2pa.created action surviving
     //     (proves the actions chain round-tripped through C-03 normalization).
     const c2paNode = await import('c2pa-node');
@@ -281,7 +281,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
     expect(store!.active_manifest).not.toBeNull();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const labels = (store!.active_manifest!.assertions ?? []).map((a: any) => a.label);
-    expect(labels).toContain('vfx_familiar.redacted');
+    expect(labels).toContain('vellum.redacted');
     // C-03: actions chain survival — accept either label literal.
     expect(
       labels.some((l: string) => l === 'c2pa.actions' || l === 'c2pa.actions.v2'),
@@ -357,9 +357,9 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
     expect(t).toBeGreaterThanOrEqual(originalT);
   });
 
-  it('Test 4 — vfx_familiar.redacted assertion shape (redacted_fields + redacted_at) — fresh seed', async () => {
+  it('Test 4 — vellum.redacted assertion shape (redacted_fields + redacted_at) — fresh seed', async () => {
     // OBSERVED c2pa-rs behavior: when an asset already carries a
-    // vfx_familiar.redacted assertion AND a re-sign appends another with
+    // vellum.redacted assertion AND a re-sign appends another with
     // the same label, c2pa.read returns ONLY the FIRST one (assertion
     // deduplication-by-label at the read boundary). Tests 1-3 ran prior
     // redacts on this describe block's seed, so reading the latest bytes
@@ -380,7 +380,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const redactedAssertion = (store!.active_manifest!.assertions ?? []).find((a: any) =>
-        a.label === 'vfx_familiar.redacted',
+        a.label === 'vellum.redacted',
       );
       expect(redactedAssertion).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -413,15 +413,15 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario B (export+verify round-
     redactResult = await seed.engine.redactManifestForVersion(seed.versionId, ['claim_generator']);
     // C-09 dev-cert opt-in for Test 6 (without it, signature_status would be
     // 'untrusted_root' against the bundled cert chain — production-correct).
-    prevTrustEnv = process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT;
-    process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT = '1';
+    prevTrustEnv = process.env.VELLUM_C2PA_TRUST_DEV_CERT;
+    process.env.VELLUM_C2PA_TRUST_DEV_CERT = '1';
   }, 30_000);
 
   afterAll(async () => {
     if (prevTrustEnv === undefined) {
-      delete process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT;
+      delete process.env.VELLUM_C2PA_TRUST_DEV_CERT;
     } else {
-      process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT = prevTrustEnv;
+      process.env.VELLUM_C2PA_TRUST_DEV_CERT = prevTrustEnv;
     }
     if (seed) await seed.cleanup();
   });
@@ -447,7 +447,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario B (export+verify round-
     });
     expect(report.valid).toBe(true);
     expect(report.signature_status).toBe('valid');
-    expect(report.matched_assertions).toContain('vfx_familiar.redacted');
+    expect(report.matched_assertions).toContain('vellum.redacted');
     // bytes-form verifier sources cert_subject from c2pa-rs's signature_info.issuer
     // — for the bundled cert chain this resolves to a non-empty string
     // (e.g., 'C2PA Test Signing Cert'). The engine's manifest_signed
@@ -481,7 +481,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario C (policy with not_foun
     expect(result.redactedFields).toEqual([]);
     expect(result.notFound).toEqual([policyPath]);
 
-    // (b) Re-signed bytes still verify cleanly (vfx_familiar.redacted
+    // (b) Re-signed bytes still verify cleanly (vellum.redacted
     //     assertion present with empty redacted_fields).
     const c2paNode = await import('c2pa-node');
     const c2pa = c2paNode.createC2pa();
@@ -493,7 +493,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario C (policy with not_foun
     expect(store!.active_manifest).not.toBeNull();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const redactedAssertion = (store!.active_manifest!.assertions ?? []).find((a: any) =>
-      a.label === 'vfx_familiar.redacted',
+      a.label === 'vellum.redacted',
     );
     expect(redactedAssertion).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -551,7 +551,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — D-PLAN-2-3 ingredient pass-throu
     if (seed) await seed.cleanup();
   });
 
-  it('Test 9 — D-PLAN-2-3: redacted manifest carries auto-parent only; vfx-familiar componentOf graph dropped (deferred-ingredient-mirror)', async () => {
+  it('Test 9 — D-PLAN-2-3: redacted manifest carries auto-parent only; vellum componentOf graph dropped (deferred-ingredient-mirror)', async () => {
     const result = await seed.engine.redactManifestForVersion(seed.versionId, ['title']);
     const c2paNode = await import('c2pa-node');
     const c2pa = c2paNode.createC2pa();

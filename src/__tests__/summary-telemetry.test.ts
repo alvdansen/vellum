@@ -2,7 +2,7 @@
  * Phase 19 — Plan 08 Task 1. Telemetry shape + leak-prevention tests.
  *
  * Coverage:
- *   - logSummaryEvent emits to console.error with `vfx-familiar:` prefix
+ *   - logSummaryEvent emits to console.error with `vellum:` prefix
  *   - Sampling: fallback always emits, live always emits, cache_hit on 1%
  *   - assertNoBannedFields throws on any of the 8 banned field names
  *   - Multi-encoding leak scan refuses emit on UTF-8/UTF-16LE/UTF-16BE/base64
@@ -159,21 +159,21 @@ function buildEvent(
 }
 
 // ===========================================================================
-// 1-2: Emit shape — vfx-familiar prefix + JSON payload
+// 1-2: Emit shape — vellum prefix + JSON payload
 // ===========================================================================
 
 describe('Phase 19 telemetry — emit shape (D-PRIV-3 + AI-SPEC §7)', () => {
-  it('Test 1 — emits to console.error with `vfx-familiar:` prefix', () => {
+  it('Test 1 — emits to console.error with `vellum:` prefix', () => {
     logSummaryEvent(buildEvent());
-    const matching = stderrBuffer.filter((line) => line.startsWith('vfx-familiar:'));
+    const matching = stderrBuffer.filter((line) => line.startsWith('vellum:'));
     expect(matching.length).toBeGreaterThanOrEqual(1);
   });
 
   it('Test 2 — emitted payload is valid JSON with all required fields', () => {
     logSummaryEvent(buildEvent());
-    const line = stderrBuffer.find((s) => s.startsWith('vfx-familiar:'));
+    const line = stderrBuffer.find((s) => s.startsWith('vellum:'));
     expect(line).toBeDefined();
-    const json = line!.slice('vfx-familiar:'.length).trim();
+    const json = line!.slice('vellum:'.length).trim();
     const parsed = JSON.parse(json);
     expect(parsed.event).toBe('summary_generated');
     expect(parsed.version_id).toBe('ver_1');
@@ -206,8 +206,8 @@ describe('Phase 19 telemetry — sampling (AI-SPEC §7)', () => {
       );
     }
     const fallbackEmits = stderrBuffer
-      .filter((s) => s.startsWith('vfx-familiar:'))
-      .map((s) => JSON.parse(s.slice('vfx-familiar:'.length).trim()))
+      .filter((s) => s.startsWith('vellum:'))
+      .map((s) => JSON.parse(s.slice('vellum:'.length).trim()))
       .filter((p: { outcome: string }) => p.outcome === 'fallback');
     expect(fallbackEmits.length).toBe(50);
     // Every fallback record carries the `reason` field.
@@ -221,8 +221,8 @@ describe('Phase 19 telemetry — sampling (AI-SPEC §7)', () => {
       logSummaryEvent(buildEvent({ version_id: `ver_${i}`, outcome: 'live' }));
     }
     const liveEmits = stderrBuffer
-      .filter((s) => s.startsWith('vfx-familiar:'))
-      .map((s) => JSON.parse(s.slice('vfx-familiar:'.length).trim()))
+      .filter((s) => s.startsWith('vellum:'))
+      .map((s) => JSON.parse(s.slice('vellum:'.length).trim()))
       .filter((p: { outcome: string }) => p.outcome === 'live');
     expect(liveEmits.length).toBe(50);
   });
@@ -238,8 +238,8 @@ describe('Phase 19 telemetry — sampling (AI-SPEC §7)', () => {
       );
     }
     const cacheHitEmits = stderrBuffer
-      .filter((s) => s.startsWith('vfx-familiar:'))
-      .map((s) => JSON.parse(s.slice('vfx-familiar:'.length).trim()))
+      .filter((s) => s.startsWith('vellum:'))
+      .map((s) => JSON.parse(s.slice('vellum:'.length).trim()))
       .filter((p: { outcome: string }) => p.outcome === 'cache_hit');
     // Expect 1% (~10) ± reasonable variance. Hash-based sampling is biased by
     // collision distribution; assert a wide band [1, 30] to avoid flake.
@@ -296,9 +296,9 @@ describe('Phase 19 telemetry — assertNoBannedFields (D-PRIV-3 contract)', () =
     logSummaryEvent(violator);
     const refusalLines = stderrBuffer.filter((s) => s.includes('EMIT REFUSED'));
     expect(refusalLines.length).toBeGreaterThanOrEqual(1);
-    // No JSON payload line was emitted (no `vfx-familiar: {` literal).
+    // No JSON payload line was emitted (no `vellum: {` literal).
     const jsonEmits = stderrBuffer.filter(
-      (s) => s.startsWith('vfx-familiar:') && s.includes('"event":'),
+      (s) => s.startsWith('vellum:') && s.includes('"event":'),
     );
     expect(jsonEmits.length).toBe(0);
   });
@@ -397,7 +397,7 @@ describe('Phase 19 telemetry — multi-encoding API-key leak scan (D-PRIV-3)', (
     const refusalLines = stderrBuffer.filter((s) => s.includes('EMIT REFUSED'));
     expect(refusalLines.length).toBe(0);
     const jsonLines = stderrBuffer.filter(
-      (s) => s.startsWith('vfx-familiar:') && s.includes('"event":'),
+      (s) => s.startsWith('vellum:') && s.includes('"event":'),
     );
     expect(jsonLines.length).toBe(1);
   });
@@ -450,7 +450,7 @@ describe('Phase 19 telemetry — Engine.summarizeVersion integration', () => {
     expect(r.source).toBe('cache_hit');
     // Whatever cache_hit telemetry emits (sampled or not), the lines NEVER
     // carry summary_text — D-PRIV-3 contract.
-    const emitted = stderrBuffer.filter((s) => s.startsWith('vfx-familiar:'));
+    const emitted = stderrBuffer.filter((s) => s.startsWith('vellum:'));
     for (const line of emitted) {
       expect(line.includes('summary_text')).toBe(false);
       expect(line.includes('flux1-dev at seed 42')).toBe(false);
@@ -466,11 +466,11 @@ describe('Phase 19 telemetry — Engine.summarizeVersion integration', () => {
     const deps = buildDeps();
     const r = await summarizeVersion('ver_1', deps);
     expect(r.source).toBe('live');
-    const emitted = stderrBuffer.filter((s) => s.startsWith('vfx-familiar:'));
+    const emitted = stderrBuffer.filter((s) => s.startsWith('vellum:'));
     expect(emitted.length).toBeGreaterThanOrEqual(1);
     const liveEmits = emitted.filter((s) => s.includes('"outcome":"live"'));
     expect(liveEmits.length).toBeGreaterThanOrEqual(1);
-    const parsed = JSON.parse(liveEmits[0].slice('vfx-familiar:'.length).trim());
+    const parsed = JSON.parse(liveEmits[0].slice('vellum:'.length).trim());
     expect(parsed.prompt_tokens).toBe(4500);
     expect(parsed.completion_tokens).toBe(70);
     // D-PRIV-3 — never log the response text.
@@ -483,10 +483,10 @@ describe('Phase 19 telemetry — Engine.summarizeVersion integration', () => {
     const deps = buildDeps({ apiKey: null }); // Triggers api_key_missing fallback
     const r = await summarizeVersion('ver_1', deps);
     expect(r.source).toBe('fallback');
-    const emitted = stderrBuffer.filter((s) => s.startsWith('vfx-familiar:'));
+    const emitted = stderrBuffer.filter((s) => s.startsWith('vellum:'));
     const fallbackEmits = emitted.filter((s) => s.includes('"outcome":"fallback"'));
     expect(fallbackEmits.length).toBeGreaterThanOrEqual(1);
-    const parsed = JSON.parse(fallbackEmits[0].slice('vfx-familiar:'.length).trim());
+    const parsed = JSON.parse(fallbackEmits[0].slice('vellum:'.length).trim());
     expect(parsed.outcome).toBe('fallback');
     expect(parsed.reason).toBe('api_key_missing');
     expect(parsed.text).toBeUndefined();
@@ -602,7 +602,7 @@ describe('Phase 19 telemetry — SummaryTelemetryEvent type contract', () => {
     logSummaryEvent(buildEvent({ outcome: 'live' }));
     const liveLine = stderrBuffer.find((s) => s.includes('"outcome":"live"'));
     expect(liveLine).toBeDefined();
-    const liveParsed = JSON.parse(liveLine!.slice('vfx-familiar:'.length).trim());
+    const liveParsed = JSON.parse(liveLine!.slice('vellum:'.length).trim());
     expect(liveParsed.reason).toBeUndefined();
 
     // Fallback emit — reason present.
@@ -617,7 +617,7 @@ describe('Phase 19 telemetry — SummaryTelemetryEvent type contract', () => {
     );
     const fbLine = stderrBuffer.find((s) => s.includes('"outcome":"fallback"'));
     expect(fbLine).toBeDefined();
-    const fbParsed = JSON.parse(fbLine!.slice('vfx-familiar:'.length).trim());
+    const fbParsed = JSON.parse(fbLine!.slice('vellum:'.length).trim());
     expect(fbParsed.reason).toBe('circuit_open');
   });
 });

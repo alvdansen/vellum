@@ -108,7 +108,7 @@ function VersionDrawerHostInternal(): JSX.Element | null {
         if (!alive) return;
         if (typeof console !== 'undefined') {
           console.warn(
-            'vfx-familiar: VersionDrawerHost fetchVersion failed; clearing selection.',
+            'vellum: VersionDrawerHost fetchVersion failed; clearing selection.',
             err,
           );
         }
@@ -181,7 +181,7 @@ function ReviewPanelHostInternal({
         if (!alive) return;
         if (typeof console !== 'undefined') {
           console.warn(
-            'vfx-familiar: ReviewPanelHost fetch failed.',
+            'vellum: ReviewPanelHost fetch failed.',
             err,
           );
         }

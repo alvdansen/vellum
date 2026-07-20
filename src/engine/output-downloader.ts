@@ -104,7 +104,7 @@ export async function downloadOutput(
 ): Promise<string | null> {
   if (!client) {
     console.error(
-      `vfx-familiar: output-downloader: no ComfyUI client — skipping download for ${versionId} (${filename})`,
+      `vellum: output-downloader: no ComfyUI client — skipping download for ${versionId} (${filename})`,
     );
     return null;
   }
@@ -129,7 +129,7 @@ export async function downloadOutput(
     // (version id + filename + underlying error message). Do NOT throw.
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
-      `vfx-familiar: output-downloader: failed to download ${filename} for ${versionId}: ${msg}`,
+      `vellum: output-downloader: failed to download ${filename} for ${versionId}: ${msg}`,
     );
     return null;
   }
@@ -204,7 +204,7 @@ async function signFileInPlace(
     // disk full during the writeFile).
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
-      `vfx-familiar: output-downloader: C2PA signing post-download failed for ${versionId}/${filename}: ${msg}`,
+      `vellum: output-downloader: C2PA signing post-download failed for ${versionId}/${filename}: ${msg}`,
     );
     // Non-fatal — provenance event already fired (or the engine threw which
     // means it already logged + recorded). Original Cloud bytes stay intact.

@@ -106,7 +106,7 @@ export function assertNoBannedFields(event: Record<string, unknown>): void {
  *   outcome='live'      → always emit (cost-projection flywheel)
  *   outcome='cache_hit' → emit on 1% deterministic sample
  *
- * Output format: `vfx-familiar: <json>` — matches Phase 14 c2pa-config
+ * Output format: `vellum: <json>` — matches Phase 14 c2pa-config
  * boot-log convention so a single grep over stderr archives covers both.
  *
  * @param event the structured telemetry event
@@ -125,7 +125,7 @@ export function logSummaryEvent(
     // The assertion message itself is safe (it names the banned field) —
     // pass through flattenAnthropicError so any incidental key leak is
     // scrubbed before the EMIT REFUSED log line.
-    console.error(`vfx-familiar: [summary-telemetry] EMIT REFUSED — ${flattenAnthropicError(err)}`);
+    console.error(`vellum: [summary-telemetry] EMIT REFUSED — ${flattenAnthropicError(err)}`);
     return;
   }
 
@@ -151,15 +151,15 @@ export function logSummaryEvent(
     for (const frag of fragments) {
       if (frag.length === 0) continue;
       if (payload.includes(frag)) {
-        console.error('vfx-familiar: [summary-telemetry] EMIT REFUSED — API key fragment in payload');
+        console.error('vellum: [summary-telemetry] EMIT REFUSED — API key fragment in payload');
         return;
       }
     }
   }
 
   // Emit to console.error — matches Phase 14 c2pa-config boot-log
-  // convention. The vfx-familiar prefix marks this as engine-layer telemetry.
-  console.error(`vfx-familiar: ${payload}`);
+  // convention. The vellum prefix marks this as engine-layer telemetry.
+  console.error(`vellum: ${payload}`);
 }
 
 /**

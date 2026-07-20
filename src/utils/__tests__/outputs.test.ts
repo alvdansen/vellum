@@ -19,7 +19,7 @@ import {
 
 function uniqueTmpDir(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);
-  return path.join(os.tmpdir(), `vfx-familiar-${label}-${rand}`);
+  return path.join(os.tmpdir(), `vellum-${label}-${rand}`);
 }
 
 describe('versionLabel (D-GEN-17)', () => {

@@ -62,7 +62,7 @@ function buildScopeFragment(scope: ScopeFilter): {
 }
 
 /**
- * Repository for VFX Familiar `metadata` table (Phase 4 — D-ASST-08, D-ASST-28).
+ * Repository for Vellum `metadata` table (Phase 4 — D-ASST-08, D-ASST-28).
  * Plain CRUD (DELETE allowed). Mutators are idempotent per D-ASST-03:
  * upsertMetadata uses INSERT ON CONFLICT DO UPDATE (value + created_at refresh
  * per D-ASST-08); deleteMetadata is a plain DELETE.

@@ -200,7 +200,7 @@ describe('getMimeForExtensionOrNull — null returns (Phase 15 WR-02 contract)',
   it('Test 22: unknown extension -> null (NOT octet-stream)', () => {
     // Phase 15 WR-02 — pre-fix this fell through to 'application/octet-stream'
     // which c2pa-rs rejects in createIngredient. Now returns null so the
-    // caller routes to vfx_familiar.unavailable_ingredient with reason
+    // caller routes to vellum.unavailable_ingredient with reason
     // 'mime_type_unsupported'.
     expect(getMimeForExtensionOrNull('mystery.xyz')).toBeNull();
   });

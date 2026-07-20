@@ -76,9 +76,9 @@ describe('buildManifestDefinition — D-CTX-4 c2pa.created shape', () => {
     expect(created.data.actions[0]?.action).toBe('c2pa.created');
   });
 
-  it('Test 2: claim_generator format `vfx-familiar/<appVersion> c2pa-node/0.5.26`', () => {
+  it('Test 2: claim_generator format `vellum/<appVersion> c2pa-node/0.5.26`', () => {
     const def = buildManifestDefinition(BASE_OPTS);
-    expect(def.claim_generator).toBe('vfx-familiar/0.1.0 c2pa-node/0.5.26');
+    expect(def.claim_generator).toBe('vellum/0.1.0 c2pa-node/0.5.26');
   });
 
   it('Test 3: format field equals input mimeType', () => {
@@ -256,7 +256,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
   it('Type 4: BuildManifestResult compiles with definition + ingredientSpecs fields', () => {
     const result: BuildManifestResult = {
       definition: {
-        claim_generator: 'vfx-familiar/0.1.0 c2pa-node/0.5.26',
+        claim_generator: 'vellum/0.1.0 c2pa-node/0.5.26',
         format: 'image/png',
         title: 'Version ver_abc',
         assertions: [],
@@ -276,16 +276,16 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
       seed: 42,
     };
     const assertion: VendorInputAssertion = {
-      label: 'vfx_familiar.input',
+      label: 'vellum.input',
       data: inputData,
     };
-    expect(assertion.label).toBe('vfx_familiar.input');
+    expect(assertion.label).toBe('vellum.input');
     expect(assertion.data.prompt_positive).toBe('a cat');
   });
 
   it('Type 6: VendorUnavailableIngredientAssertion shape compiles with the audit metadata payload', () => {
     const assertion: VendorUnavailableIngredientAssertion = {
-      label: 'vfx_familiar.unavailable_ingredient',
+      label: 'vellum.unavailable_ingredient',
       data: {
         relationship: 'parentOf',
         title: 'Parent ver_v001',
@@ -297,7 +297,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
         },
       },
     };
-    expect(assertion.label).toBe('vfx_familiar.unavailable_ingredient');
+    expect(assertion.label).toBe('vellum.unavailable_ingredient');
     expect(assertion.data.reason).toBe('parent_manifest_pending');
   });
 
@@ -363,7 +363,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
     // members of the union. This test locks the broadening — if a future edit
     // narrowed the union, this assignment fails to typecheck.
     const def: ManifestDefinition = {
-      claim_generator: 'vfx-familiar/0.1.0 c2pa-node/0.5.26',
+      claim_generator: 'vellum/0.1.0 c2pa-node/0.5.26',
       format: 'image/png',
       title: 'Version ver_v002',
       assertions: [
@@ -381,7 +381,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
           },
         },
         {
-          label: 'vfx_familiar.input',
+          label: 'vellum.input',
           data: {
             prompt_positive: null,
             prompt_negative: null,
@@ -390,7 +390,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
           },
         },
         {
-          label: 'vfx_familiar.unavailable_ingredient',
+          label: 'vellum.unavailable_ingredient',
           data: {
             relationship: 'componentOf',
             title: 'control image (missing.png)',
@@ -403,8 +403,8 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
     expect(def.assertions).toHaveLength(3);
     expect(def.assertions.map((a) => a.label)).toEqual([
       'c2pa.actions',
-      'vfx_familiar.input',
-      'vfx_familiar.unavailable_ingredient',
+      'vellum.input',
+      'vellum.unavailable_ingredient',
     ]);
   });
 
@@ -497,7 +497,7 @@ describe('Plan 15-02 Task 2 — buildManifestWithIngredients (BuildManifestResul
 
   it('Test 2: definition.claim_generator + format + title match Phase 14 contract', () => {
     const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
-    expect(result.definition.claim_generator).toBe('vfx-familiar/0.1.0 c2pa-node/0.5.26');
+    expect(result.definition.claim_generator).toBe('vellum/0.1.0 c2pa-node/0.5.26');
     expect(result.definition.format).toBe('image/png');
     expect(result.definition.title).toBe('Version ver_v002');
   });
@@ -517,20 +517,20 @@ describe('Plan 15-02 Task 2 — c2pa.created assertion is unchanged in shape', (
   });
 });
 
-describe('Plan 15-02 Task 2 — vfx_familiar.input assertion (T-15-01 mitigation)', () => {
-  it('Test 4: definition.assertions[1] is vfx_familiar.input with the inputTo data verbatim', () => {
+describe('Plan 15-02 Task 2 — vellum.input assertion (T-15-01 mitigation)', () => {
+  it('Test 4: definition.assertions[1] is vellum.input with the inputTo data verbatim', () => {
     const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
     const second = result.definition.assertions[1];
-    expect(second?.label).toBe('vfx_familiar.input');
-    if (second?.label !== 'vfx_familiar.input') throw new Error('expected vfx_familiar.input');
+    expect(second?.label).toBe('vellum.input');
+    if (second?.label !== 'vellum.input') throw new Error('expected vellum.input');
     expect(second.data).toEqual(SAMPLE_INPUT_TO);
   });
 
-  it('Test 5: with no ingredients, assertions are exactly [c2pa.actions, vfx_familiar.input]', () => {
+  it('Test 5: with no ingredients, assertions are exactly [c2pa.actions, vellum.input]', () => {
     const result = buildManifestWithIngredients(buildOptsWithIngredients({}));
     expect(result.definition.assertions.map((a) => a.label)).toEqual([
       'c2pa.actions',
-      'vfx_familiar.input',
+      'vellum.input',
     ]);
   });
 });
@@ -557,7 +557,7 @@ describe('Plan 15-02 Task 2 — parentOf reachable', () => {
     });
     // No unavailable assertion when reachable.
     expect(
-      result.definition.assertions.some((a) => a.label === 'vfx_familiar.unavailable_ingredient'),
+      result.definition.assertions.some((a) => a.label === 'vellum.unavailable_ingredient'),
     ).toBe(false);
   });
 
@@ -578,7 +578,7 @@ describe('Plan 15-02 Task 2 — parentOf reachable', () => {
 });
 
 describe('Plan 15-02 Task 2 — parentOf unavailable (parent_manifest_pending)', () => {
-  it('Test 8: parent_manifest_pending -> spec assetRef.kind=unavailable + vfx_familiar.unavailable_ingredient assertion emitted', () => {
+  it('Test 8: parent_manifest_pending -> spec assetRef.kind=unavailable + vellum.unavailable_ingredient assertion emitted', () => {
     const result = buildManifestWithIngredients(
       buildOptsWithIngredients({ parentOf: SAMPLE_PARENT_PENDING, refs: new Map() }),
     );
@@ -591,11 +591,11 @@ describe('Plan 15-02 Task 2 — parentOf unavailable (parent_manifest_pending)',
     expect(spec.assetRef.reason).toBe('parent_manifest_pending');
     // Audit assertion ALSO appears in definition.assertions.
     const unavail = result.definition.assertions.find(
-      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+      (a) => a.label === 'vellum.unavailable_ingredient',
     );
     expect(unavail).toBeDefined();
-    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
-      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    if (unavail?.label !== 'vellum.unavailable_ingredient') {
+      throw new Error('expected vellum.unavailable_ingredient');
     }
     expect(unavail.data).toEqual({
       relationship: 'parentOf',
@@ -615,7 +615,7 @@ describe('Plan 15-02 Task 2 — parentOf unavailable (parent_manifest_pending)',
     expect(result.ingredientSpecs.filter((s) => s.relationship === 'parentOf')).toHaveLength(0);
     // No unavailable assertion for parent.
     expect(
-      result.definition.assertions.some((a) => a.label === 'vfx_familiar.unavailable_ingredient'),
+      result.definition.assertions.some((a) => a.label === 'vellum.unavailable_ingredient'),
     ).toBe(false);
   });
 });
@@ -654,11 +654,11 @@ describe('Plan 15-02 Task 2 — componentOf reachable + unavailable', () => {
     if (spec.assetRef.kind !== 'unavailable') throw new Error('expected unavailable kind');
     expect(spec.assetRef.reason).toBe('file_not_found');
     const unavail = result.definition.assertions.find(
-      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+      (a) => a.label === 'vellum.unavailable_ingredient',
     );
     expect(unavail).toBeDefined();
-    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
-      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    if (unavail?.label !== 'vellum.unavailable_ingredient') {
+      throw new Error('expected vellum.unavailable_ingredient');
     }
     expect(unavail.data.relationship).toBe('componentOf');
     expect(unavail.data.reason).toBe('file_not_found');
@@ -686,7 +686,7 @@ describe('Plan 15-02 Task 2 — componentOf reachable + unavailable', () => {
     expect(spec.assetRef.reason).toBe('file_not_found');
   });
 
-  it('Test 13: empty componentOf + null parentOf -> assertions length === 2 (c2pa.actions + vfx_familiar.input ONLY)', () => {
+  it('Test 13: empty componentOf + null parentOf -> assertions length === 2 (c2pa.actions + vellum.input ONLY)', () => {
     const result = buildManifestWithIngredients(
       buildOptsWithIngredients({ parentOf: null, componentOf: [] }),
     );
@@ -696,7 +696,7 @@ describe('Plan 15-02 Task 2 — componentOf reachable + unavailable', () => {
 });
 
 describe('Plan 15-02 Task 2 — ordering invariants (assertions + ingredientSpecs)', () => {
-  it('Test 14: assertions order with parent unavailable + 2 components (1 unavailable) is [c2pa.actions, vfx_familiar.input, vfx_familiar.unavailable_ingredient*]', () => {
+  it('Test 14: assertions order with parent unavailable + 2 components (1 unavailable) is [c2pa.actions, vellum.input, vellum.unavailable_ingredient*]', () => {
     const refs = new Map<string, IngredientAssetRef>([
       ['5', { kind: 'file', path: '/abs/inputs/control.png', mimeType: 'image/png' }],
       ['7', { kind: 'unavailable', reason: 'file_not_found' }],
@@ -711,9 +711,9 @@ describe('Plan 15-02 Task 2 — ordering invariants (assertions + ingredientSpec
     // c2pa.actions FIRST (Phase 14 invariant), vendor assertions follow.
     expect(result.definition.assertions.map((a) => a.label)).toEqual([
       'c2pa.actions',
-      'vfx_familiar.input',
-      'vfx_familiar.unavailable_ingredient', // parent's unavailable (emitted first)
-      'vfx_familiar.unavailable_ingredient', // component 7 (ControlNet) unavailable
+      'vellum.input',
+      'vellum.unavailable_ingredient', // parent's unavailable (emitted first)
+      'vellum.unavailable_ingredient', // component 7 (ControlNet) unavailable
     ]);
   });
 
@@ -796,10 +796,10 @@ describe('Plan 15-02 Task 2 — T-15-04 stripToBasename defence-in-depth', () =>
     expect(String(result.ingredientSpecs[0]?.auditMetadata.input_filename)).not.toContain('\\');
     // The unavailable assertion ALSO carries the basename only.
     const unavail = result.definition.assertions.find(
-      (a) => a.label === 'vfx_familiar.unavailable_ingredient',
+      (a) => a.label === 'vellum.unavailable_ingredient',
     );
-    if (unavail?.label !== 'vfx_familiar.unavailable_ingredient') {
-      throw new Error('expected vfx_familiar.unavailable_ingredient');
+    if (unavail?.label !== 'vellum.unavailable_ingredient') {
+      throw new Error('expected vellum.unavailable_ingredient');
     }
     expect(unavail.data.metadata.input_filename).toBe('control.png');
   });

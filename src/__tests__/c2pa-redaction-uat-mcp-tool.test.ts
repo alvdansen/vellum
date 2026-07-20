@@ -190,7 +190,7 @@ async function seedSignedVersionInDb(opts: {
 
 // ---------------------------------------------------------------
 // Stdio client harness — spawns `npx tsx src/server.ts --db <path>` with
-// VFX_FAMILIAR_C2PA_TRUST_DEV_CERT=1 + cert/key/TSA env vars.
+// VELLUM_C2PA_TRUST_DEV_CERT=1 + cert/key/TSA env vars.
 // ---------------------------------------------------------------
 
 interface StdioHandle {
@@ -204,16 +204,16 @@ async function connectStdio(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
-    env.VFX_FAMILIAR_C2PA_TSA_URL = 'http://timestamp.digicert.com';
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_TSA_URL = 'http://timestamp.digicert.com';
   } else {
-    delete env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    delete env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    delete env.VELLUM_C2PA_CERT_PEM_PATH;
+    delete env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
   }
   const transport = new StdioClientTransport({
     command: 'npx',
@@ -247,13 +247,13 @@ async function connectHttp(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
-    env.VFX_FAMILIAR_C2PA_TSA_URL = 'http://timestamp.digicert.com';
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_TSA_URL = 'http://timestamp.digicert.com';
   }
   const proc = spawn(
     'npx',
@@ -420,7 +420,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 wire-level UAT — STDIO', () => {
       const verifyPayload = readPayload(verifyRes);
       expect(verifyPayload.valid).toBe(true);
       expect(verifyPayload.signature_status).toBe('valid');
-      expect(verifyPayload.matched_assertions).toContain('vfx_familiar.redacted');
+      expect(verifyPayload.matched_assertions).toContain('vellum.redacted');
       // Bytes-form verify produces a null breadcrumb per D-PLAN-3-4 (no
       // version context to traverse).
       expect(verifyPayload.breadcrumb).toBeNull();
@@ -468,7 +468,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 wire-level UAT — STDIO', () => {
       expect(redactedStore!.active_manifest!.title).toBe('[REDACTED]');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const labels = (redactedStore!.active_manifest!.assertions ?? []).map((a: any) => a.label);
-      expect(labels).toContain('vfx_familiar.redacted');
+      expect(labels).toContain('vellum.redacted');
       const am = redactedStore!.active_manifest!;
       const activeProjection = JSON.stringify({
         claim_generator: am.claim_generator,
@@ -635,7 +635,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 wire-level UAT — HTTP', () => {
       expect(redactedStore!.active_manifest!.title).toBe('[REDACTED]');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const labels = (redactedStore!.active_manifest!.assertions ?? []).map((a: any) => a.label);
-      expect(labels).toContain('vfx_familiar.redacted');
+      expect(labels).toContain('vellum.redacted');
       const am = redactedStore!.active_manifest!;
       const activeProjection = JSON.stringify({
         claim_generator: am.claim_generator,

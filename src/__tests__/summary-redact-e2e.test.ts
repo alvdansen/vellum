@@ -302,7 +302,7 @@ describe.skipIf(!haveOpenssl || !haveFixtures)('Phase 19 — summary redact-even
     expect(generateSummaryMock).toHaveBeenCalledTimes(1); // No extra call.
 
     // Step 4: Redact. Phase 16 mutates manifest_sha256 → SHA_B.
-    const policyPath = "assertions[label='vfx_familiar.input'].data.prompt_positive";
+    const policyPath = "assertions[label='vellum.input'].data.prompt_positive";
     const redactResult = await seed.engine.redactManifestForVersion(seed.versionId, [policyPath]);
     expect(redactResult.redactedFields).toContain(policyPath);
 

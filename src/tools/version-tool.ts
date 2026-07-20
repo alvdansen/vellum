@@ -135,7 +135,7 @@ const MAX_REDACTION_POLICY_ENTRY_LENGTH = 1024;
  * Phase 16 / Plan 16-04 (D-CTX-1 + D-CTX-8) — `redact_manifest` input.
  *
  * Strips named fields from a version's signed manifest, emits a
- * vfx_familiar.redacted assertion (D-CTX-1) preserving the FACT of
+ * vellum.redacted assertion (D-CTX-1) preserving the FACT of
  * redaction (NOT the original values), re-signs with the same cert,
  * appends a NEW manifest_signed event (append-only contract preserved).
  *
@@ -143,7 +143,7 @@ const MAX_REDACTION_POLICY_ENTRY_LENGTH = 1024;
  * manifest JSON — see Plan 16-02's applyRedactionPolicy DSL doc:
  *   - 'claim_generator', 'title' (top-level keys)
  *   - 'assertions[*].data.<field>' (wildcard array index)
- *   - "assertions[label='vfx_familiar.input'].data.<field>" (label-targeted)
+ *   - "assertions[label='vellum.input'].data.<field>" (label-targeted)
  *
  * Engine errors surface verbatim (D-PLAN-4-4):
  *   - REDACT_NO_MANIFEST       — version has no signed manifest yet
@@ -480,7 +480,7 @@ export function registerVersion(server: McpServer, engine: Engine) {
         'export_manifest (returns the C2PA-signed manifest for a version_id in a structured envelope: {version_id, format, signed_at, manifest_bytes_base64, manifest_status: \'present\'|\'absent\'|\'unsupported_format\', cert_subject, ingredients_summary, breadcrumb} per D-PROV-08), ' +
         'verify_manifest (verifies a C2PA manifest against the configured trust root — accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form), ' +
         // Phase 16 / Plan 16-04 (D-CTX-1) — third agent-surface action.
-        'redact_manifest (strips named fields from a version\'s signed manifest, emits a vfx_familiar.redacted assertion preserving the FACT of redaction (NOT the original values), re-signs the asset, and appends a NEW manifest_signed event — original signed event is byte-identical per append-only contract; envelope returns {version_id, manifest_bytes_base64, redacted_fields, not_found, signed_at, format, cert_subject, breadcrumb}). ' +
+        'redact_manifest (strips named fields from a version\'s signed manifest, emits a vellum.redacted assertion preserving the FACT of redaction (NOT the original values), re-signs the asset, and appends a NEW manifest_signed event — original signed event is byte-identical per append-only contract; envelope returns {version_id, manifest_bytes_base64, redacted_fields, not_found, signed_at, format, cert_subject, breadcrumb}). ' +
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).

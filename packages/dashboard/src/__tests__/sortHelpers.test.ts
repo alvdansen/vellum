@@ -100,8 +100,8 @@ const HIERARCHY_FIELDS: ReadonlySet<HierarchySortField> = new Set([
   'created_at',
 ]);
 
-const GRID_LS_KEY = 'vfx-familiar:sort:grid';
-const TREE_LS_KEY = 'vfx-familiar:sort:tree';
+const GRID_LS_KEY = 'vellum:sort:grid';
+const TREE_LS_KEY = 'vellum:sort:tree';
 
 /**
  * Set up a fresh memory localStorage + URL/history mock per test. Returns the

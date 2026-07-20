@@ -219,24 +219,24 @@ async function connectStdio(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
     // D-PLAN-5 — accept dev cert codes during tests so signature_status='valid'
     // returns from c2pa-rs against the bundled es256 cert chain.
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
     // Phase 14 RUNTIME DEVIATION (Plan 14-02 file header): c2pa-node
     // v0.5.26 native binding requires tsaUrl to be ABSENT or a VALID URL —
     // the LocalSigner literal omits the property when tsaUrl is null but
     // signing fails at runtime ("failed to downcast any to string").
     // Mitigation: set the operator-controlled env var so the signer
     // literal carries a valid TSA URL. Mirror c2pa-node's createTestSigner default.
-    env.VFX_FAMILIAR_C2PA_TSA_URL = 'http://timestamp.digicert.com';
+    env.VELLUM_C2PA_TSA_URL = 'http://timestamp.digicert.com';
   } else {
-    delete env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    delete env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    delete env.VELLUM_C2PA_CERT_PEM_PATH;
+    delete env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
   }
   const transport = new StdioClientTransport({
     command: 'npx',
@@ -270,14 +270,14 @@ async function connectHttp(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
-    VFX_FAMILIAR_C2PA_TRUST_DEV_CERT: '1',
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_C2PA_TRUST_DEV_CERT: '1',
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
     // Phase 14 RUNTIME DEVIATION — see connectStdio for full context.
-    env.VFX_FAMILIAR_C2PA_TSA_URL = 'http://timestamp.digicert.com';
+    env.VELLUM_C2PA_TSA_URL = 'http://timestamp.digicert.com';
   }
   const proc = spawn(
     'npx',
@@ -400,7 +400,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 — version.redact_manifest STDIO (signe
     // c2pa.read (mirror Plan 16-02 Test 17 active-manifest projection)
     // and assert (a) active_manifest.title === '[REDACTED]', (b) the
     // original 'Version ${versionId}' literal is absent from the ACTIVE
-    // manifest projection (vfx_familiar.redacted assertion + every
+    // manifest projection (vellum.redacted assertion + every
     // assertion + claim_generator + format), even when stringified +
     // multi-encoding-scanned.
     //
@@ -416,12 +416,12 @@ describe.skipIf(!haveOpenssl)('Phase 16 — version.redact_manifest STDIO (signe
     expect(redactedStore!.active_manifest).not.toBeNull();
     // (a) active manifest title is the redacted sentinel.
     expect(redactedStore!.active_manifest!.title).toBe('[REDACTED]');
-    // (b) vfx_familiar.redacted assertion present (the FACT of redaction).
+    // (b) vellum.redacted assertion present (the FACT of redaction).
     const labels = (redactedStore!.active_manifest!.assertions ?? []).map(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (a: any) => a.label,
     );
-    expect(labels).toContain('vfx_familiar.redacted');
+    expect(labels).toContain('vellum.redacted');
     // (c) Multi-encoding scan against the ACTIVE manifest projection.
     // Project active_manifest fields (claim_generator, format, title,
     // assertions[]) into a flat string and scan for the sentinel.
@@ -727,7 +727,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 — version.redact_manifest HTTP parity'
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (a: any) => a.label,
     );
-    expect(labels).toContain('vfx_familiar.redacted');
+    expect(labels).toContain('vellum.redacted');
     // Multi-encoding scan over active-manifest projection.
     const am = redactedStore!.active_manifest!;
     const activeProjection = JSON.stringify({
@@ -762,7 +762,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 — version.redact_manifest HTTP parity'
     const stdioPayload = readPayload(stdioResult);
     // Strip non-deterministic fields: signed_at + manifest_bytes_base64
     // (each redact call produces a fresh timestamp + fresh bytes due to
-    // the appended vfx_familiar.redacted assertion's redacted_at).
+    // the appended vellum.redacted assertion's redacted_at).
     const stripFields = (p: Record<string, unknown>): Record<string, unknown> => {
       const rest = { ...p };
       delete rest.signed_at;

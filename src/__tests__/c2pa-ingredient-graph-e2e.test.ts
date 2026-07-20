@@ -20,7 +20,7 @@
  *   const parentOf = ingredients.find((i) => i.relationship === 'parentOf');
  *   const componentOf = ingredients.find((i) => i.relationship === 'componentOf');
  *
- * The vfx_familiar.input + vfx_familiar.unavailable_ingredient assertions
+ * The vellum.input + vellum.unavailable_ingredient assertions
  * stay in `manifest.assertions[]` — that's the audit channel. parentOf +
  * componentOf flow via c2pa-node's manifestBuilder.addIngredient so they
  * surface on `manifest.ingredients[]` instead.
@@ -390,7 +390,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 E2E — v1 → v2 → v3 ingr
     expect(v1Parent).toBeUndefined();
   });
 
-  it('Test 5 (criterion #4): v1, v2, v3 all carry vfx_familiar.input in assertions[] (audit channel separate from ingredients[])', async () => {
+  it('Test 5 (criterion #4): v1, v2, v3 all carry vellum.input in assertions[] (audit channel separate from ingredients[])', async () => {
     const c2pa = createC2pa();
     const v1Store = await c2pa.read({ buffer: v1Signed, mimeType: 'image/png' });
     const v2Store = await c2pa.read({ buffer: v2Signed, mimeType: 'image/png' });
@@ -401,7 +401,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 E2E — v1 → v2 → v3 ingr
       const manifest = store!.active_manifest;
       expect(manifest).not.toBeNull();
       const assertions = (manifest!.assertions ?? []) as Array<{ label?: string; data?: unknown }>;
-      const inputAssertion = assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+      const inputAssertion = assertions.find((a) => a.label?.startsWith('vellum.input'));
       expect(inputAssertion).toBeDefined();
     }
   });
@@ -418,7 +418,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 E2E — v1 → v2 → v3 ingr
         seed?: number;
       };
     }>;
-    const inputAssertion = assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+    const inputAssertion = assertions.find((a) => a.label?.startsWith('vellum.input'));
     expect(inputAssertion).toBeDefined();
     const data = inputAssertion!.data!;
     expect(data.prompt_positive).toBe('final iteration');
@@ -491,7 +491,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 E2E — v1 → v2 → v3 ingr
     // should ever appear because Plan 15-02's manifest builder never emits
     // them and Plan 15-03's signer wires reachable ingredients through
     // manifestBuilder.addIngredient. (The vendor namespace
-    // 'vfx_familiar.unavailable_ingredient' is intentionally distinct and
+    // 'vellum.unavailable_ingredient' is intentionally distinct and
     // is the audit-channel for unreachable ingredient bytes.)
     const c2pa = createC2pa();
     const forbiddenPrefix = 'c2pa.ingredient';

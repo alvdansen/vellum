@@ -1,4 +1,4 @@
-// Pure type definitions for VFX Familiar hierarchy entities.
+// Pure type definitions for Vellum hierarchy entities.
 // ZERO imports — this file is the canonical type source consumed by engine, store, and tools.
 
 /**

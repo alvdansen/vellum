@@ -24,7 +24,7 @@
 //   - The Phase 14 buildManifestDefinition entry point is UNCHANGED — legacy
 //     callers compile + execute byte-equal. Only the assertions[] union is
 //     broadened to a SUPERTYPE; the Phase 14 c2pa.actions shape narrows in.
-//   - vfx_familiar.input + vfx_familiar.unavailable_ingredient are vendor-
+//   - vellum.input + vellum.unavailable_ingredient are vendor-
 //     namespaced custom assertions emitted via assertions[] (legitimate use
 //     of the array — c2pa.ingredient is NOT in the union: ingredients flow
 //     through manifestBuilder.addIngredient at the impure layer).
@@ -101,7 +101,7 @@ export interface ManifestDefinition {
  * deliberately excludes the `ingredients` field for that reason.
  *
  * Phase 16 / Plan 16-02 (D-CTX-1) — extended with VendorRedactedAssertion. The
- * `vfx_familiar.redacted` assertion preserves the FACT of redaction without
+ * `vellum.redacted` assertion preserves the FACT of redaction without
  * the original values. Original values appear NOWHERE in the redacted manifest
  * JSON output — this is a structural invariant tested at every layer
  * (helper, integration, E2E in Plan 16-05).
@@ -135,7 +135,7 @@ export interface CreatedActionAssertion {
  * the workflow_json verbatim.
  */
 export interface VendorInputAssertion {
-  label: 'vfx_familiar.input';
+  label: 'vellum.input';
   data: InputAssertion;
 }
 
@@ -149,7 +149,7 @@ export interface VendorInputAssertion {
  * assertion so an independent C2PA reader sees what was attempted.
  */
 export interface VendorUnavailableIngredientAssertion {
-  label: 'vfx_familiar.unavailable_ingredient';
+  label: 'vellum.unavailable_ingredient';
   data: {
     relationship: 'parentOf' | 'componentOf';
     title: string;
@@ -182,7 +182,7 @@ export interface VendorUnavailableIngredientAssertion {
  * must use a separate asset-scrubbing tool BEFORE calling redact_manifest.
  */
 export interface VendorRedactedAssertion {
-  label: 'vfx_familiar.redacted';
+  label: 'vellum.redacted';
   data: {
     redacted_fields: string[];
     redacted_at: string;
@@ -211,7 +211,7 @@ export interface BuildManifestWithIngredientsOptions extends BuildManifestOption
    * (Plan 15-03 Engine.signOutput) which has access to the filesystem. The
    * pure builder uses these to decide which spec is reachable (drives
    * createIngredient at sign time) vs unreachable (records via
-   * vfx_familiar.unavailable_ingredient).
+   * vellum.unavailable_ingredient).
    *
    * Map keyed by:
    *   - parentOf:    'parent' (single)
@@ -229,7 +229,7 @@ export interface BuildManifestWithIngredientsOptions extends BuildManifestOption
  * - 'file':   absolute path + mimeType. createIngredient accepts FileAsset for
  *   any format the underlying c2pa-rs has a handler for.
  * - 'unavailable': bytes could not be loaded; the typed reason is surfaced in
- *   the vfx_familiar.unavailable_ingredient assertion so the audit trail
+ *   the vellum.unavailable_ingredient assertion so the audit trail
  *   records what was attempted (ROADMAP criterion #5).
  */
 export type IngredientAssetRef =
@@ -252,7 +252,7 @@ export type IngredientAssetRef =
  *
  * The signer:
  *   1. Inspects assetRef.kind. If 'unavailable' — skip createIngredient and
- *      let the vfx_familiar.unavailable_ingredient assertion (in
+ *      let the vellum.unavailable_ingredient assertion (in
  *      BuildManifestResult.definition.assertions[]) carry the audit trail.
  *   2. For 'buffer' or 'file' — calls createIngredient({asset, title}) with
  *      that AssetRef (let the native binding compute its own labeled hash).
@@ -274,7 +274,7 @@ export interface IngredientSpec {
   assetRef: IngredientAssetRef;
   /**
    * Audit metadata the impure signer ignores at sign time but the pure
-   * builder mirrors into the vfx_familiar.unavailable_ingredient assertion
+   * builder mirrors into the vellum.unavailable_ingredient assertion
    * when assetRef.kind === 'unavailable'. Carries version_id / lineage_type
    * for parents, node_id / role / filename for components.
    */
@@ -285,13 +285,13 @@ export interface IngredientSpec {
  * Phase 15 — output of buildManifestWithIngredients.
  *
  * - definition: clean BaseManifestDefinition-compatible shape (Phase 14
- *   c2pa.created assertion + vfx_familiar.input + zero-or-more
- *   vfx_familiar.unavailable_ingredient — NO c2pa.ingredient entries). This
+ *   c2pa.created assertion + vellum.input + zero-or-more
+ *   vellum.unavailable_ingredient — NO c2pa.ingredient entries). This
  *   is what the impure signer hands to `new ManifestBuilder(def)`.
  * - ingredientSpecs: recipe list (parent + each component) the signer feeds
  *   to createIngredient + addIngredient. The signer skips entries whose
  *   assetRef.kind === 'unavailable' (the audit trail is already in the
- *   definition's vfx_familiar.unavailable_ingredient assertion).
+ *   definition's vellum.unavailable_ingredient assertion).
  */
 export interface BuildManifestResult {
   definition: ManifestDefinition;
@@ -317,7 +317,7 @@ const IPTC_TRAINED_ALGORITHMIC_MEDIA =
 export function buildManifestDefinition(opts: BuildManifestOptions): ManifestDefinition {
   const description = describePrimaryModel(opts.primaryModel);
   return {
-    claim_generator: `vfx-familiar/${opts.appVersion} c2pa-node/${C2PA_NODE_VERSION}`,
+    claim_generator: `vellum/${opts.appVersion} c2pa-node/${C2PA_NODE_VERSION}`,
     format: opts.mimeType,
     title: `Version ${opts.versionId}`,
     assertions: [
@@ -342,8 +342,8 @@ export function buildManifestDefinition(opts: BuildManifestOptions): ManifestDef
  * Phase 15 / Plan 15-02 — pure entry point that produces both:
  *   1. A clean ManifestDefinition (no ingredients field — matches the native
  *      binding's BaseManifestDefinition shape) carrying the c2pa.created
- *      action (Phase 14) + vfx_familiar.input (the structured prompt + sampler
- *      payload) + zero-or-more vfx_familiar.unavailable_ingredient entries
+ *      action (Phase 14) + vellum.input (the structured prompt + sampler
+ *      payload) + zero-or-more vellum.unavailable_ingredient entries
  *      (one per spec whose bytes are unreachable).
  *   2. A list of IngredientSpec records the impure signer (Plan 15-03) drives
  *      through createIngredient + manifestBuilder.addIngredient to populate
@@ -377,7 +377,7 @@ export function buildManifestDefinition(opts: BuildManifestOptions): ManifestDef
  * Since createIngredient REQUIRES asset bytes (no public API exists to build
  * an ingredient purely from a precomputed hash), unreachable specs cannot
  * land as c2pa.ingredient entries — instead we surface them via the
- * vfx_familiar.unavailable_ingredient vendor assertion so an independent
+ * vellum.unavailable_ingredient vendor assertion so an independent
  * C2PA reader sees what was attempted (ROADMAP criterion #5).
  */
 export function buildManifestWithIngredients(
@@ -399,7 +399,7 @@ export function buildManifestWithIngredients(
       },
     },
     {
-      label: 'vfx_familiar.input',
+      label: 'vellum.input',
       data: opts.ingredients.inputTo,
     },
   ];
@@ -442,7 +442,7 @@ export function buildManifestWithIngredients(
         auditMetadata,
       });
       assertions.push({
-        label: 'vfx_familiar.unavailable_ingredient',
+        label: 'vellum.unavailable_ingredient',
         data: {
           relationship: 'parentOf',
           title,
@@ -487,7 +487,7 @@ export function buildManifestWithIngredients(
         auditMetadata,
       });
       assertions.push({
-        label: 'vfx_familiar.unavailable_ingredient',
+        label: 'vellum.unavailable_ingredient',
         data: {
           relationship: 'componentOf',
           title,
@@ -499,7 +499,7 @@ export function buildManifestWithIngredients(
   }
 
   const definition: ManifestDefinition = {
-    claim_generator: `vfx-familiar/${opts.appVersion} c2pa-node/${C2PA_NODE_VERSION}`,
+    claim_generator: `vellum/${opts.appVersion} c2pa-node/${C2PA_NODE_VERSION}`,
     format: opts.mimeType,
     title: `Version ${opts.versionId}`,
     assertions,

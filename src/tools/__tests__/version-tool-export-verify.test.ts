@@ -392,7 +392,7 @@ describe('version verify_manifest — dispatch + envelope', () => {
     const fixedReport: VerificationReport = {
       valid: true,
       signature_status: 'valid',
-      matched_assertions: ['c2pa.actions', 'vfx_familiar.input'],
+      matched_assertions: ['c2pa.actions', 'vellum.input'],
       gaps: [],
       failures: [],
       cert_subject: 'CN=Dev Cert',
@@ -411,7 +411,7 @@ describe('version verify_manifest — dispatch + envelope', () => {
     const sc = res.structuredContent as Record<string, unknown>;
     expect(sc.valid).toBe(true);
     expect(sc.signature_status).toBe('valid');
-    expect(sc.matched_assertions).toEqual(['c2pa.actions', 'vfx_familiar.input']);
+    expect(sc.matched_assertions).toEqual(['c2pa.actions', 'vellum.input']);
     expect(sc.gaps).toEqual([]);
     expect(sc.failures).toEqual([]);
     expect(sc.cert_subject).toBe('CN=Dev Cert');

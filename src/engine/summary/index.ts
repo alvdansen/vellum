@@ -345,7 +345,7 @@ export async function summarizeVersion(
     assertNoApiKeyInPayload(sanitized); // D-PRIV-3 defence-in-depth
   } catch (err) {
     // Adversarial-review surface — log loudly via flattenAnthropicError, then fallback.
-    console.error('vfx-familiar: sanitization leak-scan FAILED:', flattenAnthropicError(err));
+    console.error('vellum: sanitization leak-scan FAILED:', flattenAnthropicError(err));
     return buildFallbackOutcome('validation_failed'); // Treat as validation failure for cache-write gate
   }
 
@@ -389,7 +389,7 @@ export async function summarizeVersion(
   try {
     assertNoApiKeyInString(llmResult.text);
   } catch (err) {
-    console.error('vfx-familiar: post-LLM leak-scan FAILED:', flattenAnthropicError(err));
+    console.error('vellum: post-LLM leak-scan FAILED:', flattenAnthropicError(err));
     return buildFallbackOutcome('validation_failed');
   }
 

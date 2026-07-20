@@ -4,7 +4,7 @@
  *
  * Reads cert + key paths from env, resolves symlinks via realpathSync, asserts
  * the resolved paths live inside the allowlist root (cwd by default, override
- * via VFX_FAMILIAR_C2PA_CERT_ROOT), validates existence + readability +
+ * via VELLUM_C2PA_CERT_ROOT), validates existence + readability +
  * non-empty, and returns a C2paConfig OR null (signing disabled). Throws
  * TypedError('C2PA_CONFIG_INVALID', ...) when validation fails.
  *
@@ -28,11 +28,11 @@ import { TypedError } from '../engine/errors.js';
 import type { C2paConfig } from '../types/c2pa.js';
 
 export const DEFAULT_C2PA_CERT_ROOT_HINT =
-  'Set VFX_FAMILIAR_C2PA_CERT_ROOT to override the allowlist root (defaults to cwd).';
+  'Set VELLUM_C2PA_CERT_ROOT to override the allowlist root (defaults to cwd).';
 
 /**
- * Phase 14 — PROV-V-01. loadC2paConfigFromEnv reads VFX_FAMILIAR_C2PA_CERT_PEM_PATH
- * and VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH from env, resolves symlinks via
+ * Phase 14 — PROV-V-01. loadC2paConfigFromEnv reads VELLUM_C2PA_CERT_PEM_PATH
+ * and VELLUM_C2PA_PRIVATE_KEY_PEM_PATH from env, resolves symlinks via
  * realpathSync, asserts allowlist-root containment, validates existence +
  * readability + non-empty, and returns a C2paConfig or null (signing disabled).
  *
@@ -44,8 +44,8 @@ export const DEFAULT_C2PA_CERT_ROOT_HINT =
  *  - the allowlist root itself is missing or unreadable
  */
 export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2paConfig | null {
-  const certPathRaw = env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-  const keyPathRaw = env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+  const certPathRaw = env.VELLUM_C2PA_CERT_PEM_PATH;
+  const keyPathRaw = env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
 
   // Both unset → signing disabled (D-CTX-2 graceful degradation).
   if (!certPathRaw && !keyPathRaw) return null;
@@ -54,13 +54,13 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   if (!certPathRaw || !keyPathRaw) {
     throw new TypedError(
       'C2PA_CONFIG_INVALID',
-      'Both VFX_FAMILIAR_C2PA_CERT_PEM_PATH and VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH must be set together, or both unset',
+      'Both VELLUM_C2PA_CERT_PEM_PATH and VELLUM_C2PA_PRIVATE_KEY_PEM_PATH must be set together, or both unset',
       'Set both paths to enable C2PA signing, or unset both to run with signing disabled.',
     );
   }
 
   // Resolve allowlist root.
-  const rootRaw = env.VFX_FAMILIAR_C2PA_CERT_ROOT ?? process.cwd();
+  const rootRaw = env.VELLUM_C2PA_CERT_ROOT ?? process.cwd();
   let root: string;
   try {
     root = realpathSync(rootRaw);
@@ -84,7 +84,7 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   const mode = keyStat.mode & 0o777;
   if (mode & 0o077) {
     console.error(
-      `vfx-familiar: WARNING — C2PA private key file ${basename(keyPath)} has permissive mode 0${mode.toString(8).padStart(3, '0')}; tighten to 0600 for production.`,
+      `vellum: WARNING — C2PA private key file ${basename(keyPath)} has permissive mode 0${mode.toString(8).padStart(3, '0')}; tighten to 0600 for production.`,
     );
   }
 
@@ -97,7 +97,7 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   // string is treated as unset (defensive — operators using shell `export`
   // to "unset" a value sometimes leave it as empty string). Whitespace-only
   // values (spaces/tabs) are also treated as unset.
-  const tsaUrlRaw = env.VFX_FAMILIAR_C2PA_TSA_URL;
+  const tsaUrlRaw = env.VELLUM_C2PA_TSA_URL;
   const tsaUrl = tsaUrlRaw && tsaUrlRaw.trim().length > 0 ? tsaUrlRaw : null;
 
   return { certPemPath: certPath, privateKeyPemPath: keyPath, tsaUrl };

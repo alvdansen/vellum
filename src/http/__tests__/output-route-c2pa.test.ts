@@ -119,7 +119,7 @@ function signedPayload(filename: string): ManifestSignedPayloadFields {
     filename,
     format: 'image/png',
     signed: true,
-    cert_subject_summary: 'CN=VFX Familiar Dev',
+    cert_subject_summary: 'CN=Vellum Dev',
     signed_at: '2026-04-30T12:00:00.000Z',
     status_reason: '',
     algorithm: 'es256',

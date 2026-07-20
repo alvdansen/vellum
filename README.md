@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="VFX Familiar — Structured production for AI pipelines" width="900" />
+  <img src="docs/assets/hero.png" alt="Vellum — Structured production for AI pipelines" width="900" />
 </p>
 
-<h1 align="center">VFX Familiar</h1>
+<h1 align="center">Vellum</h1>
 
 <p align="center">
   <strong>Production-grade VFX pipeline structure, layered over ComfyUI Cloud, surfaced as MCP tools.</strong><br/>
@@ -22,7 +22,7 @@
 
 ## Why this exists
 
-Studios can't adopt ComfyUI at scale (50 to 1000+ shots) because **the asset graph collapses**. Files spill across folders, seeds get lost, model versions drift, and "which workflow made this frame?" turns into a half-day archaeology dig. ComfyUI already embeds workflow JSON in PNG metadata — VFX Familiar extends that with the structure a production needs: project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce.
+Studios can't adopt ComfyUI at scale (50 to 1000+ shots) because **the asset graph collapses**. Files spill across folders, seeds get lost, model versions drift, and "which workflow made this frame?" turns into a half-day archaeology dig. ComfyUI already embeds workflow JSON in PNG metadata — Vellum extends that with the structure a production needs: project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce.
 
 > *"We don't just care about the final image — we care about exactly **how** it was made."*
 > &nbsp;&nbsp;&nbsp;— a recurring theme in every studio conversation
@@ -31,7 +31,7 @@ Studios can't adopt ComfyUI at scale (50 to 1000+ shots) because **the asset gra
 
 **One Node.js process. Two transports. One coherent surface.**
 
-VFX Familiar is an [MCP](https://modelcontextprotocol.io) server that exposes seven coarse-grained tools (under the 12-tool MCP cap), runs over both **stdio** and **Streamable HTTP** simultaneously, and ships with a Preact dashboard served from the same process. Any MCP-compatible AI agent — Claude Desktop, Claude Code, Cursor, MCP Inspector — gets the same tool surface. Every generation auto-creates a versioned record. Every record is immutable. Every record can be diffed, reproduced verbatim, or iterated from with overrides.
+Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven coarse-grained tools (under the 12-tool MCP cap), runs over both **stdio** and **Streamable HTTP** simultaneously, and ships with a Preact dashboard served from the same process. Any MCP-compatible AI agent — Claude Desktop, Claude Code, Cursor, MCP Inspector — gets the same tool surface. Every generation auto-creates a versioned record. Every record is immutable. Every record can be diffed, reproduced verbatim, or iterated from with overrides.
 
 ### The seven tools
 
@@ -85,12 +85,12 @@ Provenance records are **immutable by construction**. The `ProvenanceRepo` expos
 ### 1. Install
 
 ```bash
-git clone https://github.com/alvdansen/vfx-familiar.git
-cd vfx-familiar
+git clone https://github.com/alvdansen/vellum.git
+cd vellum
 npm install
 ```
 
-Node 20+ required. SQLite database (`vfx-familiar.db`) auto-creates on first server start.
+Node 20+ required. SQLite database (`vellum.db`) auto-creates on first server start.
 
 ### 2. Configure ComfyUI Cloud
 
@@ -139,10 +139,10 @@ Now create a workspace → project → sequence → shot, submit a `generation`,
 ### Claude Code
 
 ```bash
-claude mcp add vfx-familiar --scope user -- bash -c "cd $(pwd) && exec npx -y tsx src/server.ts"
+claude mcp add vellum --scope user -- bash -c "cd $(pwd) && exec npx -y tsx src/server.ts"
 ```
 
-Then in any Claude Code session: `/mcp` lists the seven tools, or just ask Claude to `"create a workspace called 'demo' using vfx-familiar"`.
+Then in any Claude Code session: `/mcp` lists the seven tools, or just ask Claude to `"create a workspace called 'demo' using vellum"`.
 
 ### Claude Desktop
 
@@ -151,9 +151,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ```json
 {
   "mcpServers": {
-    "vfx-familiar": {
+    "vellum": {
       "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/vfx-familiar/src/server.ts"]
+      "args": ["-y", "tsx", "/absolute/path/to/vellum/src/server.ts"]
     }
   }
 }
@@ -172,7 +172,7 @@ The MCP endpoint is `POST http://127.0.0.1:3000/mcp` (loopback only by default).
 ## Project structure
 
 ```
-vfx-familiar/
+vellum/
 ├── src/
 │   ├── server.ts              # dual-transport entry point (stdio + Streamable HTTP)
 │   ├── tools/                 # 7 MCP tools — Zod-validated, thin

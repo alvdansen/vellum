@@ -4,7 +4,7 @@
  * Covers all 5 signature_status branches (valid | invalid | untrusted_root |
  * unsupported_algorithm | no_manifest), discriminated input form
  * (versionId-form vs bytes-form), format inference via routeFormat, dev-cert
- * opt-in via VFX_FAMILIAR_C2PA_TRUST_DEV_CERT, ENOENT graceful-fail, and
+ * opt-in via VELLUM_C2PA_TRUST_DEV_CERT, ENOENT graceful-fail, and
  * version-row-missing throw.
  *
  * Test fixtures use vi.mock('c2pa-node', ...) for reproducible signature_status
@@ -111,7 +111,7 @@ function valid_store(): ResolvedManifestStoreLike {
     active_manifest: {
       assertions: [
         { label: 'c2pa.actions' },
-        { label: 'vfx_familiar.input' },
+        { label: 'vellum.input' },
         { label: 'c2pa.hash.data' },
       ],
       signature_info: {
@@ -128,7 +128,7 @@ function tampered_store(): ResolvedManifestStoreLike {
     active_manifest: {
       assertions: [
         { label: 'c2pa.actions' },
-        { label: 'vfx_familiar.input' },
+        { label: 'vellum.input' },
         { label: 'c2pa.hash.data' },
       ],
       signature_info: {
@@ -147,7 +147,7 @@ function untrusted_store(): ResolvedManifestStoreLike {
     active_manifest: {
       assertions: [
         { label: 'c2pa.actions' },
-        { label: 'vfx_familiar.input' },
+        { label: 'vellum.input' },
       ],
       signature_info: {
         issuer: 'CN=untrusted-dev',
@@ -234,11 +234,11 @@ beforeEach(() => {
   mockState.store = null;
   mockState.shouldThrow = false;
   mockState.shouldThrowImport = false;
-  delete process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT;
+  delete process.env.VELLUM_C2PA_TRUST_DEV_CERT;
 });
 
 afterEach(() => {
-  delete process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT;
+  delete process.env.VELLUM_C2PA_TRUST_DEV_CERT;
 });
 
 // --- Buffer-form tests ---
@@ -254,7 +254,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
     expect(r.signature_status).toBe('valid');
     expect(r.valid).toBe(true);
     expect(r.matched_assertions).toContain('c2pa.actions');
-    expect(r.matched_assertions).toContain('vfx_familiar.input');
+    expect(r.matched_assertions).toContain('vellum.input');
     expect(r.failures).toEqual([]);
     expect(r.cert_subject).toBe('CN=test-cert');
     expect(r.signed_at).toBe('2026-04-30T12:00:00.000Z');
@@ -312,7 +312,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
 
   it('Test 4b — signingCredential.untrusted + dev-cert env=1 → valid (D-PLAN-5)', async () => {
     mockState.store = untrusted_store();
-    process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT = '1';
+    process.env.VELLUM_C2PA_TRUST_DEV_CERT = '1';
     const { verifyManifest } = await import('../verifier.js');
     const r = await verifyManifest({
       manifestBytes: PNG_FIXTURE,
@@ -335,7 +335,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
 
   it('Test 4d — dev-cert env=0 (not "1") → still untrusted_root (only "1" enables dev mode)', async () => {
     mockState.store = untrusted_store();
-    process.env.VFX_FAMILIAR_C2PA_TRUST_DEV_CERT = '0';
+    process.env.VELLUM_C2PA_TRUST_DEV_CERT = '0';
     const { verifyManifest } = await import('../verifier.js');
     const r = await verifyManifest({
       manifestBytes: PNG_FIXTURE,
@@ -370,7 +370,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
       active_manifest: {
         assertions: [
           { label: 'c2pa.actions' },
-          { label: 'vfx_familiar.input' },
+          { label: 'vellum.input' },
           { label: 'extra.label' },
         ],
         signature_info: { issuer: 'X', time: 'T' },
@@ -384,7 +384,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
     });
     expect(r.matched_assertions).toEqual([
       'c2pa.actions',
-      'vfx_familiar.input',
+      'vellum.input',
       'extra.label',
     ]);
   });
@@ -403,7 +403,7 @@ describe('verifyManifest — bytes-form (Tests 1-5, 9-11)', () => {
       format: 'image/png',
     });
     expect(r.gaps).toContain('c2pa.actions');
-    expect(r.gaps).toContain('vfx_familiar.input');
+    expect(r.gaps).toContain('vellum.input');
   });
 });
 

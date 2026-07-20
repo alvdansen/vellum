@@ -1,4 +1,4 @@
-// Typed error model for VFX Familiar engine (D-28..D-32, extended by D-GEN-40).
+// Typed error model for Vellum engine (D-28..D-32, extended by D-GEN-40).
 // Phase 1 codes + Phase 2 generation-lifecycle codes.
 
 export type ErrorCode =

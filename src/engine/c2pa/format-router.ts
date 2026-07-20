@@ -108,7 +108,7 @@ export function routeFormat(filename: string): FormatRoute {
  * `null` if the extension is unknown OR routes to a format that c2pa-rs has
  * no native handler for (EXR / PSD). Pipeline's parent/component asset-ref
  * resolution checks for null and routes the ingredient to
- * `vfx_familiar.unavailable_ingredient` with reason `mime_type_unsupported`,
+ * `vellum.unavailable_ingredient` with reason `mime_type_unsupported`,
  * rather than falling through to `application/octet-stream` which c2pa-rs
  * would reject inside `addIngredientsToBuilder`.
  *

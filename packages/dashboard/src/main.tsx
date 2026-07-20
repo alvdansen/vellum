@@ -19,7 +19,7 @@ if (typeof document !== 'undefined') {
   if (current !== 'dark' && current !== 'light') {
     let saved: string | null = null;
     try {
-      saved = localStorage.getItem('vfx-familiar:theme');
+      saved = localStorage.getItem('vellum:theme');
     } catch {
       // localStorage may be unavailable in some privacy modes — fall through.
     }

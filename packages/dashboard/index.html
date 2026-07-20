@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VFX Familiar</title>
+    <title>Vellum</title>
     <script>
       // D-WEBUI-16: read theme preference BEFORE any render to avoid FOUC.
       // Falls back to 'dark' default if absent. Set data-theme on <html>
       // immediately so theme.css variables resolve to the correct values.
       (function () {
         try {
-          var t = localStorage.getItem('vfx-familiar:theme');
+          var t = localStorage.getItem('vellum:theme');
           if (t === 'light' || t === 'dark') {
             document.documentElement.setAttribute('data-theme', t);
           }

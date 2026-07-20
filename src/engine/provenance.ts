@@ -82,7 +82,7 @@ export const MODEL_FIELD_BY_CLASS: Record<string, string[]> = {
 };
 
 /** Phase 13 (D-CTX-2). Per loader class_type, the canonical models-subdir
- *  under VFX_FAMILIAR_MODELS_DIR — `MODEL_DIR_BY_CLASS` mirrors the structure
+ *  under VELLUM_MODELS_DIR — `MODEL_DIR_BY_CLASS` mirrors the structure
  *  of `MODEL_FIELD_BY_CLASS` above; every key in LOADER_CLASS_TYPES MUST
  *  appear here so fingerprintModel never falls into the
  *  `unsupported_class_type` defensive path for a recognised loader. The

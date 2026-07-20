@@ -658,7 +658,7 @@ describe('loadSigner — MR-01 fix: tsaUrl plumbing', () => {
     const localSigner = await captureLocalSigner(null);
     // The conditional literal at signer.ts OMITS tsaUrl entirely when the
     // caller-passed value is null. This is the operator-explicit no-TSA
-    // path reachable via VFX_FAMILIAR_C2PA_TSA_URL='' or unset. c2pa-node
+    // path reachable via VELLUM_C2PA_TSA_URL='' or unset. c2pa-node
     // v0.5.26 will fail signClaimBytes with a downcast error in this state
     // (binding bug), but loadSigner itself completes successfully and the
     // failure surfaces via Engine.signOutput as status_reason='sign_call_failed'.

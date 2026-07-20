@@ -1,4 +1,4 @@
-// Vitest setup for the @vfx-familiar/dashboard workspace.
+// Vitest setup for the @vellum/dashboard workspace.
 // Loads jest-dom matchers (toBeInTheDocument, toHaveClass, etc.) so component
 // tests can use idiomatic assertions. Runs after the jsdom environment is up.
 import '@testing-library/jest-dom/vitest';

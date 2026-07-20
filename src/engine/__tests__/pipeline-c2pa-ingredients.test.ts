@@ -297,10 +297,10 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
     expect(manifest).not.toBeNull();
     expect(manifest!.ingredients).toHaveLength(0);
-    // assertions[].label includes 'c2pa.actions' + 'vfx_familiar.input'.
+    // assertions[].label includes 'c2pa.actions' + 'vellum.input'.
     const labels = manifest!.assertions.map((a) => a.label);
     expect(labels.some((l) => l?.startsWith('c2pa.actions'))).toBe(true);
-    expect(labels.some((l) => l?.startsWith('vfx_familiar.input'))).toBe(true);
+    expect(labels.some((l) => l?.startsWith('vellum.input'))).toBe(true);
     // Payload assertions.
     const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
     expect(payload).not.toBeNull();
@@ -345,7 +345,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     expect(payload!.ingredients_summary?.unavailable_count).toBe(0);
   });
 
-  it('Test E3: parent has manifest_signed event but signed=false → assetRef=unavailable; vfx_familiar.unavailable_ingredient assertion in v2 manifest', async () => {
+  it('Test E3: parent has manifest_signed event but signed=false → assetRef=unavailable; vellum.unavailable_ingredient assertion in v2 manifest', async () => {
     const v1 = seedCompletedVersion(ctx, { promptBlob: {}, seed: null, filename: 'parent.png' });
     // Append a signed=false manifest_signed event for v1 (e.g., signing was disabled at v1's sign time).
     ctx.provenanceRepo.appendManifestSignedEvent(v1, {
@@ -359,8 +359,8 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const v2Result = await ctx.engine.signOutput(v2, 'out.png', { bytes: TINY_PNG });
     expect(v2Result.signed).not.toBeNull();
     const manifest = await readManifestFromBuffer(v2Result.signed!, 'image/png');
-    // Parent surfaces in assertions[] as vfx_familiar.unavailable_ingredient.
-    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'));
+    // Parent surfaces in assertions[] as vellum.unavailable_ingredient.
+    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vellum.unavailable_ingredient'));
     expect(unavail).toBeDefined();
     // ingredients[] does NOT carry the unavailable parent (signer skipped it).
     expect(manifest!.ingredients.find((i) => i.relationship === 'parentOf')).toBeUndefined();
@@ -377,7 +377,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const v2Result = await ctx.engine.signOutput(v2, 'out.png', { bytes: TINY_PNG });
     const manifest = await readManifestFromBuffer(v2Result.signed!, 'image/png');
     expect(manifest!.ingredients.find((i) => i.relationship === 'parentOf')).toBeUndefined();
-    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'));
+    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vellum.unavailable_ingredient'));
     expect(unavail).toBeDefined();
     const payload = readManifestSignedPayload(ctx, v2, 'out.png');
     expect(payload!.ingredients_summary?.unavailable_count).toBe(1);
@@ -403,7 +403,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     expect(payload!.ingredients_summary?.unavailable_count).toBe(0);
   });
 
-  it('Test E6: component dangling (file missing) → vfx_familiar.unavailable_ingredient assertion', async () => {
+  it('Test E6: component dangling (file missing) → vellum.unavailable_ingredient assertion', async () => {
     const promptBlob = {
       '5': { class_type: 'LoadImage', inputs: { image: 'missing.png' } },
     };
@@ -412,7 +412,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
     const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
     expect(manifest!.ingredients.find((i) => i.relationship === 'componentOf')).toBeUndefined();
-    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'));
+    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vellum.unavailable_ingredient'));
     expect(unavail).toBeDefined();
     const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
     expect(payload!.ingredients_summary?.component_count).toBe(1);
@@ -440,7 +440,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const versionId = seedCompletedVersion(ctx, { promptBlob, seed: 7777 });
     const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
     const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
-    const inputAssertion = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+    const inputAssertion = manifest!.assertions.find((a) => a.label?.startsWith('vellum.input'));
     expect(inputAssertion).toBeDefined();
     const data = inputAssertion!.data as {
       prompt_positive?: string;
@@ -494,7 +494,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     expect(/from\s+['"]c2pa-node/.test(hasher)).toBe(false);
   });
 
-  it('Test E11 (WR-02 regression): component with unrecognized extension → vfx_familiar.unavailable_ingredient (NOT crash via octet-stream)', async () => {
+  it('Test E11 (WR-02 regression): component with unrecognized extension → vellum.unavailable_ingredient (NOT crash via octet-stream)', async () => {
     // Phase 15 WR-02 regression: pre-fix, when a component image had an
     // extension that routeFormat could not classify, the asset ref was
     // built with mimeType='application/octet-stream'. c2pa-rs dispatches
@@ -505,7 +505,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     // Post-fix: getMimeForExtensionOrNull returns null for unclassifiable
     // extensions; pipeline routes the ingredient to unavailable with reason
     // 'mime_type_unsupported'. The manifest signs cleanly with the
-    // dangling-reference recorded via vfx_familiar.unavailable_ingredient.
+    // dangling-reference recorded via vellum.unavailable_ingredient.
     const promptBlob = {
       '5': { class_type: 'LoadImage', inputs: { image: 'mystery.xyz' } },
     };
@@ -528,7 +528,7 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
     expect(manifest!.ingredients.find((i) => i.relationship === 'componentOf')).toBeUndefined();
     const unavail = manifest!.assertions.find(
-      (a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'),
+      (a) => a.label?.startsWith('vellum.unavailable_ingredient'),
     );
     expect(unavail).toBeDefined();
     const unavailData = unavail!.data as { reason?: string; relationship?: string };
@@ -643,8 +643,8 @@ describe('Plan 15-03 Task 4 — wire-level UAT (C6 follow-up to MEMORY.md feedba
       (i) => i.relationship === 'componentOf' && (i.title ?? '').includes('ref.png'),
     );
     expect(comp).toBeDefined();
-    // vfx_familiar.input carries prompt + sampler params + seed (E7 lock).
-    const input = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+    // vellum.input carries prompt + sampler params + seed (E7 lock).
+    const input = manifest!.assertions.find((a) => a.label?.startsWith('vellum.input'));
     expect(input).toBeDefined();
     const data = input!.data as {
       prompt_positive?: string;
@@ -666,11 +666,11 @@ describe('Plan 15-03 Task 4 — wire-level UAT (C6 follow-up to MEMORY.md feedba
     expect(payload!.ingredients_summary?.input_assertion).toBe(true);
   });
 
-  it('C6-2: same wire-level cycle but LoadImage file missing — emits vfx_familiar.unavailable_ingredient (D-CTX-4 production-cloud-mode reality)', async () => {
+  it('C6-2: same wire-level cycle but LoadImage file missing — emits vellum.unavailable_ingredient (D-CTX-4 production-cloud-mode reality)', async () => {
     // D-CTX-4 production reality: ComfyUI Cloud LoadImage references files
     // that live on cloud storage; outputRoot/<versionId>/<filename> typically
     // does NOT exist locally. The expected outcome is dangling-reference —
-    // vfx_familiar.unavailable_ingredient assertion fires, ingredients_summary.
+    // vellum.unavailable_ingredient assertion fires, ingredients_summary.
     // unavailable_count increments. THIS IS THE EXPECTED PRODUCTION-MODE OUTCOME.
     const promptBlob = {
       '1': { class_type: 'LoadImage', inputs: { image: 'ref.png' } },
@@ -681,7 +681,7 @@ describe('Plan 15-03 Task 4 — wire-level UAT (C6 follow-up to MEMORY.md feedba
     const result = await ctx.engine.signOutput(versionId, 'out.png', { bytes: TINY_PNG });
     expect(result.signed).not.toBeNull();
     const manifest = await readManifestFromBuffer(result.signed!, 'image/png');
-    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'));
+    const unavail = manifest!.assertions.find((a) => a.label?.startsWith('vellum.unavailable_ingredient'));
     expect(unavail).toBeDefined();
     // ingredients[] does NOT carry the unavailable component (signer skipped it).
     expect(manifest!.ingredients.find((i) => i.relationship === 'componentOf')).toBeUndefined();
@@ -689,7 +689,7 @@ describe('Plan 15-03 Task 4 — wire-level UAT (C6 follow-up to MEMORY.md feedba
     // count. Both LoadImage (node 1) AND ControlNetApply (node 2 — edge tuple
     // resolves to node 1's filename) become component ingredients pointing at
     // 'ref.png' which doesn't exist on disk → component_count=2,
-    // unavailable_count=2 (both surface as vfx_familiar.unavailable_ingredient).
+    // unavailable_count=2 (both surface as vellum.unavailable_ingredient).
     const payload = readManifestSignedPayload(ctx, versionId, 'out.png');
     expect(payload!.ingredients_summary?.component_count).toBe(2);
     expect(payload!.ingredients_summary?.unavailable_count).toBe(2);

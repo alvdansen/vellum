@@ -627,10 +627,10 @@ describe.skipIf(!haveOpenssl)('C2PA verification — D-CTX-4 manifest contract (
     );
   });
 
-  it('Test 14 — claim_generator format: vfx-familiar/<ver> c2pa-node/0.5.26', async () => {
+  it('Test 14 — claim_generator format: vellum/<ver> c2pa-node/0.5.26', async () => {
     const store = await readManifestFromBuffer(signedPng, 'image/png');
     expect(store!.active_manifest!.claim_generator).toMatch(
-      /^vfx-familiar\/[\d.]+ c2pa-node\/0\.5\.26/,
+      /^vellum\/[\d.]+ c2pa-node\/0\.5\.26/,
     );
   });
 });

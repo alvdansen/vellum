@@ -62,7 +62,7 @@ vi.stubGlobal('localStorage', makeMemoryStorage());
 // eslint-disable-next-line import/first
 import { ThemeToggle } from '../components/ThemeToggle.js';
 
-const STORAGE_KEY = 'vfx-familiar:theme';
+const STORAGE_KEY = 'vellum:theme';
 
 describe('ThemeToggle persistence', () => {
   beforeEach(() => {

@@ -24,7 +24,7 @@
 //   "no timestamp authority", and signing succeeds fully offline.
 //
 //   Phase 14 fix MR-01: the default is now `null` (NO TSA), and operators
-//   opt in to a TSA via VFX_FAMILIAR_C2PA_TSA_URL. The earlier hard-coded
+//   opt in to a TSA via VELLUM_C2PA_TSA_URL. The earlier hard-coded
 //   default of a public RFC 3161 endpoint was removed because (a) it
 //   silently reached a third-party endpoint on every sign call (privacy
 //   surprise + air-gapped deployments fail) and (b) it could not be
@@ -110,7 +110,7 @@ const BUFFER_API_MIMETYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/
  * called WITHOUT a third argument (i.e., legacy callers / tests that haven't
  * been threaded through C2paConfig.tsaUrl yet). Engine call sites in
  * Plan 14-03 always pass an explicit value (operator-supplied via
- * VFX_FAMILIAR_C2PA_TSA_URL OR explicit null when the operator opts out).
+ * VELLUM_C2PA_TSA_URL OR explicit null when the operator opts out).
  *
  * Mirrors c2pa-node's own `createTestSigner` default (lib/signer.js line 51).
  * Required by c2pa-node v0.5.26's native binding: signClaimBytes throws
@@ -121,7 +121,7 @@ const BUFFER_API_MIMETYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/
  * CA only, no third-party calls) pass `null` from the engine; signing will
  * then fail with C2PA_SIGNING_FAILED (the engine surfaces this as
  * status_reason='sign_call_failed'). Operators who want to use an internal
- * TSA pass that URL via VFX_FAMILIAR_C2PA_TSA_URL.
+ * TSA pass that URL via VELLUM_C2PA_TSA_URL.
  */
 const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
 
@@ -136,7 +136,7 @@ const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
  * c2pa-node createC2pa rejection). NEVER logs key bytes (T-14-01 mitigation).
  *
  * Phase 14 fix MR-01: `tsaUrl` is now operator-controllable via
- * `VFX_FAMILIAR_C2PA_TSA_URL`. The Engine call site (pipeline.ts) passes
+ * `VELLUM_C2PA_TSA_URL`. The Engine call site (pipeline.ts) passes
  * `c2paConfig.tsaUrl` verbatim. When `tsaUrl` is null, the LocalSigner
  * literal omits the property — c2pa-node v0.5.26 will then fail at sign
  * time (binding bug; documented in file header). Engine's signOutput
@@ -173,7 +173,7 @@ export async function loadSigner(
     throw new TypedError(
       'C2PA_SIGNER_LOAD_FAILED',
       `Failed to read cert or key PEM: ${(err as Error).message}`,
-      'Verify VFX_FAMILIAR_C2PA_CERT_PEM_PATH + VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH point to readable files.',
+      'Verify VELLUM_C2PA_CERT_PEM_PATH + VELLUM_C2PA_PRIVATE_KEY_PEM_PATH point to readable files.',
     );
   }
 
@@ -423,7 +423,7 @@ export async function signEmbedFile(
 // for each spec where assetRef.kind !== 'unavailable' BEFORE calling sign().
 // Specs with assetRef.kind === 'unavailable' are skipped here — their audit
 // trail lives in result.definition.assertions[] as a
-// vfx_familiar.unavailable_ingredient custom assertion (emitted by
+// vellum.unavailable_ingredient custom assertion (emitted by
 // buildManifestWithIngredients in Plan 15-02).
 
 /**
@@ -440,7 +440,7 @@ export async function signEmbedFile(
  *   3. Calls manifestBuilder.addIngredient(storable).
  *
  * Specs with assetRef.kind === 'unavailable' are SKIPPED — their audit
- * trail lives in definition.assertions as vfx_familiar.unavailable_ingredient
+ * trail lives in definition.assertions as vellum.unavailable_ingredient
  * (emitted by buildManifestWithIngredients in Plan 15-02).
  *
  * Throws TypedError('C2PA_SIGNING_FAILED', ...) on signer rejection — same
@@ -516,7 +516,7 @@ export async function signEmbedFileWithIngredients(
 /**
  * Phase 15 — drive the native binding's createIngredient + addIngredient for
  * each spec. Specs with assetRef.kind === 'unavailable' are skipped — those
- * are recorded as vfx_familiar.unavailable_ingredient custom assertions
+ * are recorded as vellum.unavailable_ingredient custom assertions
  * inside result.definition.assertions (emitted by
  * buildManifestWithIngredients).
  *

@@ -17,7 +17,7 @@ import { loadC2paConfigFromEnv } from '../utils/c2pa-config.js';
  *  5. Both paths valid + INSIDE allowlist → return resolved C2paConfig.
  *  6. Path OUTSIDE allowlist root → throw, no full-path leak.
  *  7. Symlink-out-of-allowlist → realpath resolves, throw fires.
- *  8. VFX_FAMILIAR_C2PA_CERT_ROOT override → custom root accepted, outside-root rejected.
+ *  8. VELLUM_C2PA_CERT_ROOT override → custom root accepted, outside-root rejected.
  *  9. Permissive key mode (e.g., 0644) → stderr warning (basename only), no throw.
  * 10. Boot success log → basenames only (asserted via the helper success path).
  */
@@ -37,13 +37,13 @@ beforeEach(() => {
   // fixture root is also realpath-resolved.
   tempRoot = realpathSync(mkdtempSync(join(tmpdir(), 'vfx-c2pa-')));
   originalEnv = { ...process.env };
-  delete process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-  delete process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
-  delete process.env.VFX_FAMILIAR_C2PA_CERT_ROOT;
+  delete process.env.VELLUM_C2PA_CERT_PEM_PATH;
+  delete process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
+  delete process.env.VELLUM_C2PA_CERT_ROOT;
   // MR-01 fix: ensure no stale TSA URL leaks from the host shell or earlier tests.
-  delete process.env.VFX_FAMILIAR_C2PA_TSA_URL;
+  delete process.env.VELLUM_C2PA_TSA_URL;
   // Default the allowlist to our temp root for the tests that don't override.
-  process.env.VFX_FAMILIAR_C2PA_CERT_ROOT = tempRoot;
+  process.env.VELLUM_C2PA_CERT_ROOT = tempRoot;
   stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -65,15 +65,15 @@ function writePem(name: string, bytes: string = VALID_PEM_BYTES, mode: number = 
 
 describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   test('Test 1: both env vars unset → returns null (signing disabled, D-CTX-2 graceful)', () => {
-    delete process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    delete process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    delete process.env.VELLUM_C2PA_CERT_PEM_PATH;
+    delete process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
     expect(loadC2paConfigFromEnv()).toBeNull();
   });
 
   test('Test 2: only cert env var set (key missing) → throws C2PA_CONFIG_INVALID', () => {
     const certPath = writePem('cert.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    delete process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    delete process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
 
     let thrown: unknown;
     try {
@@ -88,8 +88,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
 
   test('Test 2b: only key env var set (cert missing) → throws C2PA_CONFIG_INVALID', () => {
     const keyPath = writePem('key.pem');
-    delete process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    delete process.env.VELLUM_C2PA_CERT_PEM_PATH;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     expect(() => loadC2paConfigFromEnv()).toThrow(TypedError);
     try {
@@ -102,8 +102,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   test('Test 3: cert env var points to non-existent file → throws with basename only (Concern #4)', () => {
     const missingPath = join(tempRoot, 'does-not-exist.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = missingPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = missingPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     let thrown: TypedError | undefined;
     try {
@@ -122,8 +122,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   test('Test 4: cert exists but is empty (zero bytes) → throws with basename', () => {
     const certPath = writePem('cert.pem', '');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     let thrown: TypedError | undefined;
     try {
@@ -141,8 +141,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   test('Test 5: both paths valid + inside allowlist → returns realpath-resolved C2paConfig', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem', VALID_PEM_BYTES, 0o600);
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
@@ -157,8 +157,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     writeFileSync(outsideCert, VALID_PEM_BYTES, { mode: 0o644 });
     const insideKey = writePem('key.pem');
     try {
-      process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = outsideCert;
-      process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
+      process.env.VELLUM_C2PA_CERT_PEM_PATH = outsideCert;
+      process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
       // Allowlist is still tempRoot (from beforeEach).
 
       let thrown: TypedError | undefined;
@@ -188,8 +188,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
 
     const insideKey = writePem('key.pem');
     try {
-      process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = symlinkInside;
-      process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
+      process.env.VELLUM_C2PA_CERT_PEM_PATH = symlinkInside;
+      process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
 
       let thrown: TypedError | undefined;
       try {
@@ -208,7 +208,7 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     }
   });
 
-  test('Test 8a: VFX_FAMILIAR_C2PA_CERT_ROOT override accepts a custom root', () => {
+  test('Test 8a: VELLUM_C2PA_CERT_ROOT override accepts a custom root', () => {
     // Use a sibling temp dir as the custom root.
     const customRoot = realpathSync(mkdtempSync(join(tmpdir(), 'vfx-c2pa-custom-')));
     try {
@@ -218,9 +218,9 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
       writeFileSync(keyPath, VALID_PEM_BYTES, { mode: 0o600 });
       chmodSync(keyPath, 0o600);
 
-      process.env.VFX_FAMILIAR_C2PA_CERT_ROOT = customRoot;
-      process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-      process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+      process.env.VELLUM_C2PA_CERT_ROOT = customRoot;
+      process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+      process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
       const cfg = loadC2paConfigFromEnv();
       expect(cfg).not.toBeNull();
@@ -231,7 +231,7 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     }
   });
 
-  test('Test 8b: VFX_FAMILIAR_C2PA_CERT_ROOT override rejects a path outside the custom root', () => {
+  test('Test 8b: VELLUM_C2PA_CERT_ROOT override rejects a path outside the custom root', () => {
     const customRoot = realpathSync(mkdtempSync(join(tmpdir(), 'vfx-c2pa-custom-')));
     try {
       const insideKey = join(customRoot, 'key.pem');
@@ -241,9 +241,9 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
       // Cert lives in tempRoot — OUTSIDE the customRoot allowlist.
       const outsideCert = writePem('cert.pem');
 
-      process.env.VFX_FAMILIAR_C2PA_CERT_ROOT = customRoot;
-      process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = outsideCert;
-      process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
+      process.env.VELLUM_C2PA_CERT_ROOT = customRoot;
+      process.env.VELLUM_C2PA_CERT_PEM_PATH = outsideCert;
+      process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = insideKey;
 
       expect(() => loadC2paConfigFromEnv()).toThrow(TypedError);
     } finally {
@@ -254,8 +254,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   test('Test 9 (T-14-04): permissive key mode → stderr warning (basename only), no throw', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem', VALID_PEM_BYTES, 0o644); // world-readable
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull(); // does NOT throw
@@ -274,8 +274,8 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     // contract: it returns absolute paths so the consumer can log basenames.
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem', VALID_PEM_BYTES, 0o600);
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
@@ -285,12 +285,12 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     expect(cfg!.privateKeyPemPath).toBe(realpathSync(keyPath));
   });
 
-  test('Test 11 (root-misconfig): VFX_FAMILIAR_C2PA_CERT_ROOT points to a non-existent dir → throw', () => {
+  test('Test 11 (root-misconfig): VELLUM_C2PA_CERT_ROOT points to a non-existent dir → throw', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_ROOT = join(tempRoot, 'does-not-exist');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_CERT_ROOT = join(tempRoot, 'does-not-exist');
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
 
     let thrown: TypedError | undefined;
     try {
@@ -304,51 +304,51 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   });
 
   // ============================================================
-  // MR-01 fix — VFX_FAMILIAR_C2PA_TSA_URL plumbing.
+  // MR-01 fix — VELLUM_C2PA_TSA_URL plumbing.
   // ============================================================
 
-  test('Test 12 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL unset → tsaUrl is null (offline-friendly default)', () => {
+  test('Test 12 (MR-01 fix): VELLUM_C2PA_TSA_URL unset → tsaUrl is null (offline-friendly default)', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
-    delete process.env.VFX_FAMILIAR_C2PA_TSA_URL;
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    delete process.env.VELLUM_C2PA_TSA_URL;
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
     expect(cfg!.tsaUrl).toBeNull();
   });
 
-  test('Test 13 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL set → tsaUrl flows through verbatim', () => {
+  test('Test 13 (MR-01 fix): VELLUM_C2PA_TSA_URL set → tsaUrl flows through verbatim', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
-    process.env.VFX_FAMILIAR_C2PA_TSA_URL = 'https://internal-tsa.example.com/tsa';
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_TSA_URL = 'https://internal-tsa.example.com/tsa';
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
     expect(cfg!.tsaUrl).toBe('https://internal-tsa.example.com/tsa');
   });
 
-  test('Test 14 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL = empty string → treated as unset (null)', () => {
+  test('Test 14 (MR-01 fix): VELLUM_C2PA_TSA_URL = empty string → treated as unset (null)', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
-    process.env.VFX_FAMILIAR_C2PA_TSA_URL = '';
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_TSA_URL = '';
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
     expect(cfg!.tsaUrl).toBeNull();
   });
 
-  test('Test 15 (MR-01 fix): VFX_FAMILIAR_C2PA_TSA_URL = whitespace-only → treated as unset (null)', () => {
+  test('Test 15 (MR-01 fix): VELLUM_C2PA_TSA_URL = whitespace-only → treated as unset (null)', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
-    process.env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = certPath;
-    process.env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
-    process.env.VFX_FAMILIAR_C2PA_TSA_URL = '   \t  ';
+    process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
+    process.env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = keyPath;
+    process.env.VELLUM_C2PA_TSA_URL = '   \t  ';
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();

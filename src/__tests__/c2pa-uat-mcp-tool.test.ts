@@ -176,14 +176,14 @@ async function connectMcpClient(opts: {
   const env: Record<string, string> = {
     ...process.env,
     NODE_ENV: 'test',
-    VFX_FAMILIAR_OUTPUTS_DIR: opts.outputsDir,
+    VELLUM_OUTPUTS_DIR: opts.outputsDir,
   };
   if (opts.c2paEnabled) {
-    env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
-    env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
+    env.VELLUM_C2PA_CERT_PEM_PATH = BUNDLED_CERT_PATH;
+    env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH = BUNDLED_KEY_PATH;
   } else {
-    delete env.VFX_FAMILIAR_C2PA_CERT_PEM_PATH;
-    delete env.VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH;
+    delete env.VELLUM_C2PA_CERT_PEM_PATH;
+    delete env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
   }
 
   const transport = new StdioClientTransport({
@@ -315,9 +315,9 @@ describe.skipIf(!haveOpenssl)('C2PA wire-level UAT — HTTP transport (Test 3)',
       {
         env: {
           ...process.env,
-          VFX_FAMILIAR_OUTPUTS_DIR: seed.outputsDir,
-          VFX_FAMILIAR_C2PA_CERT_PEM_PATH: BUNDLED_CERT_PATH,
-          VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH: BUNDLED_KEY_PATH,
+          VELLUM_OUTPUTS_DIR: seed.outputsDir,
+          VELLUM_C2PA_CERT_PEM_PATH: BUNDLED_CERT_PATH,
+          VELLUM_C2PA_PRIVATE_KEY_PEM_PATH: BUNDLED_KEY_PATH,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },

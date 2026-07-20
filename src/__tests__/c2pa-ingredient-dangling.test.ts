@@ -5,7 +5,7 @@
  *   When an ingredient's source artifact is unreachable (e.g., the control
  *   image was deleted from disk after generation), the manifest records the
  *   dangling-reference state via the vendor-namespaced
- *   `vfx_familiar.unavailable_ingredient` custom assertion in
+ *   `vellum.unavailable_ingredient` custom assertion in
  *   `manifest.assertions[]` — NOT silently dropping the ingredient.
  *
  * Architectural reasoning (Plan 15-02 + 15-03):
@@ -14,7 +14,7 @@
  *   a precomputed `hash` is supplied). NO public API exists to construct a
  *   c2pa.ingredient entry purely from a hash. Therefore, when bytes are
  *   unreachable, the dangling state CANNOT be recorded in
- *   `manifest.ingredients[]` — the vendor `vfx_familiar.unavailable_ingredient`
+ *   `manifest.ingredients[]` — the vendor `vellum.unavailable_ingredient`
  *   assertion in `manifest.assertions[]` is the only viable audit channel.
  *
  * This test asserts:
@@ -168,7 +168,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
     ctx = await setupTestEngine();
     // Workflow with a LoadImage node referencing 'control.png' but NO file is
     // pre-written to outputRoot/<versionId>/control.png. The signOutput call
-    // must record the dangling state via vfx_familiar.unavailable_ingredient.
+    // must record the dangling state via vellum.unavailable_ingredient.
     const promptBlob = {
       '5': { class_type: 'LoadImage', inputs: { image: 'control.png' } },
       '6': { class_type: 'CLIPTextEncode', inputs: { text: 'a missing-control test' } },
@@ -198,7 +198,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
     await ctx.cleanup();
   });
 
-  it('Test 1 (criterion #5): manifest.assertions[] carries vfx_familiar.unavailable_ingredient with reason=file_not_found', async () => {
+  it('Test 1 (criterion #5): manifest.assertions[] carries vellum.unavailable_ingredient with reason=file_not_found', async () => {
     const c2pa = createC2pa();
     const store = await c2pa.read({ buffer: signedBytes, mimeType: 'image/png' });
     expect(store).not.toBeNull();
@@ -219,7 +219,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
     // entry per unreachable ingredient — the LoadImage that referenced
     // 'control.png' lands here.
     const unavailable = assertions.find(
-      (a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'),
+      (a) => a.label?.startsWith('vellum.unavailable_ingredient'),
     );
     expect(unavailable).toBeDefined();
     expect(unavailable!.data).toBeDefined();
@@ -253,7 +253,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
     expect(event!.ingredients_summary!.input_assertion).toBe(true);
   });
 
-  it('Test 4 (criterion #5): manifest still carries vfx_familiar.input — dangling-component does NOT poison inputTo', async () => {
+  it('Test 4 (criterion #5): manifest still carries vellum.input — dangling-component does NOT poison inputTo', async () => {
     // Defensive check: the unavailable component must not corrupt the input
     // assertion. Both should coexist in assertions[] independently.
     const c2pa = createC2pa();
@@ -262,7 +262,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
       label?: string;
       data?: { prompt_positive?: string; prompt_negative?: string; seed?: number };
     }>;
-    const inputAssertion = assertions.find((a) => a.label?.startsWith('vfx_familiar.input'));
+    const inputAssertion = assertions.find((a) => a.label?.startsWith('vellum.input'));
     expect(inputAssertion).toBeDefined();
     expect(inputAssertion!.data!.prompt_positive).toBe('a missing-control test');
     expect(inputAssertion!.data!.prompt_negative).toBe('noise');
@@ -282,7 +282,7 @@ describe.skipIf(!haveOpenssl)('Phase 15 Plan 15-04 Test 2 — dangling-reference
       data?: { metadata?: { input_filename?: string } };
     }>;
     const unavailable = assertions.find(
-      (a) => a.label?.startsWith('vfx_familiar.unavailable_ingredient'),
+      (a) => a.label?.startsWith('vellum.unavailable_ingredient'),
     );
     const filename = unavailable!.data!.metadata!.input_filename!;
     expect(filename).not.toContain('/');

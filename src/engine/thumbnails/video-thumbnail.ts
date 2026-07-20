@@ -109,7 +109,7 @@ async function getFfmpegPath(): Promise<string | null> {
       if (!cachedFfmpegFailed.loggedOnce) {
         // eslint-disable-next-line no-console
         console.warn(
-          'vfx-familiar: @ffmpeg-installer/ffmpeg loaded but exposed no `.path` — video thumbnails disabled.',
+          'vellum: @ffmpeg-installer/ffmpeg loaded but exposed no `.path` — video thumbnails disabled.',
         );
         cachedFfmpegFailed.loggedOnce = true;
       }
@@ -125,7 +125,7 @@ async function getFfmpegPath(): Promise<string | null> {
     if (!cachedFfmpegFailed.loggedOnce) {
       // eslint-disable-next-line no-console
       console.warn(
-        `vfx-familiar: @ffmpeg-installer/ffmpeg load failed — video thumbnails disabled. ${cachedFfmpegFailed.reason}`,
+        `vellum: @ffmpeg-installer/ffmpeg load failed — video thumbnails disabled. ${cachedFfmpegFailed.reason}`,
       );
       cachedFfmpegFailed.loggedOnce = true;
     }
