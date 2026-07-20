@@ -91,6 +91,15 @@ export interface GenerationProvider {
   ): Promise<DownloadToPathResult>;
 
   /**
+   * OPTIONAL request validation, run by the engine BEFORE submit. Throws a
+   * TypedError on a malformed request so the caller gets an actionable message
+   * before any DB write. ComfyUI validates the node-graph format; Replicate
+   * checks {version, input}. A provider that omits this accepts any request.
+   * (Added in pivot Phase C — replaces the engine's hardcoded ComfyUI-format check.)
+   */
+  validateRequest?(spec: Record<string, unknown>): void;
+
+  /**
    * OPTIONAL provenance enrichment. Returns the resolved, canonical parameters for
    * a completed output. ComfyUI reads the resolved prompt graph from the output
    * PNG's tEXt chunk ("prompt blob is truth"). URL-based providers have no embedded

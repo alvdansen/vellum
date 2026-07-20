@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { TypedError } from '../engine/errors.js';
-import { flattenComfyError } from './format.js';
+import { flattenComfyError, validateWorkflowFormat } from './format.js';
 import { extractTextChunk } from './png-metadata.js';
 import { streamToPath } from '../utils/stream-to-path.js';
 import type {
@@ -373,6 +373,15 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   /** POST /api/prompt — returns { prompt_id } (D-GEN-21). */
+  /**
+   * GenerationProvider.validateRequest (pivot Phase C). ComfyUI validates the
+   * node-graph API format — the same check the engine used to run inline, now
+   * routed through the provider so non-ComfyUI backends validate their own shape.
+   */
+  validateRequest(spec: Record<string, unknown>): void {
+    validateWorkflowFormat(spec);
+  }
+
   async submit(workflowJson: Record<string, unknown>): Promise<SubmitResponse> {
     // D-EP-07: first-submit healthcheck. Cached for process lifetime on success;
     // reset to null on failure so a later submit can retry after an .env edit.

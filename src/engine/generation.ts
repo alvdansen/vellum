@@ -7,7 +7,10 @@ import type { BreadcrumbResolver } from './breadcrumb.js';
 import type { ProvenanceWriter } from './provenance.js';
 import { TypedError, type ErrorCode } from './errors.js';
 import { createBackoffIterator, sleep } from './backoff.js';
-import { validateWorkflowFormat, flattenComfyError } from '../comfyui/format.js';
+// validateWorkflowFormat is still used directly by the ComfyUI-graph-specific
+// iterate path (applySeedShortcut/applyOverrides do node-graph surgery); the
+// general submit path routes validation through GenerationProvider.validateRequest.
+import { flattenComfyError, validateWorkflowFormat } from '../comfyui/format.js';
 import { applySeedShortcut, applyOverrides } from './iterate-merge.js';
 import {
   buildOutputPath,
@@ -132,7 +135,10 @@ export class GenerationEngine {
         `Verify the shot id with { tool: 'shot', action: 'get' }`,
       );
     }
-    validateWorkflowFormat(args.workflowJson);
+    // Pivot Phase C: validation is provider-routed. ComfyUI validates node-graph
+    // format; other backends validate their own request shape. `this.client` is
+    // non-null here (checked above).
+    this.client.validateRequest?.(args.workflowJson);
 
     // D-PROV-33 (LANDMINE #8): lineage written at INSERT time, not via follow-up
     // UPDATE. A reader observing the row between INSERT and UPDATE would otherwise

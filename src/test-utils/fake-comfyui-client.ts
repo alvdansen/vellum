@@ -2,6 +2,7 @@ import { TypedError } from '../engine/errors.js';
 import { streamToPath } from '../utils/stream-to-path.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
 import type { GenerationProvider } from '../providers/provider.js';
+import { validateWorkflowFormat } from '../comfyui/format.js';
 
 /**
  * Test double for the real ComfyUIClient that Plan 02-02 will implement.
@@ -114,6 +115,12 @@ export class FakeComfyUIClient implements GenerationProvider {
   maxInFlightStatus = 0;
   /** Artificial delay (ms) inserted into status() to create observable concurrency windows. */
   statusDelayMs = 0;
+
+  /** Mirrors ComfyUIClient.validateRequest so engine+fake tests keep rejecting
+   *  malformed workflows through the provider-routed validation path (Phase C). */
+  validateRequest(spec: Record<string, unknown>): void {
+    validateWorkflowFormat(spec);
+  }
 
   async submit(workflowJson: Record<string, unknown>): Promise<SubmitResponse> {
     this.calls.push({ method: 'submit', args: [workflowJson] });

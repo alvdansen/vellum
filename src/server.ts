@@ -64,6 +64,8 @@ import { HierarchyRepo } from './store/hierarchy-repo.js';
 import { VersionRepo } from './store/version-repo.js';
 import { ProvenanceRepo } from './store/provenance-repo.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from './comfyui/client.js';
+import type { GenerationProvider } from './providers/provider.js';
+import { loadProviderConfig, createProvider } from './providers/config.js';
 import { validateBaseUrlFromEnv } from './utils/validate-base-url.js';
 import { loadC2paConfigFromEnv } from './utils/c2pa-config.js';
 import { loadAnthropicConfigFromEnv } from './utils/anthropic-config.js';
@@ -187,7 +189,7 @@ async function main(): Promise<void> {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const client = apiKey
+  let client: GenerationProvider | null = apiKey
     ? new ComfyUIClient(apiKey, apiBase, { additionalAllowedHosts })
     : null;
 
@@ -199,6 +201,19 @@ async function main(): Promise<void> {
     const last4 = apiKey.slice(-4);
     console.error(
       `vellum: ComfyUI credentials loaded (key ****${last4}, base ${apiBase})`,
+    );
+  }
+
+  // Pivot Phase C: provider-agnostic default selection. The registry discovers
+  // configured backends (ComfyUI, Replicate, …) and resolves a default. ComfyUI
+  // stays the default when configured (back-compat, byte-identical boot); when
+  // Replicate is the resolved default, build it and use it as the backend.
+  const providerRegistry = loadProviderConfig(process.env);
+  if (providerRegistry.defaultProviderId === 'replicate') {
+    const cfg = providerRegistry.providers.find((p) => p.id === 'replicate')!;
+    client = createProvider(cfg);
+    console.error(
+      `vellum: Replicate is the default generation provider (token ****${cfg.apiKey.slice(-4)}, base ${cfg.apiBase})`,
     );
   }
 
