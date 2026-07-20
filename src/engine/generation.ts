@@ -2,7 +2,7 @@ import path from 'node:path/posix';
 import type { HierarchyRepo } from '../store/hierarchy-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
-import type { ComfyUIClient } from '../comfyui/client.js';
+import type { GenerationProvider } from '../providers/provider.js';
 import type { BreadcrumbResolver } from './breadcrumb.js';
 import type { ProvenanceWriter } from './provenance.js';
 import { TypedError, type ErrorCode } from './errors.js';
@@ -71,7 +71,7 @@ export class GenerationEngine {
     private versions: VersionRepo,
     private provenanceRepo: ProvenanceRepo,
     private provenanceWriter: ProvenanceWriter,
-    private client: ComfyUIClient | null,
+    private client: GenerationProvider | null,
     private breadcrumb: BreadcrumbResolver,
     private outputRoot: string = 'outputs',
     options: { maxConcurrentPollers?: number } = {},

@@ -9,6 +9,7 @@ import type {
   StatusResponse,
   ComfyOutput,
 } from './types.js';
+import type { GenerationProvider } from '../providers/provider.js';
 
 /**
  * ComfyUI Cloud HTTP client (D-GEN-21).
@@ -239,7 +240,10 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
  */
 export const MAX_ERROR_MESSAGE_CHARS = 1_000;
 
-export class ComfyUIClient {
+// ComfyUIClient is the REFERENCE adapter for GenerationProvider (the pivot seam).
+// The `implements` clause makes it a compile-time error for this client to drift
+// from the contract the engine depends on. See src/providers/provider.ts.
+export class ComfyUIClient implements GenerationProvider {
   private allowed: RegExp[];
   /**
    * IS-01: admin-supplied allowed hosts are matched by EXACT or SUFFIX

@@ -16,7 +16,7 @@ import type { ProvenanceRepo } from '../store/provenance-repo.js';
 import type { VersionSort, VersionCursor, HierarchySort } from '../store/sort.js';
 import { TagRepo } from '../store/tag-repo.js';
 import { MetadataRepo } from '../store/metadata-repo.js';
-import type { ComfyUIClient } from '../comfyui/client.js';
+import type { GenerationProvider } from '../providers/provider.js';
 import { BreadcrumbResolver } from './breadcrumb.js';
 import { GenerationEngine } from './generation.js';
 import { ProvenanceWriter } from './provenance.js';
@@ -442,7 +442,7 @@ export class Engine {
     private repo: HierarchyRepo,
     private versionRepo: VersionRepo,
     private provenanceRepo: ProvenanceRepo,
-    private client: ComfyUIClient | null = null,
+    private client: GenerationProvider | null = null,
     outputRoot: string = 'outputs',
     options: {
       maxConcurrentPollers?: number;

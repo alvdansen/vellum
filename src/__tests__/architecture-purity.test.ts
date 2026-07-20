@@ -61,6 +61,22 @@ describe('architecture purity', () => {
     expect(grepCount('drizzle-orm', 'src/comfyui/')).toBe(0);
   });
 
+  // Pivot Phase A — src/providers/** is the generation-backend seam
+  // (GenerationProvider interface + future adapters). It is part of the pure
+  // core: zero MCP SDK, zero DB. Adapters may make HTTP calls (like src/comfyui/)
+  // but must never reach the MCP or persistence layers.
+  it('src/providers/ has zero imports from @modelcontextprotocol/sdk (pivot Phase A)', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/providers/')).toBe(0);
+  });
+
+  it('src/providers/ has zero imports from better-sqlite3 (pivot Phase A)', () => {
+    expect(grepCount('better-sqlite3', 'src/providers/')).toBe(0);
+  });
+
+  it('src/providers/ has zero imports from drizzle-orm (pivot Phase A)', () => {
+    expect(grepCount('drizzle-orm', 'src/providers/')).toBe(0);
+  });
+
   // Phase 4 additions — file-level assertions for the new engine + repo files
   // (D-ASST-26). The directory-level src/engine/ and src/store/ assertions
   // already cover these transitively, but file-level assertions fire in

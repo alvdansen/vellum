@@ -1,6 +1,7 @@
 import { TypedError } from '../engine/errors.js';
 import { streamToPath } from '../utils/stream-to-path.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
+import type { GenerationProvider } from '../providers/provider.js';
 
 /**
  * Test double for the real ComfyUIClient that Plan 02-02 will implement.
@@ -47,7 +48,11 @@ export interface FakeDownloadResult {
   url: string;
 }
 
-export class FakeComfyUIClient {
+// `implements GenerationProvider` is deliberate: it makes the test double a
+// COMPILE-TIME-CHECKED witness that the interface the engine depends on is
+// actually satisfiable by a non-ComfyUI backend. If the contract and this fake
+// ever drift, the build breaks here (the point of Phase A).
+export class FakeComfyUIClient implements GenerationProvider {
   calls: FakeCall[] = [];
   scenario: FakeScenario = 'happy';
 

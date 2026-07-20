@@ -16,7 +16,8 @@
 // the native-binding import remains centralized in the engine c2pa module.
 //
 // Security (T-5-03 mitigation): this module does NOT issue raw fetch() calls.
-// It delegates to ComfyUIClient.downloadToPath(), which already enforces:
+// It delegates to the provider's downloadToPath() (GenerationProvider — the
+// ComfyUI adapter is the reference impl), which already enforces:
 //   - Bearer auth via X-API-Key
 //   - SSRF guard (allowlisted base URL + redirect:'manual' on signed URL)
 //   - Byte cap (DEFAULT_DOWNLOAD_MAX_BYTES = 500 MiB)
@@ -27,7 +28,7 @@
 //  - Zero MCP SDK imports (enforced by architecture-purity.test.ts substring grep).
 //  - Zero imports from any HTTP-server layer.
 //  - Zero direct imports from the C2PA native binding (Plan 14-03 Concern #11 boundary).
-//  - Only imports: node:fs/promises, node:path, ComfyUIClient type, nanoid.
+//  - Only imports: node:fs/promises, node:path, GenerationProvider type, nanoid.
 
 import {
   copyFile,
@@ -41,7 +42,7 @@ import {
 } from 'node:fs/promises';
 import { resolve, basename } from 'node:path';
 import { nanoid } from 'nanoid';
-import type { ComfyUIClient } from '../comfyui/client.js';
+import type { GenerationProvider } from '../providers/provider.js';
 import { BUFFER_SIGNING_MAX_BYTES } from './c2pa/constants.js';
 
 /**
@@ -94,7 +95,7 @@ export type EngineForC2pa = {
  * `/api/versions/:id/output` surfaces `OUTPUT_UNAVAILABLE` (D-WEBUI-34).
  */
 export async function downloadOutput(
-  client: ComfyUIClient | null,
+  client: GenerationProvider | null,
   versionId: string,
   outputsDir: string,
   filename: string,
