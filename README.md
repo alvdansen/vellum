@@ -14,7 +14,7 @@
   <img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-0c2a3a?style=flat-square" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-0c2a3a?style=flat-square" />
   <img alt="MCP SDK 1.29" src="https://img.shields.io/badge/MCP%20SDK-1.29-ff6b5a?style=flat-square" />
-  <img alt="Tests 760/763" src="https://img.shields.io/badge/tests-760%2F763-0c2a3a?style=flat-square" />
+  <img alt="Tests passing" src="https://img.shields.io/badge/tests-1956%20passing-0c2a3a?style=flat-square" />
   <img alt="v1.0" src="https://img.shields.io/badge/release-v1.0-ff6b5a?style=flat-square" />
 </p>
 
@@ -22,7 +22,7 @@
 
 ## Why this exists
 
-Studios can't adopt ComfyUI at scale (50 to 1000+ shots) because **the asset graph collapses**. Files spill across folders, seeds get lost, model versions drift, and "which workflow made this frame?" turns into a half-day archaeology dig. ComfyUI already embeds workflow JSON in PNG metadata — Vellum extends that with the structure a production needs: project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce.
+AI asset generation never stays in one tool. A production pulls from ComfyUI, Replicate, FAL, Scenario, and bespoke agent workflows — and the moment it does, **the asset graph collapses**. Files spill across services, seeds get lost, model versions drift, and "which run made this frame?" turns into a half-day archaeology dig. Vellum is the neutral layer that sits *between* any generator and any downstream workflow: it gives a production the structure it needs — project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce — no matter which backend produced the pixels.
 
 > *"We don't just care about the final image — we care about exactly **how** it was made."*
 > &nbsp;&nbsp;&nbsp;— a recurring theme in every studio conversation
@@ -31,7 +31,7 @@ Studios can't adopt ComfyUI at scale (50 to 1000+ shots) because **the asset gra
 
 **One Node.js process. Two transports. One coherent surface.**
 
-Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven coarse-grained tools (under the 12-tool MCP cap), runs over both **stdio** and **Streamable HTTP** simultaneously, and ships with a Preact dashboard served from the same process. Any MCP-compatible AI agent — Claude Desktop, Claude Code, Cursor, MCP Inspector — gets the same tool surface. Every generation auto-creates a versioned record. Every record is immutable. Every record can be diffed, reproduced verbatim, or iterated from with overrides.
+Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven coarse-grained tools (under the 12-tool MCP cap), runs over both **stdio** and **Streamable HTTP** simultaneously, and ships with a Preact dashboard served from the same process. Any MCP-compatible AI agent — Claude Desktop, Claude Code, Cursor, MCP Inspector — gets the same tool surface, and can learn it cold from the self-describing `vellum://capabilities` and `vellum://output-contract` resources. A generation can flow **outbound** (submit and poll any configured provider — ComfyUI, Replicate, …) or **inbound** (any agent or provider webhook registers a finished asset by URL). Either way it auto-creates an immutable, versioned record you can diff, reproduce, or iterate from.
 
 ### The seven tools
 
@@ -41,7 +41,7 @@ Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven co
 | `project`    | A film, episode, spot, or campaign within a workspace                  | `create`, `list`, `get`                                       |
 | `sequence`   | A scene or shot group within a project                                 | `create`, `list`, `get`                                       |
 | `shot`       | An individual shot — zero-padded version naming (`v001`, underscore-separated) | `create`, `list`, `get`                              |
-| `generation` | Submit + check ComfyUI Cloud jobs; reproduce or iterate from a version | `submit`, `status`, `reproduce`, `iterate`                   |
+| `generation` | Submit/poll any provider (ComfyUI, Replicate, …); reproduce/iterate; or **register** an externally-produced output | `submit`, `status`, `reproduce`, `iterate`, `register` |
 | `version`    | Read versions, full provenance, and structured diffs between any two    | `get`, `list`, `provenance`, `diff`                          |
 | `asset`      | Tag versions, attach arbitrary metadata, and query across the hierarchy | `add_tag`, `remove_tag`, `set_metadata`, `remove_metadata`, `query`, `list_tags`, `list_metadata_keys` |
 
@@ -57,7 +57,7 @@ Four layers, each independently testable:
 
 - **MCP tools** (`src/tools/*-tool.ts`) — thin Zod-validated entry points. Discriminated unions on `action`. Zero business logic.
 - **Engine facade** (`src/engine/`) — pure TypeScript, **zero MCP dependency**. `HierarchyRepo`, `VersionRepo`, `ProvenanceRepo`, `AssetsEngine`. Architecture-purity tests enforce this boundary at the type-level on every commit.
-- **ComfyUI Cloud client** (`src/comfyui/`) — SSRF-safe redirect gate, healthcheck on first submit, two-phase submit with AbortController-wired recovery poller, atomic streaming downloads.
+- **Provider adapters** (`src/providers/`, `src/comfyui/`) — every generation backend implements one `GenerationProvider` interface (submit / status / download / validate). ComfyUI Cloud and Replicate ship today; adding a backend is one class + a registry entry, and the engine never changes. SSRF-safe redirect gates, host allowlists, size caps, and atomic streaming downloads throughout.
 - **SQLite + WAL** (`drizzle/`) — Drizzle ORM, four hand-prefixed migrations, `busy_timeout=5000`. Append-only provenance is *structurally* enforced (the repo has no `update` or `delete` methods — there is no path to mutate the truth).
 
 ## Provenance — the differentiator
@@ -68,9 +68,9 @@ Four layers, each independently testable:
 
 Every generation captures the full provenance:
 
-- `workflow_json` — the API-format ComfyUI workflow you submitted
-- `prompt_json` — the **resolved** prompt with seeds and model paths baked in
-- `seed`, `model_names`, `timestamp`, lineage links, optional checksums
+- `workflow_json` / `prompt_json` — for graph backends (ComfyUI): the submitted workflow + the **resolved** prompt with seeds and model paths baked in
+- `generation_request_json` / `generation_result_json` — the neutral, provider-agnostic record (params, models, output hash) for URL backends (Replicate, …) and externally-registered outputs
+- `provider`, `seed`, `model_names`, `timestamp`, lineage links, optional checksums + C2PA manifests
 
 You can:
 
@@ -92,14 +92,16 @@ npm install
 
 Node 20+ required. SQLite database (`vellum.db`) auto-creates on first server start.
 
-### 2. Configure ComfyUI Cloud
+### 2. Configure a provider
 
 ```bash
 cp .env.example .env
-# Edit .env to add your COMFYUI_API_KEY from https://platform.comfy.org
+# ComfyUI Cloud:  COMFYUI_API_KEY      (from https://platform.comfy.org)
+# Replicate:      REPLICATE_API_TOKEN
+# Choose a default with DEFAULT_PROVIDER (ComfyUI wins when it's the only one set).
 ```
 
-The endpoint is locked at `https://cloud.comfy.org` with healthcheck path `/api/system_stats` — audited as the only working combination as of v1.0, with the rationale captured by the read-only probe matrix at `scripts/probe-comfy-endpoint.mts`.
+Vellum discovers whichever provider credentials are present and selects a default backend. The ComfyUI endpoint is locked at `https://cloud.comfy.org` with healthcheck path `/api/system_stats` — audited as the only working combination as of v1.0, with the rationale captured by the read-only probe matrix at `scripts/probe-comfy-endpoint.mts`. Hierarchy, provenance, and `generation register` (inbound) work with no provider credentials at all.
 
 ### 3. Smoke test (~5 seconds, no human watching)
 
@@ -219,9 +221,20 @@ Driven by **EU AI Act Article 50** (effective Aug 2026) and **California SB 942*
 - Redaction action — strip sensitive values while preserving the *fact* of redaction
 - New tool actions: `version export_manifest` / `version verify_manifest`
 
+### v2.0 — Provider-agnostic *(shipped)*
+
+Decoupled from any single generation backend and rebranded from "VFX Familiar" to **Vellum**.
+
+- `GenerationProvider` interface — every backend is an adapter (`src/providers/`); the engine has zero backend-specific dependency, enforced by architecture-purity tests
+- Second reference adapter: **Replicate** (raw REST, no SDK), alongside ComfyUI Cloud, selected via a provider registry + multi-credential config
+- Neutral, provider-agnostic provenance (`generation_request_json` / `generation_result_json`) stored alongside the ComfyUI graph
+- **Inbound** `generation register` — any agent or provider webhook reports a finished asset by URL through an SSRF-guarded ingest boundary (https + host allowlist + size cap)
+- Self-describing MCP **resources** (`vellum://manual`, `vellum://capabilities`, `vellum://output-contract`) so any cold agent learns the surface + how to report outputs
+- Neutral params-diff reproduce model for non-graph backends
+
 ### Future
 
-- **Multi-backend routing** — route generation to specific ComfyUI instances by capability with failover
+- **Multi-backend routing** — capability-based routing + failover across configured providers (builds on the v2.0 registry)
 - **Function-calling adapter** — OpenAI-compatible REST endpoint for non-MCP agents
 - **Advanced operations** — batch shot queuing, webhooks on completion, hierarchy export, lineage graph visualization in the dashboard
 
