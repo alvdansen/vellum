@@ -80,6 +80,7 @@ import {
   registerVersion,
   registerAsset,
 } from './tools/index.js';
+import { registerResources } from './tools/resources.js';
 // Phase 5 Plan 05-06: dashboard HTTP surface (D-WEBUI-01 / D-WEBUI-12).
 // Dashboard REST + SSE + static share the same Hono app as the /mcp route;
 // mount order below is load-bearing — SSE before REST router, REST before
@@ -111,9 +112,11 @@ function buildServer(engine: Engine, version: string): McpServer {
     { name: 'vellum', version },
     {
       instructions:
-        'VFX project hierarchy management + ComfyUI generation + provenance/versioning + asset management. ' +
-        'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get. ' +
-        'Generation tool: generation with action: submit | status | reproduce | iterate. ' +
+        'Vellum — a provider-agnostic asset-production + provenance layer. Manages a hierarchy (workspace → project → sequence → shot → version → output) with append-only provenance on top of any generation backend (ComfyUI, Replicate, …). ' +
+        'Read resource vellum://manual for a full guide, vellum://capabilities for the machine-readable tool/provider surface, and vellum://output-contract for how to register an externally-produced output. ' +
+        'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get (shot also set_status). ' +
+        'Generation tool: generation with action: submit | status | reproduce | iterate | register. ' +
+        'register reports an output produced OUTSIDE this server (any provider or sibling workflow) into a shot as a completed version — see vellum://output-contract. ' +
         "reproduce re-runs a completed version's prompt verbatim (byte-identical) and returns reproduction_warnings[]. " +
         'iterate applies node-scoped overrides { "<nodeId>": { inputs?, class_type? } } and/or a seed shortcut to a source version, re-validates, and submits. ' +
         'Version tool: version with action: get | list | diff | provenance. ' +
@@ -131,12 +134,18 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerGeneration(server, engine);
   registerVersion(server, engine);
   registerAsset(server, engine);
+  // Pivot Phase E — self-describing MCP resources (vellum://manual, /capabilities,
+  // /output-contract). Zero tool slots; the idiomatic home for agent onboarding.
+  registerResources(server, version);
   // RT-09 / API-06: SDK's registerTool unconditionally merges
   // `capabilities.tools.listChanged: true` into the server's capability set,
   // but we never emit `notifications/tools/list_changed`. Override back to
   // false AFTER all tools registered (must precede transport connect — the
   // SDK throws otherwise). Subscribed clients will not wait forever.
-  server.server.registerCapabilities({ tools: { listChanged: false } });
+  server.server.registerCapabilities({
+    tools: { listChanged: false },
+    resources: { listChanged: false },
+  });
   return server;
 }
 
