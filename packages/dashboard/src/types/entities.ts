@@ -56,4 +56,11 @@ export interface Version {
    * reproduction_divergence signal) on drawer mount.
    */
   lineage_type?: 'reproduce' | 'iterate' | null;
+  /**
+   * Pivot enhancement #5 — the generation backend that produced this version
+   * ('comfyui-cloud' | 'replicate' | 'fal' | …), from versions.provider. Optional
+   * + nullable: legacy pre-pivot rows carry null/undefined. Surfaced as a
+   * ProviderBadge in the VersionDrawer header.
+   */
+  provider?: string | null;
 }

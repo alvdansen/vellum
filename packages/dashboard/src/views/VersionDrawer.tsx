@@ -26,6 +26,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { StatusPill } from '../components/StatusPill.js';
 import type { Status } from '../components/StatusPill.js';
 import { WarningPill } from '../components/WarningPill.js';
+import { ProviderBadge } from '../components/ProviderBadge.js';
 import { C2paBadge } from '../components/C2paBadge.js';
 import { JsonBlock } from '../components/JsonBlock.js';
 import { EmptyState } from '../components/EmptyState.js';
@@ -311,6 +312,9 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
               {label}
             </h2>
             <StatusPill status={status} />
+            {/* Pivot #5 — which backend produced this version. Renders nothing
+                for legacy rows with no provider stamp. */}
+            <ProviderBadge provider={version.provider} />
             {/* Phase 12 — DEMO-03. Pill renders iff the engine attached a
                 non-null reproduction_divergence on the diff response. Hardcoded
                 ariaLabel — no user-controlled data flows here (T-12-11). */}
