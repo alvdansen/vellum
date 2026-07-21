@@ -20,3 +20,5 @@
 export { createDashboardRouter } from './dashboard-routes.js';
 export type { EngineForDashboard } from './dashboard-routes.js';
 export { typedErrorHandler, statusForCode } from './error-middleware.js';
+export { createWebhookRouter } from './webhooks.js';
+export type { EngineForWebhooks, WebhookRouterOptions } from './webhooks.js';

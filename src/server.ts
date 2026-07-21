@@ -85,7 +85,7 @@ import { registerResources } from './tools/resources.js';
 // Dashboard REST + SSE + static share the same Hono app as the /mcp route;
 // mount order below is load-bearing — SSE before REST router, REST before
 // the /* static catch-all. See Plan 05-06 SUMMARY for the full rationale.
-import { createDashboardRouter, typedErrorHandler } from './http/index.js';
+import { createDashboardRouter, typedErrorHandler, createWebhookRouter } from './http/index.js';
 import { createSseHandler } from './http/sse.js';
 import { createStaticHandler } from './http/static.js';
 
@@ -433,6 +433,10 @@ async function main(): Promise<void> {
     // browser enforces via CORS.
     app.onError(typedErrorHandler);
     app.get('/api/events', createSseHandler(engine, httpAllowedOrigins));
+    // Pivot #3 — bearer-gated provider-webhook ingest (POST /webhooks/:provider →
+    // registerExternalOutput). Disabled unless VELLUM_INGEST_TOKEN is set. Mounted
+    // before the static catch-all so /webhooks/* is not swallowed by serveStatic.
+    app.route('/', createWebhookRouter(engine, { ingestToken: process.env.VELLUM_INGEST_TOKEN }));
     app.route('/', createDashboardRouter(engine));
     app.use('/*', createStaticHandler());
 
