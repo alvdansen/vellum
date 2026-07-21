@@ -226,17 +226,18 @@ Driven by **EU AI Act Article 50** (effective Aug 2026) and **California SB 942*
 Decoupled from any single generation backend and rebranded from "VFX Familiar" to **Vellum**.
 
 - `GenerationProvider` interface — every backend is an adapter (`src/providers/`); the engine has zero backend-specific dependency, enforced by architecture-purity tests
-- Second reference adapter: **Replicate** (raw REST, no SDK), alongside ComfyUI Cloud, selected via a provider registry + multi-credential config
-- Neutral, provider-agnostic provenance (`generation_request_json` / `generation_result_json`) stored alongside the ComfyUI graph
-- **Inbound** `generation register` — any agent or provider webhook reports a finished asset by URL through an SSRF-guarded ingest boundary (https + host allowlist + size cap)
+- Three adapters behind one seam: **ComfyUI Cloud**, **Replicate**, and **FAL** (all raw REST, no SDK), selected via a provider registry + multi-credential config. Security-critical URL-provider logic (recursive output extraction, SSRF-guarded streaming download) is shared, not duplicated
+- **Cross-provider reproduce** — `reproduce` works for URL providers via neutral params-replay (re-submits the original request), with the capabilities resource honestly advertising per-provider reproduce support
+- Neutral, provider-agnostic provenance (`generation_request_json` / `generation_result_json`) recorded at completion; cross-provider `version.diff` compares neutral param bags via a pure params-diff
+- **Inbound** two ways: the `generation register` MCP action, and a bearer-gated `POST /webhooks/:provider` HTTP route — both through one SSRF-guarded ingest boundary (https + host allowlist + size cap)
 - Self-describing MCP **resources** (`vellum://manual`, `vellum://capabilities`, `vellum://output-contract`) so any cold agent learns the surface + how to report outputs
-- Neutral params-diff reproduce model for non-graph backends
+- Dashboard surfaces the originating backend per version (`ProviderBadge`)
 
 ### Future
 
-- **Multi-backend routing** — capability-based routing + failover across configured providers (builds on the v2.0 registry)
+- **Multi-provider routing** — the engine holds one default client today; route status/reproduce to the provider that produced each version (engine holds the registry, not a single client)
 - **Function-calling adapter** — OpenAI-compatible REST endpoint for non-MCP agents
-- **Advanced operations** — batch shot queuing, webhooks on completion, hierarchy export, lineage graph visualization in the dashboard
+- **Advanced operations** — batch shot queuing, hierarchy export, lineage graph visualization in the dashboard
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "vellum",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Open-source MCP server: a provider-agnostic, provenance-first production layer for AI asset generation",
   "type": "module",
   "main": "src/server.ts",

@@ -1,13 +1,17 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { unlinkSync, existsSync, statSync } from 'node:fs';
 import Database from 'better-sqlite3';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverTs = resolve(__dirname, '../server.ts');
-const tmpDb = resolve(__dirname, `__zero-config-${Date.now()}.db`);
+// Write the throwaway db to the OS temp dir, NOT src/__tests__/ — a transient
+// .db under src/ races the architecture-purity `grep -r … src/` (grep errors
+// "No such file or directory" when this test deletes it mid-walk).
+const tmpDb = join(tmpdir(), `vellum-zero-config-${process.pid}-${Date.now()}.db`);
 
 /**
  * Asserts TRNS-04: zero-config startup.
