@@ -21,6 +21,7 @@ export type ErrorCode =
   | 'GENERATION_CREDENTIALS_MISSING'  // no generation provider configured at all
   | 'REPLICATE_API_ERROR'             // Replicate REST surface failure
   | 'FAL_API_ERROR'                   // FAL queue REST surface failure
+  | 'BYTEPLUS_API_ERROR'              // BytePlus ModelArk tasks REST surface failure
   | 'PROVIDER_MISCONFIGURED'          // registry/config: unknown or credential-less provider selected
   | 'INVALID_REQUEST_FORMAT'          // provider-agnostic request validation failure (analog of INVALID_WORKFLOW_FORMAT)
   | 'GENERATION_TIMEOUT'

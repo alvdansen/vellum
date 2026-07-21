@@ -3,6 +3,7 @@ import { loadProviderConfig, createProvider } from '../config.js';
 import { ComfyUIClient } from '../../comfyui/client.js';
 import { ReplicateAdapter } from '../replicate-adapter.js';
 import { FalAdapter } from '../fal-adapter.js';
+import { ByteplusAdapter } from '../byteplus-adapter.js';
 
 describe('loadProviderConfig — discovery', () => {
   test('discovers ComfyUI when COMFYUI_API_KEY is set', () => {
@@ -23,9 +24,31 @@ describe('loadProviderConfig — discovery', () => {
     expect(r.defaultProviderId).toBe('fal');
   });
 
-  test('discovers all three providers together (order comfyui, replicate, fal)', () => {
-    const r = loadProviderConfig({ COMFYUI_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8_x', FAL_KEY: 'fal_x' });
-    expect(r.providers.map((p) => p.id)).toEqual(['comfyui-cloud', 'replicate', 'fal']);
+  test('discovers BytePlus when BYTEPLUS_API_KEY is set', () => {
+    const r = loadProviderConfig({ BYTEPLUS_API_KEY: 'ark_x' });
+    expect(r.providers.map((p) => p.id)).toEqual(['byteplus']);
+    expect(r.defaultProviderId).toBe('byteplus');
+  });
+
+  test('BytePlus carries apiBase override and allowlisted hosts', () => {
+    const r = loadProviderConfig({
+      BYTEPLUS_API_KEY: 'ark_x',
+      BYTEPLUS_API_BASE: 'https://ark.example.com/api/v3',
+      BYTEPLUS_ALLOWED_OUTPUT_HOSTS: 'cdn.example.com, mirror.example.com',
+    });
+    const cfg = r.providers[0];
+    expect(cfg.apiBase).toBe('https://ark.example.com/api/v3');
+    expect(cfg.additionalAllowedHosts).toEqual(['cdn.example.com', 'mirror.example.com']);
+  });
+
+  test('discovers all four providers together (order comfyui, replicate, fal, byteplus)', () => {
+    const r = loadProviderConfig({
+      COMFYUI_API_KEY: 'k',
+      REPLICATE_API_TOKEN: 'r8_x',
+      FAL_KEY: 'fal_x',
+      BYTEPLUS_API_KEY: 'ark_x',
+    });
+    expect(r.providers.map((p) => p.id)).toEqual(['comfyui-cloud', 'replicate', 'fal', 'byteplus']);
   });
 
   test('empty env -> no providers, null default', () => {
@@ -61,6 +84,25 @@ describe('loadProviderConfig — default selection', () => {
   test('with no comfyui and 2+ providers, the FIRST configured wins (replicate before fal)', () => {
     const r = loadProviderConfig({ REPLICATE_API_TOKEN: 'r8_x', FAL_KEY: 'fal_x' });
     expect(r.defaultProviderId).toBe('replicate');
+  });
+
+  test('ComfyUI still wins when byteplus is in the mix (none chosen)', () => {
+    const r = loadProviderConfig({ COMFYUI_API_KEY: 'k', BYTEPLUS_API_KEY: 'ark_x' });
+    expect(r.defaultProviderId).toBe('comfyui-cloud');
+  });
+
+  test('with no comfyui, first-configured wins over byteplus (fal before byteplus)', () => {
+    const r = loadProviderConfig({ FAL_KEY: 'fal_x', BYTEPLUS_API_KEY: 'ark_x' });
+    expect(r.defaultProviderId).toBe('fal');
+  });
+
+  test("DEFAULT_PROVIDER='byteplus' selects byteplus over the comfyui back-compat default", () => {
+    const r = loadProviderConfig({
+      COMFYUI_API_KEY: 'k',
+      BYTEPLUS_API_KEY: 'ark_x',
+      DEFAULT_PROVIDER: 'byteplus',
+    });
+    expect(r.defaultProviderId).toBe('byteplus');
   });
 
   test('DEFAULT_PROVIDER selects an explicit configured provider', () => {
@@ -112,6 +154,16 @@ describe('createProvider — factory', () => {
     const p = createProvider({ id: 'fal', apiKey: 'fal_x', apiBase: 'https://queue.fal.run' });
     expect(p).toBeInstanceOf(FalAdapter);
     expect(p.id).toBe('fal');
+  });
+
+  test('builds a ByteplusAdapter for byteplus', () => {
+    const p = createProvider({
+      id: 'byteplus',
+      apiKey: 'ark_x',
+      apiBase: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+    });
+    expect(p).toBeInstanceOf(ByteplusAdapter);
+    expect(p.id).toBe('byteplus');
   });
 
   test('throws PROVIDER_MISCONFIGURED for an unknown id', () => {
