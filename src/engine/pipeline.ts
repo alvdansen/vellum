@@ -455,6 +455,9 @@ export class Engine {
       // Multi-provider routing (10-ton P0): ALL configured providers; `client`
       // stays the default. Optional — single-provider construction unchanged.
       providers?: ReadonlyMap<string, GenerationProvider>;
+      /** Operator-configurable per-output ingest byte cap (URL fetches AND
+       *  direct-bytes uploads). Defaults to DEFAULT_INGEST_MAX_BYTES. */
+      ingestMaxBytes?: number;
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
@@ -480,6 +483,7 @@ export class Engine {
         ingestAllowedHosts: options.ingestAllowedHosts,
         ingestFetchImpl: options.ingestFetchImpl,
         providers: options.providers,
+        ingestMaxBytes: options.ingestMaxBytes,
       },
       // Phase 13 — fire-and-forget hook delegates to the async background
       // fingerprinter. The hook itself returns synchronously (returns a void

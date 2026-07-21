@@ -26,14 +26,43 @@ import {
   ingestDownloadToPath,
   assertIngestUrlAllowed,
   DEFAULT_INGEST_ALLOWED_HOSTS,
+  DEFAULT_INGEST_MAX_BYTES,
 } from './ingest.js';
+import { streamToPath } from '../utils/stream-to-path.js';
+
+/** Pivot Phase D — a registered output reported by public https URL. */
+export interface UrlOutputEntry {
+  url: string;
+  filename?: string;
+  content_type?: string;
+}
+
+/** Modal-ingest — a registered output delivered as raw bytes (multipart upload
+ *  or a sibling process handing over a buffer). No URL, no fetch, no SSRF
+ *  surface: the bytes are already in-process. `filename` is REQUIRED because
+ *  there is no URL to derive a name from. */
+export interface ByteOutputEntry {
+  bytes: Buffer | Uint8Array;
+  filename: string;
+  content_type?: string;
+}
+
+export type ExternalOutputEntry = UrlOutputEntry | ByteOutputEntry;
+
+/** StoredOutput.url sentinel for direct-bytes entries — human-readable and
+ *  greppable ("where did this file come from?" → it was uploaded, not fetched). */
+export const DIRECT_UPLOAD_URL = 'uploaded:direct';
+
+function isByteEntry(out: ExternalOutputEntry): out is ByteOutputEntry {
+  return 'bytes' in out && out.bytes != null;
+}
 
 /** Pivot Phase D — inbound registration input (an external agent/webhook
- *  reporting a finished asset by URL). */
+ *  reporting a finished asset by URL, or direct bytes via multipart upload). */
 export interface RegisterExternalOutputInput {
   shotId: string;
   providerId: string;
-  outputs: Array<{ url: string; filename?: string; content_type?: string }>;
+  outputs: ExternalOutputEntry[];
   provenance?: Record<string, unknown>;
   notes?: string;
   externalJobRef?: string;
@@ -112,6 +141,7 @@ export class GenerationEngine {
   // and every pre-routing test construct the engine exactly as before). The map
   // always contains the default when one exists.
   private readonly providers: Map<string, GenerationProvider>;
+  private readonly ingestMaxBytes: number;
 
   constructor(
     private hierarchy: HierarchyRepo,
@@ -128,6 +158,9 @@ export class GenerationEngine {
       /** Multi-provider routing: ALL configured providers. Optional — when
        *  omitted the engine runs single-provider on `client` as before. */
       providers?: ReadonlyMap<string, GenerationProvider>;
+      /** Operator-configurable per-output ingest byte cap (URL fetches AND
+       *  direct-bytes uploads). Defaults to DEFAULT_INGEST_MAX_BYTES. */
+      ingestMaxBytes?: number;
     } = {},
     /** Phase 13 — PROV-V-03. Optional fire-and-forget hook fired from
      *  downloadAndPersist immediately AFTER writeCompletedEvent + markCompleted
@@ -145,6 +178,7 @@ export class GenerationEngine {
       ...(options.ingestAllowedHosts ?? []),
     ];
     this.ingestFetchImpl = options.ingestFetchImpl;
+    this.ingestMaxBytes = options.ingestMaxBytes ?? DEFAULT_INGEST_MAX_BYTES;
     this.providers = new Map(options.providers ?? []);
     if (this.client && !this.providers.has(this.client.id)) {
       this.providers.set(this.client.id, this.client);
@@ -211,10 +245,29 @@ export class GenerationEngine {
         'Pass outputs: [{ url: "https://…" }].',
       );
     }
-    // Pre-flight the trust boundary BEFORE any DB write — a rejected URL must not
-    // leave an orphaned version row behind.
+    // Pre-flight the trust boundary BEFORE any DB write — a rejected URL (or an
+    // invalid/oversize byte entry) must not leave an orphaned version row behind.
     for (const out of input.outputs) {
-      assertIngestUrlAllowed(out.url, this.ingestAllowedHosts);
+      if (isByteEntry(out)) {
+        // Direct bytes: no URL, no fetch, no SSRF surface — but the same byte
+        // cap the URL path enforces, rejected BEFORE any write.
+        if (typeof out.filename !== 'string' || out.filename.trim() === '') {
+          throw new TypedError(
+            'INVALID_INPUT',
+            'A direct-bytes output requires a filename',
+            "Pass outputs: [{ bytes: <data>, filename: 'sample.png' }].",
+          );
+        }
+        if (out.bytes.byteLength > this.ingestMaxBytes) {
+          throw new TypedError(
+            'INVALID_INPUT',
+            `Uploaded output '${out.filename}' is ${out.bytes.byteLength} bytes — exceeds the ${this.ingestMaxBytes}-byte ingest cap`,
+            'Reduce the file size or raise the operator ingest byte cap.',
+          );
+        }
+      } else {
+        assertIngestUrlAllowed(out.url, this.ingestAllowedHosts);
+      }
     }
 
     const seq = this.hierarchy.getSequence(shot.sequence_id)!;
@@ -231,7 +284,9 @@ export class GenerationEngine {
       // ENOSPC, a readdir error) must route through markFailed — never escape past
       // the version row and strand it at 'submitted'.
       try {
-        const baseName = safeRegisteredFilename(out.filename, out.url, i);
+        const baseName = isByteEntry(out)
+          ? safeRegisteredFilename(out.filename, '', i)
+          : safeRegisteredFilename(out.filename, out.url, i);
         const relPath = buildOutputPath({
           projectName: proj.name,
           sequenceName: seq.name,
@@ -244,17 +299,44 @@ export class GenerationEngine {
         await ensureDir(dir);
         const finalName = await resolveCollisionSuffix(dir, baseName);
         const finalPath = path.join(dir, finalName);
-        const dl = await ingestDownloadToPath(out.url, finalPath, {
-          allowedHosts: this.ingestAllowedHosts,
-          fetchImpl: this.ingestFetchImpl,
-        });
-        stored.push({
-          filename: finalName,
-          path: dl.path,
-          url: out.url,
-          content_type: out.content_type ?? dl.contentType,
-          size_bytes: dl.sizeBytes,
-        });
+        if (isByteEntry(out)) {
+          // Direct bytes skip the fetch entirely but share the identical path
+          // machinery + atomic temp-then-rename write (streamToPath). The byte
+          // cap was pre-flighted above; maxBytes here is belt-and-suspenders.
+          const bytes = out.bytes;
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+              );
+              controller.close();
+            },
+          });
+          await streamToPath(body, finalPath, {
+            maxBytes: this.ingestMaxBytes,
+            filenameForError: finalName,
+          });
+          stored.push({
+            filename: finalName,
+            path: finalPath,
+            url: DIRECT_UPLOAD_URL,
+            content_type: out.content_type ?? 'application/octet-stream',
+            size_bytes: bytes.byteLength,
+          });
+        } else {
+          const dl = await ingestDownloadToPath(out.url, finalPath, {
+            allowedHosts: this.ingestAllowedHosts,
+            fetchImpl: this.ingestFetchImpl,
+            maxBytes: this.ingestMaxBytes,
+          });
+          stored.push({
+            filename: finalName,
+            path: dl.path,
+            url: out.url,
+            content_type: out.content_type ?? dl.contentType,
+            size_bytes: dl.sizeBytes,
+          });
+        }
       } catch (err) {
         // Best-effort: remove files already committed by earlier outputs so a
         // failed registration leaves no dangling assets with no provenance pointer.
