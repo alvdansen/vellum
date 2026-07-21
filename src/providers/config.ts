@@ -11,6 +11,7 @@
 import type { GenerationProvider } from './provider.js';
 import { ComfyUIClient, DEFAULT_COMFYUI_API_BASE } from '../comfyui/client.js';
 import { ReplicateAdapter, DEFAULT_REPLICATE_API_BASE } from './replicate-adapter.js';
+import { FalAdapter, DEFAULT_FAL_API_BASE } from './fal-adapter.js';
 import { TypedError } from '../engine/errors.js';
 
 export interface ProviderConfig {
@@ -26,7 +27,7 @@ export interface ProviderRegistry {
   defaultProviderId: string | null;
 }
 
-export const KNOWN_PROVIDER_IDS = ['comfyui-cloud', 'replicate'] as const;
+export const KNOWN_PROVIDER_IDS = ['comfyui-cloud', 'replicate', 'fal'] as const;
 
 function splitHosts(v: string | undefined): string[] {
   return (v ?? '')
@@ -63,6 +64,14 @@ export function loadProviderConfig(
       apiKey: env.REPLICATE_API_TOKEN,
       apiBase: env.REPLICATE_API_BASE ?? DEFAULT_REPLICATE_API_BASE,
       additionalAllowedHosts: splitHosts(env.REPLICATE_ALLOWED_OUTPUT_HOSTS),
+    });
+  }
+  if (env.FAL_KEY) {
+    providers.push({
+      id: 'fal',
+      apiKey: env.FAL_KEY,
+      apiBase: env.FAL_API_BASE ?? DEFAULT_FAL_API_BASE,
+      additionalAllowedHosts: splitHosts(env.FAL_ALLOWED_OUTPUT_HOSTS),
     });
   }
 
@@ -109,6 +118,11 @@ export function createProvider(
       });
     case 'replicate':
       return new ReplicateAdapter(cfg.apiKey, cfg.apiBase, {
+        additionalAllowedHosts: cfg.additionalAllowedHosts,
+        fetchImpl: options.fetchImpl,
+      });
+    case 'fal':
+      return new FalAdapter(cfg.apiKey, cfg.apiBase, {
         additionalAllowedHosts: cfg.additionalAllowedHosts,
         fetchImpl: options.fetchImpl,
       });

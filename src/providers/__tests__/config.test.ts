@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { loadProviderConfig, createProvider } from '../config.js';
 import { ComfyUIClient } from '../../comfyui/client.js';
 import { ReplicateAdapter } from '../replicate-adapter.js';
+import { FalAdapter } from '../fal-adapter.js';
 
 describe('loadProviderConfig — discovery', () => {
   test('discovers ComfyUI when COMFYUI_API_KEY is set', () => {
@@ -14,6 +15,17 @@ describe('loadProviderConfig — discovery', () => {
     const r = loadProviderConfig({ REPLICATE_API_TOKEN: 'r8_x' });
     expect(r.providers.map((p) => p.id)).toEqual(['replicate']);
     expect(r.defaultProviderId).toBe('replicate');
+  });
+
+  test('discovers FAL when FAL_KEY is set', () => {
+    const r = loadProviderConfig({ FAL_KEY: 'fal_x' });
+    expect(r.providers.map((p) => p.id)).toEqual(['fal']);
+    expect(r.defaultProviderId).toBe('fal');
+  });
+
+  test('discovers all three providers together (order comfyui, replicate, fal)', () => {
+    const r = loadProviderConfig({ COMFYUI_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8_x', FAL_KEY: 'fal_x' });
+    expect(r.providers.map((p) => p.id)).toEqual(['comfyui-cloud', 'replicate', 'fal']);
   });
 
   test('empty env -> no providers, null default', () => {
@@ -41,6 +53,16 @@ describe('loadProviderConfig — default selection', () => {
     expect(r.defaultProviderId).toBe('comfyui-cloud');
   });
 
+  test('ComfyUI still wins when all three are configured (none chosen)', () => {
+    const r = loadProviderConfig({ COMFYUI_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8_x', FAL_KEY: 'fal_x' });
+    expect(r.defaultProviderId).toBe('comfyui-cloud');
+  });
+
+  test('with no comfyui and 2+ providers, the FIRST configured wins (replicate before fal)', () => {
+    const r = loadProviderConfig({ REPLICATE_API_TOKEN: 'r8_x', FAL_KEY: 'fal_x' });
+    expect(r.defaultProviderId).toBe('replicate');
+  });
+
   test('DEFAULT_PROVIDER selects an explicit configured provider', () => {
     const r = loadProviderConfig({
       COMFYUI_API_KEY: 'k',
@@ -48,6 +70,16 @@ describe('loadProviderConfig — default selection', () => {
       DEFAULT_PROVIDER: 'replicate',
     });
     expect(r.defaultProviderId).toBe('replicate');
+  });
+
+  test("DEFAULT_PROVIDER='fal' selects fal over the comfyui back-compat default", () => {
+    const r = loadProviderConfig({
+      COMFYUI_API_KEY: 'k',
+      REPLICATE_API_TOKEN: 'r8_x',
+      FAL_KEY: 'fal_x',
+      DEFAULT_PROVIDER: 'fal',
+    });
+    expect(r.defaultProviderId).toBe('fal');
   });
 
   test('DEFAULT_PROVIDER for an unknown provider throws PROVIDER_MISCONFIGURED', () => {
@@ -74,6 +106,12 @@ describe('createProvider — factory', () => {
     const p = createProvider({ id: 'replicate', apiKey: 'r8_x', apiBase: 'https://api.replicate.com' });
     expect(p).toBeInstanceOf(ReplicateAdapter);
     expect(p.id).toBe('replicate');
+  });
+
+  test('builds a FalAdapter for fal', () => {
+    const p = createProvider({ id: 'fal', apiKey: 'fal_x', apiBase: 'https://queue.fal.run' });
+    expect(p).toBeInstanceOf(FalAdapter);
+    expect(p.id).toBe('fal');
   });
 
   test('throws PROVIDER_MISCONFIGURED for an unknown id', () => {

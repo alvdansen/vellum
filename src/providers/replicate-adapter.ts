@@ -22,9 +22,12 @@
 // — the engine derives a clean disk path from the basename, and downloadToPath
 // fetches the URL carried in `type`. The engine treats subfolder/type opaquely.
 
-import { basename as pathBasename } from 'node:path';
-import { streamToPath } from '../utils/stream-to-path.js';
 import { TypedError } from '../engine/errors.js';
+import {
+  extractHttpsOutputs,
+  guardedStreamDownload,
+  resolveAllowedHosts,
+} from './url-provider-shared.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
 import type { NeutralProvenance } from './provenance.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
@@ -66,67 +69,16 @@ export function mapReplicateStatus(raw: unknown): StatusResponse['status'] {
   }
 }
 
-/** Derive a safe on-disk basename from an output URL; fall back to an index name. */
-function safeOutputName(url: string, index: number): string {
-  let name = '';
-  try {
-    name = pathBasename(new URL(url).pathname);
-  } catch {
-    name = '';
-  }
-  // Strip anything that isn't a conservative filename char, then collapse any run
-  // of 2+ dots to a single dot so a delivery URL basename like 'frame..001.png'
-  // can never carry a '..' segment into the engine's buildOutputPath (which throws
-  // INVALID_INPUT on '..'). Mirrors the engine's safeRegisteredFilename.
-  name = name.replace(/[^A-Za-z0-9._-]/g, '').replace(/\.{2,}/g, '.');
-  if (!name || name === '.' || name === '..') name = `replicate_output_${index}`;
-  return name;
-}
-
-// Bound the walk over attacker-influenced model-output JSON. Real Replicate
-// outputs are shallow (url | url[] | {k:url} | [{k:url}], depth ≤ ~3), so these
-// caps only bite on pathological/abusive shapes: they stop a deeply-nested output
-// from stack-overflowing the recursion, and stop one prediction from fanning out
-// into an unbounded (terabyte-scale) download set. Generous enough never to clip a
-// legitimate result.
-const MAX_OUTPUT_WALK_DEPTH = 32;
-const MAX_OUTPUT_URLS = 512;
-
 /**
- * Flatten Replicate's `output` into ComfyOutput[]. Replicate output schemas vary
- * widely by model — a bare URL string, an array of URLs, an object of URLs, but
- * ALSO nested shapes like { video: ["https://…"] } or [{ image: "https://…" }].
- * So we RECURSE through arrays/objects and collect every https URL, regardless of
- * nesting depth (a shallow scan silently drops the real asset — see the pivot
- * adversarial review). Non-https values (data: URIs, numbers, text) are ignored;
- * status() treats a completed prediction with zero extractable URLs as a failure
- * rather than a silent empty success.
+ * Flatten Replicate's `output` into ComfyOutput[] via the shared recursive,
+ * depth/count-bounded extractor. Replicate schemas vary widely (bare URL, array,
+ * object, and nested shapes like { video: ["https://…"] }); a shallow scan would
+ * silently drop the real asset. Non-https values are ignored; status() treats a
+ * completed prediction with zero extractable URLs as a failure. Root-path URLs
+ * fall back to `replicate_output_<i>`.
  */
 export function extractReplicateOutputs(output: unknown): ComfyOutput[] {
-  const urls: string[] = [];
-  const visit = (v: unknown, depth: number): void => {
-    // Depth/count backstops against pathological output JSON (see the caps above).
-    if (urls.length >= MAX_OUTPUT_URLS || depth > MAX_OUTPUT_WALK_DEPTH) return;
-    if (typeof v === 'string') {
-      if (/^https:\/\//i.test(v)) urls.push(v);
-      return;
-    }
-    if (Array.isArray(v)) {
-      for (const el of v) {
-        if (urls.length >= MAX_OUTPUT_URLS) break;
-        visit(el, depth + 1);
-      }
-      return;
-    }
-    if (v && typeof v === 'object') {
-      for (const val of Object.values(v as Record<string, unknown>)) {
-        if (urls.length >= MAX_OUTPUT_URLS) break;
-        visit(val, depth + 1);
-      }
-    }
-  };
-  visit(output, 0);
-  return urls.map((u, i) => ({ filename: safeOutputName(u, i), subfolder: '', type: u }));
+  return extractHttpsOutputs(output, 'replicate_output');
 }
 
 export class ReplicateAdapter implements GenerationProvider {
@@ -148,16 +100,11 @@ export class ReplicateAdapter implements GenerationProvider {
     this.apiKey = apiKey;
     this.base = base;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.allowedOutputHosts = [...DEFAULT_REPLICATE_OUTPUT_HOSTS];
-    try {
-      this.allowedOutputHosts.push(new URL(base).hostname.toLowerCase());
-    } catch {
-      /* base validated upstream */
-    }
-    for (const raw of options.additionalAllowedHosts ?? []) {
-      const t = raw.trim().toLowerCase();
-      if (t) this.allowedOutputHosts.push(t);
-    }
+    this.allowedOutputHosts = resolveAllowedHosts(
+      base,
+      DEFAULT_REPLICATE_OUTPUT_HOSTS,
+      options.additionalAllowedHosts,
+    );
   }
 
   private headers(): Record<string, string> {
@@ -280,64 +227,19 @@ export class ReplicateAdapter implements GenerationProvider {
     options: { maxBytes?: number } = {},
   ): Promise<DownloadToPathResult> {
     const maxBytes = options.maxBytes ?? DEFAULT_REPLICATE_DOWNLOAD_MAX_BYTES;
+    // filename is the safe basename; the real source URL rides in opts.type.
     const source = opts.type && /^https:\/\//i.test(opts.type) ? opts.type : filename;
-
-    let url: URL;
-    try {
-      url = new URL(source);
-    } catch {
-      throw new TypedError('DOWNLOAD_FAILED', `Replicate output is not a valid URL: ${source}`);
-    }
-    if (url.protocol !== 'https:') {
-      throw new TypedError('DOWNLOAD_FAILED', `Refusing non-https Replicate output (${url.protocol})`);
-    }
-    if (!this.isAllowedHost(url.hostname.toLowerCase())) {
-      throw new TypedError(
-        'DOWNLOAD_FAILED',
-        `Replicate output host not allowlisted: ${url.hostname}`,
-        'Add the host to REPLICATE_ALLOWED_OUTPUT_HOSTS if this is a legitimate delivery mirror.',
-      );
-    }
-
-    let res: Response;
-    try {
-      res = await this.fetchImpl(url, { method: 'GET', redirect: 'manual' });
-    } catch (err) {
-      throw new TypedError(
-        'DOWNLOAD_FAILED',
-        `Replicate download failed: ${this.scrub((err as Error)?.message ?? String(err))}`,
-      );
-    }
-    // redirect:'manual' — a 3xx from a delivery host is unexpected; reject (SSRF).
-    if (res.status >= 300 && res.status < 400) {
-      throw new TypedError('DOWNLOAD_FAILED', `Unexpected redirect (${res.status}) from Replicate output host`);
-    }
-    if (!res.ok || !res.body) {
-      throw new TypedError('DOWNLOAD_FAILED', `Replicate download failed: ${res.status} ${res.statusText}`.trim());
-    }
-    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
-    const contentLength = Number(res.headers.get('content-length') ?? '0');
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-      throw new TypedError(
-        'DOWNLOAD_FAILED',
-        `Remote file '${filename}' size ${contentLength} exceeds max ${maxBytes} bytes`,
-      );
-    }
-    let bytes = 0;
-    try {
-      ({ bytes } = await streamToPath(res.body, destPath, { maxBytes, filenameForError: filename }));
-    } catch (err) {
-      throw new TypedError(
-        'DOWNLOAD_FAILED',
-        `Failed to stream Replicate output '${filename}' to disk: ${(err as Error).message}`,
-      );
-    }
-    return {
-      path: destPath,
-      url: url.toString(),
-      contentType,
-      sizeBytes: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : bytes,
-    };
+    return guardedStreamDownload({
+      filename,
+      source,
+      destPath,
+      fetchImpl: this.fetchImpl,
+      allowedHosts: this.allowedOutputHosts,
+      maxBytes,
+      providerLabel: 'Replicate',
+      scrub: (s) => this.scrub(s),
+      allowlistEnvHint: 'REPLICATE_ALLOWED_OUTPUT_HOSTS',
+    });
   }
 
   /**
@@ -370,9 +272,5 @@ export class ReplicateAdapter implements GenerationProvider {
         ? [{ provider_model_id: version, hash: null, unavailable_reason: 'hosted_provider' }]
         : [],
     };
-  }
-
-  private isAllowedHost(host: string): boolean {
-    return this.allowedOutputHosts.some((a) => host === a || host.endsWith('.' + a));
   }
 }

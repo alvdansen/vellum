@@ -20,6 +20,7 @@ export type ErrorCode =
   // Pivot Phase C — provider-agnostic generation backends
   | 'GENERATION_CREDENTIALS_MISSING'  // no generation provider configured at all
   | 'REPLICATE_API_ERROR'             // Replicate REST surface failure
+  | 'FAL_API_ERROR'                   // FAL queue REST surface failure
   | 'PROVIDER_MISCONFIGURED'          // registry/config: unknown or credential-less provider selected
   | 'INVALID_REQUEST_FORMAT'          // provider-agnostic request validation failure (analog of INVALID_WORKFLOW_FORMAT)
   | 'GENERATION_TIMEOUT'
