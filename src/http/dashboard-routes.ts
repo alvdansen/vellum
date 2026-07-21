@@ -801,6 +801,14 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     const q = c.req.query();
     const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
     const offset = q.offset ? Number.parseInt(q.offset, 10) : undefined;
+    // Validate status like the zod-checked MCP path — a typo'd filter must be a
+    // 400, not a silently empty approval queue (review fix).
+    if (q.status && !['proposed', 'approved', 'rejected'].includes(q.status)) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Invalid status '${q.status}' — expected proposed | approved | rejected.`,
+      );
+    }
     return c.json(
       engine.listProposals({
         shot_id: q.shot_id || undefined,

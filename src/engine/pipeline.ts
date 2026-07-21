@@ -1399,9 +1399,12 @@ export class Engine {
 
   /**
    * Record a generation REQUEST for human sign-off — the full verbatim request
-   * is stored before any provider call. Fail-fast validation runs at propose
-   * time (shot/version existence; provider request validation for `submit`) so
-   * an approver never reviews a request that could not execute.
+   * is stored before any provider call. Fail-fast at propose time: `submit`
+   * proposals get full provider request validation; reproduce/iterate check
+   * source EXISTENCE only (their executability — completed status, patch
+   * validity — is inherently approve-time state and would be TOCTOU-racy to
+   * pre-check; an approve that fails these consumes the claim, records
+   * execution_error, spends nothing, and can simply be re-proposed).
    */
   proposeGeneration(
     input:
@@ -1460,6 +1463,11 @@ export class Engine {
    * point of the gate). Execution failures are recorded on the proposal
    * (execution_error) and rethrown; the claim is NOT rolled back — a failed
    * execution still consumed the approval, and the request can be re-proposed.
+   *
+   * At-most-once window: a crash between the decide() commit and the awaited
+   * execution leaves an approved proposal with version_id AND execution_error
+   * both NULL — the deliberate cost of claiming FIRST (double-spend is the
+   * worse failure). Reconcile such rows against provider logs; re-propose.
    */
   async approveProposal(
     proposalId: string,
