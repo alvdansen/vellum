@@ -551,18 +551,39 @@ export class GenerationEngine {
 
     const stored: StoredOutput[] = [];
     for (const out of outputs) {
-      const relPath = buildOutputPath({
-        projectName: proj.name,
-        sequenceName: seq.name,
-        shotName: shot.name,
-        versionLabel: vLabel,
-        filename: out.filename,
-        root: this.outputRoot,
-      });
-      const dir = path.dirname(relPath);
-      await ensureDir(dir);
-      const finalName = await resolveCollisionSuffix(dir, out.filename);
-      const finalPath = path.join(dir, finalName);
+      // Pre-fetch path setup (buildOutputPath / ensureDir / resolveCollisionSuffix)
+      // must be INSIDE a guard: a mkdir ENOSPC/EACCES, a readdir error, collision-
+      // suffix exhaustion, or a malformed basename must route through markFailed —
+      // never escape downloadAndPersist and strand the row non-terminal. This
+      // mirrors the registerExternalOutput hardening (see that method), except the
+      // outbound poll path markFails + returns rather than rethrowing, since
+      // getGenerationStatus reports terminal state via the version row, not a throw.
+      let dir: string;
+      let finalName: string;
+      let finalPath: string;
+      try {
+        const relPath = buildOutputPath({
+          projectName: proj.name,
+          sequenceName: seq.name,
+          shotName: shot.name,
+          versionLabel: vLabel,
+          filename: out.filename,
+          root: this.outputRoot,
+        });
+        dir = path.dirname(relPath);
+        await ensureDir(dir);
+        finalName = await resolveCollisionSuffix(dir, out.filename);
+        finalPath = path.join(dir, finalName);
+      } catch (err) {
+        const code: ErrorCode = err instanceof TypedError ? err.code : 'DOWNLOAD_FAILED';
+        const msg =
+          err instanceof TypedError
+            ? err.message
+            : `Failed to prepare output path for ${out.filename}: ${(err as Error).message}`;
+        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+        this.versions.markFailed(row.id, code, msg);
+        return;
+      }
 
       let attempt = 0;
       let lastErr: unknown = null;

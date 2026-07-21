@@ -272,4 +272,31 @@ describe('extractReplicateOutputs', () => {
     const [o] = extractReplicateOutputs('https://replicate.delivery/');
     expect(o.filename).toBe('replicate_output_0');
   });
+
+  test("collapses '..' in a delivery-URL basename so it never reaches buildOutputPath as traversal", () => {
+    const [o] = extractReplicateOutputs('https://replicate.delivery/pbxt/xyz/frame..001.png');
+    expect(o.filename).not.toContain('..');
+    expect(o.filename).toBe('frame.001.png');
+  });
+
+  test('bounds pathologically deep nesting without overflowing the stack', () => {
+    // A ~50k-deep nested array (accepted by JSON.parse) would blow the recursion
+    // stack without a depth guard; the URL sits far below the depth cap so it is
+    // dropped, but the walk must not throw a RangeError.
+    let deep: unknown = 'https://replicate.delivery/a/toodeep.png';
+    for (let i = 0; i < 50_000; i++) deep = [deep];
+    let result: ReturnType<typeof extractReplicateOutputs> = [];
+    expect(() => {
+      result = extractReplicateOutputs(deep);
+    }).not.toThrow();
+    expect(result).toHaveLength(0);
+  });
+
+  test('caps output fan-out at 512 URLs (DoS backstop against an abusive prediction)', () => {
+    const many = Array.from(
+      { length: 600 },
+      (_, i) => `https://replicate.delivery/a/${i}.png`,
+    );
+    expect(extractReplicateOutputs(many)).toHaveLength(512);
+  });
 });

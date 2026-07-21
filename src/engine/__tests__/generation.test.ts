@@ -331,21 +331,23 @@ describe('GenerationEngine.getGenerationStatus', () => {
     expect(ctx.fake.calls.filter((c) => c.method === 'status')).toHaveLength(0);
   });
 
-  test('IT-13: malicious filename from ComfyUI is rejected — sanitizer throws before any disk write', async () => {
+  test('IT-13: malicious filename from ComfyUI marks the version failed before any disk write (no escape, no strand)', async () => {
     // ComfyUI returns a filename that attempts path traversal. buildOutputPath
     // fires sanitizeRelativeSegment which throws INVALID_INPUT before any disk
-    // write occurs. The engine does NOT catch this — the caller observes the
-    // TypedError directly, and crucially, no file is written outside tempRoot.
+    // write occurs. downloadAndPersist CATCHES this in its path-setup guard and
+    // routes it through markFailed, so the caller observes a clean terminal
+    // 'failed' version (error_code INVALID_INPUT) rather than an uncaught throw
+    // that would strand the row non-terminal — and crucially, still no file is
+    // written outside tempRoot.
     ctx.fake.cannedOutputs = [
       { filename: '../../../etc/passwd', subfolder: '', type: 'output' },
     ];
     const row = ctx.versions.insertVersion(ctx.shotId);
     ctx.versions.setJobId(row.id, 'job-malicious');
-    await expect(ctx.engine.getGenerationStatus(row.id)).rejects.toMatchObject({
-      name: 'TypedError',
-      code: 'INVALID_INPUT',
-      message: expect.stringContaining('Unsafe path segment'),
-    });
+    const res = await ctx.engine.getGenerationStatus(row.id);
+    expect(res.entity.status).toBe('failed');
+    expect(res.entity.error_code).toBe('INVALID_INPUT');
+    expect(res.entity.error_message).toContain('Unsafe path segment');
     // Nothing was written inside tempRoot, and obviously nothing outside.
     const entries = await fsp.readdir(ctx.tempRoot).catch(() => [] as string[]);
     // Only the hierarchy dirs (projectName/...) may exist; no escape route.

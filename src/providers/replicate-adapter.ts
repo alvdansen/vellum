@@ -73,11 +73,23 @@ function safeOutputName(url: string, index: number): string {
   } catch {
     name = '';
   }
-  // Strip anything that isn't a conservative filename char; guard empty/dotfiles.
-  name = name.replace(/[^A-Za-z0-9._-]/g, '');
+  // Strip anything that isn't a conservative filename char, then collapse any run
+  // of 2+ dots to a single dot so a delivery URL basename like 'frame..001.png'
+  // can never carry a '..' segment into the engine's buildOutputPath (which throws
+  // INVALID_INPUT on '..'). Mirrors the engine's safeRegisteredFilename.
+  name = name.replace(/[^A-Za-z0-9._-]/g, '').replace(/\.{2,}/g, '.');
   if (!name || name === '.' || name === '..') name = `replicate_output_${index}`;
   return name;
 }
+
+// Bound the walk over attacker-influenced model-output JSON. Real Replicate
+// outputs are shallow (url | url[] | {k:url} | [{k:url}], depth ≤ ~3), so these
+// caps only bite on pathological/abusive shapes: they stop a deeply-nested output
+// from stack-overflowing the recursion, and stop one prediction from fanning out
+// into an unbounded (terabyte-scale) download set. Generous enough never to clip a
+// legitimate result.
+const MAX_OUTPUT_WALK_DEPTH = 32;
+const MAX_OUTPUT_URLS = 512;
 
 /**
  * Flatten Replicate's `output` into ComfyOutput[]. Replicate output schemas vary
@@ -91,20 +103,28 @@ function safeOutputName(url: string, index: number): string {
  */
 export function extractReplicateOutputs(output: unknown): ComfyOutput[] {
   const urls: string[] = [];
-  const visit = (v: unknown): void => {
+  const visit = (v: unknown, depth: number): void => {
+    // Depth/count backstops against pathological output JSON (see the caps above).
+    if (urls.length >= MAX_OUTPUT_URLS || depth > MAX_OUTPUT_WALK_DEPTH) return;
     if (typeof v === 'string') {
       if (/^https:\/\//i.test(v)) urls.push(v);
       return;
     }
     if (Array.isArray(v)) {
-      for (const el of v) visit(el);
+      for (const el of v) {
+        if (urls.length >= MAX_OUTPUT_URLS) break;
+        visit(el, depth + 1);
+      }
       return;
     }
     if (v && typeof v === 'object') {
-      for (const val of Object.values(v as Record<string, unknown>)) visit(val);
+      for (const val of Object.values(v as Record<string, unknown>)) {
+        if (urls.length >= MAX_OUTPUT_URLS) break;
+        visit(val, depth + 1);
+      }
     }
   };
-  visit(output);
+  visit(output, 0);
   return urls.map((u, i) => ({ filename: safeOutputName(u, i), subfolder: '', type: u }));
 }
 
