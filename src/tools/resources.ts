@@ -37,6 +37,7 @@ const REPRODUCE_SUPPORT: Record<string, string> = {
   'comfyui-cloud': 'byte-identical (re-submits the resolved node graph)',
   replicate: 'params-replay (neutral params-diff; not byte-identical)',
   fal: 'params-replay (neutral params-diff; not byte-identical)',
+  byteplus: 'params-replay (neutral params-diff; not byte-identical)',
 };
 
 function capabilitiesDoc(version: string): unknown {
