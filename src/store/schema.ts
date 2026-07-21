@@ -233,6 +233,36 @@ export const shotStatusEvents = sqliteTable('shot_status_events', {
 }));
 
 /**
+ * Approval gate (10-ton "no silent credit spend"). A generation REQUEST awaiting
+ * human sign-off — the full verbatim request recorded BEFORE any provider call.
+ * `status` proposed|approved|rejected; the decide UPDATE in
+ * src/store/proposal-repo.ts is guarded `WHERE status='proposed'` (decide
+ * exactly once — the atomic claim that prevents double-spend). Added by drizzle
+ * migrator via 0010_approval_proposals.sql; SCHEMA_DDL below intentionally does
+ * NOT declare this table — matches the additive-migration split.
+ */
+export const proposals = sqliteTable('proposals', {
+  id: text('id').primaryKey(),
+  shot_id: text('shot_id')
+    .notNull()
+    .references(() => shots.id),
+  kind: text('kind').notNull(), // 'submit' | 'reproduce' | 'iterate'
+  provider: text('provider'), // null = default provider at approve time
+  request_json: text('request_json').notNull(),
+  notes: text('notes'),
+  cost_estimate: text('cost_estimate'), // caller-asserted, free-form ("~12 credits")
+  status: text('status').notNull().default('proposed'),
+  created_at: integer('created_at').notNull(),
+  decided_at: integer('decided_at'),
+  decided_note: text('decided_note'),
+  version_id: text('version_id'), // linked on approved+executed submit
+  execution_error: text('execution_error'), // approve claimed but execution threw
+}, (t) => ({
+  idxShotStatus: index('idx_proposals_shot_status').on(t.shot_id, t.status),
+  idxStatusCreated: index('idx_proposals_status_created').on(t.status, t.created_at),
+}));
+
+/**
  * Raw DDL string used by openDb() first-run path and the in-memory test fixture.
  *
  * IMPORTANT — intentional Phase 1 / Phase 2 split (do not "re-sync"): this DDL

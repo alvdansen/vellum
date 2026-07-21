@@ -217,6 +217,17 @@ export class GenerationEngine {
   }
 
   /**
+   * Approval gate — propose-time fail-fast. Resolves the (named or default)
+   * provider and runs its request validation WITHOUT any DB write, so an
+   * invalid request is rejected at PROPOSE time and an approver never reviews
+   * a request that could not execute.
+   */
+  validateProposedRequest(providerId: string | undefined, request: Record<string, unknown>): void {
+    const provider = this.resolveProvider(providerId ?? null, 'propose a generation');
+    provider.validateRequest?.(request);
+  }
+
+  /**
    * Resolve the provider a REPRODUCE/ITERATE must run on: the provider that
    * PRODUCED the source version. A stamped row routes to its own provider
    * (typed error when no longer configured). A legacy null-provider row is

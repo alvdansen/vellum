@@ -101,6 +101,10 @@ export type EngineForDashboard = Pick<
   // pipeline (Plans 17-01 + 17-02). Returns null on derivation failure;
   // route surfaces 503 + THUMBNAIL_FAILED envelope in that case.
   | 'generateThumbnail'
+  // Approval gate — the dashboard is where a human reviews pending spends.
+  | 'listProposals'
+  | 'approveProposal'
+  | 'rejectProposal'
   // Phase 19 / Plan 19-05 — AI conversational summary surface. GET + POST
   // routes at /api/versions/:id/summary delegate to engine.summarizeVersion
   // (Plan 19-04). Engine returns SummaryOutcome discriminated union; HTTP
@@ -789,6 +793,35 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
     }
     const result = await engine.reproduceVersion(versionId, notes);
     return c.json(result, 201);
+  });
+
+  // --- Approval gate (10-ton "no silent credit spend") ---
+  // GET /api/proposals?shot_id=&status=&limit=&offset= — the pending-spend queue.
+  app.get('/api/proposals', (c) => {
+    const q = c.req.query();
+    const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
+    const offset = q.offset ? Number.parseInt(q.offset, 10) : undefined;
+    return c.json(
+      engine.listProposals({
+        shot_id: q.shot_id || undefined,
+        status: (q.status as 'proposed' | 'approved' | 'rejected' | undefined) || undefined,
+        limit: Number.isFinite(limit) ? limit : undefined,
+        offset: Number.isFinite(offset) ? offset : undefined,
+      }),
+    );
+  });
+
+  // POST /api/proposals/:id/approve — the decide-exactly-once claim + execute.
+  app.post('/api/proposals/:id/approve', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { note?: string } | null;
+    const result = await engine.approveProposal(c.req.param('id'), body?.note);
+    return c.json(result, 201);
+  });
+
+  // POST /api/proposals/:id/reject — decide without executing.
+  app.post('/api/proposals/:id/reject', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { note?: string } | null;
+    return c.json(engine.rejectProposal(c.req.param('id'), body?.note));
   });
 
   // --- Assets ---

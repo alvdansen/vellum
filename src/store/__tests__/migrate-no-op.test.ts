@@ -26,7 +26,7 @@ function cleanup(dbPath: string): void {
   }
 }
 
-const EXPECTED_MIGRATIONS = 9; // 0001..0009 — same constant as migrate.test.ts (pivot Phase B added 0009_pivot_neutral_provenance)
+const EXPECTED_MIGRATIONS = 10; // 0001..0010 — same constant as migrate.test.ts (approval gate added 0010_approval_proposals)
 
 describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
   let dbPath: string;

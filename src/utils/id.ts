@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 
-export type IdPrefix = 'ws' | 'proj' | 'seq' | 'shot' | 'ver' | 'prov' | 'tag' | 'meta' | 'sse';
+export type IdPrefix = 'ws' | 'proj' | 'seq' | 'shot' | 'ver' | 'prov' | 'tag' | 'meta' | 'sse' | 'prop';
 
 /**
  * Generate a prefixed nanoid for a hierarchy entity.

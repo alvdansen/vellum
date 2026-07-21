@@ -7,6 +7,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { Database as SqliteClient } from 'better-sqlite3';
 import type * as schema from '../store/schema.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
+import { ProposalRepo, type Proposal, type ProposalStatus } from '../store/proposal-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
 // Phase 18 / Plan 18-02 — composite-cursor sort tuple types forwarded
@@ -264,6 +265,8 @@ export class Engine {
    * and the wrapped delegates on submit/reproduce/iterate/status/tag/metadata).
    */
   public readonly events: EngineEmitter;
+  private requireApproval: boolean;
+  private proposalRepo: ProposalRepo;
   /** Dashboard-stable download root (D-WEBUI-26 + SC-2 Phase 6). Public-readonly
    * so the HTTP layer can resolve output file paths against it via
    * EngineForDashboard structural Pick (Plan 06-03 / gap_closure WR-01). */
@@ -455,6 +458,10 @@ export class Engine {
       // Multi-provider routing (10-ton P0): ALL configured providers; `client`
       // stays the default. Optional — single-provider construction unchanged.
       providers?: ReadonlyMap<string, GenerationProvider>;
+      /** Approval gate (10-ton "no silent credit spend"): when true, direct
+       *  submit/reproduce/iterate throw APPROVAL_REQUIRED — generations run
+       *  only through propose → approve. Register/status stay ungated. */
+      requireApproval?: boolean;
       /** Operator-configurable per-output ingest byte cap (URL fetches AND
        *  direct-bytes uploads). Defaults to DEFAULT_INGEST_MAX_BYTES. */
       ingestMaxBytes?: number;
@@ -468,6 +475,8 @@ export class Engine {
     this.c2paConfig = options.c2paConfig ?? null;
     this.anthropicConfig = options.anthropicConfig ?? null;
     this.events = createEngineEmitter();
+    this.requireApproval = options.requireApproval ?? false;
+    this.proposalRepo = new ProposalRepo(this.db);
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     this.generation = new GenerationEngine(
@@ -949,6 +958,18 @@ export class Engine {
     /** Multi-provider routing: submit to this configured provider (default when omitted). */
     providerId?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    this.assertApprovalNotRequired('submit');
+    return this.submitGenerationExecute(shotId, workflowJson, notes, providerId);
+  }
+
+  /** Ungated executor — the approve path enters here (the gate already passed
+   *  through an explicit human decision on the recorded proposal). */
+  private async submitGenerationExecute(
+    shotId: string,
+    workflowJson: Record<string, unknown>,
+    notes?: string,
+    providerId?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     const result = await this.generation.submitGeneration(shotId, workflowJson, notes, providerId);
     // D-WEBUI-29: version.created fires AFTER the row is inserted. The
     // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
@@ -1317,6 +1338,14 @@ export class Engine {
     sourceVersionId: string,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
+    this.assertApprovalNotRequired('reproduce');
+    return this.reproduceVersionExecute(sourceVersionId, notes);
+  }
+
+  private async reproduceVersionExecute(
+    sourceVersionId: string,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
     const result = await this.generation.reproduceVersion(sourceVersionId, notes);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
@@ -1334,6 +1363,16 @@ export class Engine {
     seed?: number,
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    this.assertApprovalNotRequired('iterate');
+    return this.iterateFromVersionExecute(sourceVersionId, overrides, seed, notes);
+  }
+
+  private async iterateFromVersionExecute(
+    sourceVersionId: string,
+    overrides?: Record<string, IterateOverride>,
+    seed?: number,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     const result = await this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
@@ -1342,6 +1381,173 @@ export class Engine {
       at: this.nowIso(),
     });
     return result;
+  }
+
+  // ================================================================
+  // APPROVAL GATE (10-ton "no silent credit spend")
+  // ================================================================
+
+  /** Throws APPROVAL_REQUIRED when the deployment gates generations. */
+  private assertApprovalNotRequired(action: 'submit' | 'reproduce' | 'iterate'): void {
+    if (!this.requireApproval) return;
+    throw new TypedError(
+      'APPROVAL_REQUIRED',
+      `Direct ${action} is disabled: this deployment requires approval before every generation (no silent credit spend).`,
+      `Record the request with { tool: 'generation', action: 'propose' }, review it, then { action: 'approve', proposal_id: ... } to execute. Set VELLUM_REQUIRE_APPROVAL=0 to disable the gate.`,
+    );
+  }
+
+  /**
+   * Record a generation REQUEST for human sign-off — the full verbatim request
+   * is stored before any provider call. Fail-fast validation runs at propose
+   * time (shot/version existence; provider request validation for `submit`) so
+   * an approver never reviews a request that could not execute.
+   */
+  proposeGeneration(
+    input:
+      | { kind: 'submit'; shotId: string; workflowJson: Record<string, unknown>; provider?: string; notes?: string; costEstimate?: string }
+      | { kind: 'reproduce'; versionId: string; notes?: string; costEstimate?: string }
+      | { kind: 'iterate'; versionId: string; overrides?: Record<string, IterateOverride>; seed?: number; notes?: string; costEstimate?: string },
+  ): { proposal: Proposal; breadcrumb: Breadcrumb } {
+    let shotId: string;
+    let requestJson: string;
+    let provider: string | null = null;
+    if (input.kind === 'submit') {
+      const shot = this.repo.getShot(input.shotId);
+      if (!shot) {
+        throw new TypedError(
+          'SHOT_NOT_FOUND',
+          `Shot '${input.shotId}' not found`,
+          `Verify the shot id with { tool: 'shot', action: 'get' }`,
+        );
+      }
+      // Fail-fast: the named (or default) provider must exist AND accept the
+      // request shape — validated with ZERO DB writes.
+      this.generation.validateProposedRequest(input.provider, input.workflowJson);
+      shotId = input.shotId;
+      provider = input.provider ?? null;
+      requestJson = JSON.stringify(input.workflowJson);
+    } else {
+      const source = this.versionRepo.getVersion(input.versionId);
+      if (!source) {
+        throw new TypedError(
+          'VERSION_NOT_FOUND',
+          `Version '${input.versionId}' not found`,
+          `Verify the id with { tool: 'version', action: 'get' }`,
+        );
+      }
+      shotId = source.shot_id;
+      requestJson = JSON.stringify(
+        input.kind === 'reproduce'
+          ? { version_id: input.versionId }
+          : { version_id: input.versionId, overrides: input.overrides, seed: input.seed },
+      );
+    }
+    const proposal = this.proposalRepo.insertProposal({
+      shotId,
+      kind: input.kind,
+      provider,
+      requestJson,
+      notes: input.notes,
+      costEstimate: input.costEstimate,
+    });
+    return { proposal, breadcrumb: this.breadcrumb.resolve('shot', shotId) };
+  }
+
+  /**
+   * Approve → execute. The guarded decide UPDATE is the atomic claim: two
+   * concurrent approves cannot both execute (decide-exactly-once, the whole
+   * point of the gate). Execution failures are recorded on the proposal
+   * (execution_error) and rethrown; the claim is NOT rolled back — a failed
+   * execution still consumed the approval, and the request can be re-proposed.
+   */
+  async approveProposal(
+    proposalId: string,
+    note?: string,
+  ): Promise<{
+    proposal: Proposal;
+    entity: Version;
+    breadcrumb: Breadcrumb;
+    reproduction_warnings?: string[];
+  }> {
+    const existing = this.proposalRepo.getProposal(proposalId);
+    if (!existing) {
+      throw new TypedError('PROPOSAL_NOT_FOUND', `Proposal '${proposalId}' not found`);
+    }
+    const claimed = this.proposalRepo.decide(proposalId, 'approved', note);
+    if (!claimed) {
+      const now = this.proposalRepo.getProposal(proposalId)!;
+      throw new TypedError(
+        'PROPOSAL_ALREADY_DECIDED',
+        `Proposal '${proposalId}' was already ${now.status}${now.decided_at ? ` at ${new Date(now.decided_at).toISOString()}` : ''}.`,
+        'Each proposal executes at most once. Propose again to run another generation.',
+      );
+    }
+    try {
+      const request = JSON.parse(claimed.request_json) as Record<string, unknown>;
+      let result: { entity: Version; breadcrumb: Breadcrumb; reproduction_warnings?: string[] };
+      if (claimed.kind === 'submit') {
+        result = await this.submitGenerationExecute(
+          claimed.shot_id,
+          request,
+          claimed.notes ?? undefined,
+          claimed.provider ?? undefined,
+        );
+      } else if (claimed.kind === 'reproduce') {
+        result = await this.reproduceVersionExecute(
+          request.version_id as string,
+          claimed.notes ?? undefined,
+        );
+      } else {
+        result = await this.iterateFromVersionExecute(
+          request.version_id as string,
+          request.overrides as Record<string, IterateOverride> | undefined,
+          request.seed as number | undefined,
+          claimed.notes ?? undefined,
+        );
+      }
+      this.proposalRepo.attachVersion(proposalId, result.entity.id);
+      const final = this.proposalRepo.getProposal(proposalId)!;
+      return { proposal: final, ...result };
+    } catch (err) {
+      this.proposalRepo.recordExecutionError(proposalId, (err as Error).message ?? String(err));
+      throw err;
+    }
+  }
+
+  /** Reject — same decide-exactly-once claim; nothing executes. */
+  rejectProposal(proposalId: string, note?: string): { proposal: Proposal } {
+    const existing = this.proposalRepo.getProposal(proposalId);
+    if (!existing) {
+      throw new TypedError('PROPOSAL_NOT_FOUND', `Proposal '${proposalId}' not found`);
+    }
+    const decided = this.proposalRepo.decide(proposalId, 'rejected', note);
+    if (!decided) {
+      const now = this.proposalRepo.getProposal(proposalId)!;
+      throw new TypedError(
+        'PROPOSAL_ALREADY_DECIDED',
+        `Proposal '${proposalId}' was already ${now.status}.`,
+      );
+    }
+    return { proposal: decided };
+  }
+
+  /** Paginated proposal listing (defaults 20, includes total_count). */
+  listProposals(query: {
+    shot_id?: string;
+    status?: ProposalStatus;
+    limit?: number;
+    offset?: number;
+  } = {}): { items: Proposal[]; total_count: number; limit: number; offset: number } {
+    const limit = Math.max(1, Math.min(100, query.limit ?? 20));
+    const offset = Math.max(0, query.offset ?? 0);
+    const res = this.proposalRepo.listProposals({
+      shotId: query.shot_id,
+      status: query.status,
+      limit,
+      offset,
+    });
+    return { ...res, limit, offset };
   }
 
   // ================================================================

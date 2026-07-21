@@ -305,6 +305,12 @@ async function main(): Promise<void> {
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
     // Multi-provider routing: the full configured-provider map (default = client).
     providers,
+    // Approval gate (10-ton "no silent credit spend"): VELLUM_REQUIRE_APPROVAL=1
+    // refuses direct submit/reproduce/iterate — every generation runs through
+    // propose → human review → approve (decide-exactly-once).
+    requireApproval:
+      process.env.VELLUM_REQUIRE_APPROVAL === '1' ||
+      process.env.VELLUM_REQUIRE_APPROVAL === 'true',
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
     // Pivot Phase D — operator-supplied extra ingest hosts for registerExternalOutput
     // (additive to the built-in known provider delivery hosts). Comma-separated.

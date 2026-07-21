@@ -23,6 +23,10 @@ export type ErrorCode =
   | 'FAL_API_ERROR'                   // FAL queue REST surface failure
   | 'BYTEPLUS_API_ERROR'              // BytePlus ModelArk tasks REST surface failure
   | 'PROVIDER_MISCONFIGURED'          // registry/config: unknown or credential-less provider selected
+  // Approval gate (10-ton "no silent credit spend")
+  | 'APPROVAL_REQUIRED'               // direct submit/reproduce/iterate blocked; propose+approve instead
+  | 'PROPOSAL_NOT_FOUND'
+  | 'PROPOSAL_ALREADY_DECIDED'        // decide-exactly-once claim lost (already approved/rejected)
   | 'INVALID_REQUEST_FORMAT'          // provider-agnostic request validation failure (analog of INVALID_WORKFLOW_FORMAT)
   | 'GENERATION_TIMEOUT'
   | 'DOWNLOAD_FAILED'

@@ -107,12 +107,62 @@ const RegisterInput = z.object({
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 
+/**
+ * Approval gate (10-ton "no silent credit spend") — propose records the FULL
+ * verbatim request for human review; approve/reject decide it exactly once;
+ * list_proposals pages the queue. `request` mirrors SubmitInput.workflow_json
+ * for kind='submit'; reproduce/iterate proposals reference a source version.
+ */
+const ProposeInput = z.object({
+  action: z.literal('propose'),
+  kind: z.enum(['submit', 'reproduce', 'iterate']),
+  shot_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+  workflow_json: z
+    .record(z.string(), z.unknown())
+    .refine((obj) => Object.keys(obj).length <= MAX_WORKFLOW_NODES, {
+      message: `workflow_json exceeds max ${MAX_WORKFLOW_NODES} nodes`,
+    })
+    .optional(),
+  version_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+  overrides: z
+    .record(z.string(), z.object({ inputs: z.record(z.string(), z.unknown()).optional(), class_type: z.string().optional() }))
+    .optional(),
+  seed: z.number().int().optional(),
+  provider: z.string().min(1).max(64).optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+  cost_estimate: z.string().max(200).optional(),
+});
+
+const ApproveInput = z.object({
+  action: z.literal('approve'),
+  proposal_id: z.string().min(1).max(MAX_ID_LENGTH),
+  note: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
+const RejectInput = z.object({
+  action: z.literal('reject'),
+  proposal_id: z.string().min(1).max(MAX_ID_LENGTH),
+  note: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
+const ListProposalsInput = z.object({
+  action: z.literal('list_proposals'),
+  shot_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+  status: z.enum(['proposed', 'approved', 'rejected']).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+});
+
 const GenerationInputSchema = z.discriminatedUnion('action', [
   SubmitInput,
   StatusInput,
   ReproduceInput,
   IterateInput,
   RegisterInput,
+  ProposeInput,
+  ApproveInput,
+  RejectInput,
+  ListProposalsInput,
 ]);
 
 /**
@@ -190,13 +240,44 @@ function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb })
  *    → flows through toolError unchanged (D-28).
  *  - Anything else → toolError re-wraps as INVALID_INPUT (D-13, D-32).
  */
+/**
+ * Shape a proposal for tool responses: parse request_json into a typed
+ * `request` (the verbatim payload the approver must read — never a raw JSON
+ * string dump), and surface decision fields under stable keys.
+ */
+function shapeProposal(p: {
+  id: string;
+  shot_id: string;
+  kind: string;
+  provider: string | null;
+  request_json: string;
+  notes: string | null;
+  cost_estimate: string | null;
+  status: string;
+  created_at: number;
+  decided_at: number | null;
+  decided_note: string | null;
+  version_id: string | null;
+  execution_error: string | null;
+}) {
+  let request: unknown = null;
+  try {
+    request = JSON.parse(p.request_json);
+  } catch {
+    request = null;
+  }
+  const { request_json, ...rest } = p;
+  void request_json;
+  return { ...rest, request };
+}
+
 export function registerGeneration(server: McpServer, engine: Engine) {
   server.registerTool(
     'generation',
     {
       title: 'Generation',
       description:
-        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status, reproduce, iterate, register. " +
+        "Submits a ComfyUI API-format workflow (also called 'prompt format'). UI-format exports will be rejected — enable 'Dev Mode > Save (API Format)' in ComfyUI to export the right shape. Actions: submit, status, reproduce, iterate, register, propose, approve, reject, list_proposals. Approval gate: when the server runs with VELLUM_REQUIRE_APPROVAL, direct submit/reproduce/iterate are refused — record the FULL request with action:'propose' (optionally cost_estimate), have it reviewed, then action:'approve' executes it exactly once (no silent credit spend). " +
         "register (provider-agnostic): report an output produced OUTSIDE this server (ComfyUI, Replicate, FAL, Scenario, Layer, or a sibling workflow) into a shot — pass { shot_id, provider, outputs: [{ url }], provenance? }; each https URL is fetched under an ingest host-allowlist + size cap and stored as a new completed version stamped with `provider`. " +
         "State machine (D-GEN-18): submitted → running → completed | failed. " +
         "Dual error model (IAC-03): submit/status/reproduce/iterate return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, COMFYUI_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found, version-not-completed, reproduce-blocked, iterate-invalid-patch). " +
@@ -208,7 +289,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
       // short-circuits — the handler's `GenerationInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: {
-        action: z.enum(['submit', 'status', 'reproduce', 'iterate', 'register']),
+        action: z.enum(['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals']),
         shot_id: z.string().optional(),
         workflow_json: z.record(z.string(), z.unknown()).optional(),
         notes: z.string().optional(),
@@ -234,6 +315,14 @@ export function registerGeneration(server: McpServer, engine: Engine) {
           .optional(),
         provenance: z.record(z.string(), z.unknown()).optional(),
         external_job_ref: z.string().optional(),
+        // Approval gate (propose/approve/reject/list_proposals).
+        kind: z.enum(['submit', 'reproduce', 'iterate']).optional(),
+        proposal_id: z.string().optional(),
+        note: z.string().optional(),
+        cost_estimate: z.string().optional(),
+        status: z.enum(['proposed', 'approved', 'rejected']).optional(),
+        limit: z.number().int().optional(),
+        offset: z.number().int().optional(),
       },
     },
     async (rawInput) => {
@@ -280,6 +369,78 @@ export function registerGeneration(server: McpServer, engine: Engine) {
                 ),
               ),
             );
+          case 'propose': {
+            if (input.kind === 'submit') {
+              if (!input.shot_id || !input.workflow_json) {
+                return toolError(
+                  new TypedError(
+                    'INVALID_INPUT',
+                    "propose kind='submit' requires shot_id and workflow_json.",
+                    'Pass the full request exactly as you would to action=submit.',
+                  ),
+                );
+              }
+              const res = engine.proposeGeneration({
+                kind: 'submit',
+                shotId: input.shot_id,
+                workflowJson: input.workflow_json,
+                provider: input.provider,
+                notes: input.notes,
+                costEstimate: input.cost_estimate,
+              });
+              return toolOk({
+                proposal: shapeProposal(res.proposal),
+                breadcrumb: res.breadcrumb.entries,
+                breadcrumb_text: res.breadcrumb.text,
+                next: "Review proposal.request verbatim, then { action: 'approve', proposal_id } to execute or { action: 'reject', proposal_id } to discard.",
+              });
+            }
+            if (!input.version_id) {
+              return toolError(
+                new TypedError(
+                  'INVALID_INPUT',
+                  `propose kind='${input.kind}' requires version_id (the source version).`,
+                ),
+              );
+            }
+            const res = engine.proposeGeneration(
+              input.kind === 'reproduce'
+                ? { kind: 'reproduce', versionId: input.version_id, notes: input.notes, costEstimate: input.cost_estimate }
+                : { kind: 'iterate', versionId: input.version_id, overrides: input.overrides, seed: input.seed, notes: input.notes, costEstimate: input.cost_estimate },
+            );
+            return toolOk({
+              proposal: shapeProposal(res.proposal),
+              breadcrumb: res.breadcrumb.entries,
+              breadcrumb_text: res.breadcrumb.text,
+              next: "Review proposal.request verbatim, then { action: 'approve', proposal_id } to execute or { action: 'reject', proposal_id } to discard.",
+            });
+          }
+          case 'approve': {
+            const res = await engine.approveProposal(input.proposal_id, input.note);
+            return toolOk({
+              proposal: shapeProposal(res.proposal),
+              ...shapeVersionEntity({ entity: res.entity, breadcrumb: res.breadcrumb }),
+              ...(res.reproduction_warnings ? { reproduction_warnings: res.reproduction_warnings } : {}),
+            });
+          }
+          case 'reject': {
+            const res = engine.rejectProposal(input.proposal_id, input.note);
+            return toolOk({ proposal: shapeProposal(res.proposal) });
+          }
+          case 'list_proposals': {
+            const res = engine.listProposals({
+              shot_id: input.shot_id,
+              status: input.status,
+              limit: input.limit,
+              offset: input.offset,
+            });
+            return toolOk({
+              items: res.items.map(shapeProposal),
+              total_count: res.total_count,
+              limit: res.limit,
+              offset: res.offset,
+            });
+          }
           case 'register':
             // Pivot Phase D — inbound registration of an externally-produced output.
             return toolOk(

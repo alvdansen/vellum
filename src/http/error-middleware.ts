@@ -31,6 +31,7 @@ const NOT_FOUND_CODES = new Set<string>([
   'PARENT_NOT_FOUND',
   'PROVENANCE_UNAVAILABLE',
   'OUTPUT_UNAVAILABLE',
+  'PROPOSAL_NOT_FOUND',
 ]);
 
 // Explicit 422 set — precondition/limit failures (cannot be completed in current state).
@@ -45,6 +46,8 @@ const UNPROCESSABLE_CODES = new Set<string>([
 const CONFLICT_CODES = new Set<string>([
   'DUPLICATE_NAME',
   'CONCURRENT_SUBMIT_CONFLICT',
+  // Approval gate: decide-exactly-once claim lost — a concurrency conflict.
+  'PROPOSAL_ALREADY_DECIDED',
 ]);
 
 // Explicit 502 set — upstream gateway / external service failures.
@@ -102,6 +105,8 @@ const BAD_REQUEST_CODES = new Set<string>([
  *      by `typedErrorHandler`).
  */
 export function statusForCode(code: string): number {
+  // Approval gate: the deployment forbids direct generations — 403 Forbidden.
+  if (code === 'APPROVAL_REQUIRED') return 403;
   if (NOT_FOUND_CODES.has(code)) return 404;
   if (code.startsWith('INVALID_') || BAD_REQUEST_CODES.has(code)) return 400;
   if (BAD_GATEWAY_CODES.has(code) || code.startsWith('COMFYUI_')) return 502;

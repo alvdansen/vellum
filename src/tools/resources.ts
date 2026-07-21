@@ -22,8 +22,8 @@ const TOOL_SURFACE: Array<{ name: string; actions: string[]; summary: string }> 
   { name: 'shot', actions: ['create', 'list', 'get', 'set_status'], summary: 'Shot under a sequence; production status.' },
   {
     name: 'generation',
-    actions: ['submit', 'status', 'reproduce', 'iterate', 'register'],
-    summary: 'Submit to / poll the default provider; reproduce/iterate; register an externally-produced output.',
+    actions: ['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals'],
+    summary: 'Submit to / poll any configured provider; reproduce/iterate; register an externally-produced output; approval-gate a spend (propose → approve).',
   },
   { name: 'version', actions: ['get', 'list', 'diff', 'provenance'], summary: 'Version reads + provenance + diff.' },
   {
@@ -73,6 +73,11 @@ function capabilitiesDoc(version: string): unknown {
       reproduce_available_for: configured,
       reproduce_note:
         'Reproduce/status route to the provider that produced the version. generation submit accepts an optional `provider` to target a specific configured backend; omitted → the default.',
+    },
+    approval_gate: {
+      required: process.env.VELLUM_REQUIRE_APPROVAL === '1' || process.env.VELLUM_REQUIRE_APPROVAL === 'true',
+      note:
+        'When required, direct submit/reproduce/iterate return APPROVAL_REQUIRED. Record the verbatim request with generation propose (include cost_estimate), review it, then approve executes it exactly once. No silent credit spend.',
     },
     envelope: {
       success: 'Structured content payload (entity + breadcrumb). Never a raw JSON dump.',
