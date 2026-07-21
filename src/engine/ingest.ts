@@ -20,6 +20,8 @@ export const DEFAULT_INGEST_ALLOWED_HOSTS: readonly string[] = [
   'storage.googleapis.com', // ComfyUI Cloud signed outputs
   'fal.media', // FAL
   'cdn.scenario.com', // Scenario (best effort)
+  'bytepluses.com', // BytePlus ModelArk task outputs (tos-*.bytepluses.com via suffix match)
+  'volces.com', // BytePlus/Volcano Engine CDN
 ];
 
 export interface IngestResult {

@@ -12,6 +12,7 @@ import { BreadcrumbResolver } from '../breadcrumb.js';
 import { GenerationEngine } from '../generation.js';
 import { ProvenanceWriter } from '../provenance.js';
 import { ReplicateAdapter } from '../../providers/replicate-adapter.js';
+import { ByteplusAdapter } from '../../providers/byteplus-adapter.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import type { GenerationProvider } from '../../providers/provider.js';
 
@@ -589,5 +590,125 @@ describe('multi-provider routing (10-ton P0) — one engine, ComfyUI default + R
     expect(postBodies[1]).toEqual(SPEC); // exact original request replayed to Replicate
     // ComfyUI fake never received the replay.
     expect(ctx.fake.calls.filter((x) => x.method === 'submit')).toHaveLength(0);
+  });
+});
+
+describe('multi-provider routing — review fixes (iterate guards + BytePlus E2E)', () => {
+  const GRAPH = { '1': { class_type: 'KSampler', inputs: { seed: 7 } } };
+
+  async function setupTri(byteplusFetch: typeof fetch): Promise<
+    Ctx & { fake: FakeComfyUIClient; postBodies: unknown[] }
+  > {
+    const { db } = makeInMemoryDb();
+    const hierarchy = new HierarchyRepo(db);
+    const versions = new VersionRepo(db);
+    const provenanceRepo = new ProvenanceRepo(db);
+    const provenanceWriter = new ProvenanceWriter(provenanceRepo);
+    const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
+    const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vellum-tri-${nanoid(6)}-`));
+    const fake = new FakeComfyUIClient();
+    const postBodies: unknown[] = [];
+    const byteplus = new ByteplusAdapter('ark_test_key_1234', undefined, { fetchImpl: byteplusFetch });
+    const providers = new Map<string, GenerationProvider>([
+      ['comfyui-cloud', fake as unknown as GenerationProvider],
+      ['byteplus', byteplus],
+    ]);
+    // DEFAULT = byteplus (request-replay) — the hostile config for legacy rows.
+    const engine = new GenerationEngine(
+      hierarchy,
+      versions,
+      provenanceRepo,
+      provenanceWriter,
+      byteplus,
+      breadcrumb,
+      tempRoot,
+      { providers },
+    );
+    const ws = hierarchy.createWorkspace('wsT');
+    const proj = hierarchy.createProject(ws.id, 'pT');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const shot = hierarchy.createShot(seq.id, 'sh010');
+    const ctx = { engine, versions, provenanceRepo, provenanceWriter, shotId: shot.id, tempRoot, fake, postBodies };
+    active.push(ctx);
+    return ctx;
+  }
+
+  /** Mock ModelArk: task submit/status/result + delivery download. */
+  function makeByteplusFetch(postBodies: unknown[]): typeof fetch {
+    return (async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = input instanceof URL ? input.href : String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'POST' && url.endsWith('/api/v3/contents/generations/tasks')) {
+        postBodies.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ id: 'task_bp1', status: 'queued' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (method === 'GET' && url.includes('/api/v3/contents/generations/tasks/')) {
+        return new Response(
+          JSON.stringify({
+            id: 'task_bp1',
+            status: 'succeeded',
+            content: { video_url: 'https://tos-x.bytepluses.com/out/sample.mp4' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      // delivery download
+      const bytes = new Uint8Array([1, 2, 3, 4]);
+      return new Response(bytes as unknown as BodyInit, {
+        status: 200,
+        headers: { 'content-type': 'video/mp4', 'content-length': '4' },
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  const BP_SPEC = { model: 'dreamina-seedance-2-0-260128', content: [{ type: 'text', text: 'bert waves' }] };
+
+  test('BytePlus E2E through the routed engine: submit → succeeded → video downloaded → reproduce replays exact {model, content}', async () => {
+    const postBodies: unknown[] = [];
+    const ctx = await setupTri(makeByteplusFetch(postBodies));
+    const sub = await ctx.engine.submitGeneration(ctx.shotId, BP_SPEC, undefined, 'byteplus');
+    expect(sub.entity.provider).toBe('byteplus');
+    expect(sub.entity.job_id).toBe('task_bp1');
+    const done = await ctx.engine.getGenerationStatus(sub.entity.id);
+    expect(done.entity.status).toBe('completed');
+    const outputs = JSON.parse(done.entity.outputs_json ?? '[]') as Array<{ filename: string; path: string }>;
+    expect(outputs[0].filename).toBe('sample.mp4');
+    expect(existsSync(outputs[0].path)).toBe(true);
+
+    const repro = await ctx.engine.reproduceVersion(done.entity.id);
+    expect(repro.entity.provider).toBe('byteplus');
+    expect(postBodies).toHaveLength(2);
+    // The content array survives the JSON round-trip byte-for-byte.
+    expect(postBodies[1]).toEqual(BP_SPEC);
+  });
+
+  test('iterate on a request-replay source → ITERATE_INVALID_PATCH with actionable routing hint', async () => {
+    const postBodies: unknown[] = [];
+    const ctx = await setupTri(makeByteplusFetch(postBodies));
+    const sub = await ctx.engine.submitGeneration(ctx.shotId, BP_SPEC, undefined, 'byteplus');
+    const done = await ctx.engine.getGenerationStatus(sub.entity.id);
+    expect(done.entity.status).toBe('completed');
+    await expect(ctx.engine.iterateFromVersion(done.entity.id, undefined, 99)).rejects.toMatchObject({
+      code: 'ITERATE_INVALID_PATCH',
+    });
+  });
+
+  test('iterate on a legacy null-provider graph version routes to the resolved-graph provider, NOT the URL default', async () => {
+    const postBodies: unknown[] = [];
+    const ctx = await setupTri(makeByteplusFetch(postBodies));
+    // Seed a legacy completed row: provider=null, resolved ComfyUI graph.
+    const row = ctx.versions.insertVersion(ctx.shotId, 'legacy'); // no provider → null
+    ctx.provenanceWriter.writeSubmitEvent(row.id, GRAPH);
+    ctx.provenanceWriter.writeCompletedEvent(row.id, GRAPH, '[]');
+    ctx.versions.markCompleted(row.id, '[]');
+
+    const it = await ctx.engine.iterateFromVersion(row.id, undefined, 99);
+    // Routed to the ComfyUI fake (resolved-graph fallback), never to BytePlus.
+    expect(it.entity.provider).toBe('comfyui-cloud');
+    expect(ctx.fake.calls.some((c) => c.method === 'submit')).toBe(true);
+    expect(postBodies).toHaveLength(0); // BytePlus never received the graph
   });
 });

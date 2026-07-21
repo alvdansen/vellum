@@ -354,4 +354,17 @@ describe('registerExternalOutput', () => {
     expect(files.filter((f) => String(f).endsWith('.png'))).toHaveLength(0);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test('caller-asserted provenance can NEVER spoof provider_id (authenticated id wins)', async () => {
+    const { entity } = await engine.registerExternalOutput({
+      shotId,
+      providerId: 'modal',
+      outputs: [{ url: 'https://replicate.delivery/pbxt/xyz/sample.png' }],
+      provenance: { provider_id: 'comfyui-cloud', params: { step: 500 } },
+    });
+    const completed = provenanceRepo.getLatestCompletedEvent(entity.id);
+    const neutral = JSON.parse(completed!.generation_result_json!) as Record<string, unknown>;
+    expect(neutral.provider_id).toBe('modal'); // the authenticated reporting id, not the spoof
+    expect((neutral.params as Record<string, unknown>).step).toBe(500);
+  });
 });

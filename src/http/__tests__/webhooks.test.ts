@@ -217,6 +217,30 @@ const GOOD_META = { shot_id: 'shot_1' };
 const GOOD_FILES = [{ name: 'ckpt_000100.png', data: PNG_BYTES }];
 
 describe('POST /webhooks/:provider/upload', () => {
+  it('caps the meta field at 256KB (413) — the 64MB budget is for file bytes, not provenance', async () => {
+    const engine = fakeEngine();
+    const res = await uploadReq(buildApp(engine, TOKEN), '/webhooks/modal/upload', {
+      meta: { shot_id: 'shot_1', provenance: { blob: 'x'.repeat(300 * 1024) } },
+      files: GOOD_FILES,
+      headers: auth(TOKEN),
+    });
+    expect(res.status).toBe(413);
+    expect(engine.calls).toHaveLength(0);
+  });
+
+  it('clamps oversized filename/content_type to the JSON-route bounds before delegating', async () => {
+    const engine = fakeEngine();
+    const res = await uploadReq(buildApp(engine, TOKEN), '/webhooks/modal/upload', {
+      meta: GOOD_META,
+      files: [{ name: 'f'.repeat(300) + '.png', type: 'image/' + 'p'.repeat(200), data: PNG_BYTES }],
+      headers: auth(TOKEN),
+    });
+    expect(res.status).toBe(201);
+    const call = engine.calls[0] as { outputs: Array<{ filename: string; content_type?: string }> };
+    expect(call.outputs[0].filename.length).toBeLessThanOrEqual(255);
+    expect((call.outputs[0].content_type ?? '').length).toBeLessThanOrEqual(128);
+  });
+
   it('is DISABLED (503) when no ingest token is configured', async () => {
     const engine = fakeEngine();
     const res = await uploadReq(buildApp(engine) /* no token */, '/webhooks/modal/upload', {

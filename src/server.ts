@@ -312,6 +312,12 @@ async function main(): Promise<void> {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    // Per-output ingest byte cap (URL fetches + direct-bytes uploads). Unset →
+    // engine default. Raise for large video checkpoint samples (Modal ingest).
+    ingestMaxBytes: (() => {
+      const raw = Number.parseInt(process.env.VELLUM_INGEST_MAX_BYTES ?? '', 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+    })(),
     // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
     // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
     // ships with this unset; local-dev / self-host can populate hashes by

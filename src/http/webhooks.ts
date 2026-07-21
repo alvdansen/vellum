@@ -231,7 +231,16 @@ export function createWebhookRouter(
       }
 
       // 'meta' — required JSON text field carrying everything except the bytes.
+      // Its own cap mirrors the JSON route's whole-body limit (256KB): the 64MB
+      // request budget is for FILE BYTES, not for an unbounded provenance blob
+      // JSON.stringify'd into the append-only provenance table (review fix).
       const metaRaw = form['meta'];
+      if (typeof metaRaw === 'string' && Buffer.byteLength(metaRaw) > MAX_BODY_BYTES) {
+        return c.json(
+          errorBody('PAYLOAD_TOO_LARGE', `The 'meta' field exceeds ${MAX_BODY_BYTES} bytes.`),
+          413,
+        );
+      }
       if (typeof metaRaw !== 'string') {
         return c.json(
           errorBody(
@@ -290,11 +299,14 @@ export function createWebhookRouter(
       // Buffer each part (whole request is already capped) and hand the bytes to
       // the engine, which applies the identical path machinery + atomic writes as
       // the URL path. Filenames are sanitized again inside the engine.
+      // Clamp filename/content_type to the JSON route's field bounds (255/128)
+      // so the two inbound paths cannot drift — an oversized multipart filename
+      // must not reach the engine and fail the version post-insert (review fix).
       const outputs = await Promise.all(
         files.map(async (f, i) => ({
           bytes: new Uint8Array(await f.arrayBuffer()),
-          filename: (f.name ?? '').trim() || `upload_${i}`,
-          content_type: f.type || undefined,
+          filename: ((f.name ?? '').trim() || `upload_${i}`).slice(0, 255),
+          content_type: f.type ? f.type.slice(0, 128) : undefined,
         })),
       );
 

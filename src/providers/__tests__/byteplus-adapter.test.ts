@@ -277,6 +277,17 @@ describe('mapByteplusStatus', () => {
     expect(mapByteplusStatus('cancelled')).toBe('cancelled');
     expect(mapByteplusStatus('???')).toBe('pending');
   });
+
+  test("'expired' is terminal → failed (never a pending-forever trap)", () => {
+    expect(mapByteplusStatus('expired')).toBe('failed');
+  });
+});
+
+describe('provider-aware generation timeout (routing review)', () => {
+  test('declares a 30-minute generationTimeoutMs for long video tasks', () => {
+    const a = new ByteplusAdapter(KEY);
+    expect(a.generationTimeoutMs).toBe(30 * 60_000);
+  });
 });
 
 describe('extractByteplusOutputs', () => {

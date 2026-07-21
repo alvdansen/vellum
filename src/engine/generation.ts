@@ -217,6 +217,47 @@ export class GenerationEngine {
   }
 
   /**
+   * Resolve the provider a REPRODUCE/ITERATE must run on: the provider that
+   * PRODUCED the source version. A stamped row routes to its own provider
+   * (typed error when no longer configured). A legacy null-provider row is
+   * ComfyUI-era — it must replay a resolved node graph, so it routes to the
+   * default when the default is resolved-graph, else to ANY configured
+   * resolved-graph provider, else throws (feeding a node graph to a URL
+   * backend would fail deep inside it with a confusing INVALID_REQUEST_FORMAT).
+   */
+  private resolveSourceProvider(
+    source: Version,
+    sourceVersionId: string,
+    errCode: 'REPRODUCE_BLOCKED' | 'PROVENANCE_UNAVAILABLE',
+  ): GenerationProvider {
+    if (source.provider) {
+      const p = this.providers.get(source.provider);
+      if (!p) {
+        throw new TypedError(
+          errCode,
+          `Version '${sourceVersionId}' was produced by provider '${source.provider}', which is not currently configured.`,
+          `Configured providers: ${[...this.providers.keys()].join(', ') || '(none)'}. Set the '${source.provider}' credentials in .env to use this version as a source.`,
+        );
+      }
+      return p;
+    }
+    const defaultStrategy = this.client?.reproduceStrategy ?? 'resolved-graph';
+    if (this.client && defaultStrategy === 'resolved-graph') return this.client;
+    // Try any configured resolved-graph provider before blocking.
+    const graphProvider = [...this.providers.values()].find(
+      (p) => (p.reproduceStrategy ?? 'resolved-graph') === 'resolved-graph',
+    );
+    if (!graphProvider) {
+      throw new TypedError(
+        errCode,
+        `Version '${sourceVersionId}' predates provider stamping and needs a 'resolved-graph' backend, but none is configured.`,
+        `Configure a resolved-graph provider (e.g. COMFYUI_API_KEY) to use legacy versions as sources.`,
+      );
+    }
+    return graphProvider;
+  }
+
+  /**
    * Pivot Phase D — inbound registration. An external agent (or provider webhook)
    * reports a finished asset by URL; we create a COMPLETED version stamped with the
    * reporting provider, ingest each output under the SSRF-guarded trust boundary,
@@ -351,7 +392,9 @@ export class GenerationEngine {
     }
 
     // Neutral provenance: caller-asserted params/models + the reporting provider id.
-    const neutralJson = JSON.stringify({ provider_id: input.providerId, ...(input.provenance ?? {}) });
+    // provider_id LAST so caller-asserted provenance can never spoof the
+    // authenticated reporting provider in the append-only record (review fix).
+    const neutralJson = JSON.stringify({ ...(input.provenance ?? {}), provider_id: input.providerId });
     this.provenanceWriter.writeCompletedEvent(row.id, null, JSON.stringify(stored), neutralJson);
     this.versions.markCompleted(row.id, JSON.stringify(stored));
     const refreshed = this.versions.getVersion(row.id)!;
@@ -461,10 +504,22 @@ export class GenerationEngine {
     if (row.status === 'completed' || row.status === 'failed') {
       return { entity: row, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
-    // 10-minute timeout check (D-GEN-25). Runs BEFORE any network call so a
-    // stuck ComfyUI cannot hold the row hostage.
-    if (Date.now() - row.created_at > GENERATION_TIMEOUT_MS) {
-      const msg = `Generation did not complete within ${GENERATION_TIMEOUT_MS / 1000}s`;
+    // Timeout check (D-GEN-25) — runs BEFORE any network call so a stuck backend
+    // cannot hold the row hostage. PROVIDER-AWARE (routing review): the engine
+    // default (10 min) was sized for image jobs; a long-running video backend
+    // (BytePlus/Seedance) declares a larger generationTimeoutMs on its adapter.
+    // Best-effort lookup only — an unconfigured provider falls back to the
+    // default window and still throws PROVIDER_MISCONFIGURED below when polled.
+    const timeoutProvider =
+      row.provider != null ? this.providers.get(row.provider) : (this.client ?? undefined);
+    const timeoutMs = timeoutProvider?.generationTimeoutMs ?? GENERATION_TIMEOUT_MS;
+    // When the row's provider is named but NOT configured, do not mislabel the
+    // row GENERATION_TIMEOUT in append-only provenance — fall through to the
+    // honest PROVIDER_MISCONFIGURED throw below (the row stays pending and can
+    // recover on a future boot with restored credentials).
+    const providerUnresolvable = row.provider != null && !this.providers.has(row.provider);
+    if (!providerUnresolvable && Date.now() - row.created_at > timeoutMs) {
+      const msg = `Generation did not complete within ${timeoutMs / 1000}s`;
       this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg);
       this.versions.markFailed(row.id, 'GENERATION_TIMEOUT', msg);
       const updated = this.versions.getVersion(versionId)!;
@@ -549,36 +604,7 @@ export class GenerationEngine {
     // configured resolved-graph provider — the default when it is one, else
     // blocked (feeding a node graph to a URL backend would fail deep inside the
     // backend with a confusing INVALID_REQUEST_FORMAT).
-    let sourceProvider: GenerationProvider;
-    if (source.provider) {
-      const p = this.providers.get(source.provider);
-      if (!p) {
-        throw new TypedError(
-          'REPRODUCE_BLOCKED',
-          `Version '${sourceVersionId}' was produced by provider '${source.provider}', which is not currently configured.`,
-          `Configured providers: ${[...this.providers.keys()].join(', ') || '(none)'}. Set the '${source.provider}' credentials in .env to reproduce this version.`,
-        );
-      }
-      sourceProvider = p;
-    } else {
-      const defaultStrategy = this.client?.reproduceStrategy ?? 'resolved-graph';
-      if (!this.client || defaultStrategy !== 'resolved-graph') {
-        // Try any configured resolved-graph provider before blocking.
-        const graphProvider = [...this.providers.values()].find(
-          (p) => (p.reproduceStrategy ?? 'resolved-graph') === 'resolved-graph',
-        );
-        if (!graphProvider) {
-          throw new TypedError(
-            'REPRODUCE_BLOCKED',
-            `Version '${sourceVersionId}' predates provider stamping and needs a 'resolved-graph' backend to reproduce, but none is configured.`,
-            `Configure a resolved-graph provider (e.g. COMFYUI_API_KEY) to reproduce legacy versions.`,
-          );
-        }
-        sourceProvider = graphProvider;
-      } else {
-        sourceProvider = this.client;
-      }
-    }
+    const sourceProvider = this.resolveSourceProvider(source, sourceVersionId, 'REPRODUCE_BLOCKED');
 
     // 'request-replay' (URL providers — no embedded blob) re-submits the original
     // request recorded at submit time; 'resolved-graph' (ComfyUI) re-submits the
@@ -720,6 +746,20 @@ export class GenerationEngine {
       );
     }
 
+    // Multi-provider routing: iterate is NODE-GRAPH surgery (applySeedShortcut/
+    // applyOverrides key on node_id/class_type), so it only works on resolved-graph
+    // sources. Guard request-replay (URL-provider) sources EARLY with an actionable
+    // message instead of dead-ending later in ComfyUI-format validation; legacy
+    // null rows route via the same resolved-graph fallback reproduce uses.
+    const sourceProvider = this.resolveSourceProvider(source, sourceVersionId, 'PROVENANCE_UNAVAILABLE');
+    if ((sourceProvider.reproduceStrategy ?? 'resolved-graph') === 'request-replay') {
+      throw new TypedError(
+        'ITERATE_INVALID_PATCH',
+        `Version '${sourceVersionId}' was produced by '${sourceProvider.id}', a params-based backend — node-graph iterate does not apply.`,
+        `Use { tool: 'generation', action: 'reproduce' } to replay it, or a fresh { action: 'submit', provider: '${sourceProvider.id}' } with edited params.`,
+      );
+    }
+
     let baseBlob: Record<string, unknown>;
     if (source.status === 'completed') {
       const completedEvent = this.provenanceRepo.getLatestCompletedEvent(sourceVersionId);
@@ -767,10 +807,10 @@ export class GenerationEngine {
       notes,
       parentVersionId: sourceVersionId,
       lineageType: 'iterate',
-      // Multi-provider routing: iterate re-submits to the provider that produced
-      // the source (legacy null rows → default). Graph surgery above already
-      // guarantees this is a resolved-graph workflow.
-      providerId: source.provider ?? undefined,
+      // Multi-provider routing: submit to the RESOLVED source provider — for a
+      // legacy null-provider row this is the resolved-graph fallback (never a
+      // URL default that would reject the node graph).
+      providerId: sourceProvider.id,
     });
   }
 
@@ -998,6 +1038,24 @@ export class GenerationEngine {
           return;
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
+        // Routing review: configuration errors are PERMANENT for this process
+        // (the provider map is fixed at construction). Retrying burns a poller
+        // slot for the whole timeout window, starves queued healthy rows, and
+        // ends by mislabeling the row GENERATION_TIMEOUT. Stop THIS row's
+        // poller and leave it pending — a future boot with restored
+        // credentials resumes it via the recovery scan.
+        if (
+          err instanceof TypedError &&
+          (err.code === 'PROVIDER_MISCONFIGURED' ||
+            err.code === 'COMFYUI_CREDENTIALS_MISSING' ||
+            err.code === 'GENERATION_CREDENTIALS_MISSING')
+        ) {
+          console.error(
+            `[recovery] version=${rowId} provider unavailable (${err.code}) — poller stopped; row stays pending until credentials return:`,
+            err.message,
+          );
+          return;
+        }
         console.error(
           `[recovery] version=${rowId} poll error:`,
           (err as Error).message,

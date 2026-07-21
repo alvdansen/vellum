@@ -58,6 +58,7 @@ export function mapByteplusStatus(raw: unknown): StatusResponse['status'] {
       return 'completed';
     case 'running':
       return 'in_progress';
+    case 'expired': // task aged out on the ModelArk side — terminal, surface as failed
     case 'failed':
       return 'failed';
     case 'cancelled':
@@ -83,6 +84,9 @@ export class ByteplusAdapter implements GenerationProvider {
   readonly id = 'byteplus';
   // URL provider — reproduce re-submits the original { model, content } request.
   readonly reproduceStrategy = 'request-replay' as const;
+  // Video tasks (Seedance 2.0) legitimately run past the engine's 10-min image
+  // default — 30 min before the engine declares GENERATION_TIMEOUT (routing review).
+  readonly generationTimeoutMs = 30 * 60_000;
   private apiKey: string;
   private base: string;
   private fetchImpl: typeof fetch;

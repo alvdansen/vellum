@@ -79,6 +79,14 @@ export interface GenerationProvider {
   readonly reproduceStrategy?: 'resolved-graph' | 'request-replay';
 
   /**
+   * OPTIONAL per-provider generation timeout (ms). The engine fails a
+   * non-terminal version older than this before polling. Omitted → the engine
+   * default (10 min — sized for image jobs). Long-running video backends
+   * (e.g. BytePlus/Seedance tasks) should raise it. (10-ton routing review.)
+   */
+  readonly generationTimeoutMs?: number;
+
+  /**
    * Submit a generation request and return its job handle. The engine stores the
    * returned id verbatim in `versions.job_id` and later passes it to `status()`.
    * ComfyUI: POST /api/prompt where `request` is the resolved node graph.
