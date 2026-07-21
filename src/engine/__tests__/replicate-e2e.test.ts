@@ -54,6 +54,8 @@ interface ReplicateScript {
   delivery?: (url: string) => Response;
   /** Records "METHOD url" for every fetch, for assertions. */
   seen?: string[];
+  /** Records the parsed JSON body of every POST /v1/predictions, for assertions. */
+  postBodies?: unknown[];
 }
 
 /**
@@ -70,6 +72,9 @@ function makeReplicateFetch(script: ReplicateScript): typeof fetch {
     const method = (init?.method ?? 'GET').toUpperCase();
     script.seen?.push(`${method} ${url}`);
     if (method === 'POST' && url.endsWith('/v1/predictions')) {
+      if (script.postBodies && init?.body != null) {
+        script.postBodies.push(JSON.parse(String(init.body)));
+      }
       return jsonRes({ id, status: 'starting' });
     }
     if (method === 'GET' && url.includes('/v1/predictions/')) {
@@ -85,6 +90,7 @@ type Ctx = {
   engine: GenerationEngine;
   versions: VersionRepo;
   provenanceRepo: ProvenanceRepo;
+  provenanceWriter: ProvenanceWriter;
   shotId: string;
   tempRoot: string;
 };
@@ -119,7 +125,14 @@ async function setup(
   const proj = hierarchy.createProject(ws.id, 'pR');
   const seq = hierarchy.createSequence(proj.id, 'sq010');
   const shot = hierarchy.createShot(seq.id, 'sh010');
-  const ctx: Ctx = { engine, versions, provenanceRepo, shotId: shot.id, tempRoot };
+  const ctx: Ctx = {
+    engine,
+    versions,
+    provenanceRepo,
+    provenanceWriter,
+    shotId: shot.id,
+    tempRoot,
+  };
   active.push(ctx);
   return ctx;
 }
@@ -328,22 +341,114 @@ describe('outbound Replicate E2E (real Engine + real ReplicateAdapter)', () => {
     expect(outputs[0].filename).toBe('mirror.png');
   });
 
-  test('KNOWN GAP: reproduce is not yet supported for URL-provider versions (unblocked by enhancement #2)', async () => {
+  test('reproduce (request-replay): re-submits the EXACT original request as a lineage=reproduce version', async () => {
+    const seen: string[] = [];
+    const postBodies: unknown[] = [];
     const ctx = await setup(
       makeReplicateFetch({
+        predictionId: 'pred_src',
         statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/r/x.png' }],
+        seen,
+        postBodies,
       }),
     );
     const sub = await ctx.engine.submitGeneration(ctx.shotId, SPEC);
     const done = await ctx.engine.getGenerationStatus(sub.entity.id);
     expect(done.entity.status).toBe('completed');
 
-    // Outbound Replicate completion writes prompt_json=null (no embedded graph), and
-    // cross-provider param-replay is not wired yet, so reproduce is blocked. When
-    // enhancement #2 lands (neutral params at completion + param-replay), flip this
-    // to assert a lineage='reproduce' version is created instead.
-    await expect(ctx.engine.reproduceVersion(done.entity.id)).rejects.toMatchObject({
+    const repro = await ctx.engine.reproduceVersion(done.entity.id, 'repro-note');
+    expect(repro.entity.lineage_type).toBe('reproduce');
+    expect(repro.entity.parent_version_id).toBe(done.entity.id);
+    expect(repro.entity.version_number).toBe(2);
+    expect(repro.entity.provider).toBe('replicate');
+
+    // Prove it replayed the EXACT original request body — not merely that 2 POSTs happened.
+    const posts = seen.filter((s) => s.startsWith('POST') && s.includes('/v1/predictions'));
+    expect(posts).toHaveLength(2); // original submit + reproduce
+    expect(postBodies).toHaveLength(2);
+    expect(postBodies[1]).toEqual(SPEC);
+    expect(postBodies[1]).toEqual(postBodies[0]);
+
+    // The params-replay warning names the provider and disclaims byte-identity.
+    const warning = repro.reproduction_warnings.find((w) => /params-replay/i.test(w));
+    expect(warning).toBeDefined();
+    expect(warning).toMatch(/replicate/i);
+    expect(warning).toMatch(/not byte-identical/i);
+  });
+
+  test('reproduce re-runs validateRequest — a now-invalid stored request fails fast, no new version', async () => {
+    const ctx = await setup(makeReplicateFetch({ statuses: [{ status: 'starting' }] }));
+    // A completed Replicate version whose stored request is missing `version`.
+    const v = ctx.versions.insertVersion(ctx.shotId, 'src', undefined, 'replicate');
+    ctx.provenanceWriter.writeSubmitEvent(v.id, { input: { prompt: 'x' } });
+    ctx.provenanceWriter.writeCompletedEvent(v.id, null, '[]');
+    ctx.versions.markCompleted(v.id, '[]');
+    await expect(ctx.engine.reproduceVersion(v.id)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST_FORMAT',
+    });
+    // validateRequest runs BEFORE insertVersion → no reproduce row was created
+    // (a fresh insert claims v2, proving the failed reproduce consumed no version).
+    expect(ctx.versions.insertVersion(ctx.shotId).version_number).toBe(2);
+  });
+
+  test('reproduce of a reproduce (chain) — the replay row is itself completable and replayable', async () => {
+    const postBodies: unknown[] = [];
+    const ctx = await setup(
+      makeReplicateFetch({
+        statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/r/x.png' }],
+        postBodies,
+      }),
+    );
+    const sub = await ctx.engine.submitGeneration(ctx.shotId, SPEC);
+    const v1 = await ctx.engine.getGenerationStatus(sub.entity.id);
+    expect(v1.entity.status).toBe('completed');
+
+    const repro1 = await ctx.engine.reproduceVersion(v1.entity.id);
+    const v2 = await ctx.engine.getGenerationStatus(repro1.entity.id);
+    expect(v2.entity.status).toBe('completed');
+
+    const repro2 = await ctx.engine.reproduceVersion(v2.entity.id);
+    expect(repro2.entity.lineage_type).toBe('reproduce');
+    expect(repro2.entity.parent_version_id).toBe(v2.entity.id);
+    expect(repro2.entity.version_number).toBe(3);
+    // All three POSTs replayed the identical original request.
+    expect(postBodies).toEqual([SPEC, SPEC, SPEC]);
+  });
+
+  test('reproduce with no captured request → PROVENANCE_UNAVAILABLE', async () => {
+    const ctx = await setup(makeReplicateFetch({ statuses: [{ status: 'starting' }] }));
+    // Seed a completed Replicate version whose submit event was never written.
+    const v = ctx.versions.insertVersion(ctx.shotId, 'src', undefined, 'replicate');
+    ctx.provenanceWriter.writeCompletedEvent(v.id, null, '[]');
+    ctx.versions.markCompleted(v.id, '[]');
+    await expect(ctx.engine.reproduceVersion(v.id)).rejects.toMatchObject({
       code: 'PROVENANCE_UNAVAILABLE',
+    });
+  });
+
+  test('reproduce of a version from a DIFFERENT provider than the default → REPRODUCE_BLOCKED', async () => {
+    const ctx = await setup(makeReplicateFetch({ statuses: [{ status: 'starting' }] }));
+    // A completed version stamped with a provider the current default (replicate) is not.
+    const v = ctx.versions.insertVersion(ctx.shotId, 'src', undefined, 'comfyui-cloud');
+    ctx.provenanceWriter.writeCompletedEvent(v.id, { '1': { class_type: 'KSampler', inputs: {} } }, '[]');
+    ctx.versions.markCompleted(v.id, '[]');
+    await expect(ctx.engine.reproduceVersion(v.id)).rejects.toMatchObject({
+      code: 'REPRODUCE_BLOCKED',
+    });
+  });
+
+  test('legacy null-provider (ComfyUI-era) version on a request-replay default → REPRODUCE_BLOCKED', async () => {
+    const ctx = await setup(makeReplicateFetch({ statuses: [{ status: 'starting' }] }));
+    // A pre-pivot row: provider=null, carries a resolved ComfyUI prompt blob. It
+    // cannot run on the Replicate (request-replay) default, so reproduce blocks
+    // cleanly rather than feeding a node graph to Replicate's validateRequest.
+    const graph = { '3': { class_type: 'KSampler', inputs: { seed: 1 } } };
+    const v = ctx.versions.insertVersion(ctx.shotId, 'legacy'); // no provider → null
+    ctx.provenanceWriter.writeSubmitEvent(v.id, graph);
+    ctx.provenanceWriter.writeCompletedEvent(v.id, graph, '[]');
+    ctx.versions.markCompleted(v.id, '[]');
+    await expect(ctx.engine.reproduceVersion(v.id)).rejects.toMatchObject({
+      code: 'REPRODUCE_BLOCKED',
     });
   });
 });

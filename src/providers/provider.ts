@@ -64,6 +64,20 @@ export interface GenerationProvider {
   readonly id: string;
 
   /**
+   * OPTIONAL — how the engine reproduces a completed version from this provider.
+   *   • 'resolved-graph' (default): re-submit the resolved prompt blob captured at
+   *     completion — byte-identical (ComfyUI, whose PNG embeds the resolved graph
+   *     with the concrete seed). Requires a non-null prompt_json.
+   *   • 'request-replay': re-submit the ORIGINAL request params recorded at submit
+   *     time — the neutral reproduce for URL providers (Replicate/FAL/…), which have
+   *     no embedded blob. NOT byte-identical unless the request itself pins a seed.
+   * Omitting it preserves the historical ComfyUI behavior. Surfaced (per provider)
+   * in vellum://capabilities so a cold agent knows what "reproduce" guarantees here.
+   * (Added in pivot enhancement #2 — cross-provider reproduce.)
+   */
+  readonly reproduceStrategy?: 'resolved-graph' | 'request-replay';
+
+  /**
    * Submit a generation request and return its job handle. The engine stores the
    * returned id verbatim in `versions.job_id` and later passes it to `status()`.
    * ComfyUI: POST /api/prompt where `request` is the resolved node graph.

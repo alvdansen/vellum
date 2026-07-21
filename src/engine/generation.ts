@@ -404,6 +404,45 @@ export class GenerationEngine {
         `Source predates Phase 3 provenance capture or crashed before completion. Source status: '${source.status}'.`,
       );
     }
+
+    // Pivot enhancement #2 — cross-provider reproduce. The engine holds a single
+    // (default) provider client, so a version produced by a DIFFERENT provider
+    // cannot be faithfully reproduced here; fail with an actionable message rather
+    // than mis-submitting its request to the wrong backend. (source.provider is
+    // null on legacy pre-pivot rows — those are ComfyUI-era and fall through.)
+    if (source.provider && this.client && source.provider !== this.client.id) {
+      throw new TypedError(
+        'REPRODUCE_BLOCKED',
+        `Version '${sourceVersionId}' was produced by provider '${source.provider}', but the current default provider is '${this.client.id}'.`,
+        `Reproduce runs against the configured default provider. Configure '${source.provider}' as the default provider to reproduce this version.`,
+      );
+    }
+
+    // Route by reproduce strategy. The default provider offers `defaultStrategy`;
+    // the SOURCE version needs `sourceStrategy`. A stamped row matches the default
+    // (guaranteed by the guard above), so it needs the default's strategy. A legacy
+    // null-provider row is ComfyUI-era → 'resolved-graph'. If the source needs a
+    // strategy the default cannot execute (e.g. a ComfyUI node-graph but the default
+    // is a URL/request-replay backend), BLOCK cleanly — submitInternal always
+    // submits to this.client, so mis-routing would otherwise fail deep in the
+    // backend with a confusing INVALID_REQUEST_FORMAT instead.
+    const defaultStrategy = this.client?.reproduceStrategy ?? 'resolved-graph';
+    const sourceStrategy = source.provider ? defaultStrategy : 'resolved-graph';
+    if (sourceStrategy !== defaultStrategy) {
+      throw new TypedError(
+        'REPRODUCE_BLOCKED',
+        `Version '${sourceVersionId}' needs '${sourceStrategy}' reproduce, but the default provider '${this.client?.id ?? 'none'}' uses '${defaultStrategy}'.`,
+        `This version was produced by a different kind of backend. Configure a '${sourceStrategy}' provider as the default to reproduce it.`,
+      );
+    }
+
+    // 'request-replay' (URL providers — no embedded blob) re-submits the original
+    // request recorded at submit time; 'resolved-graph' (ComfyUI) re-submits the
+    // resolved prompt blob for a byte-identical result.
+    if (defaultStrategy === 'request-replay') {
+      return this.reproduceViaRequestReplay(source, sourceVersionId, notes);
+    }
+
     if (completedEvent.prompt_json == null) {
       throw new TypedError(
         'PROVENANCE_UNAVAILABLE',
@@ -430,7 +469,17 @@ export class GenerationEngine {
       warnings.push('Cloud API did not expose model metadata — reproduction is best-effort');
     }
 
-    const promptBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;
+    let promptBlob: Record<string, unknown>;
+    try {
+      promptBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;
+    } catch {
+      // Symmetric with reproduceViaRequestReplay: a corrupt stored blob must surface
+      // a typed, actionable error, not a raw SyntaxError out of reproduceVersion.
+      throw new TypedError(
+        'PROVENANCE_UNAVAILABLE',
+        `Version '${sourceVersionId}' has a corrupt resolved prompt blob — cannot reproduce`,
+      );
+    }
     const result = await this.submitInternal({
       shotId: source.shot_id,
       workflowJson: promptBlob,
@@ -446,6 +495,55 @@ export class GenerationEngine {
     // recorded" (NULL — legacy) from "explicitly empty" ('[]').
     this.versions.setReproductionWarnings(result.entity.id, warnings);
 
+    return {
+      entity: result.entity,
+      breadcrumb: result.breadcrumb,
+      reproduction_warnings: warnings,
+    };
+  }
+
+  /**
+   * Pivot enhancement #2 — reproduce for 'request-replay' providers (URL backends
+   * like Replicate that have no embedded prompt blob). The neutral reproduce is a
+   * re-submit of the ORIGINAL request recorded on the submit event; submitInternal
+   * re-runs the provider's validateRequest + stamps lineage='reproduce'. A
+   * params-replay warning is always emitted because hosted models are not
+   * byte-identical unless the request itself pins a seed.
+   */
+  private async reproduceViaRequestReplay(
+    source: Version,
+    sourceVersionId: string,
+    notes?: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
+    const submitEvent = this.provenanceRepo.getSubmitEvent(sourceVersionId);
+    if (!submitEvent || submitEvent.workflow_json == null) {
+      throw new TypedError(
+        'PROVENANCE_UNAVAILABLE',
+        `Version '${sourceVersionId}' has no captured request to replay`,
+        `The originating request was not recorded (source predates request capture). Run a fresh { tool: 'generation', action: 'submit' } instead.`,
+      );
+    }
+    let request: Record<string, unknown>;
+    try {
+      request = JSON.parse(submitEvent.workflow_json) as Record<string, unknown>;
+    } catch {
+      throw new TypedError(
+        'PROVENANCE_UNAVAILABLE',
+        `Version '${sourceVersionId}' has a corrupt captured request — cannot replay`,
+      );
+    }
+    const providerId = this.client?.id ?? source.provider ?? 'the provider';
+    const warnings = [
+      `Params-replay reproduce: re-submits the original ${providerId} request. Output is not byte-identical unless the request pins a seed — hosted models are non-deterministic.`,
+    ];
+    const result = await this.submitInternal({
+      shotId: source.shot_id,
+      workflowJson: request,
+      notes,
+      parentVersionId: sourceVersionId,
+      lineageType: 'reproduce',
+    });
+    this.versions.setReproductionWarnings(result.entity.id, warnings);
     return {
       entity: result.entity,
       breadcrumb: result.breadcrumb,

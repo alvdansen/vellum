@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { registerResources } from '../resources.js';
+import { ReplicateAdapter } from '../../providers/replicate-adapter.js';
 
 /** Narrow the text|blob resource-content union to the text form we always emit. */
 function textContent(res: { contents: Array<unknown> }): { text: string; mimeType?: string } {
@@ -58,13 +59,42 @@ describe('Phase E — self-describing MCP resources', () => {
       product: string;
       tools: Array<{ name: string; actions: string[] }>;
       limits: { tools_registered: number };
-      providers: { configured: string[]; reproduce_support: Record<string, string> };
+      providers: {
+        configured: string[];
+        default: string | null;
+        reproduce_support: Record<string, string>;
+        reproduce_available_for: string[];
+        reproduce_note: string;
+      };
     };
     expect(doc.product).toBe('vellum');
     expect(doc.tools.map((t) => t.name)).toContain('generation');
     expect(doc.limits.tools_registered).toBe(7);
     expect(doc.providers.configured).toContain('replicate');
     expect(doc.providers.reproduce_support.replicate).toMatch(/params-replay/);
+    // Honesty: reproduce only works against the default provider, and the doc says so.
+    expect(doc.providers.reproduce_available_for).toEqual(
+      doc.providers.default ? [doc.providers.default] : [],
+    );
+    expect(doc.providers.reproduce_note).toMatch(/default provider/i);
+  });
+
+  it('capabilities reproduce_support is backed by real adapter behavior (no drift)', async () => {
+    // The doc's reproduce_support strings are the human rendering of each provider's
+    // reproduceStrategy. Now that URL-provider reproduce is REAL (request-replay),
+    // the claim must stay tied to the adapter — a 'request-replay' provider is
+    // params-replay, never byte-identical.
+    expect(new ReplicateAdapter('r8_test').reproduceStrategy).toBe('request-replay');
+    delete process.env.DEFAULT_PROVIDER;
+    process.env.REPLICATE_API_TOKEN = 'r8_test';
+    const client = await connect();
+    const res = await client.readResource({ uri: 'vellum://capabilities' });
+    const doc = JSON.parse(textContent(res).text) as {
+      providers: { reproduce_support: Record<string, string> };
+    };
+    expect(doc.providers.reproduce_support.replicate).toMatch(/params-replay/);
+    // request-replay explicitly disclaims byte-identical output.
+    expect(doc.providers.reproduce_support.replicate).toMatch(/not byte-identical/i);
   });
 
   it('output-contract documents the register schema + trust boundary', async () => {

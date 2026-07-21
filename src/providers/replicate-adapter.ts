@@ -130,6 +130,10 @@ export function extractReplicateOutputs(output: unknown): ComfyOutput[] {
 
 export class ReplicateAdapter implements GenerationProvider {
   readonly id = 'replicate';
+  // URL provider — no embedded prompt blob, so reproduce re-submits the original
+  // { version, input } request recorded at submit time (params-replay), not a
+  // resolved graph. See GenerationProvider.reproduceStrategy.
+  readonly reproduceStrategy = 'request-replay' as const;
   private apiKey: string;
   private base: string;
   private fetchImpl: typeof fetch;
