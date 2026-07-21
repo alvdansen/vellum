@@ -105,6 +105,32 @@ function outputContractDoc(): unknown {
       note: 'URLs are validated before any write; a rejected URL never creates a version.',
     },
     returns: 'The new completed version entity + breadcrumb (same shape as submit/status).',
+    // Non-MCP entry points to the SAME engine path — for processes that are not
+    // MCP clients (provider webhooks, training scripts, CI). Both are bearer-gated
+    // and disabled (503) until VELLUM_INGEST_TOKEN is set in the server env.
+    http_ingest: {
+      auth: 'Authorization: Bearer <VELLUM_INGEST_TOKEN> — constant-time check; routes return 503 when the token is unset.',
+      json_by_url: {
+        method: 'POST',
+        path: '/webhooks/:provider',
+        content_type: 'application/json',
+        body: 'Same fields as the MCP register input minus provider (taken from the path): { shot_id, outputs: [{ url, filename?, content_type? }], provenance?, external_job_ref?, notes? }',
+        max_body_bytes: 256 * 1024,
+        note: 'Outputs are fetched under the https + host-allowlist + byte-cap trust boundary.',
+      },
+      multipart_upload: {
+        method: 'POST',
+        path: '/webhooks/:provider/upload',
+        content_type: 'multipart/form-data',
+        fields: {
+          meta: 'required JSON text field: { shot_id, provenance?, external_job_ref?, notes? }',
+          files: '1..20 file parts — the output bytes themselves (no public URL needed)',
+        },
+        max_body_bytes: 64 * 1024 * 1024,
+        note: "Direct-bytes ingest: no fetch, no host allowlist. Stored outputs carry url 'uploaded:direct'. Built for training scripts (e.g. Modal fine-tune checkpoints) — see docs/modal-training-ingest.md.",
+      },
+      returns: '201 with the same { entity, breadcrumb } envelope as the MCP register action.',
+    },
   };
 }
 

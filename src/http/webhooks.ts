@@ -12,7 +12,7 @@
 // PURITY: no MCP SDK, no SQLite/ORM (architecture-purity guards src/http/). Only
 // Hono + Zod + node:crypto, like the rest of the HTTP layer + the tool layer.
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -26,6 +26,15 @@ import { MAX_ID_LENGTH, MAX_NOTES_LENGTH } from '../tools/shape.js';
  *  authenticated large-payload memory-exhaustion / DB-bloat DoS). Generous for a
  *  webhook: neutral provenance is a few KB at most. */
 const MAX_BODY_BYTES = 256 * 1024;
+
+/** Whole-request cap for the multipart upload route (direct-bytes ingest —
+ *  checkpoint sample images/videos from a training run). Separate from the
+ *  256KB JSON-webhook cap above, which stays untouched. */
+const MAX_UPLOAD_BODY_BYTES = 64 * 1024 * 1024;
+
+/** Max file parts per multipart upload — parity with the JSON route's
+ *  outputs max(20). */
+const MAX_UPLOAD_FILES = 20;
 
 /** Provider id charset/length — parity with the MCP register `provider` field. */
 const PROVIDER_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -41,6 +50,9 @@ export interface WebhookRouterOptions {
   /** Shared secret required as `Authorization: Bearer <token>`. When absent/empty
    *  the route is disabled (every request → 503) so ingest is never unauthenticated. */
   ingestToken?: string;
+  /** Test hook: override the multipart upload route's whole-request + per-file
+   *  byte cap (default 64MB). Production callers should not set this. */
+  maxUploadBytes?: number;
 }
 
 // Body mirrors the MCP `generation register` input MINUS `provider` (which comes
@@ -63,6 +75,16 @@ const WebhookBodySchema = z.object({
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 
+// The multipart upload route's 'meta' field — the JSON body MINUS `outputs`
+// (files arrive as multipart parts instead). Field bounds mirror
+// WebhookBodySchema so the two inbound HTTP paths cannot drift.
+const UploadMetaSchema = z.object({
+  shot_id: z.string().min(1).max(MAX_ID_LENGTH),
+  provenance: z.record(z.string(), z.unknown()).optional(),
+  external_job_ref: z.string().max(MAX_ID_LENGTH).optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+});
+
 /** Constant-time bearer check, length-independent (compares SHA-256 digests). */
 function bearerMatches(authHeader: string | undefined, expected: string): boolean {
   if (!authHeader) return false;
@@ -76,6 +98,30 @@ function bearerMatches(authHeader: string | undefined, expected: string): boolea
 
 function errorBody(code: string, message: string, hint?: string): { error: { code: string; message: string; hint?: string } } {
   return { error: hint ? { code, message, hint } : { code, message } };
+}
+
+/** Shared gate for every webhook route: disabled-without-token (503) then
+ *  constant-time bearer auth (401). Returns null when the request may proceed. */
+function gateRequest(c: Context, token: string | undefined): Response | null {
+  // 1. Disabled unless an ingest token is configured — never unauthenticated ingest.
+  if (!token) {
+    return c.json(
+      errorBody(
+        'WEBHOOK_INGEST_DISABLED',
+        'Webhook ingest is disabled: VELLUM_INGEST_TOKEN is not set.',
+        'Set VELLUM_INGEST_TOKEN in the server environment to enable POST /webhooks/:provider.',
+      ),
+      503,
+    );
+  }
+  // 2. Bearer auth (constant-time).
+  if (!bearerMatches(c.req.header('authorization'), token)) {
+    return c.json(
+      errorBody('UNAUTHORIZED', 'Missing or invalid bearer token.', 'Send Authorization: Bearer <VELLUM_INGEST_TOKEN>.'),
+      401,
+    );
+  }
+  return null;
 }
 
 /**
@@ -100,24 +146,9 @@ export function createWebhookRouter(
         c.json(errorBody('PAYLOAD_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`), 413),
     }),
     async (c) => {
-    // 1. Disabled unless an ingest token is configured — never unauthenticated ingest.
-    if (!token) {
-      return c.json(
-        errorBody(
-          'WEBHOOK_INGEST_DISABLED',
-          'Webhook ingest is disabled: VELLUM_INGEST_TOKEN is not set.',
-          'Set VELLUM_INGEST_TOKEN in the server environment to enable POST /webhooks/:provider.',
-        ),
-        503,
-      );
-    }
-    // 2. Bearer auth (constant-time).
-    if (!bearerMatches(c.req.header('authorization'), token)) {
-      return c.json(
-        errorBody('UNAUTHORIZED', 'Missing or invalid bearer token.', 'Send Authorization: Bearer <VELLUM_INGEST_TOKEN>.'),
-        401,
-      );
-    }
+    // 1+2. Disabled-without-token (503) then constant-time bearer auth (401).
+    const gate = gateRequest(c, token);
+    if (gate) return gate;
     // 3. Validate the body.
     let raw: unknown;
     try {
@@ -152,6 +183,130 @@ export function createWebhookRouter(
       notes: body.notes,
     });
     return c.json(result, 201);
+    },
+  );
+
+  // Direct-bytes ingest (Modal training ingest) — multipart upload for callers
+  // that cannot (or should not) host outputs at public URLs first. Same bearer
+  // gate + provider validation; files become ByteOutputEntry inputs to
+  // registerExternalOutput (no fetch, no SSRF surface).
+  const maxUploadBytes = options.maxUploadBytes ?? MAX_UPLOAD_BODY_BYTES;
+  app.post(
+    '/webhooks/:provider/upload',
+    bodyLimit({
+      maxSize: maxUploadBytes,
+      onError: (c) =>
+        c.json(errorBody('PAYLOAD_TOO_LARGE', `Request body exceeds ${maxUploadBytes} bytes.`), 413),
+    }),
+    async (c) => {
+      const gate = gateRequest(c, token);
+      if (gate) return gate;
+
+      const provider = c.req.param('provider').trim();
+      if (!PROVIDER_RE.test(provider)) {
+        return c.json(
+          errorBody('INVALID_INPUT', 'Provider must be 1–64 chars of [A-Za-z0-9._-].'),
+          400,
+        );
+      }
+
+      // Parse the multipart body. { all: true } collects repeated 'files' parts
+      // into an array instead of keeping only the last one.
+      let form: Record<string, string | File | (string | File)[]>;
+      try {
+        form = await c.req.parseBody({ all: true });
+      } catch (err) {
+        // When the request streams without a Content-Length header, bodyLimit
+        // errors the wrapped body stream mid-parse and expects the error to
+        // propagate so its post-next() hook can emit the 413. Rethrow it.
+        if ((err as Error)?.name === 'BodyLimitError') throw err;
+        return c.json(
+          errorBody(
+            'INVALID_INPUT',
+            'Request body must be multipart/form-data.',
+            "Send a 'meta' JSON text field plus 1–20 'files' file parts.",
+          ),
+          400,
+        );
+      }
+
+      // 'meta' — required JSON text field carrying everything except the bytes.
+      const metaRaw = form['meta'];
+      if (typeof metaRaw !== 'string') {
+        return c.json(
+          errorBody(
+            'INVALID_INPUT',
+            "Missing 'meta' text field.",
+            `Send meta as a JSON string: { "shot_id": "…", "provenance"?: {…}, "external_job_ref"?: "…", "notes"?: "…" }`,
+          ),
+          400,
+        );
+      }
+      let metaJson: unknown;
+      try {
+        metaJson = JSON.parse(metaRaw);
+      } catch {
+        return c.json(errorBody('INVALID_INPUT', "The 'meta' field must be valid JSON."), 400);
+      }
+      const meta = UploadMetaSchema.safeParse(metaJson);
+      if (!meta.success) {
+        return c.json(
+          errorBody('INVALID_INPUT', `Invalid meta: ${meta.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`),
+          400,
+        );
+      }
+
+      // 'files' — 1..20 file parts.
+      const filesRaw = form['files'];
+      const parts = filesRaw === undefined ? [] : Array.isArray(filesRaw) ? filesRaw : [filesRaw];
+      const files = parts.filter((p): p is File => p instanceof File);
+      if (files.length !== parts.length) {
+        return c.json(
+          errorBody('INVALID_INPUT', "Every 'files' part must be a file upload, not a text field."),
+          400,
+        );
+      }
+      if (files.length === 0) {
+        return c.json(
+          errorBody('INVALID_INPUT', "At least one 'files' file part is required."),
+          400,
+        );
+      }
+      if (files.length > MAX_UPLOAD_FILES) {
+        return c.json(
+          errorBody('INVALID_INPUT', `Too many files: ${files.length} (max ${MAX_UPLOAD_FILES} per request).`),
+          400,
+        );
+      }
+      for (const f of files) {
+        if (f.size > maxUploadBytes) {
+          return c.json(
+            errorBody('PAYLOAD_TOO_LARGE', `File '${f.name}' is ${f.size} bytes — exceeds the ${maxUploadBytes}-byte cap.`),
+            413,
+          );
+        }
+      }
+
+      // Buffer each part (whole request is already capped) and hand the bytes to
+      // the engine, which applies the identical path machinery + atomic writes as
+      // the URL path. Filenames are sanitized again inside the engine.
+      const outputs = await Promise.all(
+        files.map(async (f, i) => ({
+          bytes: new Uint8Array(await f.arrayBuffer()),
+          filename: (f.name ?? '').trim() || `upload_${i}`,
+          content_type: f.type || undefined,
+        })),
+      );
+
+      const result = await engine.registerExternalOutput({
+        shotId: meta.data.shot_id,
+        providerId: provider,
+        outputs,
+        provenance: meta.data.provenance,
+        externalJobRef: meta.data.external_job_ref,
+        notes: meta.data.notes,
+      });
+      return c.json(result, 201);
     },
   );
 
