@@ -33,6 +33,7 @@
 // GenerationState shapes and renaming `fetchResolvedPrompt` -> `fetchProvenance`.
 
 import type { SubmitResponse, StatusResponse } from '../comfyui/types.js';
+import type { NeutralProvenance } from './provenance.js';
 
 /**
  * Result of persisting one produced output to local disk. Neutral across
@@ -125,4 +126,15 @@ export interface GenerationProvider {
    * without a resolvable blob first needs to opt out.)
    */
   fetchResolvedPrompt(pngPath: string): Promise<Record<string, unknown> | null>;
+
+  /**
+   * OPTIONAL neutral-provenance describer (pivot enhancement #2a). Given the
+   * ORIGINAL request the engine submitted, return the provider-agnostic
+   * NeutralProvenance (model_id + flat params + models) recorded in
+   * generation_result_json at completion — the bag cross-provider version.diff
+   * compares via diffParams. ComfyUI OMITS this (its resolved prompt graph in
+   * prompt_json is the source of truth); URL providers implement it from their
+   * request. Returns null to record nothing. Pure/synchronous — no I/O.
+   */
+  describeProvenance?(request: Record<string, unknown>): NeutralProvenance | null;
 }

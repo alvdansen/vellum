@@ -1268,6 +1268,24 @@ export class Engine {
         outputCount = 0;
       }
     }
+    // Pivot #2a — the neutral param bag for URL-provider versions, from the
+    // completed event's generation_result_json (a serialized NeutralProvenance).
+    // Reduced to { model_id, params } — the two comparable dimensions for diff.
+    let neutral_params: Record<string, unknown> | null = null;
+    if (completed?.generation_result_json) {
+      try {
+        const n = JSON.parse(completed.generation_result_json) as {
+          model_id?: unknown;
+          params?: unknown;
+        };
+        neutral_params = {
+          model_id: n.model_id ?? null,
+          params: n.params && typeof n.params === 'object' ? (n.params as Record<string, unknown>) : {},
+        };
+      } catch {
+        neutral_params = null;
+      }
+    }
     return {
       version_id: v.id,
       shot_id: v.shot_id,
@@ -1280,6 +1298,7 @@ export class Engine {
       models_json: models,
       seed: completed?.seed ?? null,
       output_count: outputCount,
+      neutral_params,
     };
   }
 

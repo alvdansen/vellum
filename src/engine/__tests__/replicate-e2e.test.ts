@@ -199,6 +199,33 @@ describe('outbound Replicate E2E (real Engine + real ReplicateAdapter)', () => {
     expect(completed!.prompt_json).toBeNull();
   });
 
+  test('completion records neutral generation_result_json (params + model_id) for cross-provider diff', async () => {
+    const ctx = await setup(
+      makeReplicateFetch({
+        statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/n/o.png' }],
+      }),
+    );
+    const sub = await ctx.engine.submitGeneration(ctx.shotId, SPEC);
+    const done = await ctx.engine.getGenerationStatus(sub.entity.id);
+    expect(done.entity.status).toBe('completed');
+
+    const completed = ctx.provenanceRepo.getLatestCompletedEvent(sub.entity.id);
+    expect(completed?.generation_result_json).toBeTruthy();
+    const neutral = JSON.parse(completed!.generation_result_json!) as {
+      provider_id: string;
+      model_id: string;
+      params: Record<string, unknown>;
+      models: Array<{ provider_model_id: string; unavailable_reason?: string }>;
+    };
+    expect(neutral.provider_id).toBe('replicate');
+    expect(neutral.model_id).toBe(SPEC.version);
+    expect(neutral.params).toEqual(SPEC.input);
+    expect(neutral.models[0]).toMatchObject({
+      provider_model_id: SPEC.version,
+      unavailable_reason: 'hosted_provider',
+    });
+  });
+
   test('array output → every URL is persisted as its own output', async () => {
     const ctx = await setup(
       makeReplicateFetch({

@@ -273,6 +273,11 @@ export interface DiffSnapshot {
   models_json: ModelRef[] | null;
   seed: number | null;
   output_count: number;
+  /** Pivot #2a — the neutral, comparable param bag for URL-provider versions,
+   *  built from the completed event's generation_result_json as { model_id, params }.
+   *  Null for ComfyUI versions (which diff via the prompt graph) and for pre-#2a
+   *  rows. When present on either side, version.diff compares via diffParams. */
+  neutral_params?: Record<string, unknown> | null;
 }
 
 export interface DiffInput {

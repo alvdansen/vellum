@@ -203,6 +203,73 @@ describe('diffVersions (D-PROV-15..D-PROV-20)', () => {
   });
 });
 
+describe('diffVersions — neutral params path (#2a, URL providers)', () => {
+  const neu = (model_id: string, params: Record<string, unknown>) => ({ model_id, params });
+
+  test('two URL-provider versions diff their neutral params, not the ComfyUI graph', () => {
+    const r = diffVersions({
+      a: snap({
+        version_id: 'ver_a',
+        workflow_json: { version: 'm:v1', input: { prompt: 'fox', seed: 1 } },
+        neutral_params: neu('m:v1', { prompt: 'fox', seed: 1 }),
+      }),
+      b: snap({
+        version_id: 'ver_b',
+        workflow_json: { version: 'm:v1', input: { prompt: 'fox', seed: 9 } },
+        neutral_params: neu('m:v1', { prompt: 'fox', seed: 9 }),
+      }),
+    });
+    expect(r.changes.params).toContainEqual({
+      node_id: '(request)',
+      class_type: 'neutral',
+      field: 'params.seed',
+      before: 1,
+      after: 9,
+    });
+    // ComfyUI-graph concepts stay empty on the neutral path.
+    expect(r.changes.workflow).toEqual([]);
+    expect(r.changes.models).toEqual([]);
+    expect(r.summary).not.toBe('No changes.');
+  });
+
+  test('model_id change surfaces as a neutral param', () => {
+    const r = diffVersions({
+      a: snap({ neutral_params: neu('owner/m:v1', { prompt: 'x' }) }),
+      b: snap({ version_id: 'ver_b', neutral_params: neu('owner/m:v2', { prompt: 'x' }) }),
+    });
+    expect(r.changes.params).toContainEqual({
+      node_id: '(request)',
+      class_type: 'neutral',
+      field: 'model_id',
+      before: 'owner/m:v1',
+      after: 'owner/m:v2',
+    });
+  });
+
+  test('mixed family (ComfyUI graph vs neutral params) → INVALID_INPUT, not a misleading diff', () => {
+    // A resolved-graph version and a params-only version have no field-level
+    // correspondence — refuse rather than erase the graph side against {}.
+    expect(() =>
+      diffVersions({
+        a: snap({
+          version_id: 'ver_a',
+          prompt_json: { '3': { class_type: 'KSampler', inputs: { seed: 42, cfg: 7 } } },
+        }),
+        b: snap({ version_id: 'ver_b', neutral_params: neu('m:v1', { prompt: 'fox', seed: 99 }) }),
+      }),
+    ).toThrowError(/not field-comparable/i);
+  });
+
+  test('identical neutral params → No changes.', () => {
+    const r = diffVersions({
+      a: snap({ neutral_params: neu('m:v1', { prompt: 'x', seed: 7 }) }),
+      b: snap({ version_id: 'ver_b', neutral_params: neu('m:v1', { prompt: 'x', seed: 7 }) }),
+    });
+    expect(r.changes.params).toEqual([]);
+    expect(r.summary).toBe('No changes.');
+  });
+});
+
 describe('buildReproductionDivergence (Phase 12 — DEMO-03 / D-CTX-4)', () => {
   test('null when warnings empty AND hashes match (criterion #4 negative)', () => {
     const r = buildReproductionDivergence({

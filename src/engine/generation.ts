@@ -730,8 +730,25 @@ export class GenerationEngine {
     if (firstPngPath && this.client) {
       promptBlob = await this.client.fetchResolvedPrompt(firstPngPath);
     }
+    // Pivot #2a — record neutral provenance for providers that describe it (URL
+    // backends). Built from the ORIGINAL request on the submit event; ComfyUI omits
+    // describeProvenance and keeps prompt_json as the source of truth (neutral null).
+    // Best-effort: a corrupt/absent request never breaks the completion write.
+    let neutralJson: string | null = null;
+    if (this.client?.describeProvenance) {
+      const submit = this.provenanceRepo.getSubmitEvent(row.id);
+      if (submit?.workflow_json) {
+        try {
+          const request = JSON.parse(submit.workflow_json) as Record<string, unknown>;
+          const neutral = this.client.describeProvenance(request);
+          if (neutral) neutralJson = JSON.stringify(neutral);
+        } catch {
+          neutralJson = null;
+        }
+      }
+    }
     const outputsJson = JSON.stringify(stored);
-    this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson);
+    this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson);
     this.versions.markCompleted(row.id, outputsJson);
     // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
     // the synchronous completion writes return. The receiver

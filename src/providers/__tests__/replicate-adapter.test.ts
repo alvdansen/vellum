@@ -224,6 +224,31 @@ describe('ReplicateAdapter', () => {
     const a = new ReplicateAdapter(TOKEN);
     await expect(a.fetchResolvedPrompt('/any/path.png')).resolves.toBeNull();
   });
+
+  describe('describeProvenance (#2a neutral provenance)', () => {
+    const a = new ReplicateAdapter(TOKEN);
+    test('maps { version, input } → NeutralProvenance (input is params, version is model + hosted model)', () => {
+      const n = a.describeProvenance({ version: 'owner/m:v1', input: { prompt: 'fox', seed: 7 } });
+      expect(n).toEqual({
+        provider_id: 'replicate',
+        model_id: 'owner/m:v1',
+        params: { prompt: 'fox', seed: 7 },
+        models: [{ provider_model_id: 'owner/m:v1', hash: null, unavailable_reason: 'hosted_provider' }],
+      });
+    });
+
+    test('missing version → model_id undefined and empty models (no bogus entry)', () => {
+      const n = a.describeProvenance({ input: { prompt: 'x' } });
+      expect(n?.model_id).toBeUndefined();
+      expect(n?.models).toEqual([]);
+      expect(n?.params).toEqual({ prompt: 'x' });
+    });
+
+    test('non-object input → params defaults to {}', () => {
+      expect(a.describeProvenance({ version: 'm:v1', input: 'nope' })?.params).toEqual({});
+      expect(a.describeProvenance({ version: 'm:v1' })?.params).toEqual({});
+    });
+  });
 });
 
 describe('mapReplicateStatus', () => {

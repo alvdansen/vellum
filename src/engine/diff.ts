@@ -1,5 +1,6 @@
 import { TypedError } from './errors.js';
 import { buildSummary } from './diff-summary.js';
+import { diffParams } from './params-diff.js';
 import type {
   DiffInput,
   DiffResponse,
@@ -33,8 +34,9 @@ function assertComparable(a: DiffSnapshot, b: DiffSnapshot): void {
   }
   const notReady = (s: DiffSnapshot): boolean => {
     // D-PROV-19: submitted/running has no usable blob; completed and failed both have at least workflow_json.
+    // Pivot #2a: a URL-provider version's neutral param bag is also diff-ready provenance.
     if (s.status === 'submitted' || s.status === 'running') return true;
-    return s.workflow_json === null && s.prompt_json === null;
+    return s.workflow_json === null && s.prompt_json === null && s.neutral_params == null;
   };
   if (notReady(a)) {
     throw new TypedError(
@@ -171,6 +173,23 @@ function diffMetadata(a: DiffSnapshot, b: DiffSnapshot): MetadataChange[] {
  */
 export function diffVersions(input: DiffInput): DiffResponse {
   assertComparable(input.a, input.b);
+  // Pivot #2a — URL-provider versions carry a neutral param bag (from
+  // generation_result_json); ComfyUI versions carry a node graph. The two have NO
+  // field-level correspondence, so: diff two neutral versions via diffParams, and
+  // REFUSE a mixed pair (one resolved-graph, one params-only) rather than silently
+  // erasing the graph side against {} and reporting the neutral side as all-added.
+  const aNeutral = input.a.neutral_params != null;
+  const bNeutral = input.b.neutral_params != null;
+  if (aNeutral !== bNeutral) {
+    throw new TypedError(
+      'INVALID_INPUT',
+      'Cannot diff a resolved-graph (ComfyUI) version against a params-only (URL-provider) version — their provenance models are not field-comparable.',
+      'Diff versions produced by the same kind of backend (both ComfyUI, or both URL providers).',
+    );
+  }
+  if (aNeutral && bNeutral) {
+    return diffNeutralVersions(input.a, input.b);
+  }
   const ab = pickBlob(input.a);
   const bb = pickBlob(input.b);
   const changes: DiffChanges = {
@@ -179,6 +198,32 @@ export function diffVersions(input: DiffInput): DiffResponse {
     seed: diffSeeds(input.a.seed, input.b.seed),
     workflow: diffWorkflowStructure(ab, bb),
     metadata: diffMetadata(input.a, input.b),
+  };
+  return { summary: buildSummary(changes), changes };
+}
+
+/**
+ * Pivot #2a — cross-provider diff for URL-provider versions. Compares the neutral
+ * param bags ({ model_id, params }) via the provider-agnostic diffParams and maps
+ * each leaf change into the ParamChange envelope (node_id '(request)', class_type
+ * 'neutral', field = dot-path). Model/seed/workflow-structure are ComfyUI-graph
+ * concepts and stay empty here; a model_id change surfaces as a 'model_id' param.
+ */
+function diffNeutralVersions(a: DiffSnapshot, b: DiffSnapshot): DiffResponse {
+  const pd = diffParams(a.neutral_params ?? {}, b.neutral_params ?? {});
+  const params: ParamChange[] = pd.changes.map((c) => ({
+    node_id: '(request)',
+    class_type: 'neutral',
+    field: c.path,
+    before: c.before,
+    after: c.after,
+  }));
+  const changes: DiffChanges = {
+    params,
+    models: [],
+    seed: null,
+    workflow: [],
+    metadata: diffMetadata(a, b),
   };
   return { summary: buildSummary(changes), changes };
 }

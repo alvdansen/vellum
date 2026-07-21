@@ -26,6 +26,7 @@ import { basename as pathBasename } from 'node:path';
 import { streamToPath } from '../utils/stream-to-path.js';
 import { TypedError } from '../engine/errors.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
+import type { NeutralProvenance } from './provenance.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
 
 export const DEFAULT_REPLICATE_API_BASE = 'https://api.replicate.com';
@@ -347,6 +348,28 @@ export class ReplicateAdapter implements GenerationProvider {
    */
   async fetchResolvedPrompt(_pngPath: string): Promise<Record<string, unknown> | null> {
     return null;
+  }
+
+  /**
+   * Pivot #2a — map a Replicate { version, input } request into NeutralProvenance.
+   * The `input` bag IS the neutral params; `version` is the model id (weights are
+   * hosted, so no local hash — recorded as unavailable). Persisted in
+   * generation_result_json at completion for cross-provider diff.
+   */
+  describeProvenance(request: Record<string, unknown>): NeutralProvenance | null {
+    const version = typeof request.version === 'string' ? request.version : undefined;
+    const input =
+      request.input && typeof request.input === 'object' && !Array.isArray(request.input)
+        ? (request.input as Record<string, unknown>)
+        : {};
+    return {
+      provider_id: this.id,
+      model_id: version,
+      params: input,
+      models: version
+        ? [{ provider_model_id: version, hash: null, unavailable_reason: 'hosted_provider' }]
+        : [],
+    };
   }
 
   private isAllowedHost(host: string): boolean {

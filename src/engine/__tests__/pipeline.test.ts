@@ -222,6 +222,47 @@ describe('Engine.diffVersions', () => {
     expect(seedField!.after).toBe(99);
   });
 
+  test('two URL-provider (neutral) versions diff via params-diff, not the ComfyUI graph (#2a)', async () => {
+    const seedNeutral = (input: Record<string, unknown>): string => {
+      const row = ctx.versions.insertVersion(ctx.shotId, undefined, undefined, 'replicate');
+      ctx.provenanceWriter.writeSubmitEvent(row.id, { version: 'owner/m:v1', input });
+      ctx.provenanceWriter.writeCompletedEvent(
+        row.id,
+        null,
+        '[]',
+        JSON.stringify({ provider_id: 'replicate', model_id: 'owner/m:v1', params: input, models: [] }),
+      );
+      ctx.versions.markCompleted(row.id, '[]');
+      return row.id;
+    };
+    const v1 = seedNeutral({ prompt: 'a fox', seed: 1 });
+    const v2 = seedNeutral({ prompt: 'a fox', seed: 2 });
+    const result = await ctx.engine.diffVersions(v1, v2);
+    const seedChange = result.changes.params.find((p) => p.field === 'params.seed');
+    expect(seedChange).toBeDefined();
+    expect(seedChange!.before).toBe(1);
+    expect(seedChange!.after).toBe(2);
+    // A ComfyUI-graph diff of {version,input} would have found nothing.
+    expect(result.changes.workflow).toEqual([]);
+  });
+
+  test('corrupt generation_result_json degrades gracefully (neutral_params null, diff does not throw) (#2a)', async () => {
+    // A truncated/corrupt neutral column must not break version.diff: loadDiffSnapshot
+    // catches the parse error → neutral_params null → the pair diffs on the graph path.
+    const seedCorruptNeutral = (blob: Record<string, unknown>): string => {
+      const row = ctx.versions.insertVersion(ctx.shotId);
+      ctx.provenanceWriter.writeSubmitEvent(row.id, blob);
+      ctx.provenanceWriter.writeCompletedEvent(row.id, blob, '[]', 'not-json{{');
+      ctx.versions.markCompleted(row.id, '[]');
+      return row.id;
+    };
+    const v1 = seedCorruptNeutral({ '3': { class_type: 'KSampler', inputs: { seed: 1 } } });
+    const v2 = seedCorruptNeutral({ '3': { class_type: 'KSampler', inputs: { seed: 2 } } });
+    const result = await ctx.engine.diffVersions(v1, v2);
+    // Graph path engaged (not the neutral path) — seed change surfaces via inputs.seed.
+    expect(result.changes.params.find((p) => p.field === 'seed')).toMatchObject({ before: 1, after: 2 });
+  });
+
   test('cross-shot → INVALID_INPUT (D-PROV-20 enforced by pure diff.ts)', async () => {
     const v1 = seedCompleted(ctx, ctx.shotId);
     const v2 = seedCompleted(ctx, ctx.shotBId);
