@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeInMemoryDb } from '../../test-utils/fixtures.js';
@@ -189,6 +189,169 @@ describe('registerExternalOutput', () => {
     // unlinked — no dangling .png remains under the outputs dir.
     const pngs = readdirSync(dir, { recursive: true }) as string[];
     expect(pngs.filter((f) => String(f).endsWith('.png'))).toHaveLength(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // ── Modal-ingest: direct-bytes entries (no URL, no fetch, no SSRF surface) ──
+
+  test('direct-bytes entry: bytes land on disk, url is uploaded:direct, version completed + provider stamped + neutral provenance', async () => {
+    const data = new Uint8Array([9, 8, 7, 6, 5]);
+    const { entity } = await engine.registerExternalOutput({
+      shotId,
+      providerId: 'modal',
+      externalJobRef: 'run-2026-07-21a',
+      outputs: [{ bytes: data, filename: 'ckpt_000100.png', content_type: 'image/png' }],
+      provenance: { base_model: 'flux-dev', step: 100, loss: 0.213 },
+    });
+
+    expect(entity.status).toBe('completed');
+    expect(entity.provider).toBe('modal');
+    expect(entity.job_id).toBe('run-2026-07-21a');
+
+    const outputs = JSON.parse(entity.outputs_json ?? '[]') as Array<{
+      filename: string;
+      path: string;
+      url: string;
+      content_type: string;
+      size_bytes: number;
+    }>;
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0].filename).toBe('ckpt_000100.png');
+    expect(outputs[0].url).toBe('uploaded:direct');
+    expect(outputs[0].content_type).toBe('image/png');
+    expect(outputs[0].size_bytes).toBe(5);
+    // Exact bytes on disk, no .partial left behind (atomic temp-then-rename).
+    expect([...readFileSync(outputs[0].path)]).toEqual([9, 8, 7, 6, 5]);
+    const leftovers = readdirSync(outputsDir, { recursive: true }) as string[];
+    expect(leftovers.filter((f) => String(f).endsWith('.partial'))).toHaveLength(0);
+
+    const completed = provenanceRepo.getLatestCompletedEvent(entity.id);
+    expect(completed).not.toBeNull();
+    const neutral = JSON.parse(completed!.generation_result_json!) as Record<string, unknown>;
+    expect(neutral.provider_id).toBe('modal');
+    expect(neutral.step).toBe(100);
+    expect(completed!.prompt_json).toBeNull();
+  });
+
+  test('mixed url + bytes multi-output registers both under the same version', async () => {
+    const { entity } = await engine.registerExternalOutput({
+      shotId,
+      providerId: 'modal',
+      outputs: [
+        { url: 'https://replicate.delivery/pbxt/xyz/fetched.png' },
+        { bytes: new Uint8Array([1, 1, 2, 3, 5, 8]), filename: 'direct.png', content_type: 'image/png' },
+      ],
+    });
+    expect(entity.status).toBe('completed');
+    const outputs = JSON.parse(entity.outputs_json ?? '[]') as Array<{
+      filename: string;
+      url: string;
+      size_bytes: number;
+      path: string;
+    }>;
+    expect(outputs).toHaveLength(2);
+    expect(outputs[0].filename).toBe('fetched.png');
+    expect(outputs[0].url).toBe('https://replicate.delivery/pbxt/xyz/fetched.png');
+    expect(outputs[0].size_bytes).toBe(4); // mockFetch serves 4 bytes
+    expect(outputs[1].filename).toBe('direct.png');
+    expect(outputs[1].url).toBe('uploaded:direct');
+    expect(outputs[1].size_bytes).toBe(6);
+    expect([...readFileSync(outputs[1].path)]).toEqual([1, 1, 2, 3, 5, 8]);
+  });
+
+  test('oversize byte entry is rejected pre-flight with no orphan version', async () => {
+    const { db } = makeInMemoryDb();
+    const dir = mkdtempSync(join(tmpdir(), 'vellum-register-cap-'));
+    const hierarchy = new HierarchyRepo(db);
+    const vRepo = new VersionRepo(db);
+    const pRepo = new ProvenanceRepo(db);
+    const eng = new GenerationEngine(
+      hierarchy,
+      vRepo,
+      pRepo,
+      new ProvenanceWriter(pRepo),
+      null,
+      new BreadcrumbResolver(hierarchy, vRepo),
+      dir,
+      { ingestFetchImpl: mockFetch(new Uint8Array([1, 2, 3, 4])), ingestMaxBytes: 8 },
+    );
+    const ws = hierarchy.createWorkspace('wc');
+    const proj = hierarchy.createProject(ws.id, 'pc');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const sh = hierarchy.createShot(seq.id, 'sh010');
+
+    await expect(
+      eng.registerExternalOutput({
+        shotId: sh.id,
+        providerId: 'modal',
+        outputs: [{ bytes: new Uint8Array(16), filename: 'too_big.png' }],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+    // No file was written and no orphan version row exists: next register is v1.
+    const files = readdirSync(dir, { recursive: true }) as string[];
+    expect(files).toHaveLength(0);
+    const { entity } = await eng.registerExternalOutput({
+      shotId: sh.id,
+      providerId: 'modal',
+      outputs: [{ bytes: new Uint8Array([1, 2]), filename: 'ok.png' }],
+    });
+    expect(entity.version_number).toBe(1);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a byte entry without a filename is rejected pre-flight (INVALID_INPUT, no orphan version)', async () => {
+    await expect(
+      engine.registerExternalOutput({
+        shotId,
+        providerId: 'modal',
+        outputs: [{ bytes: new Uint8Array([1]), filename: '   ' }],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    const { entity } = await engine.registerExternalOutput({
+      shotId,
+      providerId: 'modal',
+      outputs: [{ bytes: new Uint8Array([1]), filename: 'ok.png' }],
+    });
+    expect(entity.version_number).toBe(1);
+  });
+
+  test('partial failure (good bytes + bad url) marks failed AND unlinks the already-written byte file', async () => {
+    const { db } = makeInMemoryDb();
+    const dir = mkdtempSync(join(tmpdir(), 'vellum-register-mixed-fail-'));
+    const hierarchy = new HierarchyRepo(db);
+    const vRepo = new VersionRepo(db);
+    const pRepo = new ProvenanceRepo(db);
+    const fetch404 = (async () => new Response('nope', { status: 404 })) as unknown as typeof fetch;
+    const eng = new GenerationEngine(
+      hierarchy,
+      vRepo,
+      pRepo,
+      new ProvenanceWriter(pRepo),
+      null,
+      new BreadcrumbResolver(hierarchy, vRepo),
+      dir,
+      { ingestFetchImpl: fetch404 },
+    );
+    const ws = hierarchy.createWorkspace('wm');
+    const proj = hierarchy.createProject(ws.id, 'pm');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const sh = hierarchy.createShot(seq.id, 'sh010');
+
+    await expect(
+      eng.registerExternalOutput({
+        shotId: sh.id,
+        providerId: 'modal',
+        outputs: [
+          { bytes: new Uint8Array([1, 2, 3]), filename: 'good.png' },
+          { url: 'https://replicate.delivery/a/bad.png' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'DOWNLOAD_FAILED' });
+
+    // The byte file written before the URL failure was cleaned up.
+    const files = readdirSync(dir, { recursive: true }) as string[];
+    expect(files.filter((f) => String(f).endsWith('.png'))).toHaveLength(0);
     rmSync(dir, { recursive: true, force: true });
   });
 });

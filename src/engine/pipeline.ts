@@ -452,6 +452,9 @@ export class Engine {
       // Pivot Phase D — inbound ingest trust boundary (registerExternalOutput).
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
+      /** Operator-configurable per-output ingest byte cap (URL fetches AND
+       *  direct-bytes uploads). Defaults to DEFAULT_INGEST_MAX_BYTES. */
+      ingestMaxBytes?: number;
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
@@ -476,6 +479,7 @@ export class Engine {
         maxConcurrentPollers: options.maxConcurrentPollers,
         ingestAllowedHosts: options.ingestAllowedHosts,
         ingestFetchImpl: options.ingestFetchImpl,
+        ingestMaxBytes: options.ingestMaxBytes,
       },
       // Phase 13 — fire-and-forget hook delegates to the async background
       // fingerprinter. The hook itself returns synchronously (returns a void
