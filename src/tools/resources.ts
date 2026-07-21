@@ -65,13 +65,13 @@ function capabilitiesDoc(version: string): unknown {
       reproduce_support: Object.fromEntries(
         configured.map((id) => [id, REPRODUCE_SUPPORT[id] ?? 'params-replay']),
       ),
-      // The engine holds ONE default client, so reproduce only runs against the
-      // default provider today; a version produced by a non-default provider
-      // returns REPRODUCE_BLOCKED until that provider is configured as the default.
-      // Disclosed so a cold agent does not plan an unsupported reproduce call.
-      reproduce_available_for: defaultProvider ? [defaultProvider] : [],
+      // Multi-provider routing: the engine routes submit/status/reproduce to the
+      // provider that produced each version, so reproduce works for EVERY
+      // configured provider. A version whose provider is no longer configured
+      // returns REPRODUCE_BLOCKED with the configured list in the hint.
+      reproduce_available_for: configured,
       reproduce_note:
-        'Reproduce runs only against the default provider. A version from a non-default (or a legacy pre-provider) backend returns REPRODUCE_BLOCKED until that provider is made the default.',
+        'Reproduce/status route to the provider that produced the version. generation submit accepts an optional `provider` to target a specific configured backend; omitted → the default.',
     },
     envelope: {
       success: 'Structured content payload (entity + breadcrumb). Never a raw JSON dump.',

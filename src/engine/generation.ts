@@ -107,6 +107,11 @@ export class GenerationEngine {
   // operator additions (VELLUM_INGEST_ALLOWED_HOSTS). fetchImpl is test-injectable.
   private readonly ingestAllowedHosts: readonly string[];
   private readonly ingestFetchImpl?: typeof fetch;
+  // Multi-provider routing (10-ton P0): every configured provider, keyed by id.
+  // `client` remains the DEFAULT provider (back-compat: single-provider callers
+  // and every pre-routing test construct the engine exactly as before). The map
+  // always contains the default when one exists.
+  private readonly providers: Map<string, GenerationProvider>;
 
   constructor(
     private hierarchy: HierarchyRepo,
@@ -120,6 +125,9 @@ export class GenerationEngine {
       maxConcurrentPollers?: number;
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
+      /** Multi-provider routing: ALL configured providers. Optional — when
+       *  omitted the engine runs single-provider on `client` as before. */
+      providers?: ReadonlyMap<string, GenerationProvider>;
     } = {},
     /** Phase 13 — PROV-V-03. Optional fire-and-forget hook fired from
      *  downloadAndPersist immediately AFTER writeCompletedEvent + markCompleted
@@ -137,6 +145,41 @@ export class GenerationEngine {
       ...(options.ingestAllowedHosts ?? []),
     ];
     this.ingestFetchImpl = options.ingestFetchImpl;
+    this.providers = new Map(options.providers ?? []);
+    if (this.client && !this.providers.has(this.client.id)) {
+      this.providers.set(this.client.id, this.client);
+    }
+  }
+
+  /**
+   * Resolve a provider for an operation. `id` undefined/null → the default
+   * provider. A named id must be configured; legacy rows with provider=null
+   * resolve to the default (they predate provider stamping — ComfyUI-era).
+   * Throws a typed, actionable error when nothing resolves.
+   */
+  private resolveProvider(
+    id: string | null | undefined,
+    context: string,
+  ): GenerationProvider {
+    if (id == null) {
+      if (!this.client) {
+        throw new TypedError(
+          'GENERATION_CREDENTIALS_MISSING',
+          `No generation provider is configured — cannot ${context}`,
+          'Configure a provider (e.g. COMFYUI_API_KEY, REPLICATE_API_TOKEN, FAL_KEY) in .env. See .env.example.',
+        );
+      }
+      return this.client;
+    }
+    const p = this.providers.get(id);
+    if (!p) {
+      throw new TypedError(
+        'PROVIDER_MISCONFIGURED',
+        `Provider '${id}' is not configured — cannot ${context}`,
+        `Configured providers: ${[...this.providers.keys()].join(', ') || '(none)'}. Set the '${id}' credentials in .env, or use a configured provider.`,
+      );
+    }
+    return p;
   }
 
   /**
@@ -244,8 +287,10 @@ export class GenerationEngine {
     shotId: string,
     workflowJson: Record<string, unknown>,
     notes?: string,
+    /** Multi-provider routing: submit to this configured provider (default when omitted). */
+    providerId?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    return this.submitInternal({ shotId, workflowJson, notes });
+    return this.submitInternal({ shotId, workflowJson, notes, providerId });
   }
 
   /**
@@ -260,14 +305,21 @@ export class GenerationEngine {
     notes?: string;
     parentVersionId?: string;
     lineageType?: 'reproduce' | 'iterate';
+    /** Multi-provider routing: submit via this configured provider instead of the
+     *  default. Reproduce/iterate pass the SOURCE version's provider here. */
+    providerId?: string;
   }): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    if (!this.client) {
+    // Back-compat: the historical no-provider-at-all error (single-provider era)
+    // keeps its code+message; a NAMED but unconfigured provider throws
+    // PROVIDER_MISCONFIGURED from resolveProvider.
+    if (!this.client && args.providerId == null) {
       throw new TypedError(
         'COMFYUI_CREDENTIALS_MISSING',
         'COMFYUI_API_KEY is not set — generation is unavailable',
         'Set COMFYUI_API_KEY in .env at the repo root. See .env.example.',
       );
     }
+    const provider = this.resolveProvider(args.providerId, 'submit a generation');
     // Fail-fast: shot existence + format. No DB writes until both succeed.
     const shot = this.hierarchy.getShot(args.shotId);
     if (!shot) {
@@ -278,9 +330,8 @@ export class GenerationEngine {
       );
     }
     // Pivot Phase C: validation is provider-routed. ComfyUI validates node-graph
-    // format; other backends validate their own request shape. `this.client` is
-    // non-null here (checked above).
-    this.client.validateRequest?.(args.workflowJson);
+    // format; other backends validate their own request shape.
+    provider.validateRequest?.(args.workflowJson);
 
     // D-PROV-33 (LANDMINE #8): lineage written at INSERT time, not via follow-up
     // UPDATE. A reader observing the row between INSERT and UPDATE would otherwise
@@ -289,15 +340,14 @@ export class GenerationEngine {
       args.parentVersionId && args.lineageType
         ? { parent_version_id: args.parentVersionId, lineage_type: args.lineageType }
         : undefined;
-    // Pivot Phase B: stamp the originating provider on the version row. `this.client`
-    // is guaranteed non-null here (checked above), so `.id` is safe.
-    const row = this.versions.insertVersion(args.shotId, args.notes, lineage, this.client.id);
+    // Pivot Phase B: stamp the originating provider on the version row.
+    const row = this.versions.insertVersion(args.shotId, args.notes, lineage, provider.id);
 
     // Submit-event provenance BEFORE HTTP so D-PROV-04 holds even if ComfyUI rejects.
     this.provenanceWriter.writeSubmitEvent(row.id, args.workflowJson);
 
     try {
-      const { prompt_id } = await this.client.submit(args.workflowJson);
+      const { prompt_id } = await provider.submit(args.workflowJson);
       this.versions.setJobId(row.id, prompt_id);
     } catch (err) {
       // ComfyUI-side failure — provenance first, then markFailed, then rethrow.
@@ -338,13 +388,17 @@ export class GenerationEngine {
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
-    if (!this.client) {
+    // Multi-provider routing: poll the provider that produced this row (legacy
+    // null-provider rows route to the default). Back-compat: when NOTHING is
+    // configured, keep the historical missing-credentials error.
+    if (!this.client && row.provider == null) {
       throw new TypedError(
         'COMFYUI_CREDENTIALS_MISSING',
         'COMFYUI_API_KEY is not set — cannot fetch status',
         'Set COMFYUI_API_KEY in .env at the repo root. See .env.example.',
       );
     }
+    const provider = this.resolveProvider(row.provider ?? null, `fetch status for version '${versionId}'`);
     if (!row.job_id) {
       // Edge case: row inserted at submit-time but submit call failed before
       // setJobId (very rare — markFailed runs in the catch in submitGeneration).
@@ -353,7 +407,7 @@ export class GenerationEngine {
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
-    const remote = await this.client.status(row.job_id);
+    const remote = await provider.status(row.job_id);
     const mapped = this.mapState(remote.status);
     if (mapped === 'completed') {
       await this.downloadAndPersist(row, remote.outputs ?? []);
@@ -405,42 +459,50 @@ export class GenerationEngine {
       );
     }
 
-    // Pivot enhancement #2 — cross-provider reproduce. The engine holds a single
-    // (default) provider client, so a version produced by a DIFFERENT provider
-    // cannot be faithfully reproduced here; fail with an actionable message rather
-    // than mis-submitting its request to the wrong backend. (source.provider is
-    // null on legacy pre-pivot rows — those are ComfyUI-era and fall through.)
-    if (source.provider && this.client && source.provider !== this.client.id) {
-      throw new TypedError(
-        'REPRODUCE_BLOCKED',
-        `Version '${sourceVersionId}' was produced by provider '${source.provider}', but the current default provider is '${this.client.id}'.`,
-        `Reproduce runs against the configured default provider. Configure '${source.provider}' as the default provider to reproduce this version.`,
-      );
-    }
-
-    // Route by reproduce strategy. The default provider offers `defaultStrategy`;
-    // the SOURCE version needs `sourceStrategy`. A stamped row matches the default
-    // (guaranteed by the guard above), so it needs the default's strategy. A legacy
-    // null-provider row is ComfyUI-era → 'resolved-graph'. If the source needs a
-    // strategy the default cannot execute (e.g. a ComfyUI node-graph but the default
-    // is a URL/request-replay backend), BLOCK cleanly — submitInternal always
-    // submits to this.client, so mis-routing would otherwise fail deep in the
-    // backend with a confusing INVALID_REQUEST_FORMAT instead.
-    const defaultStrategy = this.client?.reproduceStrategy ?? 'resolved-graph';
-    const sourceStrategy = source.provider ? defaultStrategy : 'resolved-graph';
-    if (sourceStrategy !== defaultStrategy) {
-      throw new TypedError(
-        'REPRODUCE_BLOCKED',
-        `Version '${sourceVersionId}' needs '${sourceStrategy}' reproduce, but the default provider '${this.client?.id ?? 'none'}' uses '${defaultStrategy}'.`,
-        `This version was produced by a different kind of backend. Configure a '${sourceStrategy}' provider as the default to reproduce it.`,
-      );
+    // Multi-provider routing (10-ton P0): reproduce runs on the provider that
+    // PRODUCED the source version — not the default. A stamped row routes to its
+    // own provider (REPRODUCE_BLOCKED with an actionable message when that
+    // provider is no longer configured); a legacy null-provider row is
+    // ComfyUI-era: it must replay a resolved node graph, so it routes to the
+    // configured resolved-graph provider — the default when it is one, else
+    // blocked (feeding a node graph to a URL backend would fail deep inside the
+    // backend with a confusing INVALID_REQUEST_FORMAT).
+    let sourceProvider: GenerationProvider;
+    if (source.provider) {
+      const p = this.providers.get(source.provider);
+      if (!p) {
+        throw new TypedError(
+          'REPRODUCE_BLOCKED',
+          `Version '${sourceVersionId}' was produced by provider '${source.provider}', which is not currently configured.`,
+          `Configured providers: ${[...this.providers.keys()].join(', ') || '(none)'}. Set the '${source.provider}' credentials in .env to reproduce this version.`,
+        );
+      }
+      sourceProvider = p;
+    } else {
+      const defaultStrategy = this.client?.reproduceStrategy ?? 'resolved-graph';
+      if (!this.client || defaultStrategy !== 'resolved-graph') {
+        // Try any configured resolved-graph provider before blocking.
+        const graphProvider = [...this.providers.values()].find(
+          (p) => (p.reproduceStrategy ?? 'resolved-graph') === 'resolved-graph',
+        );
+        if (!graphProvider) {
+          throw new TypedError(
+            'REPRODUCE_BLOCKED',
+            `Version '${sourceVersionId}' predates provider stamping and needs a 'resolved-graph' backend to reproduce, but none is configured.`,
+            `Configure a resolved-graph provider (e.g. COMFYUI_API_KEY) to reproduce legacy versions.`,
+          );
+        }
+        sourceProvider = graphProvider;
+      } else {
+        sourceProvider = this.client;
+      }
     }
 
     // 'request-replay' (URL providers — no embedded blob) re-submits the original
     // request recorded at submit time; 'resolved-graph' (ComfyUI) re-submits the
     // resolved prompt blob for a byte-identical result.
-    if (defaultStrategy === 'request-replay') {
-      return this.reproduceViaRequestReplay(source, sourceVersionId, notes);
+    if ((sourceProvider.reproduceStrategy ?? 'resolved-graph') === 'request-replay') {
+      return this.reproduceViaRequestReplay(source, sourceVersionId, notes, sourceProvider.id);
     }
 
     if (completedEvent.prompt_json == null) {
@@ -486,6 +548,8 @@ export class GenerationEngine {
       notes,
       parentVersionId: sourceVersionId,
       lineageType: 'reproduce',
+      // Route the re-submit to the SOURCE's provider (multi-provider routing).
+      providerId: sourceProvider.id,
     });
 
     // Phase 12 — DEMO-03 (D-CTX-5). Persist warnings on the new version row so
@@ -513,7 +577,9 @@ export class GenerationEngine {
   private async reproduceViaRequestReplay(
     source: Version,
     sourceVersionId: string,
-    notes?: string,
+    notes: string | undefined,
+    /** The SOURCE version's provider id — the replay submits to it (routing). */
+    providerId: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
     const submitEvent = this.provenanceRepo.getSubmitEvent(sourceVersionId);
     if (!submitEvent || submitEvent.workflow_json == null) {
@@ -532,7 +598,6 @@ export class GenerationEngine {
         `Version '${sourceVersionId}' has a corrupt captured request — cannot replay`,
       );
     }
-    const providerId = this.client?.id ?? source.provider ?? 'the provider';
     const warnings = [
       `Params-replay reproduce: re-submits the original ${providerId} request. Output is not byte-identical unless the request pins a seed — hosted models are non-deterministic.`,
     ];
@@ -542,6 +607,7 @@ export class GenerationEngine {
       notes,
       parentVersionId: sourceVersionId,
       lineageType: 'reproduce',
+      providerId,
     });
     this.versions.setReproductionWarnings(result.entity.id, warnings);
     return {
@@ -619,6 +685,10 @@ export class GenerationEngine {
       notes,
       parentVersionId: sourceVersionId,
       lineageType: 'iterate',
+      // Multi-provider routing: iterate re-submits to the provider that produced
+      // the source (legacy null rows → default). Graph surgery above already
+      // guarantees this is a resolved-graph workflow.
+      providerId: source.provider ?? undefined,
     });
   }
 
@@ -639,7 +709,11 @@ export class GenerationEngine {
    * files remain as debug artefacts (D-GEN-36).
    */
   private async downloadAndPersist(row: Version, outputs: ComfyOutput[]): Promise<void> {
-    if (!this.client) return; // unreachable via getGenerationStatus guard
+    // Multi-provider routing: download via the provider that produced the row
+    // (its SSRF policy/allowlist is provider-specific). getGenerationStatus
+    // already resolved this successfully before calling us; re-resolve here for
+    // the same instance.
+    const provider = this.resolveProvider(row.provider ?? null, 'persist outputs');
     // Resolve the disk path template using the hierarchy chain — need
     // shot/seq/project names. Single-pass walk.
     const shot = this.hierarchy.getShot(row.shot_id)!;
@@ -687,7 +761,7 @@ export class GenerationEngine {
       let lastErr: unknown = null;
       while (attempt < DOWNLOAD_MAX_ATTEMPTS) {
         try {
-          const dl = await this.client.downloadToPath(
+          const dl = await provider.downloadToPath(
             out.filename,
             { subfolder: out.subfolder, type: out.type },
             finalPath,
@@ -727,20 +801,20 @@ export class GenerationEngine {
       stored[0]?.path ??
       null;
     let promptBlob: Record<string, unknown> | null = null;
-    if (firstPngPath && this.client) {
-      promptBlob = await this.client.fetchResolvedPrompt(firstPngPath);
+    if (firstPngPath) {
+      promptBlob = await provider.fetchResolvedPrompt(firstPngPath);
     }
     // Pivot #2a — record neutral provenance for providers that describe it (URL
     // backends). Built from the ORIGINAL request on the submit event; ComfyUI omits
     // describeProvenance and keeps prompt_json as the source of truth (neutral null).
     // Best-effort: a corrupt/absent request never breaks the completion write.
     let neutralJson: string | null = null;
-    if (this.client?.describeProvenance) {
+    if (provider.describeProvenance) {
       const submit = this.provenanceRepo.getSubmitEvent(row.id);
       if (submit?.workflow_json) {
         try {
           const request = JSON.parse(submit.workflow_json) as Record<string, unknown>;
-          const neutral = this.client.describeProvenance(request);
+          const neutral = provider.describeProvenance(request);
           if (neutral) neutralJson = JSON.stringify(neutral);
         } catch {
           neutralJson = null;

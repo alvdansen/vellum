@@ -213,16 +213,31 @@ async function main(): Promise<void> {
     );
   }
 
-  // Pivot Phase C: provider-agnostic default selection. The registry discovers
-  // configured backends (ComfyUI, Replicate, …) and resolves a default. ComfyUI
-  // stays the default when configured (back-compat, byte-identical boot); when
-  // Replicate is the resolved default, build it and use it as the backend.
+  // Multi-provider routing (10-ton P0): the registry discovers ALL configured
+  // backends; every one is constructed and handed to the engine, which routes
+  // submit/status/reproduce per version. `client` stays the DEFAULT provider
+  // (ComfyUI wins when configured — back-compat, byte-identical boot path).
   const providerRegistry = loadProviderConfig(process.env);
-  if (providerRegistry.defaultProviderId === 'replicate') {
-    const cfg = providerRegistry.providers.find((p) => p.id === 'replicate')!;
-    client = createProvider(cfg);
+  const providers = new Map<string, GenerationProvider>();
+  for (const cfg of providerRegistry.providers) {
+    // Reuse the already-constructed ComfyUI client (identical construction);
+    // build every other configured backend via the factory.
+    const p = cfg.id === 'comfyui-cloud' && client ? client : createProvider(cfg);
+    providers.set(cfg.id, p);
+    if (cfg.id !== 'comfyui-cloud') {
+      // ComfyUI's presence was already logged above (D-GEN-12 format).
+      console.error(
+        `vellum: provider '${cfg.id}' configured (key ****${cfg.apiKey.slice(-4)}, base ${cfg.apiBase})`,
+      );
+    }
+  }
+  if (
+    providerRegistry.defaultProviderId &&
+    providerRegistry.defaultProviderId !== 'comfyui-cloud'
+  ) {
+    client = providers.get(providerRegistry.defaultProviderId) ?? null;
     console.error(
-      `vellum: Replicate is the default generation provider (token ****${cfg.apiKey.slice(-4)}, base ${cfg.apiBase})`,
+      `vellum: default generation provider is '${providerRegistry.defaultProviderId}'`,
     );
   }
 
@@ -288,6 +303,8 @@ async function main(): Promise<void> {
   // VELLUM_MODELS_DIR convention.
   const outputsDir = process.env.VELLUM_OUTPUTS_DIR ?? 'outputs';
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
+    // Multi-provider routing: the full configured-provider map (default = client).
+    providers,
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
     // Pivot Phase D — operator-supplied extra ingest hosts for registerExternalOutput
     // (additive to the built-in known provider delivery hosts). Comma-separated.

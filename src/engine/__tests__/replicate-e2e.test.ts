@@ -12,6 +12,8 @@ import { BreadcrumbResolver } from '../breadcrumb.js';
 import { GenerationEngine } from '../generation.js';
 import { ProvenanceWriter } from '../provenance.js';
 import { ReplicateAdapter } from '../../providers/replicate-adapter.js';
+import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
+import type { GenerationProvider } from '../../providers/provider.js';
 
 /**
  * Outbound Replicate E2E (pivot enhancement #1).
@@ -477,5 +479,115 @@ describe('outbound Replicate E2E (real Engine + real ReplicateAdapter)', () => {
     await expect(ctx.engine.reproduceVersion(v.id)).rejects.toMatchObject({
       code: 'REPRODUCE_BLOCKED',
     });
+  });
+});
+
+describe('multi-provider routing (10-ton P0) — one engine, ComfyUI default + Replicate', () => {
+  async function setupMulti(fetchImpl: typeof fetch): Promise<Ctx & { fake: FakeComfyUIClient }> {
+    const { db } = makeInMemoryDb();
+    const hierarchy = new HierarchyRepo(db);
+    const versions = new VersionRepo(db);
+    const provenanceRepo = new ProvenanceRepo(db);
+    const provenanceWriter = new ProvenanceWriter(provenanceRepo);
+    const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
+    const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vellum-multi-${nanoid(6)}-`));
+    const fake = new FakeComfyUIClient();
+    const replicate = new ReplicateAdapter('r8_testtoken_abcdef', undefined, { fetchImpl });
+    const providers = new Map<string, GenerationProvider>([
+      ['comfyui-cloud', fake as unknown as GenerationProvider],
+      ['replicate', replicate],
+    ]);
+    const engine = new GenerationEngine(
+      hierarchy,
+      versions,
+      provenanceRepo,
+      provenanceWriter,
+      fake as unknown as GenerationProvider, // DEFAULT = ComfyUI
+      breadcrumb,
+      tempRoot,
+      { providers },
+    );
+    const ws = hierarchy.createWorkspace('wsM');
+    const proj = hierarchy.createProject(ws.id, 'pM');
+    const seq = hierarchy.createSequence(proj.id, 'sq010');
+    const shot = hierarchy.createShot(seq.id, 'sh010');
+    const ctx = {
+      engine,
+      versions,
+      provenanceRepo,
+      provenanceWriter,
+      shotId: shot.id,
+      tempRoot,
+      fake,
+    };
+    active.push(ctx);
+    return ctx;
+  }
+
+  const GRAPH = { '1': { class_type: 'KSampler', inputs: { seed: 42 } } };
+
+  test('submit routes by explicit provider and stamps it; default unchanged', async () => {
+    const ctx = await setupMulti(
+      makeReplicateFetch({
+        predictionId: 'pred_routed',
+        statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/m/r.png' }],
+      }),
+    );
+    // Explicit provider → Replicate.
+    const viaReplicate = await ctx.engine.submitGeneration(ctx.shotId, SPEC, undefined, 'replicate');
+    expect(viaReplicate.entity.provider).toBe('replicate');
+    expect(viaReplicate.entity.job_id).toBe('pred_routed');
+    // Omitted → default (ComfyUI fake).
+    const viaDefault = await ctx.engine.submitGeneration(ctx.shotId, GRAPH);
+    expect(viaDefault.entity.provider).toBe('comfyui-cloud');
+    expect(ctx.fake.calls.some((c) => c.method === 'submit')).toBe(true);
+  });
+
+  test('unknown provider → PROVIDER_MISCONFIGURED naming the configured set, no row inserted', async () => {
+    const ctx = await setupMulti(makeReplicateFetch({ statuses: [{ status: 'starting' }] }));
+    await expect(
+      ctx.engine.submitGeneration(ctx.shotId, SPEC, undefined, 'byteplus'),
+    ).rejects.toMatchObject({ code: 'PROVIDER_MISCONFIGURED' });
+    // Fail-fast before insert: next insert still claims v1.
+    expect(ctx.versions.insertVersion(ctx.shotId).version_number).toBe(1);
+  });
+
+  test('status routes each row to ITS provider (poll interleaved across backends)', async () => {
+    const ctx = await setupMulti(
+      makeReplicateFetch({
+        statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/m/x.png' }],
+      }),
+    );
+    const r = await ctx.engine.submitGeneration(ctx.shotId, SPEC, undefined, 'replicate');
+    const c = await ctx.engine.submitGeneration(ctx.shotId, GRAPH); // comfy default
+    const rDone = await ctx.engine.getGenerationStatus(r.entity.id);
+    expect(rDone.entity.status).toBe('completed'); // downloaded from replicate.delivery
+    const cDone = await ctx.engine.getGenerationStatus(c.entity.id);
+    expect(cDone.entity.status).toBe('completed'); // fake comfy canned flow
+    // The fake polled ONLY its own row.
+    const fakeStatusCalls = ctx.fake.calls.filter((x) => x.method === 'status');
+    expect(fakeStatusCalls).toHaveLength(1);
+  });
+
+  test('reproduce routes to the SOURCE provider even when it is not the default', async () => {
+    const postBodies: unknown[] = [];
+    const ctx = await setupMulti(
+      makeReplicateFetch({
+        statuses: [{ status: 'succeeded', output: 'https://replicate.delivery/m/y.png' }],
+        postBodies,
+      }),
+    );
+    const sub = await ctx.engine.submitGeneration(ctx.shotId, SPEC, undefined, 'replicate');
+    const done = await ctx.engine.getGenerationStatus(sub.entity.id);
+    expect(done.entity.status).toBe('completed');
+
+    // Default is ComfyUI — but reproduce must replay on Replicate.
+    const repro = await ctx.engine.reproduceVersion(done.entity.id);
+    expect(repro.entity.provider).toBe('replicate');
+    expect(repro.entity.lineage_type).toBe('reproduce');
+    expect(postBodies).toHaveLength(2);
+    expect(postBodies[1]).toEqual(SPEC); // exact original request replayed to Replicate
+    // ComfyUI fake never received the replay.
+    expect(ctx.fake.calls.filter((x) => x.method === 'submit')).toHaveLength(0);
   });
 });

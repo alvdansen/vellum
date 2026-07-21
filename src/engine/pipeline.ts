@@ -452,6 +452,9 @@ export class Engine {
       // Pivot Phase D — inbound ingest trust boundary (registerExternalOutput).
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
+      // Multi-provider routing (10-ton P0): ALL configured providers; `client`
+      // stays the default. Optional — single-provider construction unchanged.
+      providers?: ReadonlyMap<string, GenerationProvider>;
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
@@ -476,6 +479,7 @@ export class Engine {
         maxConcurrentPollers: options.maxConcurrentPollers,
         ingestAllowedHosts: options.ingestAllowedHosts,
         ingestFetchImpl: options.ingestFetchImpl,
+        providers: options.providers,
       },
       // Phase 13 — fire-and-forget hook delegates to the async background
       // fingerprinter. The hook itself returns synchronously (returns a void
@@ -938,8 +942,10 @@ export class Engine {
     shotId: string,
     workflowJson: Record<string, unknown>,
     notes?: string,
+    /** Multi-provider routing: submit to this configured provider (default when omitted). */
+    providerId?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    const result = await this.generation.submitGeneration(shotId, workflowJson, notes);
+    const result = await this.generation.submitGeneration(shotId, workflowJson, notes, providerId);
     // D-WEBUI-29: version.created fires AFTER the row is inserted. The
     // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
     this.events.emitEvent('version.created', {

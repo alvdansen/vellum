@@ -72,11 +72,10 @@ describe('Phase E — self-describing MCP resources', () => {
     expect(doc.limits.tools_registered).toBe(7);
     expect(doc.providers.configured).toContain('replicate');
     expect(doc.providers.reproduce_support.replicate).toMatch(/params-replay/);
-    // Honesty: reproduce only works against the default provider, and the doc says so.
-    expect(doc.providers.reproduce_available_for).toEqual(
-      doc.providers.default ? [doc.providers.default] : [],
-    );
-    expect(doc.providers.reproduce_note).toMatch(/default provider/i);
+    // Multi-provider routing: reproduce routes to the producing provider, so it
+    // is available for EVERY configured provider — and the doc says so.
+    expect(doc.providers.reproduce_available_for).toEqual(doc.providers.configured);
+    expect(doc.providers.reproduce_note).toMatch(/route/i);
   });
 
   it('capabilities reproduce_support is backed by real adapter behavior (no drift)', async () => {

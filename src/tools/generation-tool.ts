@@ -30,6 +30,9 @@ const SubmitInput = z.object({
       message: `workflow_json exceeds max ${MAX_WORKFLOW_NODES} nodes`,
     }),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
+  // Multi-provider routing (10-ton P0): submit to a specific configured backend
+  // ('comfyui-cloud' | 'replicate' | 'fal' | …). Omit for the default provider.
+  provider: z.string().min(1).max(64).optional(),
 });
 
 /**
@@ -244,6 +247,8 @@ export function registerGeneration(server: McpServer, engine: Engine) {
                   input.shot_id,
                   input.workflow_json,
                   input.notes,
+                  // Multi-provider routing: optional explicit backend.
+                  input.provider,
                 ),
               ),
             );
