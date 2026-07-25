@@ -195,11 +195,19 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "vellum": {
       "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/vellum/src/server.ts"]
+      "args": ["-y", "tsx", "/absolute/path/to/vellum/src/server.ts"],
+      "env": {
+        "VELLUM_DB_PATH": "/absolute/path/to/vellum/vellum.db"
+      }
     }
   }
 }
 ```
+
+The server resolves its migrations, database and dashboard against its own
+location, so it starts from whatever working directory the client chooses.
+`VELLUM_DB_PATH` is optional and shown here because it is worth being explicit
+about which database a client writes to when you run more than one.
 
 ### Streamable HTTP (web agents, custom clients)
 

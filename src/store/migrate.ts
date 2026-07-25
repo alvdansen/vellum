@@ -10,6 +10,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { migrate as drizzleMigrate } from 'drizzle-orm/better-sqlite3/migrator';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { TypedError } from '../engine/errors.js';
@@ -93,11 +94,30 @@ function countAppliedRows(db: BetterSQLite3Database<Record<string, never>>): num
  * Architecture-purity contract: this file has zero MCP-SDK or HTTP-transport
  * imports — it is a pure store-layer helper.
  */
+/**
+ * Migrations ship WITH the code, so their location is a property of the module,
+ * not of whoever launched the process.
+ *
+ * This defaulted to `'./drizzle'` — resolved against process.cwd() — which made
+ * the server bootable only from the repo root. Claude Desktop (and any MCP
+ * client) launches with an arbitrary cwd, so `openDb` threw
+ * `MIGRATION_PENDING: Can't find meta/_journal.json file` before either
+ * transport started. Every client following the README's config hit it.
+ *
+ * Resolved from this module's own URL, matching how src/http/static.ts already
+ * finds the dashboard bundle. The `../..` traversal holds for both `tsx
+ * src/store/migrate.ts` and a compiled `dist/store/migrate.js`.
+ */
+const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../drizzle',
+);
+
 export function runMigrations<TSchema extends Record<string, unknown> = Record<string, never>>(
   db: BetterSQLite3Database<TSchema>,
   opts?: { migrationsFolder?: string },
 ): MigrationResult {
-  const migrationsFolder = opts?.migrationsFolder ?? './drizzle';
+  const migrationsFolder = opts?.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER;
   const journal = readJournal(migrationsFolder);
   const totalInJournal = journal.entries.length;
   // countAppliedRows reaches past the typed query builder into the raw

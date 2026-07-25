@@ -71,6 +71,8 @@ import { loadAnthropicConfigFromEnv } from './utils/anthropic-config.js';
 import { isApprovalRequired } from './utils/approval-config.js';
 import { parseMaxInFlight, parseSpendLimit } from './utils/spend-limits.js';
 import { basename } from 'node:path';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Engine } from './engine/pipeline.js';
 import {
   registerWorkspace,
@@ -171,10 +173,19 @@ async function main(): Promise<void> {
   // ./vfx-familiar.db to ./vellum.db. When no --db is given and ONLY the legacy
   // file exists, adopt it in place so a pre-rename database is not silently
   // orphaned behind an empty new default. An explicit --db always wins.
-  const LEGACY_DB_PATH = './vfx-familiar.db';
-  const DEFAULT_DB_PATH = './vellum.db';
+  // Both defaults are resolved against the PACKAGE root, not process.cwd().
+  // Being cwd-relative meant an MCP client launched from an arbitrary directory
+  // (Claude Desktop launches from `/`) silently opened a DIFFERENT database
+  // from the one the dashboard and the developer's own `npm start` were using —
+  // same server, same machine, two disjoint sets of work. `VELLUM_DB_PATH` and
+  // `--db` still take precedence, in that order of specificity.
+  const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const LEGACY_DB_PATH = path.join(packageRoot, 'vfx-familiar.db');
+  const DEFAULT_DB_PATH = path.join(packageRoot, 'vellum.db');
+  const envDbPath = process.env.VELLUM_DB_PATH?.trim();
   const dbPath =
     args.db ??
+    (envDbPath ? envDbPath : undefined) ??
     (!existsSync(DEFAULT_DB_PATH) && existsSync(LEGACY_DB_PATH)
       ? LEGACY_DB_PATH
       : DEFAULT_DB_PATH);
