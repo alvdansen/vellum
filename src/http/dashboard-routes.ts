@@ -50,6 +50,11 @@ import {
 // what a legal page is (src/http/webhooks.ts already reaches for shape.ts this
 // way). This is a plain numeric constant — no tool/SDK surface comes with it.
 import { MAX_PAGE_SIZE } from '../tools/shape.js';
+import {
+  AssetQueryBody,
+  ListTagsBody,
+  ListMetadataKeysBody,
+} from '../tools/asset-query-schema.js';
 
 /**
  * Extension → Content-Type map (D-WEBUI-33). Unknown extensions fall through
@@ -869,22 +874,42 @@ export function createDashboardRouter(engine: EngineForDashboard): Hono {
   });
 
   // --- Assets ---
+  // The asset read-queries validate against the SAME schema the MCP tool uses
+  // (src/tools/asset-query-schema.ts). They used to hand the raw body straight
+  // to the engine, which binds the values into SQL — so the documented empty
+  // body `{}` came back as 500 INTERNAL_ERROR "datatype mismatch", a raw SQLite
+  // error, because limit/offset arrived undefined with no defaults applied. A
+  // non-array `tags` did the same. Parsing here applies the defaults and turns
+  // a bad body into an actionable 400.
+  const parseAssetBody = <T>(schema: { safeParse: (v: unknown) => { success: boolean; data?: T; error?: { issues: Array<{ path: PropertyKey[] }> } } }, raw: unknown): T => {
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success || parsed.data === undefined) {
+      const field = parsed.error?.issues[0]?.path.join('.') ?? '';
+      throw new TypedError(
+        'INVALID_INPUT',
+        field ? `Invalid value for '${field}'` : 'Invalid request body',
+        "Body mirrors the asset tool's input: optional scope ids, optional tags[]/metadata[], limit (1-100), offset (>=0).",
+      );
+    }
+    return parsed.data;
+  };
+
   // POST /api/assets/query — body mirrors `asset.query` MCP input.
   app.post('/api/assets/query', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    return c.json(engine.queryAssets(body));
+    return c.json(engine.queryAssets(parseAssetBody(AssetQueryBody, body)));
   });
 
   // POST /api/assets/list_tags — body mirrors `asset.list_tags` MCP input.
   app.post('/api/assets/list_tags', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    return c.json(engine.listTags(body));
+    return c.json(engine.listTags(parseAssetBody(ListTagsBody, body)));
   });
 
   // POST /api/assets/list_metadata_keys — body mirrors `asset.list_metadata_keys`.
   app.post('/api/assets/list_metadata_keys', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    return c.json(engine.listMetadataKeys(body));
+    return c.json(engine.listMetadataKeys(parseAssetBody(ListMetadataKeysBody, body)));
   });
 
   // --- Dashboard home (D-WEBUI-01) ---

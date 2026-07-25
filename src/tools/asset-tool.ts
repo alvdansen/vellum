@@ -13,6 +13,18 @@ import {
   MAX_METADATA_VALUE_LENGTH,
   TAG_REGEX,
 } from './shape.js';
+// Single definition of the asset read-query contract, shared with the REST
+// routes so the two surfaces cannot validate differently.
+import {
+  AssetQueryBody,
+  ListTagsBody,
+  ListMetadataKeysBody,
+  TagZ,
+  KeyZ,
+  ValueZ,
+  StatusZ,
+  ScopeIdZ,
+} from './asset-query-schema.js';
 import type { VersionWithAssets, ScopeFilter } from '../types/assets.js';
 import type { Breadcrumb } from '../types/hierarchy.js';
 
@@ -48,19 +60,6 @@ void _versionLabel;
 // ================================================================
 
 const VersionIdZ = z.string().min(1).max(MAX_ID_LENGTH);
-const TagZ = z
-  .string()
-  .min(1)
-  .max(MAX_TAG_LENGTH)
-  .regex(TAG_REGEX, 'TAG_INVALID');
-const KeyZ = z
-  .string()
-  .min(1)
-  .max(MAX_METADATA_KEY_LENGTH)
-  .regex(TAG_REGEX, 'METADATA_INVALID');
-const ValueZ = z.string().min(1).max(MAX_METADATA_VALUE_LENGTH);
-const StatusZ = z.enum(['submitted', 'running', 'completed', 'failed']);
-const ScopeIdZ = z.string().min(1).max(MAX_ID_LENGTH).optional();
 
 // ================================================================
 // Per-action discriminated schemas (D-ASST-12..18)
@@ -91,43 +90,12 @@ const RemoveMetadataInput = z.object({
   key: KeyZ,
 });
 
-const QueryInput = z.object({
-  action: z.literal('query'),
-  workspace_id: ScopeIdZ,
-  project_id: ScopeIdZ,
-  sequence_id: ScopeIdZ,
-  shot_id: ScopeIdZ,
-  tags: z.array(TagZ).min(1).max(20).optional(),
-  metadata: z
-    .array(z.object({ key: KeyZ, value: ValueZ }))
-    .min(1)
-    .max(20)
-    .optional(),
-  date_from: z.number().int().nonnegative().optional(),
-  date_to: z.number().int().nonnegative().optional(),
-  status: StatusZ.optional(),
-  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-  offset: z.number().int().min(0).default(0),
-});
+const QueryInput = AssetQueryBody.extend({ action: z.literal('query') });
 
-const ListTagsInput = z.object({
-  action: z.literal('list_tags'),
-  workspace_id: ScopeIdZ,
-  project_id: ScopeIdZ,
-  sequence_id: ScopeIdZ,
-  shot_id: ScopeIdZ,
-  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-  offset: z.number().int().min(0).default(0),
-});
+const ListTagsInput = ListTagsBody.extend({ action: z.literal('list_tags') });
 
-const ListMetadataKeysInput = z.object({
+const ListMetadataKeysInput = ListMetadataKeysBody.extend({
   action: z.literal('list_metadata_keys'),
-  workspace_id: ScopeIdZ,
-  project_id: ScopeIdZ,
-  sequence_id: ScopeIdZ,
-  shot_id: ScopeIdZ,
-  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-  offset: z.number().int().min(0).default(0),
 });
 
 const AssetInputSchema = z.discriminatedUnion('action', [
