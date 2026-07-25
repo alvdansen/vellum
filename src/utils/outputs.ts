@@ -59,6 +59,19 @@ export function sanitizeRelativeSegment(name: string): string {
       'Path segments must not contain "..", "/", "\\", or NUL.',
     );
   }
+  // Bidirectional control characters (RLO/LRO/PDF and the isolate family).
+  // They carry no meaning in a filename but reorder how one is DISPLAYED, so a
+  // name can be made to read as something other than what it is — the classic
+  // "invoice‮gnp.exe" trick — in a terminal, a file browser, or the
+  // generated pipeline log. An agent picks these names, so treat them as
+  // hostile input rather than typos.
+  if (/[‎‏‪-‮⁦-⁩]/.test(name)) {
+    throw new TypedError(
+      'INVALID_INPUT',
+      'Unsafe path segment: contains bidirectional control characters',
+      'Remove left-to-right / right-to-left override and isolate characters from the name.',
+    );
+  }
   return name;
 }
 

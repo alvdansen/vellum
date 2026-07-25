@@ -133,7 +133,17 @@ function cell(value: string | null | undefined): string {
  */
 function inline(value: string | null | undefined): string {
   if (value == null || value === '') return '—';
-  return String(value).replace(/[\r\n\u2028\u2029]/g, ' ').trim() || '—';
+  return (
+    String(value)
+      .replace(/[\r\n\u2028\u2029]/g, ' ')
+      // Bidirectional controls too. They inject no markdown, but they reorder
+      // how the rest of the LINE renders, so a hostile note or filename can
+      // make the log read as something other than what provenance recorded —
+      // and this document's whole contract is to be a faithful projection.
+      // Rows predating the name-level rejection can still carry them.
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+      .trim() || '—'
+  );
 }
 
 /**

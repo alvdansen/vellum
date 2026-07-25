@@ -61,6 +61,8 @@ export function shapeList<TItem>(result: {
   total_count: number;
   limit: number;
   offset: number;
+  /** Cursor-paginated lists issue the next page's handle here. */
+  next_cursor?: string | null;
 }) {
   return {
     items: result.items.map((item) => {
@@ -75,5 +77,10 @@ export function shapeList<TItem>(result: {
     total_count: result.total_count,
     limit: result.limit,
     offset: result.offset,
+    // Forwarded only when the caller's list is cursor-paginated. Dropping it
+    // made page 2 unreachable through the tool surface: version.list published
+    // an `offset` it discarded, so an agent paging through a shot's history
+    // silently received page 1 again, every time.
+    ...(result.next_cursor !== undefined ? { next_cursor: result.next_cursor } : {}),
   };
 }

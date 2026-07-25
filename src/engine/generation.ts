@@ -8,6 +8,9 @@ import type { BreadcrumbResolver } from './breadcrumb.js';
 import type { ProvenanceWriter } from './provenance.js';
 import { TypedError, type ErrorCode } from './errors.js';
 import { fingerprintRequest } from '../utils/request-fingerprint.js';
+// Same page-size/byte-cap constants the tool layer publishes, so the two
+// surfaces cannot disagree (src/engine/assets.ts already reaches here).
+import { MAX_WORKFLOW_BYTES } from '../tools/shape.js';
 import type { SpendLimit } from '../utils/spend-limits.js';
 import { createBackoffIterator, sleep } from './backoff.js';
 // validateWorkflowFormat is still used directly by the ComfyUI-graph-specific
@@ -607,6 +610,26 @@ export class GenerationEngine {
     // Pivot Phase C: validation is provider-routed. ComfyUI validates node-graph
     // format; other backends validate their own request shape.
     provider.validateRequest?.(args.workflowJson);
+
+    // SEC-02 byte cap, for EVERY provider.
+    //
+    // The cap was documented as universal ("enforced in the engine-layer
+    // workflow-format check so future REST adapters inherit the same guard")
+    // but lived inside validateWorkflowFormat, which is wired as exactly one
+    // provider's validator. A Replicate/FAL/BytePlus/Google submit therefore
+    // carried no size limit at all, and the request is persisted verbatim into
+    // the append-only provenance record — an agent could write an unbounded
+    // blob into SQLite on every take. Enforced here, before the row is
+    // inserted, the comment is finally true. ComfyUI still gets the
+    // shape-specific message first from its own validator.
+    const serializedRequest = JSON.stringify(args.workflowJson);
+    if (serializedRequest.length > MAX_WORKFLOW_BYTES) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Request exceeds ${MAX_WORKFLOW_BYTES} bytes serialized`,
+        'Trim the request, or reference large inputs by URL instead of embedding them.',
+      );
+    }
 
     // D-PROV-33 (LANDMINE #8): lineage written at INSERT time, not via follow-up
     // UPDATE. A reader observing the row between INSERT and UPDATE would otherwise

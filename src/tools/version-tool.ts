@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
+import { decodeVersionCursor, type VersionCursor } from '../store/sort.js';
 import { toolOk, toolError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import {
@@ -35,6 +36,9 @@ const ListInput = z.object({
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Opaque handle from a previous response's `next_cursor`. This list is
+  // cursor-paginated; `offset` is accepted only as 0 (see the handler).
+  cursor: z.string().min(1).max(2048).optional(),
   // Phase 4 — D-ASST-20: opt-in hydration for version list items. Default
   // false keeps the list payload cheap; setting either (or both) asks the
   // engine to emit tags: string[] and/or metadata: Array<{key, value}> per
@@ -465,6 +469,27 @@ function shapeRedactManifestEnvelope(
  *  - INVALID_INPUT: diff cross-shot (D-PROV-20); Zod failures.
  *  - Engine never throws raw; all codes are TypedError (D-28).
  */
+/**
+ * Decode an opaque `cursor` from a previous `version.list` response.
+ *
+ * Absent → page 1. Malformed → a 4xx-shaped TypedError naming the field, never
+ * a silent fallback to page 1: quietly restarting is exactly the failure that
+ * made the old `offset` parameter useless, and an agent looping on it would
+ * re-read the same page forever.
+ */
+function parseVersionCursorInput(raw: string | undefined): VersionCursor | null {
+  if (raw === undefined || raw === '') return null;
+  const decoded = decodeVersionCursor(raw);
+  if (decoded === null) {
+    throw new TypedError(
+      'INVALID_INPUT',
+      'Malformed `cursor` — it must be a value returned in a previous response\'s `next_cursor`.',
+      'Omit `cursor` to start from the first page.',
+    );
+  }
+  return decoded;
+}
+
 export function registerVersion(server: McpServer, engine: Engine) {
   server.registerTool(
     'version',
@@ -499,6 +524,10 @@ export function registerVersion(server: McpServer, engine: Engine) {
         version_b: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
+        // `list` is CURSOR-paginated. `offset` predates that and is accepted
+        // only as 0 (page 1) — a non-zero value used to be silently discarded,
+        // handing back page 1 while the agent believed it was advancing.
+        cursor: z.string().optional(),
         // Phase 4 — D-ASST-20: opt-in hydration flags for `list`. Unused on
         // other actions (action-discriminated re-validation inside the
         // handler drops them for get/diff/provenance).
@@ -540,16 +569,24 @@ export function registerVersion(server: McpServer, engine: Engine) {
             // cursor pagination (cursor:null = page 1; subsequent pages
             // would need a sort/cursor MCP-tool contract beyond Plan
             // 18-02's scope).
+            if (input.offset !== undefined && input.offset !== 0) {
+              throw new TypedError(
+                'INVALID_INPUT',
+                'version.list is cursor-paginated — `offset` cannot advance the page.',
+                "Read `next_cursor` from this response and pass it back as `cursor` to get the following page.",
+              );
+            }
             return toolOk(
-              shapeList(
-                engine.listVersionsForShot(input.shot_id, {
+              shapeList({
+                ...engine.listVersionsForShot(input.shot_id, {
                   sort: { field: 'version_number', dir: 'desc' }, // TRANSITIONAL — preserves v1.1 ordering
-                  cursor: null,                                     // TRANSITIONAL — Plan 18-04 may add ?cursor=
+                  cursor: parseVersionCursorInput(input.cursor),
                   limit: input.limit,
                   include_tags: input.include_tags,
                   include_metadata: input.include_metadata,
                 }),
-              ),
+                offset: 0,
+              }),
             );
           case 'diff':
             return toolOk(
