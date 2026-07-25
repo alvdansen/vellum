@@ -1,4 +1,5 @@
 import { createWriteStream } from 'node:fs';
+import { nanoid } from 'nanoid';
 import { rename, unlink } from 'node:fs/promises';
 import { once } from 'node:events';
 import { finished } from 'node:stream/promises';
@@ -52,7 +53,8 @@ export function resolveDownloadIdleTimeoutMs(): number | undefined {
  * one place.
  *
  * Contract:
- *  - Writes to `{destPath}.partial` first.
+ *  - Writes to a per-call unique `{destPath}.{pid}.{nanoid}.partial` first, so
+ *    concurrent downloaders of one output cannot clobber each other's temp.
  *  - Optionally honours `maxBytes`, throwing once the observed byte count exceeds
  *    the cap.
  *  - Optionally honours `idleTimeoutMs` (see DEFAULT_DOWNLOAD_IDLE_TIMEOUT_MS):
@@ -71,7 +73,13 @@ export async function streamToPath(
   destPath: string,
   options: { maxBytes?: number; filenameForError?: string; idleTimeoutMs?: number } = {},
 ): Promise<{ bytes: number }> {
-  const partial = `${destPath}.partial`;
+  // UNIQUE per call. This used to be a fixed `${destPath}.partial`, so two
+  // downloaders racing for the same output wrote the same temp file: whichever
+  // renamed first won, and the loser's rename failed with ENOENT ("no such file
+  // or directory") after streaming the whole payload — a download reported as
+  // failed even though the bytes had arrived, and a stray .partial left behind.
+  // Rename stays atomic because the temp is still in the destination directory.
+  const partial = `${destPath}.${process.pid}.${nanoid(6)}.partial`;
   const label = options.filenameForError ?? destPath;
   const { maxBytes, idleTimeoutMs: idleMs } = options;
   let bytes = 0;

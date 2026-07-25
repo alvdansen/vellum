@@ -185,6 +185,8 @@ const POLLER_BOOT_JITTER_MAX_MS = 800;
  */
 export class GenerationEngine {
   private pollers = new Map<string, AbortController>();
+  /** versionId → in-flight status check, so concurrent callers share one. */
+  private statusMutex = new Map<string, Promise<{ entity: Version; breadcrumb: Breadcrumb }>>();
   private readonly maxConcurrentPollers: number;
   // Pivot Phase D — inbound ingest trust boundary. Built-in known hosts plus any
   // operator additions (VELLUM_INGEST_ALLOWED_HOSTS). fetchImpl is test-injectable.
@@ -714,12 +716,40 @@ export class GenerationEngine {
   }
 
   /**
+   * Coalescing wrapper — concurrent status checks for the SAME version share one
+   * in-flight promise, in the same shape as the engine's signMutex.
+   *
+   * The terminal-state short-circuit inside is read BEFORE the provider call and
+   * the download, so two callers arriving during that async window both sailed
+   * past it: each polled the provider, each ran downloadAndPersist, and each
+   * wrote a `completed` provenance event. Only markCompleted was idempotent
+   * (`WHERE completed_at IS NULL`), so the row was fine but the APPEND-ONLY
+   * record gained a duplicate completion — and the asset was downloaded twice.
+   * That is not exotic: the dashboard poller, an agent's own `generation.check`,
+   * and the boot recovery poller all reach this method, which is why the mutex
+   * lives here rather than on the Engine facade the poller bypasses.
+   */
+  async getGenerationStatus(
+    versionId: string,
+  ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
+    const inflight = this.statusMutex.get(versionId);
+    if (inflight !== undefined) return await inflight;
+    const promise = this.getGenerationStatusInner(versionId);
+    this.statusMutex.set(versionId, promise);
+    try {
+      return await promise;
+    } finally {
+      this.statusMutex.delete(versionId);
+    }
+  }
+
+  /**
    * Fresh-fetch for non-terminal rows; cached for terminal rows (D-GEN-31).
    * Enforces 10-minute timeout before network call (D-GEN-25). On `completed`
    * from the remote, runs downloadAndPersist — only flips to `completed` after
    * every output lands on disk (D-GEN-32).
    */
-  async getGenerationStatus(
+  private async getGenerationStatusInner(
     versionId: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     const row = this.versions.getVersion(versionId);
@@ -1200,7 +1230,16 @@ export class GenerationEngine {
       }
     }
     const outputsJson = JSON.stringify(stored);
-    this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson);
+    // Provenance is append-only, so a second completion for one version is a
+    // permanent duplicate rather than a harmless retry. markCompleted has always
+    // been idempotent (`WHERE completed_at IS NULL`); the event write was not.
+    // The in-process race is gone (statusMutex coalesces concurrent checks), but
+    // a SECOND PROCESS against the same database — `npm start` and
+    // `npm run start:http` side by side, both documented — can still arrive
+    // here, so refuse to append a completion the record already carries.
+    if (this.provenanceRepo.getLatestCompletedEvent(row.id) === null) {
+      this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson);
+    }
     this.versions.markCompleted(row.id, outputsJson);
     // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
     // the synchronous completion writes return. The receiver
