@@ -15,6 +15,17 @@ export default defineConfig({
     coverage: {
       exclude: ['packages/dashboard/**', 'node_modules/**', 'dist/**'],
     },
-    testTimeout: 10000,
+    // Several tests exercise REAL wall-clock behaviour rather than faking it:
+    // the download retry schedule sleeps [2s, 4s] between attempts, the poller
+    // cap test drives honest setTimeout concurrency, and the C2PA tests do
+    // genuine openssl/crypto work. Their measured baselines sit at 6.3s — only
+    // 3.7s under the old 10s ceiling, so a machine under parallel load tipped
+    // them over and the failure looked like a bug rather than contention.
+    //
+    // 30s is headroom for tests that are SUPPOSED to take seconds, not cover
+    // for a hang: the whole suite finishes in ~20s wall, so anything reaching
+    // this ceiling is genuinely stuck and still fails loudly.
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });
