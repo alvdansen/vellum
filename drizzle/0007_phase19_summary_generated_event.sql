@@ -1,0 +1,17 @@
+-- IDM-03: ROLLBACK NOT SUPPORTED.
+--
+-- Phase 19 (SUM-05) — append a nullable `summary_generated_json` column to
+-- `provenance` carrying the per-event JSON payload of the new
+-- 'summary_generated' event_type. Pre-Phase-19 rows read NULL here.
+--
+-- Cache-key invariant: (manifest_sha256, template_version, model_id) lives
+-- INSIDE summary_generated_json. Phase 16 redact mutates manifest_sha256
+-- giving cache invalidation for free without explicit invalidation logic
+-- (see RESEARCH.md "Cache-key Invariant" section).
+--
+-- Append-only invariant preserved — ProvenanceRepo continues to expose
+-- only INSERTs through the new appendSummaryGeneratedEvent method,
+-- mirroring Phase 14's appendManifestSignedEvent. Architecture-purity
+-- guard (no this.db.update / this.db.delete in src/store/provenance-repo.ts)
+-- continues to pass.
+ALTER TABLE `provenance` ADD `summary_generated_json` text;

@@ -1,0 +1,33 @@
+{
+  "fixture_id": "04-iterate-sdxl-onelora",
+  "lineage_shape": "iterate",
+  "version_label": "v004",
+  "parent_version_label": "v003",
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":7890,\"sampler\":\"dpmpp_2m\"}}",
+    "outputs_json": "[{\"filename\":\"v004.png\"}]",
+    "seed": 7890
+  },
+  "models": [
+    { "model_name": "sd_xl_base_1.0.safetensors" },
+    { "model_name": "detail_boost" }
+  ],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": { "lora": 1 },
+  "user_prompt_positive": "high-detail dragon scales with sharper micro-texture",
+  "user_prompt_negative": "soft, low detail",
+  "golden_summary": "v004 iterates from v003 with sd_xl_base_1.0.safetensors plus the detail_boost LoRA at seed 7890, pushing micro-texture on the dragon scales beyond what the parent achieved.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["sd_xl_base_1.0.safetensors"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "from_parent",
+    "lora_count": 1,
+    "lora_names_expected": ["detail_boost"],
+    "redacted": false,
+    "voice_register_score_min": 4
+  }
+}

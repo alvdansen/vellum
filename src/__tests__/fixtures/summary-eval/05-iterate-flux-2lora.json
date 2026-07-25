@@ -1,0 +1,34 @@
+{
+  "fixture_id": "05-iterate-flux-2lora",
+  "lineage_shape": "iterate",
+  "version_label": "v005",
+  "parent_version_label": "v004",
+  "completed": {
+    "prompt_json": "{\"KSampler\":{\"seed\":2024,\"sampler\":\"euler\"}}",
+    "outputs_json": "[{\"filename\":\"v005.png\"}]",
+    "seed": 2024
+  },
+  "models": [
+    { "model_name": "flux1-dev" },
+    { "model_name": "cinematic_fantasy" },
+    { "model_name": "detail_boost" }
+  ],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": { "lora": 2 },
+  "user_prompt_positive": "moody close-up with sharper micro-texture",
+  "user_prompt_negative": "oversaturated, soft",
+  "golden_summary": "v005 stacks two LoRAs over flux1-dev — cinematic_fantasy and detail_boost — at seed 2024, iterating from v004. Combines the moody style with sharper micro-texture beyond what the parent achieved.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["flux1-dev"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "from_parent",
+    "lora_count": 2,
+    "lora_names_expected": ["cinematic_fantasy", "detail_boost"],
+    "redacted": false,
+    "voice_register_score_min": 4
+  }
+}

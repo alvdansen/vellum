@@ -1,0 +1,67 @@
+{
+  "name": "vellum",
+  "version": "2.0.0",
+  "description": "Open-source MCP server: a provider-agnostic, provenance-first production layer for AI asset generation",
+  "type": "module",
+  "main": "src/server.ts",
+  "bin": {
+    "vellum": "src/server.ts"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "start:http": "tsx src/server.ts --http",
+    "inspect": "npx @modelcontextprotocol/inspector npx tsx src/server.ts",
+    "inspect:http": "npx @modelcontextprotocol/inspector",
+    "smoke": "node scripts/inspector-smoke.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:eval": "vitest run src/__tests__/summary-eval --reporter=default",
+    "typecheck": "tsc --noEmit",
+    "build:dashboard": "npm run build --workspace=packages/dashboard",
+    "dev:dashboard": "npm run dev --workspace=packages/dashboard",
+    "test:dashboard": "npm run test --workspace=packages/dashboard"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "asset-production",
+    "provenance",
+    "generative-ai",
+    "c2pa",
+    "pipeline"
+  ],
+  "license": "AGPL-3.0-only",
+  "comment:overrides": "Force c2pa-node's bundled sharp to the SAME version as our own so a single @img/sharp-libvips native lib loads. Two libvips-cpp dylibs (root 8.17.3 vs c2pa-node's 8.17.1) in one process trip an objc duplicate-class warning + 'spurious casting failures' that flaked sign-output.test.ts under parallel load.",
+  "overrides": {
+    "sharp": "$sharp"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.95.1",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@hono/node-server": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
+    "c2pa-node": "0.5.26",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "fetch-to-node": "^2.1.0",
+    "hono": "^4.12.14",
+    "nanoid": "^5.1.9",
+    "sharp": "^0.34.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "^0.21.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  }
+}

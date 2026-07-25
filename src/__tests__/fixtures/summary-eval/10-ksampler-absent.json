@@ -1,0 +1,30 @@
+{
+  "fixture_id": "10-ksampler-absent",
+  "lineage_shape": "root",
+  "version_label": "v010",
+  "parent_version_label": null,
+  "completed": {
+    "prompt_json": "{\"OtherSampler\":{\"sampler\":\"euler\"}}",
+    "outputs_json": "[{\"filename\":\"v010.png\"}]",
+    "seed": null
+  },
+  "models": [{ "model_name": "flux1-dev" }],
+  "manifest_signed": null,
+  "redacted": false,
+  "ingredient_summary_counts": {},
+  "user_prompt_positive": "experimental dragon scene without standard KSampler",
+  "user_prompt_negative": "",
+  "golden_summary": "v010 is the first iterate of the experimental dragon scene, generated with flux1-dev at seed unspecified. No parent — root version with a non-standard sampler graph that bypasses the canonical KSampler edge walk.",
+  "expected_dimensions": {
+    "model_name_fidelity_expected": ["flux1-dev"],
+    "sentence_count_min": 2,
+    "sentence_count_max": 4,
+    "word_count_min": 20,
+    "word_count_max": 50,
+    "lineage_direction": "root",
+    "lora_count": 0,
+    "redacted": false,
+    "ksampler_absent": true,
+    "voice_register_score_min": 4
+  }
+}

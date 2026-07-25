@@ -1,0 +1,144 @@
+// Hono error-middleware for the dashboard REST + SSE surface (Phase 5 / D-WEBUI-34).
+//
+// - statusForCode(): pure code → HTTP status mapping. Pattern-based with explicit
+//   overrides for codes that don't fit the pattern (TAG_INVALID, *_UNAVAILABLE, etc.).
+// - typedErrorHandler: Hono ErrorHandler that:
+//     • Converts any TypedError thrown below the route boundary into
+//       { error: { code, message } } with the mapped status.
+//     • Converts unknown Error instances into 500 + { error: { code: 'INTERNAL_ERROR', message } }.
+//     • Never leaks stack traces (T-5-09 mitigation — verified by unit test).
+//
+// Architecture note: this file is part of the HTTP layer (D-WEBUI-28 /
+// D-WEBUI-31), so it has zero MCP SDK imports and zero SQLite imports
+// (tool-engine separation). The architecture-purity test does substring
+// grep against file text, so avoid spelling the package sentinels in
+// comments here — paraphrase matches the Phase 4 / Plan 05-02 convention
+// and keeps the test signal strong (STATE.md decisions line 119).
+
+import type { ErrorHandler } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { TypedError } from '../engine/errors.js';
+
+// Explicit 404 set — includes the *_NOT_FOUND pattern plus *_UNAVAILABLE codes
+// (PROVENANCE_UNAVAILABLE + OUTPUT_UNAVAILABLE) which are "found the entity but
+// the associated resource is missing" cases and should map to 404, not 400.
+const NOT_FOUND_CODES = new Set<string>([
+  'WORKSPACE_NOT_FOUND',
+  'PROJECT_NOT_FOUND',
+  'SEQUENCE_NOT_FOUND',
+  'SHOT_NOT_FOUND',
+  'VERSION_NOT_FOUND',
+  'PARENT_NOT_FOUND',
+  'PROVENANCE_UNAVAILABLE',
+  'OUTPUT_UNAVAILABLE',
+  'PROPOSAL_NOT_FOUND',
+]);
+
+// Explicit 422 set — precondition/limit failures (cannot be completed in current state).
+const UNPROCESSABLE_CODES = new Set<string>([
+  'REPRODUCE_BLOCKED',
+  'VERSION_NOT_COMPLETED',
+  'TAG_LIMIT_EXCEEDED',
+  'METADATA_LIMIT_EXCEEDED',
+]);
+
+// Explicit 409 set — uniqueness / optimistic-concurrency conflicts.
+const CONFLICT_CODES = new Set<string>([
+  'DUPLICATE_NAME',
+  'CONCURRENT_SUBMIT_CONFLICT',
+  // Approval gate: decide-exactly-once claim lost — a concurrency conflict.
+  'PROPOSAL_ALREADY_DECIDED',
+]);
+
+// Explicit 502 set — upstream gateway / external service failures.
+// Also covers the COMFYUI_* prefix and the provider-neutral *_API_ERROR suffix
+// (statusForCode below), so every provider's upstream failure — COMFYUI_API_ERROR,
+// REPLICATE_API_ERROR, FAL_API_ERROR, BYTEPLUS_API_ERROR, GOOGLE_API_ERROR, and
+// the neutral PROVIDER_API_ERROR — resolves to 502 uniformly (previously the
+// non-ComfyUI provider codes fell through to 500).
+const BAD_GATEWAY_CODES = new Set<string>([
+  'COMFYUI_CREDENTIALS_MISSING',
+  'COMFYUI_RATE_LIMITED',
+  'GENERATION_TIMEOUT',
+  'DOWNLOAD_FAILED',
+]);
+
+// Phase 17 / Plan 17-03 — Explicit 503 set for transient/derived-resource
+// failures. THUMBNAIL_FAILED surfaces when sharp/ffmpeg derivation throws or
+// the source format is unsupported. The dashboard onError handler swaps the
+// <Thumbnail/> render to a <SkeletonThumbnail/> on either 500 or 503; 503 is
+// chosen because the underlying asset (the /output route) is still healthy —
+// only the cached thumbnail is unavailable.
+const SERVICE_UNAVAILABLE_CODES = new Set<string>([
+  'THUMBNAIL_FAILED',
+]);
+
+// Phase 19 / Plan 19-05 — Explicit 429 set for rate-limit / throttle codes.
+// SUMMARY_THROTTLED surfaces from POST /api/versions/:id/summary/regenerate
+// when the same versionId is requested within the 60s server-side cooldown
+// window (SUM-04). 429 (Too Many Requests) is the standard HTTP semantics for
+// throttled endpoints; clients can read Retry-After if added later.
+const TOO_MANY_REQUESTS_CODES = new Set<string>([
+  'SUMMARY_THROTTLED',
+]);
+
+// Explicit 400 set — validation codes that don't start with INVALID_.
+// TAG_INVALID + METADATA_INVALID are *_INVALID (suffix); ITERATE_INVALID_PATCH
+// is *_INVALID_* (middle). Combined with the INVALID_* prefix check below, this
+// covers every validation code in the ErrorCode union.
+const BAD_REQUEST_CODES = new Set<string>([
+  'TAG_INVALID',
+  'METADATA_INVALID',
+  'ITERATE_INVALID_PATCH',
+]);
+
+/**
+ * Map a TypedError code string to the appropriate HTTP status code.
+ *
+ * Pattern-and-allowlist strategy:
+ *   1. Explicit 404 set (NOT_FOUND + UNAVAILABLE codes).
+ *   2. INVALID_* prefix OR BAD_REQUEST set → 400 (covers TAG_INVALID,
+ *      METADATA_INVALID, ITERATE_INVALID_PATCH — codes that don't start with INVALID_).
+ *   3. Bad-gateway set OR COMFYUI_* prefix OR *_API_ERROR suffix → 502
+ *      (the *_API_ERROR family = every provider's upstream failure, provider-neutral).
+ *   4. Unprocessable set → 422.
+ *   5. Conflict set → 409.
+ *   6. Service unavailable set → 503.
+ *   7. Too-many-requests set → 429 (Phase 19 SUMMARY_THROTTLED).
+ *   8. Unknown code → 500 (fallthrough; original code is preserved in the body
+ *      by `typedErrorHandler`).
+ */
+export function statusForCode(code: string): number {
+  // Approval gate: the deployment forbids direct generations — 403 Forbidden.
+  if (code === 'APPROVAL_REQUIRED') return 403;
+  if (NOT_FOUND_CODES.has(code)) return 404;
+  if (code.startsWith('INVALID_') || BAD_REQUEST_CODES.has(code)) return 400;
+  if (BAD_GATEWAY_CODES.has(code) || code.startsWith('COMFYUI_') || code.endsWith('_API_ERROR')) return 502;
+  if (UNPROCESSABLE_CODES.has(code)) return 422;
+  if (CONFLICT_CODES.has(code)) return 409;
+  if (SERVICE_UNAVAILABLE_CODES.has(code)) return 503;
+  if (TOO_MANY_REQUESTS_CODES.has(code)) return 429;
+  return 500;
+}
+
+/**
+ * Hono ErrorHandler shared by every dashboard REST route (Plan 05-04) and the
+ * SSE endpoint (Plan 05-05). Usage:
+ *
+ *   import { typedErrorHandler } from './error-middleware.js';
+ *   app.onError(typedErrorHandler);
+ *
+ * Response shape is always `{ error: { code, message } }` — never includes
+ * stack traces or internal state. Unknown (non-TypedError) throws are coerced
+ * into `INTERNAL_ERROR` so clients never see a leaked SQLite constraint name
+ * or raw Node error class string.
+ */
+export const typedErrorHandler: ErrorHandler = (err, c) => {
+  if (err instanceof TypedError) {
+    return c.json(
+      { error: { code: err.code, message: err.message } },
+      statusForCode(err.code) as ContentfulStatusCode,
+    );
+  }
+  return c.json({ error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+};

@@ -1,0 +1,754 @@
+// Direct-mirror pattern — the MCP SDK's registered-tool handler is private,
+// so these tests mirror the handler body: (a) call engine, (b) shapeVersionEntity,
+// (c) toolOk/toolError. Same scaffold as error-wrapping.test.ts.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
+import * as os from 'node:os';
+import * as pth from 'node:path';
+import * as fsp from 'node:fs/promises';
+import { nanoid } from 'nanoid';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { makeInMemoryDb } from '../../test-utils/fixtures.js';
+import { HierarchyRepo } from '../../store/hierarchy-repo.js';
+import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
+import { ProvenanceWriter } from '../../engine/provenance.js';
+import { Engine } from '../../engine/pipeline.js';
+import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
+import { toolOk, toolError } from '../envelope.js';
+import { TypedError } from '../../engine/errors.js';
+import { versionLabel } from '../../utils/outputs.js';
+import type { Version, Breadcrumb } from '../../types/hierarchy.js';
+import { registerGeneration } from '../index.js';
+
+type ToolResponse = {
+  isError?: boolean;
+  structuredContent: Record<string, unknown>;
+  content: { type: 'text'; text: string }[];
+};
+
+async function buildStack() {
+  const { db } = makeInMemoryDb();
+  const repo = new HierarchyRepo(db);
+  const versions = new VersionRepo(db);
+  const provenanceRepo = new ProvenanceRepo(db);
+  const provenanceWriter = new ProvenanceWriter(provenanceRepo);
+  const fake = new FakeComfyUIClient();
+  const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vfx-gen-tool-${nanoid(6)}-`));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const engine = new Engine(db, repo, versions, provenanceRepo, fake as unknown as any, tempRoot);
+  const ws = repo.createWorkspace('ws1');
+  const proj = repo.createProject(ws.id, 'p1');
+  const seq = repo.createSequence(proj.id, 'sq010');
+  const shot = repo.createShot(seq.id, 'sh010');
+  return {
+    engine,
+    fake,
+    versions,
+    provenanceRepo,
+    provenanceWriter,
+    shotId: shot.id,
+    tempRoot,
+  };
+}
+
+function shapeVersion(result: { entity: Version; breadcrumb: Breadcrumb }) {
+  const { entity, breadcrumb } = result;
+  // Mirror of generation-tool.shapeVersionEntity after IAC-01/02: outputs_json
+  // and error_message are destructured OUT; outputs is a typed array; error is
+  // the canonical alias.
+  const { error_message, outputs_json, ...rest } = entity;
+  let outputs: unknown[] = [];
+  if (outputs_json != null && outputs_json.length > 0) {
+    try {
+      const parsed = JSON.parse(outputs_json);
+      if (Array.isArray(parsed)) outputs = parsed;
+    } catch {
+      /* ignore — empty array on malformed */
+    }
+  }
+  return {
+    entity: {
+      ...rest,
+      version_label: versionLabel(entity.version_number),
+      progress: null,
+      error: error_message ?? null,
+      outputs,
+    },
+    breadcrumb: breadcrumb.entries,
+    breadcrumb_text: breadcrumb.text,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeSubmit(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('submit'),
+        shot_id: z.string().min(1),
+        workflow_json: z.record(z.string(), z.unknown()),
+        notes: z.string().optional(),
+      })
+      .parse(input);
+    return toolOk(
+      shapeVersion(
+        await stack.engine.submitGeneration(parsed.shot_id, parsed.workflow_json, parsed.notes),
+      ),
+    ) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      const path = first.path.join('.');
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${path}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeStatus(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('status'),
+        version_id: z.string().min(1),
+      })
+      .parse(input);
+    return toolOk(
+      shapeVersion(await stack.engine.getGenerationStatus(parsed.version_id)),
+    ) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      const path = first.path.join('.');
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${path}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeReproduce(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('reproduce'),
+        version_id: z.string().min(1),
+        notes: z.string().optional(),
+      })
+      .parse(input);
+    const result = await stack.engine.reproduceVersion(parsed.version_id, parsed.notes);
+    return toolOk({
+      ...shapeVersion({ entity: result.entity, breadcrumb: result.breadcrumb }),
+      reproduction_warnings: result.reproduction_warnings,
+    }) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${first.path.join('.')}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeIterate(stack: { engine: Engine }, input: any): Promise<ToolResponse> {
+  try {
+    const parsed = z
+      .object({
+        action: z.literal('iterate'),
+        version_id: z.string().min(1),
+        overrides: z
+          .record(
+            z.string().min(1),
+            z.object({
+              inputs: z.record(z.string(), z.unknown()).optional(),
+              class_type: z.string().optional(),
+            }),
+          )
+          .optional(),
+        seed: z.number().int().optional(),
+        notes: z.string().optional(),
+      })
+      .parse(input);
+    return toolOk(
+      shapeVersion(
+        await stack.engine.iterateFromVersion(
+          parsed.version_id,
+          parsed.overrides,
+          parsed.seed,
+          parsed.notes,
+        ),
+      ),
+    ) as ToolResponse;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const first = err.issues[0];
+      return toolError(
+        new TypedError(
+          'INVALID_INPUT',
+          `Invalid input at 'input.${first.path.join('.')}' -- ${first.message}`,
+        ),
+      ) as ToolResponse;
+    }
+    return toolError(err) as ToolResponse;
+  }
+}
+
+const SOURCE_BLOB = {
+  '3': { class_type: 'KSampler', inputs: { seed: 42, steps: 20, cfg: 7 } },
+  '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd_xl.safetensors' } },
+};
+
+function seedCompletedSource(stack: Awaited<ReturnType<typeof buildStack>>): string {
+  const row = stack.versions.insertVersion(stack.shotId);
+  stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+  stack.provenanceWriter.writeCompletedEvent(row.id, SOURCE_BLOB, '[]');
+  stack.versions.markCompleted(row.id, '[]');
+  return row.id;
+}
+
+function seedFailedSource(stack: Awaited<ReturnType<typeof buildStack>>): string {
+  const row = stack.versions.insertVersion(stack.shotId);
+  stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+  stack.provenanceWriter.writeFailedEvent(row.id, 'COMFYUI_API_ERROR', 'boom');
+  stack.versions.markFailed(row.id, 'COMFYUI_API_ERROR', 'boom');
+  return row.id;
+}
+
+let stack: Awaited<ReturnType<typeof buildStack>>;
+beforeEach(async () => {
+  stack = await buildStack();
+});
+afterEach(async () => {
+  await stack.engine.stop();
+  await fsp.rm(stack.tempRoot, { recursive: true, force: true });
+});
+
+const API_WF = { '1': { class_type: 'KSampler', inputs: { seed: 42 } } };
+const UI_WF = { nodes: [{ id: 1, type: 'KSampler' }], links: [] };
+
+describe('generation tool — submit happy path', () => {
+  it('structuredContent has entity + breadcrumb + breadcrumb_text with 5-entry breadcrumb ending at v001', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: {
+        version_number: number;
+        version_label: string;
+        status: string;
+        job_id: string;
+      };
+      breadcrumb: { type: string }[];
+      breadcrumb_text: string;
+    };
+    expect(sc.entity.version_number).toBe(1);
+    expect(sc.entity.version_label).toBe('v001');
+    expect(sc.entity.status).toBe('submitted');
+    expect(sc.entity.job_id).toBe('prompt_fake_123');
+    expect(sc.breadcrumb).toHaveLength(5);
+    expect(sc.breadcrumb[4].type).toBe('version');
+    expect(sc.breadcrumb_text).toMatch(/ > v001$/);
+  });
+
+  it('content[0].text JSON.parse equals structuredContent (D-25)', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    expect(JSON.parse(res.content[0].text)).toEqual(res.structuredContent);
+  });
+
+  it('submit resolves quickly (< 1s for fake)', async () => {
+    const start = Date.now();
+    await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+});
+
+describe('generation tool — submit error paths', () => {
+  it('UI-format workflow → INVALID_WORKFLOW_FORMAT with hint', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: UI_WF,
+    });
+    expect(res.isError).toBe(true);
+    const p = res.structuredContent as { code: string; hint: string };
+    expect(p.code).toBe('INVALID_WORKFLOW_FORMAT');
+    expect(p.hint).toContain('Dev Mode > Save (API Format)');
+  });
+
+  it('unknown shot_id → SHOT_NOT_FOUND', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: 'shot_nope',
+      workflow_json: API_WF,
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('SHOT_NOT_FOUND');
+  });
+
+  it('missing credentials scenario → COMFYUI_CREDENTIALS_MISSING', async () => {
+    // Rebuild stack with a null client.
+    const { db } = makeInMemoryDb();
+    const repo = new HierarchyRepo(db);
+    const vRepo = new VersionRepo(db);
+    const pRepo = new ProvenanceRepo(db);
+    const tempRoot = await fsp.mkdtemp(
+      pth.join(os.tmpdir(), `vfx-gen-tool-nokey-${nanoid(6)}-`),
+    );
+    const engine = new Engine(db, repo, vRepo, pRepo, null, tempRoot);
+    const ws = repo.createWorkspace('ws');
+    const proj = repo.createProject(ws.id, 'p');
+    const seq = repo.createSequence(proj.id, 'sq010');
+    const shot = repo.createShot(seq.id, 'sh010');
+    try {
+      const res = await invokeSubmit(
+        { engine },
+        { action: 'submit', shot_id: shot.id, workflow_json: API_WF },
+      );
+      expect(res.isError).toBe(true);
+      const p = res.structuredContent as { code: string; hint: string };
+      expect(p.code).toBe('COMFYUI_CREDENTIALS_MISSING');
+      expect(p.hint).toContain('.env.example');
+    } finally {
+      await engine.stop();
+      await fsp.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('missing shot_id → INVALID_INPUT with input.shot_id in message', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      workflow_json: API_WF,
+    });
+    expect(res.isError).toBe(true);
+    const p = res.structuredContent as { code: string; message: string };
+    expect(p.code).toBe('INVALID_INPUT');
+    expect(p.message).toContain('input.shot_id');
+  });
+
+  it('non-object workflow_json → INVALID_INPUT with input.workflow_json', async () => {
+    const res = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: 'not an object',
+    });
+    expect(res.isError).toBe(true);
+    const p = res.structuredContent as { code: string; message: string };
+    expect(p.code).toBe('INVALID_INPUT');
+    expect(p.message).toContain('input.workflow_json');
+  });
+});
+
+describe('generation tool — status path', () => {
+  it('status on submitted row returns full entity + breadcrumb', async () => {
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    const versionId = (sub.structuredContent as { entity: { id: string } }).entity.id;
+    const res = await invokeStatus(stack, { action: 'status', version_id: versionId });
+    const sc = res.structuredContent as {
+      entity: Record<string, unknown>;
+      breadcrumb: unknown[];
+    };
+    expect(sc.entity.id).toBe(versionId);
+    expect(sc.entity).toHaveProperty('status');
+    expect(sc.entity).toHaveProperty('progress');
+    expect(sc.entity).toHaveProperty('error');
+    expect(sc.entity).toHaveProperty('completed_at');
+    expect(sc.breadcrumb).toHaveLength(5);
+  });
+
+  it('unknown version_id → VERSION_NOT_FOUND', async () => {
+    const res = await invokeStatus(stack, { action: 'status', version_id: 'ver_bogus' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+  });
+
+  it('empty version_id → INVALID_INPUT', async () => {
+    const res = await invokeStatus(stack, { action: 'status', version_id: '' });
+    expect(res.isError).toBe(true);
+    const p = res.structuredContent as { code: string; message: string };
+    expect(p.code).toBe('INVALID_INPUT');
+    expect(p.message).toContain('input.version_id');
+  });
+
+  it('IT-20: status on a completed row shapes entity with typed outputs array, non-null completed_at, version_label=v001', async () => {
+    // Drive a real submit → status roundtrip (fake client is set to happy path
+    // and returns one output). After status fires, the engine runs
+    // downloadAndPersist and marks the row completed. The tool response must:
+    //  - expose `outputs` as a typed StoredOutput[] (IAC-01), NOT a JSON string
+    //  - NOT expose `outputs_json` anywhere on entity
+    //  - have completed_at set (non-null)
+    //  - carry version_label === 'v001' for the first version
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    const versionId = (sub.structuredContent as { entity: { id: string } }).entity.id;
+    const res = await invokeStatus(stack, { action: 'status', version_id: versionId });
+    const sc = res.structuredContent as {
+      entity: {
+        id: string;
+        status: string;
+        version_label: string;
+        completed_at: number | null;
+        outputs: Array<{ filename: string; content_type: string }>;
+        outputs_json?: unknown;
+      };
+    };
+    expect(sc.entity.status).toBe('completed');
+    expect(sc.entity.version_label).toBe('v001');
+    expect(sc.entity.completed_at).not.toBeNull();
+    expect(typeof sc.entity.completed_at).toBe('number');
+    // IAC-01: outputs is a typed array now — not a JSON string.
+    expect(Array.isArray(sc.entity.outputs)).toBe(true);
+    expect(sc.entity.outputs).toHaveLength(1);
+    expect(sc.entity.outputs[0]).toMatchObject({
+      filename: 'out.png',
+      content_type: 'image/png',
+    });
+    // outputs_json must not appear on the response.
+    expect(sc.entity).not.toHaveProperty('outputs_json');
+  });
+
+  it('IT-20b: engine.stop() joins the fire-and-forget dashboard-stable download (no post-teardown write)', async () => {
+    // The completion hook in Engine.getGenerationStatus fires a fire-and-forget
+    // downloadOutput into outputRoot/<versionId>/ (D-WEBUI-26). If stop() does
+    // not JOIN it, the write can land after the output root is torn down — the
+    // ENOTEMPTY rmdir race that made this file flaky. Delay the download so it
+    // is reliably in flight when stop() is called, then assert the file exists
+    // ONLY after stop() resolves (proving stop() waited for it).
+    const exists = (p: string) => fsp.access(p).then(() => true, () => false);
+    const origDl = stack.fake.downloadToPath.bind(stack.fake);
+    stack.fake.downloadToPath = (async (
+      filename: string,
+      opts: { subfolder?: string; type?: string },
+      destPath: string,
+    ) => {
+      await new Promise((r) => setTimeout(r, 80));
+      return origDl(filename, opts, destPath);
+    }) as typeof stack.fake.downloadToPath;
+
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    const versionId = (sub.structuredContent as { entity: { id: string } }).entity.id;
+    await invokeStatus(stack, { action: 'status', version_id: versionId });
+
+    const dashboardPath = pth.join(stack.tempRoot, versionId, 'out.png');
+    // The delayed fire-and-forget download is still in flight right after status.
+    expect(await exists(dashboardPath)).toBe(false);
+    // stop() must join it — the file lands only once stop() has awaited it.
+    await stack.engine.stop();
+    expect(await exists(dashboardPath)).toBe(true);
+  });
+
+  it('IT-21: status on a failed row shapes entity.error from error_message and preserves error_code', async () => {
+    // Drive a failed generation through the real engine. fake.scenario set to
+    // 'submit-error' causes submit to throw COMFYUI_API_ERROR — the engine's
+    // two-phase submit inserts a row then marks it failed with the code.
+    stack.fake.scenario = 'submit-error';
+    const sub = await invokeSubmit(stack, {
+      action: 'submit',
+      shot_id: stack.shotId,
+      workflow_json: API_WF,
+    });
+    // submit returns isError (tool-surface failure) — the row still exists and
+    // is marked failed. Verify by fetching via status.
+    expect(sub.isError).toBe(true);
+    // Fetch the failed row directly by listing versions. Use an untyped probe
+    // since the tool did not return an id on error.
+    const allPending = stack.versions.listPendingVersions();
+    expect(allPending).toHaveLength(0); // all rows terminal
+    // Find the failed row via a raw query: use listPendingVersions negative,
+    // so fetch by stepping through submitted history. The cleanest path: reset
+    // fake, insert a new version, markFailed directly.
+    stack.fake.reset();
+    // Alternative direct path: create a version + markFailed it.
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.setJobId(row.id, 'job-failed-direct');
+    stack.versions.markFailed(row.id, 'DOWNLOAD_FAILED', 'network boom');
+    const res = await invokeStatus(stack, { action: 'status', version_id: row.id });
+    const sc = res.structuredContent as {
+      entity: {
+        status: string;
+        error_code: string | null;
+        error: string | null;
+        error_message?: unknown;
+      };
+    };
+    expect(sc.entity.status).toBe('failed');
+    expect(sc.entity.error_code).toBe('DOWNLOAD_FAILED');
+    // IAC-02: `error` is the canonical alias derived from error_message.
+    expect(sc.entity.error).toBe('network boom');
+    // error_message is no longer a response field.
+    expect(sc.entity).not.toHaveProperty('error_message');
+  });
+});
+
+describe('generation tool — registration smoke', () => {
+  it('registerGeneration registers against a live McpServer (generation tool present)', async () => {
+    const { engine } = stack;
+    const server = new McpServer({ name: 'test-server', version: '0.0.0' });
+    expect(() => registerGeneration(server, engine)).not.toThrow();
+    const registered = (
+      server as unknown as { _registeredTools: Record<string, unknown> }
+    )._registeredTools;
+    expect(Object.keys(registered)).toContain('generation');
+  });
+
+  it('tool description contains "ComfyUI API-format" and "\'Dev Mode > Save (API Format)\'" (D-GEN-08)', async () => {
+    const { engine } = stack;
+    const server = new McpServer({ name: 'test-server', version: '0.0.0' });
+    registerGeneration(server, engine);
+    const registered = (
+      server as unknown as {
+        _registeredTools: Record<string, { description?: string }>;
+      }
+    )._registeredTools;
+    const desc = registered['generation']?.description ?? '';
+    expect(desc).toContain('ComfyUI API-format');
+    expect(desc).toContain("'Dev Mode > Save (API Format)'");
+  });
+});
+
+describe('generation tool — reproduce (D-PROV-12, D-PROV-28)', () => {
+  it('happy path: new version with lineage_type=reproduce + reproduction_warnings ALWAYS present', async () => {
+    // fetchResolvedPrompt returns null so the new version's completion path doesn't need a real blob.
+    (stack.fake as unknown as { fetchResolvedPrompt: () => Promise<null> }).fetchResolvedPrompt =
+      async () => null;
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeReproduce(stack, {
+      action: 'reproduce',
+      version_id: sourceId,
+      notes: 'reproduced',
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: {
+        id: string;
+        parent_version_id: string;
+        lineage_type: string;
+        version_label: string;
+      };
+      breadcrumb: unknown[];
+      breadcrumb_text: string;
+      reproduction_warnings: string[];
+    };
+    expect(sc.entity.parent_version_id).toBe(sourceId);
+    expect(sc.entity.lineage_type).toBe('reproduce');
+    expect(sc.entity.version_label).toBe('v002');
+    expect(Array.isArray(sc.reproduction_warnings)).toBe(true);
+    // D-PROV-28 honesty: models_json was '[]' in seed, so the engine emits
+    // the "no model metadata" warning.
+    expect(sc.reproduction_warnings.length).toBeGreaterThan(0);
+  });
+
+  it('content[0].text JSON.parse equals structuredContent even with reproduction_warnings (D-25)', async () => {
+    (stack.fake as unknown as { fetchResolvedPrompt: () => Promise<null> }).fetchResolvedPrompt =
+      async () => null;
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: sourceId });
+    expect(JSON.parse(res.content[0].text)).toEqual(res.structuredContent);
+  });
+
+  it('source not completed → VERSION_NOT_COMPLETED', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('source completed but no completed provenance event → REPRODUCE_BLOCKED', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('REPRODUCE_BLOCKED');
+  });
+
+  it('source completed with null prompt_json → PROVENANCE_UNAVAILABLE', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.provenanceWriter.writeSubmitEvent(row.id, SOURCE_BLOB);
+    stack.provenanceWriter.writeCompletedEvent(row.id, null, '[]');
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('PROVENANCE_UNAVAILABLE');
+  });
+
+  it('unknown version_id → VERSION_NOT_FOUND', async () => {
+    const res = await invokeReproduce(stack, { action: 'reproduce', version_id: 'ver_missing' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+  });
+
+  it('missing version_id → INVALID_INPUT via Zod', async () => {
+    const res = await invokeReproduce(stack, { action: 'reproduce' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('INVALID_INPUT');
+  });
+});
+
+describe('generation tool — iterate (D-PROV-13, D-PROV-21..D-PROV-25)', () => {
+  it('happy path with overrides: new version has lineage_type=iterate + merged workflow submitted', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      overrides: { '3': { inputs: { cfg: 9 } } },
+      notes: 'tweak-cfg',
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: { parent_version_id: string; lineage_type: string };
+    };
+    expect(sc.entity.parent_version_id).toBe(sourceId);
+    expect(sc.entity.lineage_type).toBe('iterate');
+    // Engine delegated to applyOverrides + submitInternal; assert the
+    // fake received the merged blob with cfg=9 and seed=42 preserved.
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.cfg).toBe(9);
+    expect(submitted['3'].inputs.seed).toBe(42);
+  });
+
+  it('seed shortcut with single KSampler updates KSampler.inputs.seed', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      seed: 999,
+    });
+    expect(res.isError).toBeUndefined();
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(submitted['3'].inputs.seed).toBe(999);
+  });
+
+  it('iterate from FAILED source succeeds using workflow_json (D-PROV-24)', async () => {
+    const failedId = seedFailedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: failedId,
+      overrides: { '3': { inputs: { cfg: 9 } } },
+    });
+    expect(res.isError).toBeUndefined();
+    const sc = res.structuredContent as {
+      entity: { lineage_type: string; parent_version_id: string };
+    };
+    expect(sc.entity.lineage_type).toBe('iterate');
+    expect(sc.entity.parent_version_id).toBe(failedId);
+  });
+
+  it('iterate from submitted source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('iterate from running source → VERSION_NOT_COMPLETED (D-PROV-25)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    stack.versions.transition(row.id, 'running');
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: row.id });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_COMPLETED');
+  });
+
+  it('unknown node id in overrides → ITERATE_INVALID_PATCH (D-PROV-23)', async () => {
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      overrides: { '999': { inputs: { x: 1 } } },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('ITERATE_INVALID_PATCH');
+  });
+
+  it('seed shortcut with no KSampler → ITERATE_INVALID_PATCH (D-PROV-22)', async () => {
+    const row = stack.versions.insertVersion(stack.shotId);
+    const noKSamplerBlob = {
+      '1': { class_type: 'CLIPTextEncode', inputs: { text: 'hi' } },
+    };
+    stack.provenanceWriter.writeSubmitEvent(row.id, noKSamplerBlob);
+    stack.provenanceWriter.writeCompletedEvent(row.id, noKSamplerBlob, '[]');
+    stack.versions.markCompleted(row.id, '[]');
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: row.id,
+      seed: 42,
+    });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('ITERATE_INVALID_PATCH');
+  });
+
+  it('unknown source version_id → VERSION_NOT_FOUND', async () => {
+    const res = await invokeIterate(stack, { action: 'iterate', version_id: 'ver_missing' });
+    expect(res.isError).toBe(true);
+    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+  });
+
+  it('rejects any input with a top-level `patch` key — shape is overrides, not JSON Patch (D-PROV-13)', async () => {
+    // Direct-mirror note: IterateInput schema does not define `patch`, so
+    // Zod silently drops unknown top-level keys. Assert the happy path
+    // still works AND assert no 'patch' symbol leaks into the submitted
+    // blob — engine never sees a patch array.
+    const sourceId = seedCompletedSource(stack);
+    const res = await invokeIterate(stack, {
+      action: 'iterate',
+      version_id: sourceId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: [{ op: 'replace', path: '/3/inputs/cfg', value: 9 }] as any,
+    });
+    expect(res.isError).toBeUndefined();
+    const submits = stack.fake.calls.filter((c) => c.method === 'submit');
+    const submitted = submits[submits.length - 1].args[0] as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    // Unchanged because no overrides/seed were passed through the valid path.
+    expect(submitted['3'].inputs.cfg).toBe(7);
+    expect(submitted['3'].inputs.seed).toBe(42);
+  });
+});

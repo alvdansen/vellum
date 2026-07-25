@@ -1,0 +1,13 @@
+-- IDM: ROLLBACK NOT SUPPORTED.
+--
+-- Cost actuals (log every call + cost incl. rejected takes). The
+-- approval gate records a caller-asserted cost ESTIMATE on the proposal before
+-- spend; this adds a place to record the ACTUAL cost after a take runs.
+--
+-- Additive, NULLABLE, append-only: a 'cost_recorded' provenance event carries
+-- its payload (amount + currency + optional note/recorded_by) in this column.
+-- Multiple records accumulate as sibling events (corrections append, newest
+-- wins) — never an in-place UPDATE, matching the manifest_signed / summary_
+-- generated columns. Pre-migration rows read NULL. Not in SCHEMA_DDL (additive
+-- split).
+ALTER TABLE `provenance` ADD `cost_recorded_json` text;

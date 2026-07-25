@@ -1,0 +1,570 @@
+// Phase 14 — PROV-V-01 (D-CTX-2 + D-CTX-6). Engine-layer signer wrapper.
+//
+// This is the ONLY file in the codebase that imports c2pa-node. The
+// architecture-purity test asserts:
+//   grep -rE "from\s*['\"]c2pa-node|import\s*\(\s*['\"]c2pa-node" src/
+//   (excluding __tests__) returns matches ONLY in src/engine/c2pa/signer.ts.
+//
+// REVISION fixes:
+//   Concern #1  — algorithm detection via X509Certificate (no hard-coded ES256)
+//   Concern #10 — RFC4514-safe subject parser (no naive regex)
+//   Concern #11 — lazy native binding load + try/catch (no boot crash)
+//
+// Plan 14-02 RUNTIME DEVIATION (documented in 14-02-SUMMARY.md):
+//   c2pa-node v0.5.26's native binding requires `tsaUrl` to either be an
+//   absent property OR a valid URL string. With the property missing,
+//   `signClaimBytes` throws "TypeError: failed to downcast any to string"
+//   from inside c2pa-rs. With `tsaUrl: ''`, the URL parser throws a
+//   `RelativeUrlWithoutBase` error.
+//
+//   Mitigation: the signer wrapper accepts an optional `tsaUrl` parameter
+//   on `loadSigner`. The LocalSigner literal is built CONDITIONALLY (the
+//   property is OMITTED when tsaUrl is null) so the `tsaUrl: undefined`
+//   downcast bug is sidestepped — c2pa-node treats the absent property as
+//   "no timestamp authority", and signing succeeds fully offline.
+//
+//   Phase 14 fix MR-01: the default is now `null` (NO TSA), and operators
+//   opt in to a TSA via VELLUM_C2PA_TSA_URL. The earlier hard-coded
+//   default of a public RFC 3161 endpoint was removed because (a) it
+//   silently reached a third-party endpoint on every sign call (privacy
+//   surprise + air-gapped deployments fail) and (b) it could not be
+//   disabled without source-level changes. Operator-controllable now.
+
+import { readFile } from 'node:fs/promises';
+import { X509Certificate } from 'node:crypto';
+import { TypedError } from '../errors.js';
+import type { ManifestDefinition } from './manifest-builder.js';
+import type { BuildManifestResult, IngredientSpec } from './manifest-builder.js';
+
+// c2pa-node native binding — loaded lazily (Concern #11).
+type C2paNodeModule = typeof import('c2pa-node');
+let c2paNodeModule: C2paNodeModule | null = null;
+let c2paNodeLoadError: Error | null = null;
+
+/**
+ * Lazy + try/catch'd native binding load. The first invocation attempts the
+ * dynamic import; subsequent invocations reuse the cached module OR throw
+ * the cached load error wrapped in `C2PA_SIGNER_LOAD_FAILED`. Server boot
+ * NEVER calls this — Plan 14-03's engine hook is the first call site at
+ * download time.
+ */
+async function ensureC2paNode(): Promise<C2paNodeModule> {
+  if (c2paNodeModule !== null) return c2paNodeModule;
+  if (c2paNodeLoadError !== null) {
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `c2pa-node native binding unavailable: ${c2paNodeLoadError.message}`,
+      'Install c2pa-node prebuilds for this platform, or run on a supported platform (macOS arm64/x64, Linux x64/arm64, Windows x64).',
+    );
+  }
+  try {
+    c2paNodeModule = await import('c2pa-node');
+    return c2paNodeModule;
+  } catch (err) {
+    c2paNodeLoadError = err as Error;
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `c2pa-node native binding unavailable: ${(err as Error).message}`,
+      'Install c2pa-node prebuilds for this platform, or run on a supported platform.',
+    );
+  }
+}
+
+/**
+ * Returns true if c2pa-node has loaded successfully OR has not yet been
+ * attempted. Returns false ONLY after a load attempt failed. Plan 14-03's
+ * graceful-fail uses this to short-circuit retries.
+ *
+ * NOTE: this returns `true` BEFORE the first load attempt — the load is
+ * lazy + can fail at first call. Callers cannot rely on this returning
+ * `false` until after a `loadSigner` invocation that hit the load path.
+ */
+export function isC2paNodeAvailable(): boolean {
+  return c2paNodeLoadError === null;
+}
+
+/**
+ * Test-only — resets the module-scoped lazy-load state so a vi.mock on
+ * `c2pa-node` can take effect in subsequent test cases. Production code
+ * MUST NOT call this — it deliberately re-triggers the lazy import path.
+ *
+ * Exported only because vi.mock is hoisted and we cannot scope it to the
+ * test file. Naming starts with `__` to discourage accidental usage.
+ */
+export function __resetC2paNodeStateForTests(): void {
+  c2paNodeModule = null;
+  c2paNodeLoadError = null;
+}
+
+export interface LoadedSigner {
+  readonly c2pa: import('c2pa-node').C2pa;
+  readonly certSubjectSummary: string;
+  readonly algorithm: import('c2pa-node').SigningAlgorithm;
+}
+
+/** c2pa-node v0.5.x BUFFER-API-supported MIME types (bindings.js line 132-134). */
+const BUFFER_API_MIMETYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png']);
+
+/**
+ * Phase 14 fix MR-01: documented fallback TSA used ONLY when `loadSigner` is
+ * called WITHOUT a third argument (i.e., legacy callers / tests that haven't
+ * been threaded through C2paConfig.tsaUrl yet). Engine call sites in
+ * Plan 14-03 always pass an explicit value (operator-supplied via
+ * VELLUM_C2PA_TSA_URL OR explicit null when the operator opts out).
+ *
+ * Mirrors c2pa-node's own `createTestSigner` default (lib/signer.js line 51).
+ * Required by c2pa-node v0.5.26's native binding: signClaimBytes throws
+ * "TypeError: failed to downcast any to string" when the LocalSigner literal
+ * omits `tsaUrl` entirely (see file header — Plan 14-02 RUNTIME DEVIATION).
+ *
+ * Operators who explicitly want to opt out of any TSA (air-gapped, internal
+ * CA only, no third-party calls) pass `null` from the engine; signing will
+ * then fail with C2PA_SIGNING_FAILED (the engine surfaces this as
+ * status_reason='sign_call_failed'). Operators who want to use an internal
+ * TSA pass that URL via VELLUM_C2PA_TSA_URL.
+ */
+const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
+
+/**
+ * Loads the cert + key into memory ONCE, detects the cert's signature
+ * algorithm via X509Certificate, derives a path-leak-free subject summary,
+ * and returns a `LoadedSigner` carrying a configured `c2pa-node` C2pa
+ * instance.
+ *
+ * Throws `TypedError('C2PA_SIGNER_LOAD_FAILED', ...)` on any failure path
+ * (binding load, file read, cert parse, key parse, unsupported algorithm,
+ * c2pa-node createC2pa rejection). NEVER logs key bytes (T-14-01 mitigation).
+ *
+ * Phase 14 fix MR-01: `tsaUrl` is now operator-controllable via
+ * `VELLUM_C2PA_TSA_URL`. The Engine call site (pipeline.ts) passes
+ * `c2paConfig.tsaUrl` verbatim. When `tsaUrl` is null, the LocalSigner
+ * literal omits the property — c2pa-node v0.5.26 will then fail at sign
+ * time (binding bug; documented in file header). Engine's signOutput
+ * surfaces this as status_reason='sign_call_failed' so the operator sees
+ * a typed manifest_signed event with the reason. For operators who want
+ * working signing without setting a TSA URL, the loadSigner default
+ * (when called without the 3rd arg) is FALLBACK_TSA_URL — same as
+ * c2pa-node's own createTestSigner.
+ *
+ * @param certPemPath  Absolute path to the PEM-encoded cert (chain).
+ * @param privateKeyPemPath  Absolute path to the PEM-encoded private key.
+ * @param tsaUrl  Optional RFC 3161 TSA endpoint. Default is FALLBACK_TSA_URL
+ *                (only used when caller passes nothing for this argument).
+ *                Engine sites pass the operator-controlled value (null OR
+ *                a custom URL) verbatim. `null` means NO TSA — no
+ *                third-party network call at sign time, but signing will
+ *                fail on c2pa-node v0.5.26 due to a binding bug.
+ */
+export async function loadSigner(
+  certPemPath: string,
+  privateKeyPemPath: string,
+  tsaUrl: string | null = FALLBACK_TSA_URL,
+): Promise<LoadedSigner> {
+  const c2paNode = await ensureC2paNode(); // Concern #11 — fails loud if binding broken
+
+  let certPemBytes: Buffer;
+  let privateKeyPemBytes: Buffer;
+  try {
+    [certPemBytes, privateKeyPemBytes] = await Promise.all([
+      readFile(certPemPath),
+      readFile(privateKeyPemPath),
+    ]);
+  } catch (err) {
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `Failed to read cert or key PEM: ${(err as Error).message}`,
+      'Verify VELLUM_C2PA_CERT_PEM_PATH + VELLUM_C2PA_PRIVATE_KEY_PEM_PATH point to readable files.',
+    );
+  }
+
+  // Parse cert + detect algorithm (Concern #1).
+  let cert: X509Certificate;
+  try {
+    cert = new X509Certificate(certPemBytes);
+  } catch (err) {
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `Cert PEM is not parseable as X.509: ${(err as Error).message}`,
+      'Regenerate via scripts/gen-dev-c2pa-cert.mts (dev) or contact your CA (prod).',
+    );
+  }
+  const algorithm = detectSigningAlgorithm(cert, c2paNode.SigningAlgorithm);
+
+  // Derive subject summary (Concern #10).
+  const certSubjectSummary = deriveCertSubjectSummary(cert);
+
+  // Build C2pa instance. The LocalSigner literal omits `tsaUrl` entirely
+  // when caller passed null — c2pa-node's native binding cannot handle the
+  // `tsaUrl: undefined` shape (downcast error).
+  let c2pa: import('c2pa-node').C2pa;
+  try {
+    const localSigner: import('c2pa-node').LocalSigner = tsaUrl === null
+      ? {
+          type: 'local',
+          certificate: certPemBytes,
+          privateKey: privateKeyPemBytes,
+          algorithm,
+        }
+      : {
+          type: 'local',
+          certificate: certPemBytes,
+          privateKey: privateKeyPemBytes,
+          algorithm,
+          tsaUrl,
+        };
+    c2pa = c2paNode.createC2pa({ signer: localSigner });
+  } catch (err) {
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `c2pa-node createC2pa rejected the cert/key pair: ${(err as Error).message}`,
+      `Verify cert + key match (detected algorithm: ${algorithm}).`,
+    );
+  }
+
+  return { c2pa, certSubjectSummary, algorithm };
+}
+
+/**
+ * Concern #1 — match cert algorithm to c2pa-node SigningAlgorithm enum.
+ *
+ * Detection priority for RSA-PSS:
+ *   1. asymmetricKeyDetails.hashAlgorithm (bound RSA-PSS keys expose this)
+ *   2. signatureAlgorithm string parse (fallback, often returns 'rsassaPss'
+ *      with no embedded hash for unbound keys — falls through to error)
+ *
+ * For plain RSA (PKCS#1-v1.5), c2pa-node v0.5.26's SigningAlgorithm enum
+ * has NO `RS256` value. We fail loud rather than silently producing a
+ * signature using the PSS algorithm with a non-PSS key.
+ */
+function detectSigningAlgorithm(
+  cert: X509Certificate,
+  enumRef: typeof import('c2pa-node').SigningAlgorithm,
+): import('c2pa-node').SigningAlgorithm {
+  const keyType = cert.publicKey.asymmetricKeyType; // 'ec' | 'rsa' | 'rsa-pss' | 'ed25519' | etc
+  const sigAlg = cert.signatureAlgorithm ?? '';
+  // asymmetricKeyDetails contains BigInt fields for RSA — JSON.stringify
+  // would fail; we only access named string fields (hashAlgorithm, namedCurve).
+  const details = (cert.publicKey.asymmetricKeyDetails ?? {}) as {
+    namedCurve?: string;
+    hashAlgorithm?: string;
+  };
+
+  if (keyType === 'ed25519') return enumRef.Ed25519;
+
+  if (keyType === 'ec') {
+    const curve = details.namedCurve ?? '';
+    if (curve === 'prime256v1' || curve === 'P-256') return enumRef.ES256;
+    if (curve === 'secp384r1' || curve === 'P-384') return enumRef.ES384;
+    if (curve === 'secp521r1' || curve === 'P-521') return enumRef.ES512;
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `Unsupported EC curve '${curve}' for c2pa-node v0.5.26 (supported: P-256, P-384, P-521)`,
+      'Reissue the cert with a supported curve.',
+    );
+  }
+
+  if (keyType === 'rsa-pss') {
+    // Prefer the bound hashAlgorithm from key details (most accurate).
+    const hashAlg = (details.hashAlgorithm ?? '').toLowerCase();
+    if (hashAlg === 'sha256') return enumRef.PS256;
+    if (hashAlg === 'sha384') return enumRef.PS384;
+    if (hashAlg === 'sha512') return enumRef.PS512;
+    // Fallback to signatureAlgorithm string (rare — most rsa-pss certs
+    // expose hashAlgorithm).
+    const lower = sigAlg.toLowerCase();
+    if (lower.includes('sha256')) return enumRef.PS256;
+    if (lower.includes('sha384')) return enumRef.PS384;
+    if (lower.includes('sha512')) return enumRef.PS512;
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `Cannot determine PS hash for rsa-pss cert (sig=${sigAlg}, hashAlgorithm=${details.hashAlgorithm ?? 'unset'})`,
+      'Reissue the cert with rsa_pss_keygen_md set to sha256/sha384/sha512.',
+    );
+  }
+
+  if (keyType === 'rsa') {
+    // Plain RSA (PKCS#1-v1.5) has no PS-equivalent enum value in c2pa-node
+    // v0.5.26. Fail loud rather than silently producing a signature.
+    throw new TypedError(
+      'C2PA_SIGNER_LOAD_FAILED',
+      `Unsupported plain RSA cert (sig=${sigAlg}) — c2pa-node v0.5.26 SigningAlgorithm has no RS256/RS384/RS512`,
+      'Reissue the cert with RSA-PSS (openssl genpkey -algorithm RSA-PSS) + SHA-256/384/512.',
+    );
+  }
+
+  throw new TypedError(
+    'C2PA_SIGNER_LOAD_FAILED',
+    `Unsupported public key type '${keyType}' for c2pa-node v0.5.26 (supported: ec, rsa-pss, ed25519)`,
+    'Reissue the cert with a supported key type.',
+  );
+}
+
+/**
+ * Concern #10 — RFC4514-safe subject parser.
+ *
+ * Walks `cert.subject` (Node X509Certificate emits one `attr=value` line per
+ * RDN attribute, RFC2253-style). Splits each line on the FIRST UNESCAPED
+ * `=`. Applies RFC4514 unescape rules to the value (handles `\,`, `\=`,
+ * `\+`, `\;`, `\<`, `\>`, `\"`, `\\`).
+ *
+ * Returns the first non-empty CN, falling back to the first non-empty O,
+ * falling back to a 16-char SHA-256 fingerprint prefix. The fingerprint
+ * fallback ensures every cert produces a non-empty string (provenance
+ * event field is never empty).
+ */
+function deriveCertSubjectSummary(cert: X509Certificate): string {
+  const subject = cert.subject ?? '';
+  const lines = subject.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const attrs: Record<string, string> = {};
+  for (const line of lines) {
+    const eqIdx = findUnescapedEquals(line);
+    if (eqIdx < 0) continue;
+    const attr = line.slice(0, eqIdx).trim();
+    const value = unescapeRfc4514(line.slice(eqIdx + 1).trim());
+    if (!(attr in attrs) && value.length > 0) attrs[attr] = value;
+  }
+  if (attrs['CN']) return attrs['CN'];
+  if (attrs['O']) return attrs['O'];
+  const fp = cert.fingerprint256.replace(/:/g, '').toLowerCase();
+  return `fp:${fp.slice(0, 16)}`;
+}
+
+/** Returns the index of the FIRST `=` that is NOT immediately preceded by `\\`. */
+function findUnescapedEquals(s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '=' && (i === 0 || s[i - 1] !== '\\')) return i;
+  }
+  return -1;
+}
+
+/** RFC4514 escape unwrap — handles the eight RFC4514 special chars. */
+function unescapeRfc4514(s: string): string {
+  return s.replace(/\\([,=+;<>"\\])/g, '$1');
+}
+
+/**
+ * Sign + embed manifest into a buffer asset (JPEG / PNG only).
+ *
+ * Throws `TypedError('C2PA_SIGNING_FAILED', ...)` on:
+ *   - unsupported MIME type (caller passed video/mp4, etc.)
+ *   - c2pa-node sign() rejection (corrupted asset, network failure on TSA, etc.)
+ *
+ * Plan 14-03's engine hook catches this as a graceful-fail per D-CTX-9 —
+ * download path returns original bytes + `X-C2PA-Signing-Status: failed:<reason>`.
+ */
+export async function signEmbedBuffer(
+  buffer: Buffer,
+  mimeType: string,
+  manifestDef: ManifestDefinition,
+  signer: LoadedSigner,
+): Promise<Buffer> {
+  if (!BUFFER_API_MIMETYPES.has(mimeType)) {
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `Buffer-API signing not supported for ${mimeType} — use signEmbedFile instead`,
+      'c2pa-node v0.5.x supports buffer signing only for image/jpeg + image/png. MP4/WebP/TIFF must use the file-path API.',
+    );
+  }
+  const c2paNode = await ensureC2paNode();
+  try {
+    const result = await signer.c2pa.sign({
+      asset: { buffer, mimeType },
+      manifest: new c2paNode.ManifestBuilder(manifestDef as never),
+      thumbnail: false,
+    });
+    return result.signedAsset.buffer;
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (return original bytes) per D-CTX-9.',
+    );
+  }
+}
+
+/**
+ * Sign + embed manifest into a file asset (MP4 / WebP / TIFF / JPEG / PNG file form).
+ *
+ * Writes signed bytes to `destPath`. If `srcPath === destPath` the original
+ * file is OVERWRITTEN. Caller is responsible for choosing the right path.
+ */
+export async function signEmbedFile(
+  srcPath: string,
+  destPath: string,
+  mimeType: string,
+  manifestDef: ManifestDefinition,
+  signer: LoadedSigner,
+): Promise<void> {
+  const c2paNode = await ensureC2paNode();
+  try {
+    await signer.c2pa.sign({
+      asset: { path: srcPath, mimeType },
+      manifest: new c2paNode.ManifestBuilder(manifestDef as never),
+      thumbnail: false,
+      options: { outputPath: destPath },
+    });
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (skip + log) per D-CTX-9.',
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 15 / Plan 15-03 — ingredient-aware signers.
+// ──────────────────────────────────────────────────────────────────────────
+//
+// signer.ts is STILL the only file in src/ that imports the native binding.
+// These new entry points drive createIngredient + manifestBuilder.addIngredient
+// for each spec where assetRef.kind !== 'unavailable' BEFORE calling sign().
+// Specs with assetRef.kind === 'unavailable' are skipped here — their audit
+// trail lives in result.definition.assertions[] as a
+// vellum.unavailable_ingredient custom assertion (emitted by
+// buildManifestWithIngredients in Plan 15-02).
+
+/**
+ * Phase 15 — sign + embed manifest into a buffer asset (JPEG / PNG only),
+ * threading IngredientSpec[] through the native binding's createIngredient +
+ * manifestBuilder.addIngredient API before sign.
+ *
+ * For each spec with assetRef.kind !== 'unavailable':
+ *   1. Calls signer.c2pa.createIngredient({ asset, title }) — the native
+ *      binding computes its own labeled SHA (sha384-base64 by default) and
+ *      produces a StorableIngredient.
+ *   2. Sets storable.ingredient.relationship to the matching Relationship
+ *      enum value (ParentOf | ComponentOf).
+ *   3. Calls manifestBuilder.addIngredient(storable).
+ *
+ * Specs with assetRef.kind === 'unavailable' are SKIPPED — their audit
+ * trail lives in definition.assertions as vellum.unavailable_ingredient
+ * (emitted by buildManifestWithIngredients in Plan 15-02).
+ *
+ * Throws TypedError('C2PA_SIGNING_FAILED', ...) on signer rejection — same
+ * contract as signEmbedBuffer.
+ */
+export async function signEmbedBufferWithIngredients(
+  buffer: Buffer,
+  mimeType: string,
+  result: BuildManifestResult,
+  signer: LoadedSigner,
+): Promise<Buffer> {
+  if (!BUFFER_API_MIMETYPES.has(mimeType)) {
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `Buffer-API signing not supported for ${mimeType} — use signEmbedFileWithIngredients instead`,
+      'The native binding v0.5.x supports buffer signing only for image/jpeg + image/png. MP4/WebP/TIFF must use the file-path API.',
+    );
+  }
+  const c2paNode = await ensureC2paNode();
+  const builder = new c2paNode.ManifestBuilder(result.definition as never);
+  await addIngredientsToBuilder(c2paNode, signer, builder, result.ingredientSpecs);
+  try {
+    const signResult = await signer.c2pa.sign({
+      asset: { buffer, mimeType },
+      manifest: builder,
+      thumbnail: false,
+    });
+    return signResult.signedAsset.buffer;
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (return original bytes) per D-CTX-9.',
+    );
+  }
+}
+
+/**
+ * Phase 15 — sign + embed manifest into a file asset (MP4 / WebP / TIFF /
+ * JPEG / PNG file form), threading IngredientSpec[] through the native
+ * binding's createIngredient + manifestBuilder.addIngredient API before sign.
+ *
+ * Writes signed bytes to destPath. Same call-site contract as signEmbedFile.
+ */
+export async function signEmbedFileWithIngredients(
+  srcPath: string,
+  destPath: string,
+  mimeType: string,
+  result: BuildManifestResult,
+  signer: LoadedSigner,
+): Promise<void> {
+  const c2paNode = await ensureC2paNode();
+  const builder = new c2paNode.ManifestBuilder(result.definition as never);
+  await addIngredientsToBuilder(c2paNode, signer, builder, result.ingredientSpecs);
+  try {
+    await signer.c2pa.sign({
+      asset: { path: srcPath, mimeType },
+      manifest: builder,
+      thumbnail: false,
+      options: { outputPath: destPath },
+    });
+  } catch (err) {
+    if (err instanceof TypedError) throw err;
+    throw new TypedError(
+      'C2PA_SIGNING_FAILED',
+      `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
+      'Caller should degrade gracefully (skip + log) per D-CTX-9.',
+    );
+  }
+}
+
+/**
+ * Phase 15 — drive the native binding's createIngredient + addIngredient for
+ * each spec. Specs with assetRef.kind === 'unavailable' are skipped — those
+ * are recorded as vellum.unavailable_ingredient custom assertions
+ * inside result.definition.assertions (emitted by
+ * buildManifestWithIngredients).
+ *
+ * Each createIngredient call streams the asset bytes through c2pa-rs to
+ * compute its own labeled SHA. We do NOT supply a precomputed hash — the
+ * native binding API requires the asset bytes regardless.
+ *
+ * Plan 15-03 RUNTIME DEVIATION (Rule 1 — broken API surface):
+ *   The native binding v0.5.26 declares `export enum Relationship` in
+ *   dist/js-src/types.d.ts, but NO matching dist/js-src/types.js file ships
+ *   in the published tarball — `index.js` re-exports neither types.d.ts nor
+ *   the Relationship symbol. At runtime, `c2paNode.Relationship` is therefore
+ *   `undefined`. The relationship VALUES are pure strings — 'parentOf' /
+ *   'componentOf' — and the typed `Ingredient.relationship` field accepts
+ *   that same union (relationship?: Relationship). We assign the literal
+ *   strings directly and cast through the enum's string-union type to keep
+ *   the structural compatibility check honest.
+ *
+ *   The `_c2paNode` parameter remains in the signature so future versions
+ *   that DO ship the enum at runtime can be picked up by replacing the
+ *   literal-string assignment with `c2paNode.Relationship.ParentOf` etc.
+ */
+async function addIngredientsToBuilder(
+  _c2paNode: typeof import('c2pa-node'),
+  signer: LoadedSigner,
+  builder: import('c2pa-node').ManifestBuilder,
+  specs: IngredientSpec[],
+): Promise<void> {
+  for (const spec of specs) {
+    if (spec.assetRef.kind === 'unavailable') continue;
+    const asset: import('c2pa-node').Asset =
+      spec.assetRef.kind === 'buffer'
+        ? { buffer: spec.assetRef.buffer, mimeType: spec.assetRef.mimeType }
+        : { path: spec.assetRef.path, mimeType: spec.assetRef.mimeType };
+    // signer.c2pa is a `C2pa` (ReturnType<createSign> & { createIngredient }).
+    const storable = await signer.c2pa.createIngredient({
+      asset,
+      title: spec.title,
+      // No `hash` override — the native binding computes its labeled SHA
+      // from the asset bytes. The manifest_signed event still records OUR
+      // bytewise sha256 of the signed output (Plan 15-03 Engine.signOutput);
+      // per-ingredient labeled hashes belong to the native binding's domain.
+    });
+    // Literal string values per the Relationship enum declaration in
+    // dist/js-src/types.d.ts (no runtime export — see deviation note above).
+    const relValue = spec.relationship === 'parentOf' ? 'parentOf' : 'componentOf';
+    storable.ingredient.relationship =
+      relValue as import('c2pa-node').types.Relationship;
+    builder.addIngredient(storable);
+  }
+}
