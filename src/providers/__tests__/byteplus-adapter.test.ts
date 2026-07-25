@@ -8,6 +8,7 @@ import {
   extractByteplusOutputs,
   DEFAULT_BYTEPLUS_API_BASE,
 } from '../byteplus-adapter.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 const KEY = 'ark_secretkey_1234';
 const MODEL = 'dreamina-seedance-2-0-260128';
@@ -67,7 +68,7 @@ describe('ByteplusAdapter', () => {
         authHeader = (init?.headers as Record<string, string>).Authorization;
         return json({ id: 'task_1', status: 'queued' });
       }) as unknown as typeof fetch;
-      const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, { fetchImpl });
+      const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, { fetchImpl, lookupImpl: publicLookup });
       const res = await a.submit({ model: MODEL, content: CONTENT });
       expect(res.prompt_id).toBe('task_1');
       expect(calledPath).toBe(TASKS); // /api/v3 prefix must survive URL building
@@ -77,6 +78,7 @@ describe('ByteplusAdapter', () => {
 
     test('429 → BYTEPLUS_API_ERROR with ModelArk beta-limit hint', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST ${TASKS}`]: () => new Response('rate', { status: 429 }) }),
       });
       await expect(a.submit({ model: MODEL, content: CONTENT })).rejects.toMatchObject({
@@ -87,6 +89,7 @@ describe('ByteplusAdapter', () => {
 
     test('non-ok scrubs the key from the error', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST ${TASKS}`]: () => new Response(`bad ${KEY}`, { status: 500 }) }),
       });
       await expect(a.submit({ model: MODEL, content: CONTENT })).rejects.toThrow();
@@ -100,6 +103,7 @@ describe('ByteplusAdapter', () => {
 
     test('missing task id → error', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST ${TASKS}`]: () => json({ status: 'queued' }) }),
       });
       await expect(a.submit({ model: MODEL, content: CONTENT })).rejects.toMatchObject({
@@ -122,6 +126,7 @@ describe('ByteplusAdapter', () => {
 
     test('failed → failed with the task error surfaced; cancelled → cancelled', async () => {
       const failed = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET ${TASKS}/task_1`]: () =>
             json({ id: 'task_1', status: 'failed', error: { code: 'ModelError', message: 'boom' } }),
@@ -132,6 +137,7 @@ describe('ByteplusAdapter', () => {
       expect(f.error).toEqual({ code: 'ModelError', message: 'boom' });
 
       const cancelled = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`GET ${TASKS}/task_1`]: () => json({ id: 'task_1', status: 'cancelled' }) }),
       });
       const c = await cancelled.status('task_1');
@@ -140,6 +146,7 @@ describe('ByteplusAdapter', () => {
 
     test('succeeded → extracts the video_url nested under content', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET ${TASKS}/task_1`]: () =>
             json({
@@ -158,6 +165,7 @@ describe('ByteplusAdapter', () => {
 
     test('succeeded with no downloadable https URL → failed', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET ${TASKS}/task_1`]: () => json({ id: 'task_1', status: 'succeeded', content: {} }),
         }),
@@ -169,6 +177,7 @@ describe('ByteplusAdapter', () => {
 
     test('non-ok status endpoint → BYTEPLUS_API_ERROR (key scrubbed)', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`GET ${TASKS}/task_1`]: () => new Response(`boom ${KEY}`, { status: 500 }) }),
       });
       await expect(a.status('task_1')).rejects.toMatchObject({ code: 'BYTEPLUS_API_ERROR' });
@@ -193,6 +202,7 @@ describe('ByteplusAdapter', () => {
     test('streams an allowlisted https output (volces.com) to disk', async () => {
       const bytes = new Uint8Array([1, 2, 3, 4, 5]);
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /x/out.mp4': () =>
             new Response(bytes, { status: 200, headers: { 'content-type': 'video/mp4', 'content-length': '5' } }),
@@ -208,6 +218,7 @@ describe('ByteplusAdapter', () => {
     test('accepts a TOS delivery subdomain via suffix match (tos-x.bytepluses.com)', async () => {
       const bytes = new Uint8Array([9, 9, 9]);
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /x/o.mp4': () =>
             new Response(bytes, { status: 200, headers: { 'content-type': 'video/mp4', 'content-length': '3' } }),
@@ -221,6 +232,7 @@ describe('ByteplusAdapter', () => {
 
     test('rejects an apex look-alike host (evilbytepluses.com) — the ".host" boundary holds', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'GET *': () => new Response('x', { status: 200 }) }),
       });
       await expect(
@@ -230,6 +242,7 @@ describe('ByteplusAdapter', () => {
 
     test('rejects a non-allowlisted host', async () => {
       const a = new ByteplusAdapter(KEY, DEFAULT_BYTEPLUS_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'GET *': () => new Response('x', { status: 200 }) }),
       });
       await expect(

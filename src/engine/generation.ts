@@ -34,6 +34,7 @@ import {
   DEFAULT_INGEST_MAX_BYTES,
 } from './ingest.js';
 import { streamToPath } from '../utils/stream-to-path.js';
+import type { LookupFn } from '../utils/private-address.js';
 import { renderNamingTemplate, type NamingContext } from './naming.js';
 import { comfyNeutralProvenance } from './comfy-neutral.js';
 
@@ -197,6 +198,8 @@ export class GenerationEngine {
   private readonly maxInFlightGenerations: number | null;
   private readonly spendLimit: SpendLimit | null;
   private readonly ingestFetchImpl?: typeof fetch;
+  /** Resolver seam for the ingest private-address guard. Undefined = real DNS. */
+  private readonly ingestLookupImpl?: LookupFn;
   // Multi-provider routing: every configured provider, keyed by id.
   // `client` remains the DEFAULT provider (back-compat: single-provider callers
   // and every pre-routing test construct the engine exactly as before). The map
@@ -216,6 +219,9 @@ export class GenerationEngine {
       maxConcurrentPollers?: number;
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
+      /** Resolver seam for the ingest private-address guard. Production omits it
+       *  (real DNS); tests inject one so the guard runs without network I/O. */
+      ingestLookupImpl?: LookupFn;
       /** Multi-provider routing: ALL configured providers. Optional — when
        *  omitted the engine runs single-provider on `client` as before. */
       providers?: ReadonlyMap<string, GenerationProvider>;
@@ -247,6 +253,7 @@ export class GenerationEngine {
       ...(options.ingestAllowedHosts ?? []),
     ];
     this.ingestFetchImpl = options.ingestFetchImpl;
+    this.ingestLookupImpl = options.ingestLookupImpl;
     this.ingestMaxBytes = options.ingestMaxBytes ?? DEFAULT_INGEST_MAX_BYTES;
     this.providers = new Map(options.providers ?? []);
     if (this.client && !this.providers.has(this.client.id)) {
@@ -499,6 +506,7 @@ export class GenerationEngine {
           const dl = await ingestDownloadToPath(out.url, finalPath, {
             allowedHosts: this.ingestAllowedHosts,
             fetchImpl: this.ingestFetchImpl,
+            lookupImpl: this.ingestLookupImpl,
             maxBytes: this.ingestMaxBytes,
           });
           stored.push({

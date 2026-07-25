@@ -4,6 +4,7 @@ import { PROVIDER_CONTROL_TIMEOUT_MS, timeoutSignal } from '../utils/http-timeou
 import { flattenComfyError, validateWorkflowFormat } from './format.js';
 import { extractTextChunk } from './png-metadata.js';
 import { streamToPath, resolveDownloadIdleTimeoutMs } from '../utils/stream-to-path.js';
+import { assertPublicHostname, type LookupFn } from '../utils/private-address.js';
 import type {
   SubmitRequest,
   SubmitResponse,
@@ -222,6 +223,13 @@ export interface ComfyUIClientOptions {
    * undefined (uses global fetch).
    */
   fetchImpl?: typeof fetch;
+  /**
+   * Resolver seam for the outbound private-address guard on the signed-URL hop.
+   * Production leaves it undefined (real DNS). Tests inject one so the guard
+   * still RUNS but does no network I/O — it is never skipped, only made
+   * deterministic.
+   */
+  lookupImpl?: LookupFn;
 }
 
 /**
@@ -263,6 +271,7 @@ export class ComfyUIClient implements GenerationProvider {
    */
   private allowedLiteralHosts: string[];
   private fetchImpl: typeof fetch;
+  private lookupImpl?: LookupFn;
   private requestTimeoutMs: number;
 
   /**
@@ -320,6 +329,7 @@ export class ComfyUIClient implements GenerationProvider {
       this.allowedLiteralHosts.push(trimmed);
     }
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.lookupImpl = options.lookupImpl;
     this.requestTimeoutMs = options.requestTimeoutMs ?? PROVIDER_CONTROL_TIMEOUT_MS;
   }
 
@@ -619,6 +629,18 @@ export class ComfyUIClient implements GenerationProvider {
         'Add the signed-URL host to COMFYUI_ALLOWED_REDIRECT_HOSTS (comma-separated) if it is legitimate.',
       );
     }
+    // The allowlist above trusts a NAME. This trusts the ADDRESS that name
+    // resolves to. Without it, a 302 to an allowlisted-but-rebound host (or an
+    // operator-added host under someone else's control) still reaches
+    // 169.254.169.254 or an internal service, and the body is streamed to disk
+    // and persisted as an asset. Runs after the allowlist so a rejected host
+    // costs no DNS, and before the fetch so nothing is connected to.
+    await assertPublicHostname(
+      target.hostname,
+      'Signed-URL redirect host',
+      this.lookupImpl,
+      'COMFYUI_API_ERROR',
+    );
     // Signed URLs do NOT need auth headers (ComfyUI Cloud docs).
     // Explicitly pass no headers so the original request's X-API-Key does not leak.
     //

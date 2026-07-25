@@ -10,6 +10,7 @@ import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { Engine } from '../pipeline.js';
 import { TypedError } from '../errors.js';
 import type { StoredOutput } from '../../comfyui/types.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 /**
  * Hybrid-v1 naming applied at output-persist. Drives the real Engine +
@@ -39,6 +40,7 @@ function setup() {
   const engine = new Engine(db, hierarchy, versions, provenanceRepo, null, outputRoot, {
     ingestAllowedHosts: [CDN],
     ingestFetchImpl: mockFetch(),
+    ingestLookupImpl: publicLookup,
   });
   const ws = engine.createWorkspace('Demo Show');
   const proj = engine.createProject(ws.entity.id, 'DEMO01');

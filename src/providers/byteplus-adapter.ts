@@ -24,6 +24,7 @@
 
 import { TypedError } from '../engine/errors.js';
 import { PROVIDER_CONTROL_TIMEOUT_MS, timeoutSignal } from '../utils/http-timeout.js';
+import type { LookupFn } from '../utils/private-address.js';
 import {
   extractHttpsOutputs,
   guardedStreamDownload,
@@ -77,6 +78,12 @@ export function extractByteplusOutputs(result: unknown): ComfyOutput[] {
 
 export interface ByteplusAdapterOptions {
   fetchImpl?: typeof fetch;
+  /**
+   * Resolver seam for the outbound private-address guard. Production leaves it
+   * undefined (real DNS). Tests inject one so the guard still RUNS but does no
+   * network I/O — the check is never skipped, only made deterministic.
+   */
+  lookupImpl?: LookupFn;
   /** Deadline for control-plane calls (submit/status/result). Tests drive a short one. */
   requestTimeoutMs?: number;
   /** Extra allowlisted output hosts (exact or suffix match). */
@@ -94,6 +101,7 @@ export class ByteplusAdapter implements GenerationProvider {
   private apiKey: string;
   private base: string;
   private fetchImpl: typeof fetch;
+  private lookupImpl?: LookupFn;
   private requestTimeoutMs: number;
   private allowedOutputHosts: string[];
 
@@ -105,6 +113,7 @@ export class ByteplusAdapter implements GenerationProvider {
     this.apiKey = apiKey;
     this.base = base;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.lookupImpl = options.lookupImpl;
     this.requestTimeoutMs = options.requestTimeoutMs ?? PROVIDER_CONTROL_TIMEOUT_MS;
     this.allowedOutputHosts = resolveAllowedHosts(
       base,
@@ -248,6 +257,7 @@ export class ByteplusAdapter implements GenerationProvider {
       source,
       destPath,
       fetchImpl: this.fetchImpl,
+      lookupImpl: this.lookupImpl,
       allowedHosts: this.allowedOutputHosts,
       maxBytes,
       providerLabel: 'BytePlus',

@@ -11,6 +11,7 @@
 
 import { basename as pathBasename } from 'node:path';
 import { streamToPath, resolveDownloadIdleTimeoutMs } from '../utils/stream-to-path.js';
+import { assertPublicHostname, type LookupFn } from '../utils/private-address.js';
 import { TypedError } from '../engine/errors.js';
 import type { ComfyOutput } from '../comfyui/types.js';
 import type { DownloadToPathResult } from './provider.js';
@@ -100,23 +101,32 @@ export function isAllowedHost(host: string, allowed: readonly string[]): boolean
 
 /**
  * SSRF-guarded streaming download shared by URL providers: https-only + host
- * allowlist + redirect:manual + content-length byte cap + atomic temp-then-rename
- * (via streamToPath). `providerLabel` / `scrub` / `allowlistEnvHint` keep error
- * messages provider-appropriate and token-free.
+ * allowlist + resolved-address check + redirect:manual + content-length byte cap
+ * + atomic temp-then-rename (via streamToPath). `providerLabel` / `scrub` /
+ * `allowlistEnvHint` keep error messages provider-appropriate and token-free.
+ *
+ * The allowlist answers "do we trust this NAME?"; `assertPublicHostname` answers
+ * "and where does that name actually point?". Both are always enforced — the
+ * address check is NEVER conditional on whether a caller injected a fake fetch,
+ * because a control that switches itself off under test is not a control. Tests
+ * pass `lookupImpl` instead, which keeps the code path identical and the DNS
+ * answer deterministic.
  */
 export async function guardedStreamDownload(args: {
   filename: string;
-  /** The candidate source URL (must be https + allowlisted host). */
+  /** The candidate source URL (must be https + allowlisted host + publicly-resolving). */
   source: string;
   destPath: string;
   fetchImpl: typeof fetch;
+  /** Resolver seam. Production leaves it undefined (real DNS); tests inject one. */
+  lookupImpl?: LookupFn;
   allowedHosts: readonly string[];
   maxBytes: number;
   providerLabel: string;
   scrub: (s: string) => string;
   allowlistEnvHint: string;
 }): Promise<DownloadToPathResult> {
-  const { filename, source, destPath, fetchImpl, allowedHosts, maxBytes, providerLabel, scrub, allowlistEnvHint } = args;
+  const { filename, source, destPath, fetchImpl, lookupImpl, allowedHosts, maxBytes, providerLabel, scrub, allowlistEnvHint } = args;
 
   let url: URL;
   try {
@@ -134,6 +144,9 @@ export async function guardedStreamDownload(args: {
       `Add the host to ${allowlistEnvHint} if this is a legitimate delivery mirror.`,
     );
   }
+  // Resolve AFTER the allowlist so a rejected host never costs a DNS query, and
+  // BEFORE the fetch so an allowlisted name pointing inward is refused unconnected.
+  await assertPublicHostname(url.hostname, `${providerLabel} output host`, lookupImpl);
 
   let res: Response;
   try {

@@ -20,7 +20,7 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { TypedError } from '../engine/errors.js';
+import { TypedError, type ErrorCode } from '../engine/errors.js';
 
 /** Signature of the resolver, so tests can drive one without touching DNS. */
 export type LookupFn = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
@@ -76,18 +76,27 @@ export function isPrivateAddress(address: string): boolean {
  * and which one the connection picks is not ours to choose.
  *
  * A literal IP in the URL is checked directly without a lookup.
+ *
+ * `code` lets the caller keep its own error taxonomy — the ComfyUI client raises
+ * COMFYUI_API_ERROR for everything inside `download()`, including the sibling
+ * redirect-host check, so this guard must not be the one line that reports a
+ * different code from the same method.
+ *
+ * `lookupImpl` is a seam, not an escape hatch: it substitutes the DNS *answer*,
+ * never the decision. There is deliberately no way to turn this check off.
  */
 export async function assertPublicHostname(
   hostname: string,
   label: string,
   lookupImpl: LookupFn = defaultLookup,
+  code: ErrorCode = 'DOWNLOAD_FAILED',
 ): Promise<void> {
   const bare = hostname.replace(/^\[|\]$/g, '');
 
   if (isIP(bare) !== 0) {
     if (isPrivateAddress(bare)) {
       throw new TypedError(
-        'DOWNLOAD_FAILED',
+        code,
         `${label} points at a private address (${bare})`,
         'Outputs must be fetched from public hosts. A private or loopback address here means the URL is pointing back into your own network.',
       );
@@ -100,17 +109,17 @@ export async function assertPublicHostname(
     answers = await lookupImpl(bare);
   } catch (err) {
     throw new TypedError(
-      'DOWNLOAD_FAILED',
+      code,
       `${label} could not be resolved: ${(err as Error)?.message ?? String(err)}`,
     );
   }
   if (answers.length === 0) {
-    throw new TypedError('DOWNLOAD_FAILED', `${label} resolved to no addresses`);
+    throw new TypedError(code, `${label} resolved to no addresses`);
   }
   const offending = answers.find((a) => isPrivateAddress(a.address));
   if (offending) {
     throw new TypedError(
-      'DOWNLOAD_FAILED',
+      code,
       `${label} resolves to a private address (${offending.address})`,
       'An allowlisted host resolving into private space is how a metadata endpoint or internal service gets fetched and stored as an asset. Check the DNS for that host.',
     );

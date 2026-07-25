@@ -15,6 +15,7 @@ import { ReplicateAdapter } from '../../providers/replicate-adapter.js';
 import { ByteplusAdapter } from '../../providers/byteplus-adapter.js';
 import { FakeComfyUIClient } from '../../test-utils/fake-comfyui-client.js';
 import type { GenerationProvider } from '../../providers/provider.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 /**
  * Outbound Replicate E2E (pivot enhancement #1).
@@ -112,6 +113,7 @@ async function setup(
   const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
   const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vellum-repl-e2e-${nanoid(6)}-`));
   const adapter = new ReplicateAdapter('r8_testtoken_abcdef', undefined, {
+    lookupImpl: publicLookup,
     fetchImpl,
     additionalAllowedHosts: opts.additionalAllowedHosts,
   });
@@ -510,7 +512,7 @@ describe('multi-provider routing — one engine, ComfyUI default + Replicate', (
     const breadcrumb = new BreadcrumbResolver(hierarchy, versions);
     const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vellum-multi-${nanoid(6)}-`));
     const fake = new FakeComfyUIClient();
-    const replicate = new ReplicateAdapter('r8_testtoken_abcdef', undefined, { fetchImpl });
+    const replicate = new ReplicateAdapter('r8_testtoken_abcdef', undefined, { fetchImpl, lookupImpl: publicLookup });
     const providers = new Map<string, GenerationProvider>([
       ['comfyui-cloud', fake as unknown as GenerationProvider],
       ['replicate', replicate],
@@ -625,7 +627,10 @@ describe('multi-provider routing — review fixes (iterate guards + BytePlus E2E
     const tempRoot = await fsp.mkdtemp(pth.join(os.tmpdir(), `vellum-tri-${nanoid(6)}-`));
     const fake = new FakeComfyUIClient();
     const postBodies: unknown[] = [];
-    const byteplus = new ByteplusAdapter('ark_test_key_1234', undefined, { fetchImpl: byteplusFetch });
+    const byteplus = new ByteplusAdapter('ark_test_key_1234', undefined, {
+      fetchImpl: byteplusFetch,
+      lookupImpl: publicLookup,
+    });
     const providers = new Map<string, GenerationProvider>([
       ['comfyui-cloud', fake as unknown as GenerationProvider],
       ['byteplus', byteplus],

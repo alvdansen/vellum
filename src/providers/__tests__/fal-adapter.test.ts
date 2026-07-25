@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FalAdapter, mapFalStatus, extractFalOutputs, DEFAULT_FAL_API_BASE } from '../fal-adapter.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 const KEY = 'fal_secretkey_1234';
 const MODEL = 'fal-ai/flux/dev';
@@ -57,7 +58,7 @@ describe('FalAdapter', () => {
         authHeader = (init?.headers as Record<string, string>).Authorization;
         return json({ request_id: 'req_1', status: 'IN_QUEUE' });
       }) as unknown as typeof fetch;
-      const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, { fetchImpl });
+      const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, { fetchImpl, lookupImpl: publicLookup });
       const res = await a.submit({ model: MODEL, input: { prompt: 'a cat' } });
       expect(res.prompt_id).toBe(`${MODEL}::req_1`);
       expect(sentBody).toEqual({ prompt: 'a cat' }); // input posted directly
@@ -66,6 +67,7 @@ describe('FalAdapter', () => {
 
     test('429 → FAL_API_ERROR', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST /${MODEL}`]: () => new Response('rate', { status: 429 }) }),
       });
       await expect(a.submit({ model: MODEL, input: {} })).rejects.toMatchObject({ code: 'FAL_API_ERROR' });
@@ -73,6 +75,7 @@ describe('FalAdapter', () => {
 
     test('non-ok scrubs the key from the error', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST /${MODEL}`]: () => new Response(`bad ${KEY}`, { status: 500 }) }),
       });
       await expect(a.submit({ model: MODEL, input: {} })).rejects.toThrow();
@@ -86,6 +89,7 @@ describe('FalAdapter', () => {
 
     test('missing request_id → error', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`POST /${MODEL}`]: () => json({ status: 'IN_QUEUE' }) }),
       });
       await expect(a.submit({ model: MODEL, input: {} })).rejects.toMatchObject({ code: 'FAL_API_ERROR' });
@@ -107,6 +111,7 @@ describe('FalAdapter', () => {
 
     test('COMPLETED → fetches result, extracts https outputs', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET /${MODEL}/requests/req_1/status`]: () => json({ status: 'COMPLETED' }),
           [`GET /${MODEL}/requests/req_1`]: () => json({ images: [{ url: 'https://fal.media/files/x/out.png' }] }),
@@ -121,6 +126,7 @@ describe('FalAdapter', () => {
 
     test('COMPLETED with no downloadable https URL → failed', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET /${MODEL}/requests/req_1/status`]: () => json({ status: 'COMPLETED' }),
           [`GET /${MODEL}/requests/req_1`]: () => json({ text: 'the answer is 42' }),
@@ -138,6 +144,7 @@ describe('FalAdapter', () => {
 
     test('non-ok status endpoint → FAL_API_ERROR (key scrubbed)', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ [`GET /${MODEL}/requests/req_1/status`]: () => new Response(`boom ${KEY}`, { status: 500 }) }),
       });
       await expect(a.status(jobId)).rejects.toMatchObject({ code: 'FAL_API_ERROR' });
@@ -145,6 +152,7 @@ describe('FalAdapter', () => {
 
     test('COMPLETED but result GET non-ok → failed, key scrubbed from error', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET /${MODEL}/requests/req_1/status`]: () => json({ status: 'COMPLETED' }),
           [`GET /${MODEL}/requests/req_1`]: () => new Response(`err ${KEY}`, { status: 500 }),
@@ -158,6 +166,7 @@ describe('FalAdapter', () => {
 
     test('COMPLETED but result GET throws → FAL_API_ERROR, key scrubbed', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           [`GET /${MODEL}/requests/req_1/status`]: () => json({ status: 'COMPLETED' }),
           [`GET /${MODEL}/requests/req_1`]: () => {
@@ -187,6 +196,7 @@ describe('FalAdapter', () => {
     test('streams an allowlisted https output (fal.media) to disk', async () => {
       const bytes = new Uint8Array([1, 2, 3, 4, 5]);
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /files/x/out.png': () =>
             new Response(bytes, { status: 200, headers: { 'content-type': 'image/png', 'content-length': '5' } }),
@@ -201,6 +211,7 @@ describe('FalAdapter', () => {
 
     test('rejects a non-allowlisted host', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'GET *': () => new Response('x', { status: 200 }) }),
       });
       await expect(
@@ -218,6 +229,7 @@ describe('FalAdapter', () => {
     test('accepts a regional subdomain of an allowlisted host (suffix match)', async () => {
       const bytes = new Uint8Array([9, 9, 9]);
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /files/x/o.png': () =>
             new Response(bytes, { status: 200, headers: { 'content-type': 'image/png', 'content-length': '3' } }),
@@ -231,6 +243,7 @@ describe('FalAdapter', () => {
 
     test('rejects an apex look-alike host (evilfal.media) — the ".host" boundary holds', async () => {
       const a = new FalAdapter(KEY, DEFAULT_FAL_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'GET *': () => new Response('x', { status: 200 }) }),
       });
       await expect(

@@ -8,6 +8,7 @@ import {
   extractReplicateOutputs,
   DEFAULT_REPLICATE_API_BASE,
 } from '../replicate-adapter.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 const TOKEN = 'r8_secrettoken1234';
 
@@ -62,7 +63,7 @@ describe('ReplicateAdapter', () => {
         sentBody = JSON.parse(String(init?.body));
         return json({ id: 'pred_123', status: 'starting' });
       }) as unknown as typeof fetch;
-      const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, { fetchImpl });
+      const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, { fetchImpl, lookupImpl: publicLookup });
       const res = await a.submit({ version: 'owner/m:abc', input: { prompt: 'a cat' } });
       expect(res.prompt_id).toBe('pred_123');
       expect(sentBody).toEqual({ version: 'owner/m:abc', input: { prompt: 'a cat' } });
@@ -70,6 +71,7 @@ describe('ReplicateAdapter', () => {
 
     test('429 -> REPLICATE_API_ERROR', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'POST /v1/predictions': () => new Response('rate', { status: 429 }) }),
       });
       await expect(a.submit({ version: 'x', input: {} })).rejects.toMatchObject({
@@ -79,6 +81,7 @@ describe('ReplicateAdapter', () => {
 
     test('non-ok scrubs the API token from the error message', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'POST /v1/predictions': () => new Response(`bad ${TOKEN}`, { status: 500 }),
         }),
@@ -94,6 +97,7 @@ describe('ReplicateAdapter', () => {
 
     test('missing prediction id -> error', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'POST /v1/predictions': () => json({ status: 'starting' }) }),
       });
       await expect(a.submit({ version: 'x', input: {} })).rejects.toMatchObject({
@@ -138,6 +142,7 @@ describe('ReplicateAdapter', () => {
   describe('status — completed-with-no-asset guard', () => {
     test('nested-array output is extracted, not dropped', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /v1/predictions/pred_n': () =>
             json({ id: 'pred_n', status: 'succeeded', output: { video: ['https://replicate.delivery/a/out.mp4'] } }),
@@ -151,6 +156,7 @@ describe('ReplicateAdapter', () => {
 
     test('succeeded but no downloadable https URL → failed (not a silent empty success)', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /v1/predictions/pred_x': () =>
             json({ id: 'pred_x', status: 'succeeded', output: 'data:image/png;base64,AAAA' }),
@@ -174,6 +180,7 @@ describe('ReplicateAdapter', () => {
     test('streams an allowlisted https output to disk and returns metadata', async () => {
       const bytes = new Uint8Array([1, 2, 3, 4, 5]);
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /x/out.png': () =>
             new Response(bytes, {
@@ -194,6 +201,7 @@ describe('ReplicateAdapter', () => {
 
     test('rejects a non-allowlisted host', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({ 'GET *': () => new Response('x', { status: 200 }) }),
       });
       await expect(
@@ -210,6 +218,7 @@ describe('ReplicateAdapter', () => {
 
     test('rejects an unexpected redirect (SSRF guard)', async () => {
       const a = new ReplicateAdapter(TOKEN, DEFAULT_REPLICATE_API_BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch({
           'GET /x/out.png': () => new Response(null, { status: 302, headers: { location: 'https://evil/' } }),
         }),

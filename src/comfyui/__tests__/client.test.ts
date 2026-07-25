@@ -11,6 +11,7 @@ import {
   normalizeCloudStatus,
 } from '../client.js';
 import '../../test-utils/matchers.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 /**
  * Tests for ComfyUIClient — Plan 02-02 Task 1.
@@ -96,6 +97,7 @@ describe('ComfyUIClient.submit', () => {
     let capturedInit: RequestInit | undefined;
     let capturedUrl: URL | string | Request | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (url, init) => {
         capturedUrl = url;
         capturedInit = init;
@@ -121,6 +123,7 @@ describe('ComfyUIClient.submit', () => {
     // Per https://docs.comfy.org/development/comfyui-server/api-key-integration
     let capturedBody: unknown = null;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (_url, init) => {
         capturedBody = JSON.parse(init!.body as string);
         return jsonResponse(200, { prompt_id: 'partner-ok' });
@@ -141,6 +144,7 @@ describe('ComfyUIClient.submit', () => {
 
   test('429 surfaces COMFYUI_RATE_LIMITED with tier hint', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => jsonResponse(429, { error: 'rate limited' })),
     });
     await expect(
@@ -153,6 +157,7 @@ describe('ComfyUIClient.submit', () => {
 
   test('4xx with node_errors flattens to COMFYUI_API_ERROR message', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(400, {
           error: 'validation failed',
@@ -177,6 +182,7 @@ describe('ComfyUIClient.submit', () => {
 
   test('500 falls through to generic COMFYUI_API_ERROR with status line', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(
         async () =>
           new Response('Internal Server Error', {
@@ -197,6 +203,7 @@ describe('ComfyUIClient.submit', () => {
     // Upstream echoes the X-API-Key header verbatim into its error body. The
     // client must NOT let that string escape into the thrown TypedError.
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(400, {
           error: 'validation failed',
@@ -228,6 +235,7 @@ describe('ComfyUIClient.submit', () => {
 
   test('IS-04: status error containing the API key is scrubbed before returning', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(200, {
           status: 'failed',
@@ -244,6 +252,7 @@ describe('ComfyUIClient.submit', () => {
   test('IS-04: long error messages are truncated to MAX_ERROR_MESSAGE_CHARS', async () => {
     const huge = 'x'.repeat(5000);
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         new Response(JSON.stringify({ error: huge }), {
           status: 500,
@@ -267,6 +276,7 @@ describe('ComfyUIClient.submit', () => {
     const oversize = 'x'.repeat(MAX_ERROR_BODY_BYTES * 2);
     let readCount = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         readCount++;
         return new Response(oversize, {
@@ -288,6 +298,7 @@ describe('ComfyUIClient.submit', () => {
     let calls = 0;
     let capturedInit: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (_url, init) => {
         calls++;
         capturedInit = init;
@@ -314,6 +325,7 @@ describe('ComfyUIClient.status', () => {
     let capturedUrl: URL | string | Request | undefined;
     let capturedInit: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (url, init) => {
         capturedUrl = url;
         capturedInit = init;
@@ -335,6 +347,7 @@ describe('ComfyUIClient.status', () => {
 
   test('D-EP-17: /api/jobs nested-map outputs shape flattens to ComfyOutput[]', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(200, {
           status: 'completed',
@@ -363,6 +376,7 @@ describe('ComfyUIClient.status', () => {
 
   test('D-EP-17: top-level error_message populates StatusResponse.error when no `error` field', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(200, {
           status: 'error',
@@ -379,6 +393,7 @@ describe('ComfyUIClient.status', () => {
     let calls = 0;
     let capturedInit: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (_url, init) => {
         calls++;
         capturedInit = init;
@@ -399,6 +414,7 @@ describe('ComfyUIClient.status', () => {
 
   test('status HTTP error surfaces COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(
         async () => new Response('nope', { status: 502, statusText: 'Bad Gateway' }),
       ),
@@ -410,6 +426,7 @@ describe('ComfyUIClient.status', () => {
 
   test('D-EP-16: Cloud terminal "success" maps to "completed" via normalizeCloudStatus', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(200, {
           status: 'success',
@@ -423,6 +440,7 @@ describe('ComfyUIClient.status', () => {
 
   test('D-EP-16: Cloud terminal "error" maps to "failed" and preserves error blob', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () =>
         jsonResponse(200, {
           status: 'error',
@@ -468,6 +486,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     let stageCall = 0;
     let secondInitSeen: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (_url, init) => {
         stageCall++;
         if (stageCall === 1) {
@@ -497,6 +516,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
   test('302 to disallowed host rejects with COMFYUI_API_ERROR', async () => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -514,6 +534,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
 
   test('non-302 response on /api/view rejects with COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => new Response('ok', { status: 200 })),
     });
     await expect(client.download('x.png')).rejects.toMatchObject({
@@ -528,6 +549,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     let n = 0;
     let secondInit: RequestInit | undefined;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async (_url, init) => {
         n++;
         if (n === 1) {
@@ -558,6 +580,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
   test('additionalAllowedHosts accepts extra comma-separated hosts', async () => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       additionalAllowedHosts: ['extra.com'],
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
@@ -585,6 +608,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     for (const h of hosts) {
       let n = 0;
       const client = new ComfyUIClient(KEY, BASE, {
+        lookupImpl: publicLookup,
         fetchImpl: mockFetch(async () => {
           if (++n === 1)
             return new Response(null, {
@@ -609,6 +633,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     // nothing, and the redirect must be rejected.
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       additionalAllowedHosts: ['foo|.*'],
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
@@ -631,6 +656,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     {
       let n = 0;
       const client = new ComfyUIClient(KEY, BASE, {
+        lookupImpl: publicLookup,
         additionalAllowedHosts: ['tenant.example.com'],
         fetchImpl: mockFetch(async () => {
           if (++n === 1)
@@ -651,6 +677,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     {
       let n = 0;
       const client = new ComfyUIClient(KEY, BASE, {
+        lookupImpl: publicLookup,
         additionalAllowedHosts: ['tenant.example.com'],
         fetchImpl: mockFetch(async () => {
           if (++n === 1)
@@ -671,6 +698,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     {
       let n = 0;
       const client = new ComfyUIClient(KEY, BASE, {
+        lookupImpl: publicLookup,
         additionalAllowedHosts: ['tenant.example.com'],
         fetchImpl: mockFetch(async () => {
           if (++n === 1)
@@ -690,6 +718,7 @@ describe('ComfyUIClient.download SSRF gate', () => {
     {
       let n = 0;
       const client = new ComfyUIClient(KEY, BASE, {
+        lookupImpl: publicLookup,
         additionalAllowedHosts: ['tenant.example.com'],
         fetchImpl: mockFetch(async () => {
           if (++n === 1)
@@ -719,6 +748,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -753,6 +783,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -793,6 +824,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const body = new Uint8Array(1024).fill(0xaa);
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -830,6 +862,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const bytes = new Uint8Array([1, 2, 3]);
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -868,6 +901,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -914,6 +948,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -937,6 +972,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
   test('IT-02: submit network error (fetch throws TypeError) → COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         throw new TypeError('fetch failed: ECONNREFUSED');
       }),
@@ -952,6 +988,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
   test('IT-02b: status network error (fetch throws TypeError) → COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         throw new TypeError('fetch failed: timeout');
       }),
@@ -965,6 +1002,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
   test('IT-03: submit 200 without prompt_id → COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => jsonResponse(200, { not_a_prompt_id: 'xyz' })),
     });
     await expect(
@@ -978,6 +1016,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
   test('IT-04: /api/view redirect with missing Location → COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => new Response(null, { status: 302 })),
     });
     await expect(client.download('x.png')).rejects.toMatchObject({
@@ -989,6 +1028,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
 
   test('IT-04b: /api/view redirect with invalid Location URL → COMFYUI_API_ERROR', async () => {
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(
         async () => new Response(null, { status: 302, headers: { location: 'not a url' } }),
       ),
@@ -1003,6 +1043,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
   test('IT-05: signed-URL 403 → COMFYUI_API_ERROR with signed-URL prefix', async () => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -1022,6 +1063,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
   test('IT-05b: signed-URL 404 → COMFYUI_API_ERROR with signed-URL prefix', async () => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -1048,6 +1090,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -1077,6 +1120,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
   ])('IT-07: SSRF hostile redirect target %s is rejected', async (target, expectedHost) => {
     let n = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, { status: 302, headers: { location: target } });
@@ -1096,6 +1140,7 @@ describe('ComfyUIClient.downloadToPath (temp-then-rename)', () => {
     const tenantBase = 'https://tenant.example.com';
     let n = 0;
     const client = new ComfyUIClient(KEY, tenantBase, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         if (++n === 1)
           return new Response(null, {
@@ -1204,6 +1249,7 @@ describe('ComfyUIClient.fetchResolvedPrompt (D-PROV-05)', () => {
   test('NO network I/O — fetchImpl is never called', async () => {
     let fetchCalls = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetch(async () => {
         fetchCalls++;
         return jsonResponse(200, {});
@@ -1220,6 +1266,7 @@ describe('ComfyUIClient.ensureEndpointHealthy (D-EP-07, D-EP-08, D-EP-10)', () =
     let healthGets = 0;
     let promptPosts = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetchRaw(async (url, init) => {
         const u = new URL(url.toString());
         if (u.pathname === HEALTHCHECK_PATH && (init?.method ?? 'GET') === 'GET') {
@@ -1247,6 +1294,7 @@ describe('ComfyUIClient.ensureEndpointHealthy (D-EP-07, D-EP-08, D-EP-10)', () =
     let healthGets = 0;
     let promptPosts = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetchRaw(async (url, init) => {
         const u = new URL(url.toString());
         if (u.pathname === HEALTHCHECK_PATH && (init?.method ?? 'GET') === 'GET') {
@@ -1286,6 +1334,7 @@ describe('ComfyUIClient.ensureEndpointHealthy (D-EP-07, D-EP-08, D-EP-10)', () =
     });
 
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetchRaw(async (url) => {
         const u = new URL(url.toString());
         if (u.pathname === HEALTHCHECK_PATH) {
@@ -1323,6 +1372,7 @@ describe('ComfyUIClient.ensureEndpointHealthy (D-EP-07, D-EP-08, D-EP-10)', () =
     let healthGets = 0;
     let promptPosts = 0;
     const client = new ComfyUIClient(KEY, BASE, {
+      lookupImpl: publicLookup,
       fetchImpl: mockFetchRaw(async (url) => {
         const u = new URL(url.toString());
         if (u.pathname === HEALTHCHECK_PATH) {

@@ -7,6 +7,7 @@ import {
   ingestDownloadToPath,
   DEFAULT_INGEST_ALLOWED_HOSTS,
 } from '../ingest.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 const HOSTS = DEFAULT_INGEST_ALLOWED_HOSTS;
 
@@ -58,6 +59,7 @@ describe('ingestDownloadToPath', () => {
     const dest = join(dir, 'o.png');
     const r = await ingestDownloadToPath('https://replicate.delivery/x/o.png', dest, {
       allowedHosts: HOSTS,
+      lookupImpl: publicLookup,
       fetchImpl,
     });
     expect(r.contentType).toBe('image/png');

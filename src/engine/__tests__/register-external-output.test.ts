@@ -9,6 +9,7 @@ import { ProvenanceRepo } from '../../store/provenance-repo.js';
 import { GenerationEngine } from '../generation.js';
 import { ProvenanceWriter } from '../provenance.js';
 import { BreadcrumbResolver } from '../breadcrumb.js';
+import { publicLookup } from '../../test-utils/fake-dns.js';
 
 /**
  * Pivot Phase D — GenerationEngine.registerExternalOutput end-to-end.
@@ -46,7 +47,7 @@ describe('registerExternalOutput', () => {
       null, // no outbound client needed for registration
       breadcrumb,
       outputsDir,
-      { ingestFetchImpl: mockFetch(new Uint8Array([1, 2, 3, 4])) },
+      { ingestFetchImpl: mockFetch(new Uint8Array([1, 2, 3, 4])), ingestLookupImpl: publicLookup },
     );
     const ws = hierarchy.createWorkspace('wsD');
     const proj = hierarchy.createProject(ws.id, 'pD');
@@ -167,7 +168,7 @@ describe('registerExternalOutput', () => {
       null,
       new BreadcrumbResolver(hierarchy, vRepo),
       dir,
-      { ingestFetchImpl: fetchImpl },
+      { ingestFetchImpl: fetchImpl, ingestLookupImpl: publicLookup },
     );
     const ws = hierarchy.createWorkspace('wp');
     const proj = hierarchy.createProject(ws.id, 'pp');
@@ -273,7 +274,7 @@ describe('registerExternalOutput', () => {
       null,
       new BreadcrumbResolver(hierarchy, vRepo),
       dir,
-      { ingestFetchImpl: mockFetch(new Uint8Array([1, 2, 3, 4])), ingestMaxBytes: 8 },
+      { ingestFetchImpl: mockFetch(new Uint8Array([1, 2, 3, 4])), ingestLookupImpl: publicLookup, ingestMaxBytes: 8 },
     );
     const ws = hierarchy.createWorkspace('wc');
     const proj = hierarchy.createProject(ws.id, 'pc');
@@ -331,7 +332,7 @@ describe('registerExternalOutput', () => {
       null,
       new BreadcrumbResolver(hierarchy, vRepo),
       dir,
-      { ingestFetchImpl: fetch404 },
+      { ingestFetchImpl: fetch404, ingestLookupImpl: publicLookup },
     );
     const ws = hierarchy.createWorkspace('wm');
     const proj = hierarchy.createProject(ws.id, 'pm');

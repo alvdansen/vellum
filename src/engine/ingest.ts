@@ -10,6 +10,7 @@
 
 import { TypedError } from './errors.js';
 import { streamToPath, resolveDownloadIdleTimeoutMs } from '../utils/stream-to-path.js';
+import { assertPublicHostname, type LookupFn } from '../utils/private-address.js';
 
 export const DEFAULT_INGEST_MAX_BYTES = 500 * 1024 * 1024;
 
@@ -65,7 +66,14 @@ export function assertIngestUrlAllowed(rawUrl: string, allowedHosts: readonly st
   return url;
 }
 
-/** Fetch an allowlisted https output URL to destPath with a byte cap + atomic write. */
+/**
+ * Fetch an allowlisted https output URL to destPath with a byte cap + atomic write.
+ *
+ * The allowlist is a NAME check; `assertPublicHostname` is the matching ADDRESS
+ * check. Both run on every call — the address check is never conditional on a
+ * caller having injected a fake fetch. Tests inject `lookupImpl` instead, so the
+ * guard executes with a deterministic answer rather than being bypassed.
+ */
 export async function ingestDownloadToPath(
   rawUrl: string,
   destPath: string,
@@ -73,11 +81,16 @@ export async function ingestDownloadToPath(
     allowedHosts: readonly string[];
     maxBytes?: number;
     fetchImpl?: typeof fetch;
+    /** Resolver seam. Production leaves it undefined (real DNS); tests inject one. */
+    lookupImpl?: LookupFn;
   },
 ): Promise<IngestResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const maxBytes = opts.maxBytes ?? DEFAULT_INGEST_MAX_BYTES;
   const url = assertIngestUrlAllowed(rawUrl, opts.allowedHosts);
+  // After the allowlist (no DNS spent on hosts we already refuse), before the
+  // fetch (an allowlisted name pointing inward is refused unconnected).
+  await assertPublicHostname(url.hostname, `Ingest host ${url.hostname}`, opts.lookupImpl);
 
   let res: Response;
   try {

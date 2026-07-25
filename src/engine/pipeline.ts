@@ -35,6 +35,7 @@ import { TypedError } from './errors.js';
 import { createEngineEmitter, type EngineEmitter } from './events.js';
 import { mirrorPersistedOutput } from './output-downloader.js';
 import { sanitizeRelativeSegment } from '../utils/outputs.js';
+import type { LookupFn } from '../utils/private-address.js';
 import type { SpendLimit } from '../utils/spend-limits.js';
 import {
   buildManifestDefinition,
@@ -474,6 +475,8 @@ export class Engine {
       // Pivot Phase D — inbound ingest trust boundary (registerExternalOutput).
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
+      /** Resolver seam for the ingest private-address guard (tests only). */
+      ingestLookupImpl?: LookupFn;
       // Multi-provider routing: ALL configured providers; `client`
       // stays the default. Optional — single-provider construction unchanged.
       providers?: ReadonlyMap<string, GenerationProvider>;
@@ -514,6 +517,7 @@ export class Engine {
         maxConcurrentPollers: options.maxConcurrentPollers,
         ingestAllowedHosts: options.ingestAllowedHosts,
         ingestFetchImpl: options.ingestFetchImpl,
+        ingestLookupImpl: options.ingestLookupImpl,
         providers: options.providers,
         ingestMaxBytes: options.ingestMaxBytes,
         maxInFlightGenerations: options.maxInFlightGenerations,

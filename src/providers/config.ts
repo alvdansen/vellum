@@ -15,6 +15,7 @@ import { FalAdapter, DEFAULT_FAL_API_BASE } from './fal-adapter.js';
 import { ByteplusAdapter, DEFAULT_BYTEPLUS_API_BASE } from './byteplus-adapter.js';
 import { GoogleAIStudioAdapter, DEFAULT_GOOGLE_API_BASE } from './google-ai-studio-adapter.js';
 import { TypedError } from '../engine/errors.js';
+import type { LookupFn } from '../utils/private-address.js';
 
 export interface ProviderConfig {
   id: string;
@@ -126,33 +127,45 @@ export function loadProviderConfig(
   return { providers, defaultProviderId };
 }
 
-/** Construct a live provider from its config. `fetchImpl` override supports tests. */
+/**
+ * Construct a live provider from its config. `fetchImpl` and `lookupImpl` are
+ * test seams; production passes neither, so adapters use global fetch and real
+ * DNS. `lookupImpl` exists so the outbound private-address guard can be driven
+ * deterministically in tests WITHOUT ever being switched off.
+ */
 export function createProvider(
   cfg: ProviderConfig,
-  options: { fetchImpl?: typeof fetch } = {},
+  options: { fetchImpl?: typeof fetch; lookupImpl?: LookupFn } = {},
 ): GenerationProvider {
   switch (cfg.id) {
     case 'comfyui-cloud':
       return new ComfyUIClient(cfg.apiKey, cfg.apiBase, {
         additionalAllowedHosts: cfg.additionalAllowedHosts,
         fetchImpl: options.fetchImpl,
+        lookupImpl: options.lookupImpl,
       });
     case 'replicate':
       return new ReplicateAdapter(cfg.apiKey, cfg.apiBase, {
         additionalAllowedHosts: cfg.additionalAllowedHosts,
         fetchImpl: options.fetchImpl,
+        lookupImpl: options.lookupImpl,
       });
     case 'fal':
       return new FalAdapter(cfg.apiKey, cfg.apiBase, {
         additionalAllowedHosts: cfg.additionalAllowedHosts,
         fetchImpl: options.fetchImpl,
+        lookupImpl: options.lookupImpl,
       });
     case 'byteplus':
       return new ByteplusAdapter(cfg.apiKey, cfg.apiBase, {
         additionalAllowedHosts: cfg.additionalAllowedHosts,
         fetchImpl: options.fetchImpl,
+        lookupImpl: options.lookupImpl,
       });
     case 'google-ai-studio':
+      // No lookupImpl: this adapter never fetches a model-supplied URL. Outputs
+      // arrive as inline base64 and downloadToPath reads the staged file, so
+      // there is no outbound host for the private-address guard to check.
       return new GoogleAIStudioAdapter(cfg.apiKey, cfg.apiBase, {
         fetchImpl: options.fetchImpl,
       });
