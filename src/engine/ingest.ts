@@ -69,7 +69,11 @@ export function assertIngestUrlAllowed(rawUrl: string, allowedHosts: readonly st
 export async function ingestDownloadToPath(
   rawUrl: string,
   destPath: string,
-  opts: { allowedHosts: readonly string[]; maxBytes?: number; fetchImpl?: typeof fetch },
+  opts: {
+    allowedHosts: readonly string[];
+    maxBytes?: number;
+    fetchImpl?: typeof fetch;
+  },
 ): Promise<IngestResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const maxBytes = opts.maxBytes ?? DEFAULT_INGEST_MAX_BYTES;
