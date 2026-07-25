@@ -91,6 +91,7 @@ import { registerResources } from './tools/resources.js';
 import { createDashboardRouter, typedErrorHandler, createWebhookRouter } from './http/index.js';
 import { createSseHandler } from './http/sse.js';
 import { createStaticHandler } from './http/static.js';
+import { createLocalGuard } from './http/local-guard.js';
 
 /**
  * Read version from package.json — single source of truth, no hardcoded duplicate.
@@ -409,6 +410,26 @@ async function main(): Promise<void> {
     // RT-07 / API-07: wrong-verb requests to /mcp get a JSON-RPC-shaped 405
     // instead of Hono's text/plain 404 default. Agents can parse the envelope
     // even on misuse.
+    // DNS-rebinding guard, mounted BEFORE every other handler.
+    //
+    // Binding 127.0.0.1 does not make this surface private: any page the
+    // operator visits can call it from their browser, and DNS rebinding lets
+    // that page READ the responses — the whole database through the REST API,
+    // plus the ability to trigger paid generations. Only /mcp checked Origin;
+    // the dashboard router checked nothing, SSE's check was skipped entirely
+    // when HTTP_ALLOWED_ORIGINS was unset (the default), and nothing anywhere
+    // looked at Host — which is the header that actually catches rebinding,
+    // and the only one present for non-browser clients.
+    app.use(
+      '*',
+      createLocalGuard({
+        allowedOrigins: httpAllowedOrigins,
+        allowedHosts: (process.env.HTTP_ALLOWED_HOSTS ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      }),
+    );
     app.on(['GET', 'DELETE', 'PUT', 'PATCH'], '/mcp', (c) =>
       c.json(
         {
