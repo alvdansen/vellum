@@ -52,10 +52,9 @@ import 'dotenv/config';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import { toReqRes, toFetchResponse } from 'fetch-to-node';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseCliFlags, printHelp } from './utils/cli.js';
@@ -423,25 +422,38 @@ async function main(): Promise<void> {
           403,
         );
       }
-      const { req, res } = toReqRes(c.req.raw);
+      // Vellum runs the SDK's WEB-STANDARD transport directly on Hono's
+      // Request/Response, which is the integration the SDK documents for Hono.
+      //
+      // It previously bridged through fetch-to-node's Node-shaped req/res shim.
+      // That shim turns 'finish' into a ReadableStream controller.close(), and
+      // on this path 'finish' fires twice — the second close() throws
+      // ERR_INVALID_STATE from a TIMER callback, outside any try/catch, so it
+      // reached the process as an uncaught exception and killed the server on
+      // roughly the third POST. That took the stdio transport, the dashboard,
+      // the REST API and SSE down with it. Verified against a really-listening
+      // server; removing the shim removes the failure mode rather than papering
+      // over it, since no amount of close-ordering in this handler could stop a
+      // throw from a timer inside the bridge.
+      //
+      // Stateless mode requires a FRESH transport per request (the SDK throws if
+      // one is reused). Neither the transport nor the per-request server is
+      // closed on the success path: the returned Response may still be
+      // streaming, and closing would truncate it. Both are unreferenced once the
+      // response is consumed.
       const requestServer = buildServer(engine, version);
-      const transport = new StreamableHTTPServerTransport({
+      const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // stateless mode per STACK.md / mcp-hono-stateless
-      });
-      // RT-06: per-request McpServer + transport are disposable; close both on
-      // client disconnect AND in the try/finally wrapper below so a thrown
-      // handleRequest (disconnect, bad framing) doesn't leak them to V8's GC.
-      res.on('close', () => {
-        void transport.close().catch(() => {});
-        void requestServer.close().catch(() => {});
       });
       try {
         await requestServer.connect(transport);
-        await transport.handleRequest(req, res);
-        return toFetchResponse(res);
-      } finally {
+        return await transport.handleRequest(c.req.raw);
+      } catch (err) {
+        // Failure path only — nothing is streaming, so releasing is safe and
+        // stops a thrown handleRequest leaking the pair to V8's GC.
         await transport.close().catch(() => {});
         await requestServer.close().catch(() => {});
+        throw err;
       }
     });
 
