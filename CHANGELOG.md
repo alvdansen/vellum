@@ -1,11 +1,31 @@
 # Changelog
 
-All notable changes to `vfx-familiar` are documented here.
+All notable changes to `vellum` are documented here.
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project does not yet follow strict SemVer — breaking changes are called out explicitly.
 
-## [Unreleased]
+## [2.0.0]
+
+Provider-agnostic release.
+
+- **Five generation backends behind one interface** — ComfyUI Cloud, Replicate,
+  FAL, BytePlus and Google AI Studio. A version records which provider produced
+  it, and reproduce re-runs against that same backend.
+- **Approval gate.** With `VELLUM_REQUIRE_APPROVAL` set, direct submit /
+  reproduce / iterate are refused; every generation goes through
+  propose → human review → approve, and a proposal executes at most once.
+- **Append-only provenance** with neutral cross-provider params, model
+  fingerprints, recorded cost actuals, and per-shot pipeline logs.
+- **C2PA signing** of outputs, with redaction support.
+- **Preact dashboard** over a REST + SSE surface sharing the server's port.
+- **Relicensed MIT → AGPL-3.0-only**, with a commercial option
+  (see `COMMERCIAL-LICENSE.md`).
+
+## [1.0.0]
+
+Initial ComfyUI-only release: hierarchy, generation lifecycle, provenance,
+asset tagging and query.
 
 ### Phase 2 — ComfyUI Generation
 

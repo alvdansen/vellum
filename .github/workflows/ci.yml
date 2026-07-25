@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # Exercise the whole range package.json promises (>=20 <26). CI tested only
+    # Node 20, so nothing verified the upper bound the engines field advertises
+    # — and better-sqlite3 is a native module that has to be built on each.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22', '24']
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install dependencies

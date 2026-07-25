@@ -14,8 +14,8 @@
  *
  * Usage:
  *   npx tsx scripts/gen-dev-c2pa-cert.mts
- *   export VFX_FAMILIAR_C2PA_CERT_PEM_PATH=$(pwd)/.c2pa-dev/cert.pem
- *   export VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH=$(pwd)/.c2pa-dev/key.pem
+ *   export VELLUM_C2PA_CERT_PEM_PATH=$(pwd)/.c2pa-dev/cert.pem
+ *   export VELLUM_C2PA_PRIVATE_KEY_PEM_PATH=$(pwd)/.c2pa-dev/key.pem
  *   npx tsx src/server.ts
  *
  * Requires: openssl in PATH (macOS ships with it; Linux/CI typically have
@@ -23,7 +23,7 @@
  * clear error message and a suggestion to either install openssl or
  * place a manually-generated cert at .c2pa-dev/cert.pem.
  *
- * The cert subject is short and ASCII-only ("/CN=vfx-familiar dev/O=local")
+ * The cert subject is short and ASCII-only ("/CN=vellum dev/O=local")
  * so Plan 14-02 Task 3's subject parser (using Node X509Certificate
  * built-ins per Concern #10) handles it cleanly without escape-char
  * surprises.
@@ -56,7 +56,7 @@ const certPath = resolve(OUT_DIR, 'cert.pem');
 const opensslAvail = spawnSync('which', ['openssl'], { stdio: 'ignore' }).status === 0;
 if (!opensslAvail) {
   console.error(
-    'vfx-familiar: openssl not found in PATH. Install openssl (e.g., `brew install openssl` or `apt install openssl`) OR generate a cert manually and place at .c2pa-dev/cert.pem.',
+    'vellum: openssl not found in PATH. Install openssl (e.g., `brew install openssl` or `apt install openssl`) OR generate a cert manually and place at .c2pa-dev/cert.pem.',
   );
   process.exit(2);
 }
@@ -73,21 +73,21 @@ const result = spawnSync(
     '-days',
     '365',
     '-subj',
-    '/CN=vfx-familiar dev/O=local',
+    '/CN=vellum dev/O=local',
     '-sha256',
   ],
   { stdio: 'inherit' },
 );
 if (result.status !== 0) {
-  console.error('vfx-familiar: openssl req failed; see output above.');
+  console.error('vellum: openssl req failed; see output above.');
   process.exit(result.status ?? 1);
 }
 
 console.log(`Generated ${certPath} (mode 0644) and ${keyPath} (mode 0600)`);
 console.log('');
 console.log('To enable C2PA signing, export these env vars before starting the server:');
-console.log(`  export VFX_FAMILIAR_C2PA_CERT_PEM_PATH=${certPath}`);
-console.log(`  export VFX_FAMILIAR_C2PA_PRIVATE_KEY_PEM_PATH=${keyPath}`);
+console.log(`  export VELLUM_C2PA_CERT_PEM_PATH=${certPath}`);
+console.log(`  export VELLUM_C2PA_PRIVATE_KEY_PEM_PATH=${keyPath}`);
 console.log('');
 console.log('NOTE: This is a SELF-SIGNED cert for local development only. C2PA verifiers');
 console.log('will correctly flag it as untrusted. Use a CA-issued cert in production.');

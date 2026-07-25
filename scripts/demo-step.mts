@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * VFX Familiar — stage-by-stage demo runner.
+ * Vellum — stage-by-stage demo runner.
  *
  * Each stage is invoked as a separate process. State (workspace ids, version
  * ids) persists in .demo-state.json so the orchestrator can drive one stage
@@ -68,7 +68,7 @@ main(stage).catch((err) => {
 
 async function main(s: number): Promise<void> {
   const transport = new StreamableHTTPClientTransport(MCP_ENDPOINT);
-  const client = new Client({ name: 'vfx-familiar-demo-step', version: '1.0.0' });
+  const client = new Client({ name: 'vellum-demo-step', version: '1.0.0' });
   await client.connect(transport);
 
   const state = loadState();
@@ -297,7 +297,7 @@ async function pollUntilTerminal(client: Client, versionId: string): Promise<str
 function nanoBananaProWorkflow(prompt: string, seed: number): Record<string, unknown> {
   return {
     '1': { class_type: 'GeminiImage2Node', inputs: { prompt, model: 'gemini-3-pro-image-preview', seed, aspect_ratio: '16:9', resolution: '1K', response_modalities: 'IMAGE' } },
-    '2': { class_type: 'SaveImage', inputs: { filename_prefix: 'vfx_familiar_demo', images: ['1', 0] } },
+    '2': { class_type: 'SaveImage', inputs: { filename_prefix: 'vellum_demo', images: ['1', 0] } },
   };
 }
 
@@ -309,7 +309,7 @@ function basicSdWorkflow(prompt: string, seed: number, ckpt = 'v1-5-pruned-emaon
     '6': { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['4', 1] } },
     '7': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['4', 1] } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
-    '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'vfx_familiar_demo', images: ['8', 0] } },
+    '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'vellum_demo', images: ['8', 0] } },
   };
 }
 

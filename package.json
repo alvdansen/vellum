@@ -25,7 +25,7 @@
     "test:dashboard": "npm run test --workspace=packages/dashboard"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <26"
   },
   "keywords": [
     "mcp",
