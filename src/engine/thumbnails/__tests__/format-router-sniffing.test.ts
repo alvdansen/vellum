@@ -17,6 +17,14 @@
 //
 // So this test exists to make the claim un-arguable and to keep it that way. The
 // real defence is keeping sharp current (see SECURITY.md), not this table.
+//
+// Honest scope note — these are DOCUMENTATION tests, not regression tests. The
+// commit that added them changed format-router.ts by comment only, so they pass
+// against the code before it as well as after. What they guard is the reasoning:
+// the next person to argue "the extension table already restricts the decoders"
+// has to delete a passing test to do it. Only the libvips-floor assertion below
+// can fail on a real change, and it is the one that matters if a lockfile ever
+// walks sharp backwards.
 
 import { describe, test, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';

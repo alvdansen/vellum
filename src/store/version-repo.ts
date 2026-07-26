@@ -89,13 +89,23 @@ export class VersionRepo {
       try {
         return this.doInsert(shotId, notes, lineage, provider, requestFingerprint);
       } catch (err) {
-        // Both failure modes of the same race: losing the UNIQUE(shot_id,
-        // version_number) allocation, or losing the snapshot the allocation was
-        // read under. Neither means the caller did anything wrong, so both retry
-        // once and then report a code whose hint says to retry.
-        const retryable = isUniqueViolation(err) || isBusyConflict(err);
-        if (retryable && attempt === 0) continue;
-        if (retryable) {
+        // Both are failure modes of the same race, and neither means the caller
+        // did anything wrong — but they are retried differently.
+        //
+        // A UNIQUE violation is instantaneous: the other writer already
+        // committed, so a second attempt reads the new MAX and succeeds. Retry
+        // in-process.
+        //
+        // A BUSY conflict is NOT retried here. better-sqlite3 is synchronous, so
+        // the attempt that just failed spent the whole busy_timeout (5s) with
+        // the event loop blocked — every MCP call, SSE push and dashboard
+        // request in this process stalled behind it. Retrying would spend
+        // another 5s on a condition that has just proved it is not clearing.
+        // CONCURRENT_SUBMIT_CONFLICT already tells the agent to retry, and an
+        // agent retrying a second later is strictly better than a server frozen
+        // for ten seconds.
+        if (isUniqueViolation(err) && attempt === 0) continue;
+        if (isUniqueViolation(err) || isBusyConflict(err)) {
           throw new TypedError(
             'CONCURRENT_SUBMIT_CONFLICT',
             `Concurrent submit for shot '${shotId}' — retry once`,

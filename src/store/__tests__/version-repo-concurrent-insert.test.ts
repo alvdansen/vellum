@@ -234,3 +234,31 @@ describe('BEGIN IMMEDIATE, isolated from the retry that would mask it', () => {
     expect(bodyRuns).toBe(1);
   });
 });
+
+describe('a lock conflict does not freeze the server twice over', () => {
+  test('BUSY is reported immediately rather than retried', () => {
+    // better-sqlite3 is synchronous: an attempt that exhausts busy_timeout
+    // blocks the event loop for its whole duration, stalling every other MCP
+    // call, SSE push and dashboard request in the process. Retrying doubles
+    // that on a condition that just proved it is not clearing.
+    // CONCURRENT_SUBMIT_CONFLICT already tells the agent to retry.
+    const { a, bRaw, shotId } = twoHandles();
+    a.run(sql`PRAGMA busy_timeout = 120`);
+
+    bRaw.pragma('busy_timeout = 0');
+    bRaw.exec('BEGIN IMMEDIATE'); // hold the write lock for the whole call
+    try {
+      const repo = new VersionRepo(a);
+      const started = Date.now();
+      expect(() => repo.insertVersion(shotId)).toThrowError(
+        expect.objectContaining({ code: 'CONCURRENT_SUBMIT_CONFLICT' }),
+      );
+      const elapsed = Date.now() - started;
+      // One attempt's worth of waiting, not two. Generous bound so this cannot
+      // flake on a loaded machine, but far below 2x120ms plus overhead.
+      expect(elapsed).toBeLessThan(200);
+    } finally {
+      bRaw.exec('ROLLBACK');
+    }
+  });
+});
