@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+// Must run before any module that reads process.env at import time.
+import { loadEnv } from './load-env.js';
+loadEnv();
 /**
  * vellum entry point.
  *

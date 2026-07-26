@@ -36,6 +36,48 @@ function ipv4Octets(address: string): [number, number, number, number] | null {
 }
 
 /**
+ * Expand an IPv6 address into its eight 16-bit groups.
+ *
+ * Needed because the interesting cases are all about EMBEDDED IPv4, and a
+ * resolver hands back whichever spelling it likes. `::ffff:127.0.0.1` and
+ * `::ffff:7f00:1` are the same address; only the second is what a lookup
+ * actually returns, and a string match on the first form sees straight past it.
+ *
+ * Handles `::` compression, a trailing dotted quad, brackets, and a zone id.
+ */
+function ipv6Groups(address: string): number[] | null {
+  let ip = address.toLowerCase().replace(/^\[|\]$/g, '');
+  const zone = ip.indexOf('%');
+  if (zone !== -1) ip = ip.slice(0, zone); // fe80::1%eth0
+  if (isIP(ip) !== 6) return null;
+
+  // A trailing dotted quad occupies the last two groups.
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+  if (dotted) {
+    const o = ipv4Octets(dotted[1]!);
+    if (!o) return null;
+    const hi = ((o[0] << 8) | o[1]).toString(16);
+    const lo = ((o[2] << 8) | o[3]).toString(16);
+    ip = `${ip.slice(0, dotted.index)}${hi}:${lo}`;
+  }
+
+  const [head, tail] = ip.split('::');
+  const h = head ? head.split(':').filter(Boolean) : [];
+  const t = tail === undefined ? null : tail ? tail.split(':').filter(Boolean) : [];
+  const groups =
+    t === null ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
+  if (groups.length !== 8) return null;
+
+  const out = groups.map((g) => Number.parseInt(g, 16));
+  return out.some((n) => !Number.isInteger(n) || n < 0 || n > 0xffff) ? null : out;
+}
+
+/** Render two 16-bit groups as the dotted IPv4 they encode. */
+function embeddedIPv4(hi: number, lo: number): string {
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+}
+
+/**
  * True when an address belongs to this machine or a private/reserved range —
  * i.e. somewhere a public delivery host has no business pointing.
  */
@@ -50,21 +92,38 @@ export function isPrivateAddress(address: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
     if (a === 192 && b === 168) return true; // RFC1918
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT (RFC6598)
-    if (a === 192 && b === 0) return true; // 192.0.0.0/24 protocol assignments
+    // 192.0.0.0/24 IETF protocol assignments. Deliberately NOT the whole /16 —
+    // 192.0.1.0/24 upward is ordinary allocated space, and over-blocking a
+    // routable range is its own bug.
+    if (a === 192 && b === 0 && v4[2] === 0) return true;
     if (a >= 224) return true; // multicast + reserved + broadcast
     return false;
   }
 
-  if (isIP(address) !== 6) return false;
-  const ip = address.toLowerCase().replace(/^\[|\]$/g, '');
-  // An IPv4-mapped/compatible address is only as safe as the IPv4 inside it.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
-  if (mapped) return isPrivateAddress(mapped[1]!);
-  if (ip === '::1' || ip === '::') return true; // loopback / unspecified
-  const head = ip.split(':')[0] ?? '';
-  if (/^f[cd]/.test(head)) return true; // fc00::/7 unique-local
-  if (/^fe[89ab]/.test(head)) return true; // fe80::/10 link-local
-  if (head === 'ff00' || /^ff/.test(head)) return true; // multicast
+  const g = ipv6Groups(address);
+  if (!g) return false;
+
+  // Every IPv6 form that carries an IPv4 target is only as safe as that target.
+  // Judging the wrapper instead of the payload is how a "public" address
+  // reaches 169.254.169.254.
+  if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
+    return isPrivateAddress(embeddedIPv4(g[6]!, g[7]!)); // ::ffff:0:0/96 IPv4-mapped
+  }
+  if (g.slice(0, 6).every((n) => n === 0)) {
+    // ::/96 — the unspecified address, loopback, and the deprecated
+    // IPv4-compatible range. None of it is somewhere a delivery host lives.
+    return true;
+  }
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
+    return isPrivateAddress(embeddedIPv4(g[6]!, g[7]!)); // 64:ff9b::/96 NAT64
+  }
+  if (g[0] === 0x2002) {
+    return isPrivateAddress(embeddedIPv4(g[1]!, g[2]!)); // 2002::/16 6to4
+  }
+
+  if ((g[0]! & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((g[0]! & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((g[0]! & 0xff00) === 0xff00) return true; // ff00::/8 multicast
   return false;
 }
 
