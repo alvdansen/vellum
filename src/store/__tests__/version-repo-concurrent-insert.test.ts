@@ -86,6 +86,7 @@ function withInterloper(
   interlope: () => void,
 ): ReturnType<typeof openDb>['db'] {
   let fired = false;
+  void fired;
   return new Proxy(db, {
     get(target, prop, receiver) {
       if (prop !== 'transaction') return Reflect.get(target, prop, receiver);
@@ -108,10 +109,7 @@ function withInterloper(
                         return (...args: unknown[]) => {
                           const out = (v as (...a: unknown[]) => unknown).apply(n, args);
                           if (p === 'get') {
-                            if (!fired) {
-                              fired = true;
-                              interlope();
-                            }
+                            interlope();
                             return out;
                           }
                           return out && typeof out === 'object'
@@ -195,5 +193,44 @@ describe('VersionRepo.insertVersion under cross-connection contention', () => {
     } finally {
       bRaw.exec('ROLLBACK');
     }
+  });
+});
+
+describe('BEGIN IMMEDIATE, isolated from the retry that would mask it', () => {
+  // The three tests above pass with EITHER half of the fix: widening the retry
+  // alone lets a BUSY_SNAPSHOT failure succeed on the second attempt, so they
+  // cannot tell the two apart. This one can — it counts how many times the
+  // transaction body runs.
+  //
+  // Under IMMEDIATE the write lock is held from BEGIN, so the interloper loses
+  // and the allocation completes on the FIRST attempt. Under DEFERRED the
+  // interloper commits inside our read-write window, the INSERT raises
+  // SQLITE_BUSY_SNAPSHOT, and the body runs a second time.
+  test('the allocation succeeds on the first attempt, with no retry', () => {
+    const { a, bRaw, shotId } = twoHandles();
+    let bodyRuns = 0;
+
+    const repo = new VersionRepo(
+      withInterloper(a, () => {
+        bodyRuns += 1;
+        try {
+          bRaw
+            .prepare(
+              "INSERT INTO workspaces (id, name, created_at) VALUES ('ws_i_" +
+                bodyRuns +
+                "', 'i', 1)",
+            )
+            .run();
+        } catch {
+          /* expected to lose against the held write lock */
+        }
+      }),
+    );
+
+    const row = repo.insertVersion(shotId);
+    expect(row.version_number).toBe(1);
+    // Exactly one pass through the allocate-then-insert body. Two would mean the
+    // snapshot was invalidated and the retry rescued it — i.e. DEFERRED.
+    expect(bodyRuns).toBe(1);
   });
 });

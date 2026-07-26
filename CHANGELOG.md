@@ -41,6 +41,27 @@ verified to fail against the code before it.
 
 ### Changed
 
+- **The database and migrations resolve against the package, not the working
+  directory.** They were `./vellum.db` and `./drizzle`, resolved against
+  `process.cwd()` — so an MCP client that launches from its own directory
+  (Claude Desktop uses `/`) crashed at boot with `MIGRATION_PENDING`, and any
+  client that got past it opened a *different* database from the dashboard.
+  `VELLUM_DB_PATH` and `--db` still take precedence. **If you relied on the old
+  behaviour** — running the server from a directory holding its own
+  `vellum.db` — set `VELLUM_DB_PATH` explicitly; the package default is now
+  used instead.
+- **`.env` is read from the package root as well as the working directory.**
+  Previously only the latter, so the file next to the repo was invisible to a
+  client launched from anywhere else. The working directory still wins, and
+  `DOTENV_CONFIG_PATH` still replaces the search outright.
+- **A blank environment variable now means "unset".** `FOO=` used to be an empty
+  string that defeated every default — `COMFYUI_API_BASE=` was a fatal boot
+  error, and a blank `GOOGLE_AI_STUDIO_API_KEY` silently disabled the
+  `GEMINI_API_KEY` alias.
+- **`version list` is documented as cursor-paginated** in `vellum://manual` and
+  `vellum://capabilities`. The behaviour did not change — a non-zero `offset`
+  has been an error since it stopped being silently discarded — but the
+  self-describing surface still advertised the old contract.
 - **The outputs root is now an absolute path.** It was a bare relative string
   that every consumer re-resolved against the current working directory, so
   under an MCP client that launches from `/` the first generation failed, and

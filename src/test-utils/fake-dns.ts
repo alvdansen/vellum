@@ -51,9 +51,28 @@ export function mixedLookup(privateAddress: string): LookupFn {
 }
 
 /**
- * A resolver that fails the test if it is ever called. Use it to prove a code
- * path rejects BEFORE spending a DNS query — e.g. that a non-allowlisted host is
- * refused by name and never resolved.
+ * A resolver that records whether it was called.
+ *
+ * Throwing from a resolver does NOT fail a test: assertPublicHostname catches a
+ * lookup failure and rewrites it into the caller's own error code, so a test
+ * asserting only on the code passes whether or not DNS was consulted. Count the
+ * calls instead, and assert on the count.
+ */
+export function countingLookup(): { lookup: LookupFn; calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    lookup: async (hostname) => {
+      calls.push(hostname);
+      return [{ address: PUBLIC_TEST_IPV4, family: 4 }];
+    },
+  };
+}
+
+/**
+ * A resolver that must never be reached. Pair it with an assertion on the error
+ * MESSAGE — a bare code assertion cannot tell "rejected by name" apart from
+ * "rejected because the lookup threw", since the guard rewrites both.
  */
 export const forbiddenLookup: LookupFn = async (hostname) => {
   throw new Error(`DNS lookup must not happen for '${hostname}' on this path`);

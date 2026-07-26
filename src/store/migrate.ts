@@ -108,7 +108,8 @@ function countAppliedRows(db: BetterSQLite3Database<Record<string, never>>): num
  * finds the dashboard bundle. The `../..` traversal holds for both `tsx
  * src/store/migrate.ts` and a compiled `dist/store/migrate.js`.
  */
-const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
+/** Exported so tests can assert the VALUE, not that the identifier appears in source. */
+export const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../drizzle',
 );

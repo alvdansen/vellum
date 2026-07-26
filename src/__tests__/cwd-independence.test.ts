@@ -2,11 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SERVER_ENTRY, READY_MARKER } from '../test-utils/boot-server.js';
 import { readFile } from 'node:fs/promises';
-import { runMigrations } from '../store/migrate.js';
+import { DEFAULT_MIGRATIONS_FOLDER } from '../store/migrate.js';
 import { resolveDbPath } from '../resolve-db-path.js';
 
 /**
@@ -73,10 +73,27 @@ describe('the server boots from any working directory', () => {
   });
 
   it('the default migrations folder is absolute and really exists', () => {
-    // Guards the fix at its root: a cwd-relative default would be neither.
-    const result = runMigrations.toString();
-    expect(result).toContain('DEFAULT_MIGRATIONS_FOLDER');
-    expect(existsSync(join(REPO_ROOT, 'drizzle', 'meta', '_journal.json'))).toBe(true);
+    // Asserted as a VALUE, not as a substring of a function's source.
+    //
+    // This used to be `expect(runMigrations.toString()).toContain(
+    // 'DEFAULT_MIGRATIONS_FOLDER')` — which a cwd-relative default satisfies
+    // just as well, since the identifier would still appear. It checked that
+    // someone had named a constant, not that the constant was right.
+    expect(isAbsolute(DEFAULT_MIGRATIONS_FOLDER)).toBe(true);
+    expect(DEFAULT_MIGRATIONS_FOLDER).toBe(join(REPO_ROOT, 'drizzle'));
+    expect(existsSync(join(DEFAULT_MIGRATIONS_FOLDER, 'meta', '_journal.json'))).toBe(true);
+  });
+
+  it('the migrations folder resolves the same from any working directory', () => {
+    // The property that actually matters, and the one a relative default breaks.
+    const original = process.cwd();
+    try {
+      process.chdir(tmpdir());
+      expect(DEFAULT_MIGRATIONS_FOLDER).toBe(join(REPO_ROOT, 'drizzle'));
+      expect(existsSync(join(DEFAULT_MIGRATIONS_FOLDER, 'meta', '_journal.json'))).toBe(true);
+    } finally {
+      process.chdir(original);
+    }
   });
 
   it('boots from a foreign cwd instead of throwing MIGRATION_PENDING', async () => {

@@ -90,22 +90,32 @@ dependencies. That is an upstream packaging bug, and it is where `shell-quote`
 (critical), `js-yaml` and `brace-expansion` come from. None of it is loaded:
 
 ```bash
-grep -rhoE 'require\("[^"]+"\)' node_modules/c2pa-node/dist/
-# → sharp, pkg-dir, and node: builtins. Nothing else.
+grep -rhoE 'require\("[^"]+"\)' node_modules/c2pa-node/dist/ | sort -u
 ```
 
-`npm audit fix` proposes `c2pa-node@0.1.0` here, which is a downgrade past the
-signer API the engine depends on. Do not take it.
+lists `sharp`, `pkg-dir` and `node:` builtins — nothing from `@changesets/cli`
+or `npm-run-all`.
 
-**The MCP SDK's Express transport.** `fast-uri`, `ip-address`,
-`express-rate-limit`, `body-parser` and `qs` arrive via
-`@modelcontextprotocol/sdk`'s Express-based Streamable HTTP transport. Vellum
-does not use it — it runs Hono with the SDK's web-standard transport
-(`WebStandardStreamableHTTPServerTransport`). The same applies to the older
-`@hono/node-server` nested under the SDK: the top-level copy Vellum actually
-uses is current, and the nested one is only reachable through the Express
-transport. Forcing an override into the SDK's nested tree is riskier than the
-advisory it would silence.
+Do not run `npm audit fix --force` against this chain. The "fixes" on offer are
+major downgrades: `c2pa-node` to a version predating the signer API the engine
+depends on, and the MCP SDK below the transport Vellum runs on. Check what it
+actually proposes with `npm audit --omit=dev --json` before accepting anything.
+
+**The MCP SDK's Express transport.** `ip-address`, `express-rate-limit`,
+`body-parser` and `qs` arrive via `@modelcontextprotocol/sdk`'s Express-based
+Streamable HTTP transport. Vellum does not use it — it runs Hono with the SDK's
+web-standard transport (`WebStandardStreamableHTTPServerTransport`). The same
+applies to the older `@hono/node-server` nested under the SDK: the top-level
+copy Vellum actually uses is current, and the nested one is only reachable
+through the Express transport. Forcing an override into the SDK's nested tree is
+riskier than the advisory it would silence.
+
+**`fast-uri`, via `ajv` — reachable, and listed here for honesty.** This one is
+NOT confined to the Express transport. `ajv` is a direct dependency of the SDK
+core that Vellum does use, so treat it as loaded (`npm ls ajv --omit=dev`). What
+bounds it is the input: `ajv` validates the JSON Schemas Vellum generates for
+its own tool definitions, not agent-supplied data. Vellum pins no `ajv` of its
+own and cannot move it without the SDK moving first.
 
 ## Cryptographic material
 

@@ -33,6 +33,7 @@ import {
   rebindingLookup,
   mixedLookup,
   forbiddenLookup,
+  countingLookup,
 } from '../../test-utils/fake-dns.js';
 
 /** Addresses a public delivery host has no business resolving to. */
@@ -410,5 +411,54 @@ describe('the self-hosted exemption is exactly as wide as the operator declared'
     });
     await expect(client.download('x.png')).rejects.toMatchObject({ code: 'COMFYUI_API_ERROR' });
     expect(counter.n).toBe(1);
+  });
+});
+
+describe('the guard resolves only when it should', () => {
+  // Counted, not thrown. A resolver that throws does not fail a test:
+  // assertPublicHostname catches a lookup failure and rewrites it into the
+  // caller's error code, so `forbiddenLookup` alone proves nothing unless the
+  // test also pins the message. These count instead.
+  let dir2: string;
+  beforeEach(() => {
+    dir2 = mkdtempSync(join(tmpdir(), 'vellum-count-'));
+  });
+  afterEach(() => {
+    rmSync(dir2, { recursive: true, force: true });
+  });
+
+  test('a non-allowlisted host costs ZERO DNS queries', async () => {
+    const { lookup, calls } = countingLookup();
+    const a = new ReplicateAdapter('r8_tok_1234', DEFAULT_REPLICATE_API_BASE, {
+      fetchImpl: neverFetch(),
+      lookupImpl: lookup,
+    });
+    await expect(
+      a.downloadToPath('o.png', { type: 'https://evil.example.com/o.png' }, join(dir2, 'o.png')),
+    ).rejects.toMatchObject({ code: 'DOWNLOAD_FAILED' });
+    expect(calls).toEqual([]);
+  });
+
+  test('a literal IP costs zero DNS queries', async () => {
+    const { lookup, calls } = countingLookup();
+    const a = new ReplicateAdapter('r8_tok_1234', DEFAULT_REPLICATE_API_BASE, {
+      fetchImpl: neverFetch(),
+      lookupImpl: lookup,
+      additionalAllowedHosts: ['169.254.169.254'],
+    });
+    await expect(
+      a.downloadToPath('o', { type: 'https://169.254.169.254/latest/' }, join(dir2, 'o')),
+    ).rejects.toMatchObject({ message: expect.stringContaining('private address') });
+    expect(calls).toEqual([]);
+  });
+
+  test('an allowlisted hostname IS resolved, exactly once', async () => {
+    const { lookup, calls } = countingLookup();
+    const a = new ReplicateAdapter('r8_tok_1234', DEFAULT_REPLICATE_API_BASE, {
+      fetchImpl: servingFetch(),
+      lookupImpl: lookup,
+    });
+    await a.downloadToPath('ok.png', { type: 'https://replicate.delivery/x/ok.png' }, join(dir2, 'ok.png'));
+    expect(calls).toEqual(['replicate.delivery']);
   });
 });

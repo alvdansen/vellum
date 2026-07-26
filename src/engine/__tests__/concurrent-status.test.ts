@@ -260,3 +260,84 @@ describe('streamToPath temp files', () => {
     expect(readdirSync(dirname(dest)).sort()).toEqual(['take.bin', 'take.bin.partial']);
   });
 });
+
+describe('the FAILED-side terminal gate, end to end', () => {
+  // The failed side had no coverage at the engine level at all. The repo-level
+  // tests exercise markFailedAtomic directly, and the engine-level ones only
+  // ever drove the completed path — so nothing checked that generation.ts
+  // actually routes its eight failure sites through the gate.
+  const cleanups2: Array<() => void> = [];
+  afterEach(() => {
+    for (const c of cleanups2) c();
+    cleanups2.length = 0;
+  });
+
+  async function seedFailing(): Promise<{
+    stack: ReturnType<typeof buildStackWithOutputs>;
+    versionId: string;
+  }> {
+    const stack = buildStackWithOutputs();
+    cleanups2.push(stack.cleanup);
+    const ws = stack.engine.createWorkspace('ws1');
+    const proj = stack.engine.createProject(ws.entity.id, 'p1');
+    const seq = stack.engine.createSequence(proj.entity.id, 'sq010');
+    const shot = stack.engine.createShot(seq.entity.id, 'sh010');
+    const submitted = await stack.engine.submitGeneration(shot.entity.id, WORKFLOW);
+    return { stack, versionId: submitted.entity.id };
+  }
+
+  function eventCounts(
+    sqlite: import('better-sqlite3').Database,
+    versionId: string,
+  ): Record<string, number> {
+    const rows = sqlite
+      .prepare('SELECT event_type, COUNT(*) AS n FROM provenance WHERE version_id=? GROUP BY event_type')
+      .all(versionId) as Array<{ event_type: string; n: number }>;
+    return Object.fromEntries(rows.map((r) => [r.event_type, r.n]));
+  }
+
+  it('a download failure writes exactly one failed event and a failed row', async () => {
+    const { stack, versionId } = await seedFailing();
+    (stack.client as FakeComfyUIClient).scenario = 'download-hopeless';
+
+    await stack.engine.getGenerationStatus(versionId);
+    await stack.engine.stop();
+
+    const counts = eventCounts(stack.sqlite, versionId);
+    expect(counts.failed ?? 0).toBe(1);
+    expect(counts.completed ?? 0).toBe(0);
+    const row = stack.sqlite
+      .prepare('SELECT status, error_code FROM versions WHERE id=?')
+      .get(versionId) as { status: string; error_code: string | null };
+    expect(row.status).toBe('failed');
+    expect(row.error_code).toBe('DOWNLOAD_FAILED');
+  });
+
+  it('a version another writer already completed gets NO failed event', async () => {
+    // The contradiction the gate exists to prevent, driven through the engine
+    // rather than the repo: the row is already terminal, so the failure path
+    // must lose its claim and write nothing.
+    const { stack, versionId } = await seedFailing();
+    const client = stack.client as FakeComfyUIClient;
+    client.scenario = 'download-hopeless';
+    client.statusDelayMs = 60;
+
+    const inFlight = stack.engine.getGenerationStatus(versionId);
+    await new Promise((r) => setTimeout(r, 20));
+    stack.sqlite
+      .prepare(
+        "UPDATE versions SET status='completed', outputs_json='[]', completed_at=? WHERE id=? AND completed_at IS NULL",
+      )
+      .run(Date.now(), versionId);
+
+    await inFlight.catch(() => undefined);
+    await stack.engine.stop();
+
+    const counts = eventCounts(stack.sqlite, versionId);
+    expect(counts.failed ?? 0).toBe(0);
+    const row = stack.sqlite
+      .prepare('SELECT status FROM versions WHERE id=?')
+      .get(versionId) as { status: string };
+    expect(row.status).toBe('completed');
+  });
+});
