@@ -43,6 +43,14 @@ export type FormatRoute =
  * are universal; TIFF is included because generation outputs sometimes
  * land as multi-page TIFF (Phase 14 already routes TIFF for c2pa signing,
  * and sharp's libvips backend handles TIFF natively).
+ *
+ * THIS TABLE IS ROUTING, NOT A SECURITY BOUNDARY. libvips picks its decoder by
+ * sniffing content, not by filename, so GIF bytes named `.png` are decoded by
+ * the GIF loader and native-VIPS bytes named `.jpg` by the VIPS loader — both
+ * of which this table appears to exclude. Narrowing the extensions here does
+ * NOT reduce the set of decoders reachable from provider-delivered bytes. The
+ * defence against a libvips decoder CVE is keeping sharp current; see
+ * SECURITY.md. Pinned by format-router-sniffing.test.ts.
  */
 const IMAGE_TABLE: Record<string, string> = {
   '.png': 'image/png',

@@ -25,7 +25,7 @@
     "test:dashboard": "npm run test --workspace=packages/dashboard"
   },
   "engines": {
-    "node": ">=20 <26"
+    "node": ">=20.9 <26"
   },
   "keywords": [
     "mcp",
@@ -43,16 +43,16 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.95.1",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@hono/node-server": "^2.0.0",
+    "@hono/node-server": "^2.0.11",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "c2pa-node": "0.5.26",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fetch-to-node": "^2.1.0",
-    "hono": "^4.12.14",
+    "hono": "^4.12.32",
     "nanoid": "^5.1.9",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
