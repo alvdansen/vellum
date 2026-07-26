@@ -6,15 +6,15 @@
 
 <p align="center">
   <strong>Provider-agnostic production tracking + provenance for AI asset generation, surfaced as MCP tools.</strong><br/>
-  <em>Workspace → project → sequence → shot → version. Append-only provenance. Approve every spend. Reproduce or iterate from any version.</em>
+  <em>Workspace → project → sequence → shot → version. Append-only provenance. An approval gate in front of paid calls. Reproduce or iterate from any version.</em>
 </p>
 
 <p align="center">
   <a href="#license"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-ff6b5a?style=flat-square" /></a>
-  <img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-0c2a3a?style=flat-square" />
+  <img alt="Node 20.9–25" src="https://img.shields.io/badge/Node-20.9%E2%80%9325-0c2a3a?style=flat-square" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-0c2a3a?style=flat-square" />
   <img alt="MCP SDK 1.29" src="https://img.shields.io/badge/MCP%20SDK-1.29-ff6b5a?style=flat-square" />
-  <img alt="Tests passing" src="https://img.shields.io/badge/tests-2755%20passing-0c2a3a?style=flat-square" />
+  <img alt="Tests passing" src="https://img.shields.io/badge/tests-2947%20passing-0c2a3a?style=flat-square" />
   <img alt="v2.0" src="https://img.shields.io/badge/release-v2.0-ff6b5a?style=flat-square" />
 </p>
 
@@ -24,7 +24,7 @@
 
 AI asset generation never stays in one tool. A production pulls from ComfyUI, Replicate, FAL, and a rotating cast of model APIs — and the moment it does, tracking breaks down. Files spill across services, seeds get lost, model versions drift, credits get spent on runs nobody approved, and *"which prompt made this frame?"* becomes a slow manual hunt through files and logs.
 
-Vellum is the neutral layer between any generator and any downstream workflow. It gives a production the structure it needs — project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce — and it puts a human approval in front of every paid call, no matter which backend produces the pixels.
+Vellum is the neutral layer between any generator and any downstream workflow. It gives a production the structure it needs — project, sequence, shot, version, immutable provenance, and lineage you can diff and reproduce — and an opt-in gate that puts a human approval in front of every paid call, whichever backend produces the pixels.
 
 ## What it does
 
@@ -62,7 +62,7 @@ Vellum discovers whichever credentials are present and constructs every configur
 
 ## The approval gate — no silent credit spend
 
-Turn on `VELLUM_REQUIRE_APPROVAL=1` and direct `submit` / `reproduce` / `iterate` stop spending credits. Instead:
+The gate is **off by default** — `submit` / `reproduce` / `iterate` spend directly until you turn it on. Set `VELLUM_REQUIRE_APPROVAL=1` and they stop. Instead:
 
 1. `generation propose` records the **full, verbatim request** and a caller-supplied cost estimate — before any provider is touched.
 2. A human reads the proposal (in the dashboard inbox or via `list_proposals`) and `approve`s or `reject`s it.
@@ -121,7 +121,7 @@ Four layers, each independently testable:
 - **MCP tools** (`src/tools/*-tool.ts`) — thin Zod-validated entry points. Discriminated unions on `action`. Zero business logic.
 - **Engine facade** (`src/engine/`) — pure TypeScript, **zero MCP dependency**. Architecture-purity tests enforce this boundary at the type level on every commit.
 - **Provider adapters** (`src/providers/`, `src/comfyui/`) — every backend implements one `GenerationProvider` interface. The security-critical URL logic (recursive output extraction, SSRF-guarded streaming download) is shared, not duplicated.
-- **SQLite + WAL** (`drizzle/`) — Drizzle ORM, eleven hand-prefixed migrations, `busy_timeout=5000`. Append-only provenance is *structurally* enforced — the repo has no `update` or `delete` path to the truth.
+- **SQLite + WAL** (`drizzle/`) — Drizzle ORM, twelve hand-prefixed migrations, `busy_timeout=5000`. Append-only provenance is *structurally* enforced — the repo has no `update` or `delete` path to the truth.
 
 ## Quickstart
 
@@ -133,7 +133,7 @@ cd vellum
 npm install
 ```
 
-Node 20+ required. The SQLite database (`vellum.db`) auto-creates on first start.
+Node 20.9–25 required — `better-sqlite3` is a native module and does not build on 26 yet. The SQLite database (`vellum.db`) auto-creates on first start.
 
 ### 2. Configure a provider (optional)
 
@@ -157,7 +157,7 @@ Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) over stdio throug
 ### 4. Full test suite
 
 ```bash
-npm test                              # server suite — 2221 tests
+npm test                              # server suite — 2413 tests
 cd packages/dashboard && npx vitest run   # dashboard suite — 534 tests
 ```
 
@@ -197,17 +197,18 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "tsx", "/absolute/path/to/vellum/src/server.ts"],
       "env": {
-        "VELLUM_DB_PATH": "/absolute/path/to/vellum/vellum.db"
+        "VELLUM_DB_PATH": "/absolute/path/to/vellum/vellum.db",
+        "VELLUM_OUTPUTS_DIR": "/absolute/path/to/vellum/outputs"
       }
     }
   }
 }
 ```
 
-The server resolves its migrations, database and dashboard against its own
-location, so it starts from whatever working directory the client chooses.
-`VELLUM_DB_PATH` is optional and shown here because it is worth being explicit
-about which database a client writes to when you run more than one.
+The server resolves its migrations, database, outputs root and dashboard against
+its own location, so it starts from whatever working directory the client
+chooses. Both env vars are optional and shown here because it is worth being
+explicit about where a client writes when you run more than one.
 
 ### Streamable HTTP (web agents, custom clients)
 
@@ -228,11 +229,14 @@ vellum/
 │   ├── providers/             # GenerationProvider adapters (Replicate, FAL, BytePlus, Google AI Studio)
 │   ├── comfyui/               # ComfyUI Cloud client (SSRF-safe, healthchecked)
 │   ├── http/                  # Hono REST routes + SSE + webhook ingest + error middleware
+│   ├── store/                 # Drizzle repos — the only SQL in the codebase
+│   ├── utils/                 # outbound guards, config parsing, atomic writes
 │   └── __tests__/             # cross-cutting invariants (architecture purity, tool budget)
 ├── packages/
 │   └── dashboard/             # Preact + Tailwind v4 + signals; built into dist/
-├── drizzle/                   # SQLite migrations (11, hand-prefixed)
+├── drizzle/                   # SQLite migrations (12, hand-prefixed)
 ├── scripts/                   # smoke test, scene seed, palette QC, training report
+├── SECURITY.md                # trust boundaries, outbound controls, known advisories
 └── docs/                      # quickstart, diagrams, ingest guide
 ```
 
@@ -247,7 +251,7 @@ Decoupled from any single backend and rebranded to **Vellum**. Five adapters beh
 ### Next
 - **Function-calling adapter** — an OpenAI-compatible REST endpoint for non-MCP agents
 - **Batch operations** — shot queuing, hierarchy export, lineage-graph visualization in the dashboard
-- **Regulator-facing provenance** — hardening the C2PA path against EU AI Act Article 50 (effective Aug 2026) and California SB 942 (in effect Jan 2026)
+- **Regulator-facing provenance** — hardening the C2PA path against EU AI Act Article 50 (applies from 2 Aug 2026) and the California AI Transparency Act (SB 942 as amended by AB 853 — operative 2 Aug 2026)
 
 ## License
 
