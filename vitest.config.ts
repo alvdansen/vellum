@@ -22,10 +22,19 @@ export default defineConfig({
     // 3.7s under the old 10s ceiling, so a machine under parallel load tipped
     // them over and the failure looked like a bug rather than contention.
     //
-    // 30s is headroom for tests that are SUPPOSED to take seconds, not cover
-    // for a hang: the whole suite finishes in ~20s wall, so anything reaching
-    // this ceiling is genuinely stuck and still fails loudly.
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    // 30s was not enough. On 2026-07-25 a single loaded run tipped ALL ELEVEN
+    // C2PA files over the ceiling at once — ~5x their 6.3s baseline — while the
+    // same commit passed three consecutive runs on an idle machine. This box has
+    // more cores than a stock CI runner, so a stranger's first `npm test` is
+    // more exposed to this than we are, not less.
+    //
+    // 60s is still headroom for tests that are SUPPOSED to take seconds, not
+    // cover for a hang. The suite finishes in ~20s wall when it is not fighting
+    // for CPU, and CI's own timeout-minutes: 15 is the real backstop against a
+    // genuine hang — this ceiling only decides whether contention reads as a
+    // bug. A flaky red on someone's first run costs more than a hang surfacing
+    // thirty seconds later.
+    testTimeout: 60000,
+    hookTimeout: 60000,
   },
 });

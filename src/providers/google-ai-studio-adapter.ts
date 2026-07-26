@@ -26,7 +26,9 @@
 // not-yet-downloaded generation. Staging to disk keeps only tiny metadata in memory,
 // so any number of jobs can be in flight. A process restart still loses in-flight
 // staged jobs (status then reports `failed`, re-runnable — Gemini is non-deterministic
-// so a re-run is a new take anyway); stale staged dirs are swept on submit.
+// so a re-run is a new take anyway); the directories they left behind are swept on
+// the next submit, including across restarts — which is why the staging root is
+// deterministic rather than per-instance random.
 //
 // PURITY: no MCP SDK, no SQLite/ORM (architecture-purity guards src/providers/).
 
@@ -140,9 +142,19 @@ export class GoogleAIStudioAdapter implements GenerationProvider {
     this.defaultModel = options.defaultModel ?? DEFAULT_GOOGLE_MODEL;
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? PROVIDER_INLINE_GENERATION_TIMEOUT_MS;
-    // Per-instance staging dir so multiple adapters/servers never collide.
+    // Staging root is DETERMINISTIC, not per-instance-random. A random root
+    // meant every boot minted a new directory that no later process could ever
+    // find, so the sweep below could not reach anything an earlier run left —
+    // and even a fully clean run leaked one empty directory per server start.
+    //
+    // Scoped by uid because os.tmpdir() is /tmp (mode 1777) on Linux: a bare
+    // shared name would be created 0755 by whichever local user got there first,
+    // and every other user's job-dir mkdir would then fail EACCES *after* the
+    // generation had already been billed. Job dirs are gais_<nanoid(21)>, so
+    // concurrent instances sharing a root still cannot collide.
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
     this.stagingRoot =
-      options.stagingRoot ?? path.join(os.tmpdir(), 'vellum-gais-staging', nanoid(8));
+      options.stagingRoot ?? path.join(os.tmpdir(), `vellum-gais-staging-${uid}`);
   }
 
   /**
@@ -235,12 +247,43 @@ export class GoogleAIStudioAdapter implements GenerationProvider {
     return `Google AI Studio returned no image${detail ? ` (${detail})` : ''}.`;
   }
 
-  /** Delete staged job dirs older than the TTL (best-effort orphan cleanup). */
+  /**
+    * Delete staged job dirs older than the TTL (best-effort orphan cleanup).
+    *
+    * Two passes, because the in-memory one alone cannot see an orphan. `stage`
+    * only holds jobs THIS process staged, so anything left behind by a previous
+    * run — a crash, a SIGKILL, or just a graceful exit with a job still in
+    * flight, since shutdown does not touch providers — was invisible to it and
+    * stayed on disk forever.
+    *
+    * The filesystem pass deletes only directories older than the same TTL the
+    * owning process applies to itself, so a live concurrent instance loses
+    * nothing it would not have swept on its own next submit.
+    */
   private async sweepStale(now: number): Promise<void> {
     for (const [jobId, entry] of this.stage) {
       if (now - entry.createdAt > STAGE_TTL_MS) {
         this.stage.delete(jobId);
         await fsp.rm(path.join(this.stagingRoot, jobId), { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+
+    let names: string[];
+    try {
+      names = await fsp.readdir(this.stagingRoot);
+    } catch {
+      return; // root does not exist yet — nothing to sweep
+    }
+    for (const name of names) {
+      if (!name.startsWith('gais_') || this.stage.has(name)) continue;
+      const dir = path.join(this.stagingRoot, name);
+      try {
+        const st = await fsp.stat(dir);
+        if (now - st.mtimeMs > STAGE_TTL_MS) {
+          await fsp.rm(dir, { recursive: true, force: true });
+        }
+      } catch {
+        /* raced with another instance sweeping the same dir — fine */
       }
     }
   }
@@ -314,14 +357,16 @@ export class GoogleAIStudioAdapter implements GenerationProvider {
 
     const jobId = `gais_${nanoid()}`;
     const jobDir = path.join(this.stagingRoot, jobId);
-    await fsp.mkdir(jobDir, { recursive: true });
+    // 0700/0600: on a shared Linux host os.tmpdir() is world-writable, and these
+    // are generated images the operator paid for.
+    await fsp.mkdir(jobDir, { recursive: true, mode: 0o700 });
     const staged: Array<StagedImage | null> = [];
     try {
       for (let i = 0; i < images.length; i++) {
         const { bytes, mime } = images[i]!;
         const filename = `gemini_${i}.${extForMime(mime)}`;
         const p = path.join(jobDir, `${i}.${extForMime(mime)}`);
-        await fsp.writeFile(p, bytes);
+        await fsp.writeFile(p, bytes, { mode: 0o600 });
         staged.push({ path: p, mime, filename });
       }
     } catch (err) {

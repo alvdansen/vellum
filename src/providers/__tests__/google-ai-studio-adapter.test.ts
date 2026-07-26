@@ -1,5 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  existsSync,
+  utimesSync,
+  statSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -290,5 +298,92 @@ describe('GoogleAIStudioAdapter — review hardening', () => {
     const { prompt_id } = await a.submit({ prompt: 'x' });
     const dl = await a.downloadToPath('gemini_0.png', { subfolder: prompt_id, type: 'inline:0' }, join(tmp, 'd.png'));
     expect(readFileSync(dl.path)).toEqual(PNG_BYTES);
+  });
+});
+
+describe('GoogleAIStudioAdapter — staging cleanup across restarts', () => {
+  // REGRESSION. The staging root used to be os.tmpdir()/vellum-gais-staging/<random>,
+  // minted fresh on every construction, and sweepStale only iterated the
+  // in-memory `stage` Map. Together that meant no process could ever clean up
+  // after any other: a crash, a SIGKILL, or a graceful exit with a job still in
+  // flight (shutdown never touches providers) left staged generated images on
+  // disk permanently, and even a fully clean run leaked one empty directory per
+  // server start.
+
+  test('a later instance sweeps a stale job dir the earlier one left behind', async () => {
+    const stagingRoot = join(tmp, 'shared-stage');
+
+    const first = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+      stagingRoot,
+    });
+    const orphan = (await first.submit({ prompt: 'abandoned' })).prompt_id;
+    expect(existsSync(join(stagingRoot, orphan))).toBe(true);
+
+    // Age it past the TTL — this is the "previous process died" state.
+    const old = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    utimesSync(join(stagingRoot, orphan), old, old);
+
+    // A brand-new instance, exactly as a restarted server would build one. It
+    // has no memory of `orphan`, so only a filesystem sweep can reach it.
+    const second = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+      stagingRoot,
+    });
+    const fresh = (await second.submit({ prompt: 'live' })).prompt_id;
+
+    expect(existsSync(join(stagingRoot, orphan))).toBe(false);
+    // ...and the sweep does not take a live job with it.
+    expect(existsSync(join(stagingRoot, fresh))).toBe(true);
+  });
+
+  test('a recent job dir from another instance is left alone', async () => {
+    // The sweep must not delete what a concurrent server is still using. Only
+    // age decides, and the TTL is the same one the owner applies to itself.
+    const stagingRoot = join(tmp, 'concurrent-stage');
+    const a = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+      stagingRoot,
+    });
+    const theirs = (await a.submit({ prompt: 'in flight elsewhere' })).prompt_id;
+
+    const b = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+      stagingRoot,
+    });
+    await b.submit({ prompt: 'mine' });
+
+    expect(existsSync(join(stagingRoot, theirs))).toBe(true);
+  });
+
+  test('two instances with no explicit root resolve to the SAME staging root', async () => {
+    // The property that makes cross-restart cleanup possible at all. A random
+    // per-instance root is unreachable by definition.
+    const a = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+    });
+    const b = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+    });
+    const rootOf = (x: GoogleAIStudioAdapter): string =>
+      (x as unknown as { stagingRoot: string }).stagingRoot;
+
+    expect(rootOf(a)).toBe(rootOf(b));
+    expect(rootOf(a)).toContain('vellum-gais-staging');
+  });
+
+  test('staged bytes are not world-readable', async () => {
+    // os.tmpdir() is /tmp (1777) on Linux, and these are images the operator paid for.
+    const stagingRoot = join(tmp, 'perms-stage');
+    const a = new GoogleAIStudioAdapter(KEY, undefined, {
+      fetchImpl: mockFetch(() => json(imageResponse(1))).fetch,
+      stagingRoot,
+    });
+    const jobId = (await a.submit({ prompt: 'private' })).prompt_id;
+    const jobDir = join(stagingRoot, jobId);
+
+    expect(statSync(jobDir).mode & 0o077).toBe(0);
+    const file = readdirSync(jobDir)[0]!;
+    expect(statSync(join(jobDir, file)).mode & 0o077).toBe(0);
   });
 });
