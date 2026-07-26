@@ -34,6 +34,23 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
+ * Lock contention, as opposed to a constraint violation.
+ *
+ * SQLITE_BUSY_SNAPSHOT is the one that matters here: it means our DEFERRED
+ * snapshot was invalidated by another connection's commit before we tried to
+ * write. SQLite deliberately does NOT route it through the busy handler, so
+ * `busy_timeout` never retries it — it surfaces immediately as a raw driver
+ * error. Left unhandled it reaches the tool envelope, which rewrites any
+ * non-TypedError to `INVALID_INPUT: Unexpected internal error` — the one code
+ * that tells an agent "your arguments were wrong", so it mutates the request
+ * instead of retrying the identical one that would now succeed.
+ */
+function isBusyConflict(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  return code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT';
+}
+
+/**
  * VersionRepo — owns SQL I/O for the `versions` table. Every insert goes through
  * an allocate+insert transaction (D-GEN-16). State transitions obey D-GEN-18
  * one-way rules: `completed_at IS NULL` guard on terminal updates enforces
@@ -72,8 +89,13 @@ export class VersionRepo {
       try {
         return this.doInsert(shotId, notes, lineage, provider, requestFingerprint);
       } catch (err) {
-        if (isUniqueViolation(err) && attempt === 0) continue;
-        if (isUniqueViolation(err)) {
+        // Both failure modes of the same race: losing the UNIQUE(shot_id,
+        // version_number) allocation, or losing the snapshot the allocation was
+        // read under. Neither means the caller did anything wrong, so both retry
+        // once and then report a code whose hint says to retry.
+        const retryable = isUniqueViolation(err) || isBusyConflict(err);
+        if (retryable && attempt === 0) continue;
+        if (retryable) {
           throw new TypedError(
             'CONCURRENT_SUBMIT_CONFLICT',
             `Concurrent submit for shot '${shotId}' — retry once`,
@@ -93,46 +115,60 @@ export class VersionRepo {
     provider?: string | null,
     requestFingerprint?: string | null,
   ): Version {
-    return this.db.transaction((tx) => {
-      const maxRow = tx
-        .select({ m: sql<number>`COALESCE(MAX(${versions.version_number}), 0)` })
-        .from(versions)
-        .where(eq(versions.shot_id, shotId))
-        .get();
-      const versionNumber = Number(maxRow?.m ?? 0) + 1;
-      const row: Version = {
-        id: newId('ver'),
-        shot_id: shotId,
-        version_number: versionNumber,
-        status: 'submitted',
-        job_id: null,
-        parent_version_id: lineage?.parent_version_id ?? null,
-        notes: notes ?? null,
-        created_at: Date.now(),
-        completed_at: null,
-        error_code: null,
-        error_message: null,
-        outputs_json: null,
-        // Phase 3 addition — D-PROV-33: NULL marks originals from generation.submit.
-        // Written at INSERT time for reproduce/iterate via the `lineage` param —
-        // NEVER via follow-up UPDATE (LANDMINE #8).
-        lineage_type: lineage?.lineage_type ?? null,
-        // Phase 12 addition — DEMO-03 (D-CTX-5). NULL on insert; populated by
-        // engine.reproduceVersion via VersionRepo.setReproductionWarnings
-        // immediately after the row INSERT for reproduce-lineage versions.
-        reproduction_warnings_json: null,
-        // Pivot Phase B: the provider that produced this version, stamped at
-        // INSERT time from the active GenerationProvider.id. NULL when the caller
-        // does not supply one (legacy/test paths).
-        provider: provider ?? null,
-        // Duplicate-submit guard: fingerprint of the request this row was
-        // submitted with. NULL for callers that do not supply one (legacy/test
-        // paths), which the guard reads as "never a duplicate".
-        request_fingerprint: requestFingerprint ?? null,
-      };
-      tx.insert(versions).values(row).run();
-      return row;
-    });
+    // BEGIN IMMEDIATE, not Drizzle's default BEGIN DEFERRED.
+    //
+    // This transaction reads MAX(version_number) and then writes a row derived
+    // from it — a read-modify-write, which must not run under a deferred
+    // snapshot. Deferred takes no lock until the first write, so any commit by
+    // another connection in between (it does not even have to touch `versions`)
+    // invalidates our snapshot and the INSERT raises SQLITE_BUSY_SNAPSHOT, which
+    // busy_timeout does not retry. IMMEDIATE takes the write lock up front, so
+    // contention degrades to plain SQLITE_BUSY — which busy_timeout=5000 does
+    // handle. Two server processes over one database is the documented setup
+    // (README's two-terminal instructions), so this is reachable, not theoretical.
+    return this.db.transaction(
+      (tx) => {
+        const maxRow = tx
+          .select({ m: sql<number>`COALESCE(MAX(${versions.version_number}), 0)` })
+          .from(versions)
+          .where(eq(versions.shot_id, shotId))
+          .get();
+        const versionNumber = Number(maxRow?.m ?? 0) + 1;
+        const row: Version = {
+          id: newId('ver'),
+          shot_id: shotId,
+          version_number: versionNumber,
+          status: 'submitted',
+          job_id: null,
+          parent_version_id: lineage?.parent_version_id ?? null,
+          notes: notes ?? null,
+          created_at: Date.now(),
+          completed_at: null,
+          error_code: null,
+          error_message: null,
+          outputs_json: null,
+          // Phase 3 addition — D-PROV-33: NULL marks originals from generation.submit.
+          // Written at INSERT time for reproduce/iterate via the `lineage` param —
+          // NEVER via follow-up UPDATE (LANDMINE #8).
+          lineage_type: lineage?.lineage_type ?? null,
+          // Phase 12 addition — DEMO-03 (D-CTX-5). NULL on insert; populated by
+          // engine.reproduceVersion via VersionRepo.setReproductionWarnings
+          // immediately after the row INSERT for reproduce-lineage versions.
+          reproduction_warnings_json: null,
+          // Pivot Phase B: the provider that produced this version, stamped at
+          // INSERT time from the active GenerationProvider.id. NULL when the caller
+          // does not supply one (legacy/test paths).
+          provider: provider ?? null,
+          // Duplicate-submit guard: fingerprint of the request this row was
+          // submitted with. NULL for callers that do not supply one (legacy/test
+          // paths), which the guard reads as "never a duplicate".
+          request_fingerprint: requestFingerprint ?? null,
+        };
+        tx.insert(versions).values(row).run();
+        return row;
+      },
+      { behavior: 'immediate' },
+    );
   }
 
   /**
