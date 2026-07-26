@@ -96,6 +96,46 @@ describe('concurrent getGenerationStatus', () => {
     // Every caller still gets a correct answer.
     for (const r of results) expect(r.entity.status).toBe('completed');
   });
+
+  it('another writer failing the version mid-flight leaves no contradicting completion', async () => {
+    // REGRESSION — the CROSS-PROCESS half, which the in-process mutex above
+    // cannot close (it is per-instance). Process B fails the version while
+    // process A is inside its async download window. The event write used to be
+    // unconditional on the failed side and gated by a read-then-write existence
+    // check on the completed side, so the append-only record ended up holding
+    // both a `failed` and a `completed` event for one version — permanently.
+    //
+    // Now the guarded row UPDATE is the arbiter: whoever gets changes === 1
+    // writes the event, and the loser writes nothing. Simulated here by making
+    // the other writer's transition land during A's status delay, which is the
+    // same interleaving two processes produce.
+    const { stack, versionId } = await seed();
+    const client = stack.client as FakeComfyUIClient;
+    client.statusDelayMs = 60;
+
+    const inFlight = stack.engine.getGenerationStatus(versionId);
+    // The "other process" claims the terminal transition first.
+    await new Promise((r) => setTimeout(r, 20));
+    stack.sqlite
+      .prepare(
+        "UPDATE versions SET status='failed', error_code='GENERATION_TIMEOUT', completed_at=? WHERE id=? AND completed_at IS NULL",
+      )
+      .run(Date.now(), versionId);
+
+    await inFlight;
+    await stack.engine.stop();
+
+    const failed = stack.sqlite
+      .prepare("SELECT COUNT(*) AS n FROM provenance WHERE version_id=? AND event_type='failed'")
+      .get(versionId) as { n: number };
+    // Exactly one terminal event, and it is the one the row agrees with.
+    expect(completedEvents(stack.sqlite, versionId)).toBe(0);
+    expect(failed.n).toBe(0); // the other writer owns writing its own event
+    const row = stack.sqlite
+      .prepare('SELECT status FROM versions WHERE id=?')
+      .get(versionId) as { status: string };
+    expect(row.status).toBe('failed');
+  });
 });
 
 /**

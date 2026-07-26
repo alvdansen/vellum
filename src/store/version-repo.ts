@@ -216,9 +216,16 @@ export class VersionRepo {
   /**
    * Mark failed — one-shot terminal transition (D-GEN-20 immutability).
    * WHERE completed_at IS NULL ensures a second call is a no-op.
+   *
+   * Returns whether THIS call performed the transition. A single conditional
+   * UPDATE in autocommit is serialized by SQLite, so across any number of
+   * processes exactly one caller sees true. That makes the return value an
+   * atomic claim, and the only correct gate for writing the matching
+   * append-only provenance event — a read-then-write existence check is not
+   * atomic cross-process and lets two writers both observe "absent".
    */
-  markFailed(id: string, code: string, message: string): void {
-    this.db.run(sql`
+  markFailed(id: string, code: string, message: string): boolean {
+    const res = this.db.run(sql`
       UPDATE versions
       SET status = 'failed',
           error_code = ${code},
@@ -226,20 +233,25 @@ export class VersionRepo {
           completed_at = ${Date.now()}
       WHERE id = ${id} AND completed_at IS NULL
     `);
+    return (res as unknown as { changes: number }).changes > 0;
   }
 
   /**
    * Mark completed — one-shot terminal transition (D-GEN-20 immutability).
    * outputsJson must be a pre-serialised JSON string.
+   *
+   * Returns whether THIS call performed the transition — see markFailed for why
+   * that return value is the cross-process-safe gate for the provenance event.
    */
-  markCompleted(id: string, outputsJson: string): void {
-    this.db.run(sql`
+  markCompleted(id: string, outputsJson: string): boolean {
+    const res = this.db.run(sql`
       UPDATE versions
       SET status = 'completed',
           outputs_json = ${outputsJson},
           completed_at = ${Date.now()}
       WHERE id = ${id} AND completed_at IS NULL
     `);
+    return (res as unknown as { changes: number }).changes > 0;
   }
 
   /**

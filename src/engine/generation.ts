@@ -525,8 +525,9 @@ export class GenerationEngine {
         await Promise.all(stored.map((s) => unlink(s.path).catch(() => undefined)));
         const code: ErrorCode = err instanceof TypedError ? err.code : 'DOWNLOAD_FAILED';
         const msg = err instanceof TypedError ? err.message : String(err);
-        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-        this.versions.markFailed(row.id, code, msg);
+        if (this.versions.markFailed(row.id, code, msg)) {
+          this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+        }
         if (err instanceof TypedError) throw err;
         throw new TypedError('DOWNLOAD_FAILED', msg);
       }
@@ -536,8 +537,9 @@ export class GenerationEngine {
     // provider_id LAST so caller-asserted provenance can never spoof the
     // authenticated reporting provider in the append-only record (review fix).
     const neutralJson = JSON.stringify({ ...(input.provenance ?? {}), provider_id: input.providerId });
-    this.provenanceWriter.writeCompletedEvent(row.id, null, JSON.stringify(stored), neutralJson);
-    this.versions.markCompleted(row.id, JSON.stringify(stored));
+    if (this.versions.markCompleted(row.id, JSON.stringify(stored))) {
+      this.provenanceWriter.writeCompletedEvent(row.id, null, JSON.stringify(stored), neutralJson);
+    }
     // Cost actuals — record the caller-asserted actual spend for this take, if
     // provided, as an append-only sibling event AFTER completion. Fault-isolated
     // like the fingerprint hook (downloadAndPersist): the take is already
@@ -683,8 +685,11 @@ export class GenerationEngine {
       const { prompt_id } = await provider.submit(args.workflowJson);
       this.versions.setJobId(row.id, prompt_id);
     } catch (err) {
-      // Provider-side submit failure — provenance first, then markFailed, then
-      // rethrow. A TypedError from the adapter keeps its own code; a raw throw
+      // Provider-side submit failure — claim the terminal transition, write the
+      // matching provenance event only if this caller won it, then rethrow. (The
+      // order used to be the other way round; the row UPDATE is the atomic claim,
+      // so the event has to follow it.) A TypedError from the adapter keeps its
+      // own code; a raw throw
       // falls back to the provider's canonical failure code (never a mislabeled
       // COMFYUI_API_ERROR for a non-ComfyUI backend).
       const fallback = providerFailureCode(provider);
@@ -697,8 +702,9 @@ export class GenerationEngine {
       const msg = ambiguous
         ? `${rawMsg} — no response was received, so this request may still be running and may have been charged. Check the provider before resubmitting.`
         : rawMsg;
-      this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-      this.versions.markFailed(row.id, code, msg);
+      if (this.versions.markFailed(row.id, code, msg)) {
+        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+      }
       if (err instanceof TypedError) {
         throw new TypedError(err.code, msg, err.hint, err.ambiguous);
       }
@@ -761,6 +767,10 @@ export class GenerationEngine {
    * That is not exotic: the dashboard poller, an agent's own `generation.check`,
    * and the boot recovery poller all reach this method, which is why the mutex
    * lives here rather than on the Engine facade the poller bypasses.
+   *
+   * This mutex is per-instance, so it closes the IN-PROCESS race only. The
+   * cross-process one is closed separately, by gating every provenance event on
+   * the guarded row UPDATE's own `changes` count — see downloadAndPersist.
    */
   async getGenerationStatus(
     versionId: string,
@@ -809,8 +819,9 @@ export class GenerationEngine {
     const providerUnresolvable = row.provider != null && !this.providers.has(row.provider);
     if (!providerUnresolvable && Date.now() - row.created_at > timeoutMs) {
       const msg = `Generation did not complete within ${timeoutMs / 1000}s`;
-      this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg);
-      this.versions.markFailed(row.id, 'GENERATION_TIMEOUT', msg);
+      if (this.versions.markFailed(row.id, 'GENERATION_TIMEOUT', msg)) {
+        this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg);
+      }
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
@@ -829,8 +840,9 @@ export class GenerationEngine {
       // Edge case: row inserted at submit-time but submit call failed before
       // setJobId (very rare — markFailed runs in the catch in submitGeneration).
       const code = providerFailureCode(provider);
-      this.provenanceWriter.writeFailedEvent(row.id, code, 'Version has no job_id');
-      this.versions.markFailed(row.id, code, 'Version has no job_id');
+      if (this.versions.markFailed(row.id, code, 'Version has no job_id')) {
+        this.provenanceWriter.writeFailedEvent(row.id, code, 'Version has no job_id');
+      }
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
@@ -846,8 +858,9 @@ export class GenerationEngine {
       // path (drivePoller → getGenerationStatus) inherits this.
       const flat = flattenComfyError(remote.error);
       const code = providerFailureCode(provider);
-      this.provenanceWriter.writeFailedEvent(row.id, code, flat);
-      this.versions.markFailed(row.id, code, flat);
+      if (this.versions.markFailed(row.id, code, flat)) {
+        this.provenanceWriter.writeFailedEvent(row.id, code, flat);
+      }
     } else if (mapped === 'running' && row.status !== 'running') {
       this.versions.transition(row.id, 'running');
     }
@@ -1179,8 +1192,9 @@ export class GenerationEngine {
           err instanceof TypedError
             ? err.message
             : `Failed to prepare output path for ${out.filename}: ${(err as Error).message}`;
-        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-        this.versions.markFailed(row.id, code, msg);
+        if (this.versions.markFailed(row.id, code, msg)) {
+          this.provenanceWriter.writeFailedEvent(row.id, code, msg);
+        }
         return;
       }
 
@@ -1214,8 +1228,9 @@ export class GenerationEngine {
       }
       if (lastErr) {
         const msg = `Failed to download output ${out.filename} after ${DOWNLOAD_MAX_ATTEMPTS} attempts`;
-        this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg);
-        this.versions.markFailed(row.id, 'DOWNLOAD_FAILED', msg);
+        if (this.versions.markFailed(row.id, 'DOWNLOAD_FAILED', msg)) {
+          this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg);
+        }
         return; // subsequent outputs intentionally left for debug/audit per D-GEN-36
       }
     }
@@ -1264,16 +1279,31 @@ export class GenerationEngine {
     }
     const outputsJson = JSON.stringify(stored);
     // Provenance is append-only, so a second completion for one version is a
-    // permanent duplicate rather than a harmless retry. markCompleted has always
-    // been idempotent (`WHERE completed_at IS NULL`); the event write was not.
-    // The in-process race is gone (statusMutex coalesces concurrent checks), but
-    // a SECOND PROCESS against the same database — `npm start` and
-    // `npm run start:http` side by side, both documented — can still arrive
-    // here, so refuse to append a completion the record already carries.
-    if (this.provenanceRepo.getLatestCompletedEvent(row.id) === null) {
+    // permanent duplicate rather than a harmless retry, and a `failed` event on
+    // a version whose row says `completed` is a permanent contradiction. Both
+    // are reachable with two server processes on one database — `npm start` and
+    // `npm run start:http` side by side, which the README documents.
+    //
+    // This used to be `if (getLatestCompletedEvent(...) === null)`. That is a
+    // read-then-write across two unlocked statements: in WAL mode a second
+    // process reads a snapshot predating the first one's commit, so both observe
+    // "absent" and both append. Measured window ~1-2ms, and there is no unique
+    // index on (version_id, event_type) to catch it.
+    //
+    // The row transition is the atomic claim instead. `WHERE completed_at IS
+    // NULL` in a single autocommit UPDATE is serialized by SQLite, so exactly
+    // one caller — in this process or any other — gets `changes === 1`. Writing
+    // the event only for that winner makes the event follow the transition it
+    // describes, and gives the failed direction the same guarantee the completed
+    // one used to have alone.
+    //
+    // The two statements are adjacent and synchronous (better-sqlite3), so
+    // nothing can interleave; only a SIGKILL landing between them could leave a
+    // terminal row without its event — strictly better than the duplicate and
+    // contradictory records this replaces.
+    if (this.versions.markCompleted(row.id, outputsJson)) {
       this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson);
     }
-    this.versions.markCompleted(row.id, outputsJson);
     // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
     // the synchronous completion writes return. The receiver
     // (Engine.fingerprintModelsForVersion via the bound callback in
