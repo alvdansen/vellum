@@ -53,6 +53,7 @@ import 'dotenv/config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { envValue } from './utils/env.js';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { readFile } from 'node:fs/promises';
@@ -183,7 +184,7 @@ async function main(): Promise<void> {
   const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const LEGACY_DB_PATH = path.join(packageRoot, 'vfx-familiar.db');
   const DEFAULT_DB_PATH = path.join(packageRoot, 'vellum.db');
-  const envDbPath = process.env.VELLUM_DB_PATH?.trim();
+  const envDbPath = envValue(process.env.VELLUM_DB_PATH);
   const dbPath =
     args.db ??
     (envDbPath ? envDbPath : undefined) ??
@@ -201,7 +202,7 @@ async function main(): Promise<void> {
   // D-GEN-14). Absent key ⇒ hierarchy tools work; `generation submit` surfaces
   // COMFYUI_CREDENTIALS_MISSING on first call.
   const apiKey = process.env.COMFYUI_API_KEY;
-  const apiBase = process.env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE;
+  const apiBase = envValue(process.env.COMFYUI_API_BASE) ?? DEFAULT_COMFYUI_API_BASE;
   // IS-02: fail-fast on misconfigured base URL. Validates protocol, blocks
   // loopback / RFC1918 / link-local targets unless explicit env overrides are
   // set. Runs even when COMFYUI_API_KEY is absent so surprise misconfigs
@@ -325,7 +326,7 @@ async function main(): Promise<void> {
   // Resolving a caller-supplied relative VELLUM_OUTPUTS_DIR against cwd (rather
   // than the package) is deliberate: an operator typing a relative path means it
   // relative to where they are standing. Only the DEFAULT belongs to the package.
-  const envOutputsDir = process.env.VELLUM_OUTPUTS_DIR?.trim();
+  const envOutputsDir = envValue(process.env.VELLUM_OUTPUTS_DIR);
   const outputsDir = envOutputsDir
     ? path.resolve(envOutputsDir)
     : path.join(packageRoot, 'outputs');
@@ -367,7 +368,7 @@ async function main(): Promise<void> {
     // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
     // ships with this unset; local-dev / self-host can populate hashes by
     // setting VELLUM_MODELS_DIR to the local checkpoints/loras root.
-    modelsDir: process.env.VELLUM_MODELS_DIR ?? null,
+    modelsDir: envValue(process.env.VELLUM_MODELS_DIR) ?? null,
     // Phase 14 — PROV-V-01 (D-CTX-2). NULL means signing is disabled
     // (graceful degradation). Plan 14-02's signer wrapper is the SOLE
     // consumer of the cert/key bytes — read lazily on first sign attempt.

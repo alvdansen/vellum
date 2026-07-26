@@ -23,6 +23,7 @@
  */
 
 import { accessSync, statSync, realpathSync, constants as fsConstants } from 'node:fs';
+import { envValue } from './env.js';
 import { basename, sep } from 'node:path';
 import { TypedError } from '../engine/errors.js';
 import type { C2paConfig } from '../types/c2pa.js';
@@ -60,7 +61,7 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   }
 
   // Resolve allowlist root.
-  const rootRaw = env.VELLUM_C2PA_CERT_ROOT ?? process.cwd();
+  const rootRaw = envValue(env.VELLUM_C2PA_CERT_ROOT) ?? process.cwd();
   let root: string;
   try {
     root = realpathSync(rootRaw);

@@ -15,6 +15,7 @@ import { FalAdapter, DEFAULT_FAL_API_BASE } from './fal-adapter.js';
 import { ByteplusAdapter, DEFAULT_BYTEPLUS_API_BASE } from './byteplus-adapter.js';
 import { GoogleAIStudioAdapter, DEFAULT_GOOGLE_API_BASE } from './google-ai-studio-adapter.js';
 import { TypedError } from '../engine/errors.js';
+import { envValue, envList } from '../utils/env.js';
 import type { LookupFn } from '../utils/private-address.js';
 
 export interface ProviderConfig {
@@ -32,12 +33,7 @@ export interface ProviderRegistry {
 
 export const KNOWN_PROVIDER_IDS = ['comfyui-cloud', 'replicate', 'fal', 'byteplus', 'google-ai-studio'] as const;
 
-function splitHosts(v: string | undefined): string[] {
-  return (v ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+const splitHosts = envList;
 
 /**
  * Discover configured providers from env and resolve the default.
@@ -57,7 +53,7 @@ export function loadProviderConfig(
     providers.push({
       id: 'comfyui-cloud',
       apiKey: env.COMFYUI_API_KEY,
-      apiBase: env.COMFYUI_API_BASE ?? DEFAULT_COMFYUI_API_BASE,
+      apiBase: envValue(env.COMFYUI_API_BASE) ?? DEFAULT_COMFYUI_API_BASE,
       additionalAllowedHosts: splitHosts(env.COMFYUI_ALLOWED_REDIRECT_HOSTS),
     });
   }
@@ -65,7 +61,7 @@ export function loadProviderConfig(
     providers.push({
       id: 'replicate',
       apiKey: env.REPLICATE_API_TOKEN,
-      apiBase: env.REPLICATE_API_BASE ?? DEFAULT_REPLICATE_API_BASE,
+      apiBase: envValue(env.REPLICATE_API_BASE) ?? DEFAULT_REPLICATE_API_BASE,
       additionalAllowedHosts: splitHosts(env.REPLICATE_ALLOWED_OUTPUT_HOSTS),
     });
   }
@@ -73,7 +69,7 @@ export function loadProviderConfig(
     providers.push({
       id: 'fal',
       apiKey: env.FAL_KEY,
-      apiBase: env.FAL_API_BASE ?? DEFAULT_FAL_API_BASE,
+      apiBase: envValue(env.FAL_API_BASE) ?? DEFAULT_FAL_API_BASE,
       additionalAllowedHosts: splitHosts(env.FAL_ALLOWED_OUTPUT_HOSTS),
     });
   }
@@ -81,23 +77,23 @@ export function loadProviderConfig(
     providers.push({
       id: 'byteplus',
       apiKey: env.BYTEPLUS_API_KEY,
-      apiBase: env.BYTEPLUS_API_BASE ?? DEFAULT_BYTEPLUS_API_BASE,
+      apiBase: envValue(env.BYTEPLUS_API_BASE) ?? DEFAULT_BYTEPLUS_API_BASE,
       additionalAllowedHosts: splitHosts(env.BYTEPLUS_ALLOWED_OUTPUT_HOSTS),
     });
   }
   // Google AI Studio (Gemini / Nano Banana) — image generation (free tier available).
   // Accept the Vellum-scoped name or the conventional GEMINI_API_KEY alias.
-  const googleKey = env.GOOGLE_AI_STUDIO_API_KEY ?? env.GEMINI_API_KEY;
+  const googleKey = envValue(env.GOOGLE_AI_STUDIO_API_KEY) ?? envValue(env.GEMINI_API_KEY);
   if (googleKey) {
     providers.push({
       id: 'google-ai-studio',
       apiKey: googleKey,
-      apiBase: env.GOOGLE_AI_STUDIO_API_BASE ?? DEFAULT_GOOGLE_API_BASE,
+      apiBase: envValue(env.GOOGLE_AI_STUDIO_API_BASE) ?? DEFAULT_GOOGLE_API_BASE,
       // No output-host allowlist: inline base64 is decoded in-process, never fetched.
     });
   }
 
-  const requested = env.DEFAULT_PROVIDER?.trim();
+  const requested = envValue(env.DEFAULT_PROVIDER);
   let defaultProviderId: string | null = null;
 
   if (requested) {
