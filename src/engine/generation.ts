@@ -299,10 +299,17 @@ export class GenerationEngine {
    * provider and runs its request validation WITHOUT any DB write, so an
    * invalid request is rejected at PROPOSE time and an approver never reviews
    * a request that could not execute.
+   *
+   * Returns the RESOLVED provider id so the caller can stamp it on the proposal.
+   * The default is derived from env at boot, and proposals outlive restarts, so
+   * a default that was 'comfyui-cloud' on Monday can be 'byteplus' by the time
+   * someone approves on Tuesday — a different credit pool at a different price
+   * than the one reviewed.
    */
-  validateProposedRequest(providerId: string | undefined, request: Record<string, unknown>): void {
+  validateProposedRequest(providerId: string | undefined, request: Record<string, unknown>): string {
     const provider = this.resolveProvider(providerId ?? null, 'propose a generation');
     provider.validateRequest?.(request);
+    return provider.id;
   }
 
   /**

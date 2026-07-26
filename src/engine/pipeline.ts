@@ -1672,9 +1672,18 @@ export class Engine {
       }
       // Fail-fast: the named (or default) provider must exist AND accept the
       // request shape — validated with ZERO DB writes.
-      this.generation.validateProposedRequest(input.provider, input.workflowJson);
+      //
+      // Stamp the RESOLVED id, not the caller's optional one, for the same
+      // reason the reproduce/iterate branch below does: an approver must see the
+      // credit pool the approval will authorize. Persisting null meant approve
+      // re-resolved the default late, and the default is env-derived at boot —
+      // so adding a provider key and restarting between propose and approve
+      // silently moved the spend to a different backend, while the proposal row
+      // (the record of what a human actually approved) still read null. With the
+      // id stamped, a default that has since changed surfaces as
+      // PROVIDER_MISCONFIGURED before any network call instead.
+      provider = this.generation.validateProposedRequest(input.provider, input.workflowJson);
       shotId = input.shotId;
-      provider = input.provider ?? null;
       requestJson = JSON.stringify(input.workflowJson);
     } else {
       const source = this.versionRepo.getVersion(input.versionId);

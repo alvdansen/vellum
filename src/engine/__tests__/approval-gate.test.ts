@@ -229,6 +229,39 @@ describe('approveProposal — decide-exactly-once', () => {
     expect(it.proposal.provider).toBe('byteplus');
   });
 
+  test('a submit proposal DISCLOSES the resolved provider too, not just reproduce/iterate', async () => {
+    // The submit branch used to persist `input.provider ?? null` — i.e. null
+    // whenever the caller did not name one, which is the ordinary case. Approve
+    // then re-resolved the default LATE, and the default is derived from env at
+    // boot while proposals are a persisted table that outlives restarts. So
+    // adding a provider key between propose and approve moved the spend to a
+    // different backend at a different price, and the proposal row — the record
+    // of what a human approved — still read null, unable to show what was
+    // actually charged. The reproduce/iterate branch had disclosed its provider
+    // for exactly this reason since it was written.
+    const ctx = await setup();
+
+    const { proposal } = ctx.engine.proposeGeneration({
+      kind: 'submit',
+      shotId: ctx.shotId,
+      workflowJson: GRAPH,
+    });
+
+    expect(proposal.provider).toBe('comfyui-cloud');
+    expect(proposal.provider).not.toBeNull();
+  });
+
+  test('an explicitly named provider on a submit proposal is preserved', async () => {
+    const ctx = await setup();
+    const { proposal } = ctx.engine.proposeGeneration({
+      kind: 'submit',
+      shotId: ctx.shotId,
+      workflowJson: GRAPH,
+      provider: 'comfyui-cloud',
+    });
+    expect(proposal.provider).toBe('comfyui-cloud');
+  });
+
   test('reproduce proposal from a legacy null-provider source stays null (resolved at approve time)', async () => {
     const ctx = await setup();
     const src = ctx.versions.insertVersion(ctx.shotId, 'legacy'); // no provider stamped
