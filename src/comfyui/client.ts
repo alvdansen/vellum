@@ -5,6 +5,7 @@ import { flattenComfyError, validateWorkflowFormat } from './format.js';
 import { extractTextChunk } from './png-metadata.js';
 import { streamToPath, resolveDownloadIdleTimeoutMs } from '../utils/stream-to-path.js';
 import { assertPublicHostname, type LookupFn } from '../utils/private-address.js';
+import { isPrivateHost } from '../utils/validate-base-url.js';
 import type {
   SubmitRequest,
   SubmitResponse,
@@ -272,6 +273,16 @@ export class ComfyUIClient implements GenerationProvider {
   private allowedLiteralHosts: string[];
   private fetchImpl: typeof fetch;
   private lookupImpl?: LookupFn;
+  /**
+   * Origin of the configured base, ONLY when that base is one the boot
+   * validator would have refused on its own — plaintext http, or a private /
+   * loopback host. Reaching either requires the operator to have set
+   * COMFYUI_API_BASE_ALLOW_HTTP / _ALLOW_PRIVATE, i.e. to have explicitly
+   * declared this instance acceptable. A self-hosted ComfyUI serves its own
+   * outputs, so it must be able to redirect to itself; a normal public https
+   * base gets no exemption and stays under the full protocol + address checks.
+   */
+  private selfHostedOrigin: string | null = null;
   private requestTimeoutMs: number;
 
   /**
@@ -330,6 +341,12 @@ export class ComfyUIClient implements GenerationProvider {
     }
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.lookupImpl = options.lookupImpl;
+    try {
+      const b = new URL(base);
+      if (b.protocol === 'http:' || isPrivateHost(b.hostname)) this.selfHostedOrigin = b.origin;
+    } catch {
+      /* upstream validates base */
+    }
     this.requestTimeoutMs = options.requestTimeoutMs ?? PROVIDER_CONTROL_TIMEOUT_MS;
   }
 
@@ -629,18 +646,40 @@ export class ComfyUIClient implements GenerationProvider {
         'Add the signed-URL host to COMFYUI_ALLOWED_REDIRECT_HOSTS (comma-separated) if it is legitimate.',
       );
     }
+    // The other two outbound paths refuse anything but https. This one did
+    // not check the protocol at all, so a 302 to http:// on an allowlisted host
+    // was followed in cleartext — the asset and its signed URL over the wire,
+    // and a network attacker able to substitute the bytes we then persist as
+    // provenance. Plaintext is permitted only back to a plaintext base, which
+    // exists only when the operator set COMFYUI_API_BASE_ALLOW_HTTP=1.
+    const isSelfHosted = this.selfHostedOrigin !== null && target.origin === this.selfHostedOrigin;
+    if (target.protocol !== 'https:') {
+      if (!isSelfHosted) {
+        throw new TypedError(
+          'COMFYUI_API_ERROR',
+          `Refusing non-https signed-URL redirect (${target.protocol})`,
+          'Signed output URLs must be https. A plaintext redirect target is either a misconfigured tenant or an attempt to strip transport security.',
+        );
+      }
+    }
     // The allowlist above trusts a NAME. This trusts the ADDRESS that name
     // resolves to. Without it, a 302 to an allowlisted-but-rebound host (or an
     // operator-added host under someone else's control) still reaches
     // 169.254.169.254 or an internal service, and the body is streamed to disk
     // and persisted as an asset. Runs after the allowlist so a rejected host
     // costs no DNS, and before the fetch so nothing is connected to.
-    await assertPublicHostname(
-      target.hostname,
-      'Signed-URL redirect host',
-      this.lookupImpl,
-      'COMFYUI_API_ERROR',
-    );
+    // Skipped only for the operator-declared self-hosted instance above: a
+    // local ComfyUI IS a private address, and refusing it would break the very
+    // setup COMFYUI_API_BASE_ALLOW_PRIVATE exists to enable. Every other host,
+    // including the default cloud base, stays under the check.
+    if (!isSelfHosted) {
+      await assertPublicHostname(
+        target.hostname,
+        'Signed-URL redirect host',
+        this.lookupImpl,
+        'COMFYUI_API_ERROR',
+      );
+    }
     // Signed URLs do NOT need auth headers (ComfyUI Cloud docs).
     // Explicitly pass no headers so the original request's X-API-Key does not leak.
     //

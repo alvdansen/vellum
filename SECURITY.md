@@ -36,9 +36,16 @@ all arrive from an LLM that may itself be operating on untrusted input.
 
 Every outbound fetch of a URL Vellum did not fully choose itself passes:
 
-- **https only** — no plaintext, no `file:`, no `data:`.
+- **https only** — no plaintext, no `file:`, no `data:`. The single exception
+  is a self-hosted ComfyUI: if you point `COMFYUI_API_BASE` at a plaintext or
+  private-network instance (which requires setting
+  `COMFYUI_API_BASE_ALLOW_HTTP` / `COMFYUI_API_BASE_ALLOW_PRIVATE`), that exact
+  origin — same scheme, host and port — may serve its own outputs. Nothing else
+  inherits the exemption, including the default cloud host.
 - **A host allowlist** — built-in delivery hosts plus whatever the operator adds
-  via the `*_ALLOWED_OUTPUT_HOSTS` / `VELLUM_INGEST_ALLOWED_HOSTS` variables.
+  via `REPLICATE_ALLOWED_OUTPUT_HOSTS`, `FAL_ALLOWED_OUTPUT_HOSTS`,
+  `BYTEPLUS_ALLOWED_OUTPUT_HOSTS`, `COMFYUI_ALLOWED_REDIRECT_HOSTS` and
+  `VELLUM_INGEST_ALLOWED_HOSTS`.
 - **A resolved-address check** — the allowlist answers "do we trust this name?";
   this answers "and where does that name point?". Any answer in loopback,
   link-local (including `169.254.169.254`), RFC1918, CGNAT or the IPv6
@@ -116,8 +123,8 @@ arbitrary file off disk.
 - **Multi-tenancy.** There is no authentication and no authorisation. Anyone who
   can reach the HTTP port or the stdio pipe has full access to everything in the
   database.
-- **The operator's own allowlist additions.** Adding a host to
-  `*_ALLOWED_OUTPUT_HOSTS` is a trust decision. The resolved-address check still
+- **The operator's own allowlist additions.** Adding a host to one of the
+  allowlist variables is a trust decision. The resolved-address check still
   applies, but the name check is yours to get right.
 - **Cost accounting as a billing control.** `record_cost` records what it is
   told. `VELLUM_SPEND_LIMIT` is a backstop against a runaway loop, not a

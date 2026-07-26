@@ -23,7 +23,7 @@ export interface ValidateBaseUrlOptions {
  * Keep conservative — we want false positives (over-rejecting exotic configs)
  * rather than false negatives here.
  */
-function isPrivateHost(host: string): boolean {
+export function isPrivateHost(host: string): boolean {
   const h = host.toLowerCase();
   // Trim bracketed IPv6 (e.g. "[::1]")
   const bare = h.replace(/^\[|\]$/g, '');
