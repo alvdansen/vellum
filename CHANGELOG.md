@@ -5,6 +5,70 @@ All notable changes to `vellum` are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project does not yet follow strict SemVer — breaking changes are called out explicitly.
 
+## [Unreleased]
+
+Pre-announcement hardening. Everything below came out of a structured audit run
+before making the repository public; each fix carries a regression test that was
+verified to fail against the code before it.
+
+### Fixed
+
+- **Outbound fetches that resolve inward are refused.** The host allowlists on
+  the three outbound paths — URL-provider downloads, inbound `register` ingest,
+  and the ComfyUI signed-URL redirect — answered "do we trust this name?" but
+  nothing checked where the name pointed. An allowlisted host rebound to a
+  loopback, link-local or RFC1918 address was fetched and stored as an asset.
+- **Provenance can no longer contradict itself.** Terminal provenance events
+  were written before the guarded row update, so whenever that update no-opped
+  the event was still appended. Two processes on one database could record two
+  completions for one version, or a failure on a version that had completed —
+  permanently, since the record is append-only. The row transition is now the
+  atomic claim, and the event follows it.
+- **Version allocation no longer fails under cross-process contention.** The
+  allocate-then-insert transaction ran deferred, so a concurrent commit raised
+  `SQLITE_BUSY_SNAPSHOT`, which `busy_timeout` does not retry. It surfaced to
+  agents as `INVALID_INPUT`, the one code that stops them retrying.
+- **Shutdown no longer resurrects pollers.** Aborting the running pollers
+  scheduled a queue drain that launched new ones into the map shutdown had just
+  cleared.
+- **Google AI Studio staging directories are cleaned up.** The staging root was
+  randomised per process and the sweep only walked in-memory state, so nothing a
+  previous run left behind was reachable — including after a clean exit with a
+  job in flight. Staged bytes are also no longer world-readable.
+- **`sharp` and `hono` upgraded off known-vulnerable releases.** The image
+  decoder is reachable with provider-delivered bytes, and the extension allowlist
+  is not a defence — libvips chooses its decoder by sniffing content.
+
+### Changed
+
+- **The outputs root is now an absolute path.** It was a bare relative string
+  that every consumer re-resolved against the current working directory, so
+  under an MCP client that launches from `/` the first generation failed, and
+  from anywhere else assets scattered while the database recorded relative paths
+  that dangled on the next start. The default is now package-relative;
+  `VELLUM_OUTPUTS_DIR` is resolved once, at boot. If you previously ran the
+  server from a directory other than the repository root and relied on outputs
+  landing there, set `VELLUM_OUTPUTS_DIR` explicitly.
+- **Submit proposals record the resolved provider.** They stored `null` when
+  the caller did not name one, and approve re-resolved the default late — so a
+  default that changed between propose and approve moved the spend to a different
+  backend than the one reviewed.
+- **Supported Node range narrowed to `>=20.9 <26`** to match what `better-sqlite3`
+  and `sharp` actually build against.
+- **The package is marked private and no longer declares `bin`/`main`.** They
+  pointed at a TypeScript file Node cannot execute, and the install path is a
+  clone.
+
+### Documentation
+
+- Added `SECURITY.md` — trust boundaries, the outbound controls, and why each
+  remaining `npm audit` entry is unreachable.
+- `.env.example` now documents every variable the code reads, with defaults,
+  instead of four of them.
+- Corrected every wrong factual claim in the README: test counts, migration
+  count, supported Node range, the California AI Transparency Act date, and the
+  approval gate, which is opt-in and defaults off rather than unconditional.
+
 ## [2.0.0]
 
 Provider-agnostic release.
