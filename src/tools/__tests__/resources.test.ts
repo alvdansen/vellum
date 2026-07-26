@@ -113,3 +113,46 @@ describe('Phase E — self-describing MCP resources', () => {
     expect(doc.trust_boundary.max_bytes_per_output).toBeGreaterThan(0);
   });
 });
+
+describe('the self-describing resources tell the truth about pagination', () => {
+  // An agent is supposed to learn this surface cold from vellum://capabilities
+  // and vellum://manual. Until b973030, version.list advertised an `offset` it
+  // silently discarded, so an agent looping on it got page 1 forever. That is
+  // now an explicit error — which only helps if the contract an agent reads
+  // actually mentions it. It did not.
+
+  it('capabilities names version.list as cursor-paginated', async () => {
+    const client = await connect();
+    const doc = JSON.parse(
+      textContent(await client.readResource({ uri: 'vellum://capabilities' })).text,
+    ) as { limits: { cursor_paginated_actions?: string[]; list_default_limit: number } };
+    expect(doc.limits.cursor_paginated_actions).toContain('version.list');
+    expect(doc.limits.list_default_limit).toBe(20);
+  });
+
+  it('the manual explains how to advance a cursor-paginated list', async () => {
+    const client = await connect();
+    const doc = textContent(await client.readResource({ uri: 'vellum://manual' })).text;
+    expect(doc).toMatch(/next_cursor/);
+    expect(doc).toMatch(/cursor/i);
+    expect(doc).toMatch(/offset/i);
+  });
+
+  it('every action named as cursor-paginated is a real registered action', async () => {
+    // Guards the reverse failure: a stale exception list pointing at an action
+    // that no longer exists is its own kind of lie.
+    const client = await connect();
+    const doc = JSON.parse(
+      textContent(await client.readResource({ uri: 'vellum://capabilities' })).text,
+    ) as {
+      tools: Array<{ name: string; actions: string[] }>;
+      limits: { cursor_paginated_actions?: string[] };
+    };
+    for (const entry of doc.limits.cursor_paginated_actions ?? []) {
+      const [toolName, actionName] = entry.split('.');
+      const tool = doc.tools.find((t) => t.name === toolName);
+      expect(tool, `tool ${toolName} from ${entry}`).toBeDefined();
+      expect(tool!.actions, `action ${entry}`).toContain(actionName);
+    }
+  });
+});

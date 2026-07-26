@@ -59,7 +59,17 @@ function capabilitiesDoc(version: string): unknown {
       '(workspace → project → sequence → shot → version → output) with append-only ' +
       'provenance + optional C2PA, on top of any generation backend.',
     tools: TOOL_SURFACE,
-    limits: { tool_cap: 12, tools_registered: TOOL_SURFACE.length, list_default_limit: 20, list_includes_total_count: true },
+    limits: {
+      tool_cap: 12,
+      tools_registered: TOOL_SURFACE.length,
+      list_default_limit: 20,
+      list_includes_total_count: true,
+      // version.list advertised an offset it discarded until b973030 made it
+      // cursor-paginated. An agent that assumes offset works gets page 1
+      // forever, or now an error — so state the exception where it is machine
+      // readable, not only in the prose manual.
+      cursor_paginated_actions: ['version.list'],
+    },
     providers: {
       configured,
       default: defaultProvider,
@@ -166,6 +176,8 @@ function manualDoc(version: string): string {
     '- `vellum://output-contract` — the exact schema for registering an external output.',
     '',
     'All list actions paginate (default 20, with a total count). IDs are opaque strings; pass them back verbatim.',
+    '',
+    '`version list` is CURSOR-paginated, not offset-paginated: read `next_cursor` from the response and pass it back as `cursor` for the next page. Passing a non-zero `offset` is an error, not a silent no-op — it cannot advance the page.',
   ].join('\n');
 }
 

@@ -44,7 +44,13 @@ A generation flows **outbound** (submit and poll any configured provider) or **i
 | `version`    | Read versions, full provenance, structured diffs, and C2PA manifests | `get`, `list`, `provenance`, `diff`, `export_manifest`, `verify_manifest`, `redact_manifest` |
 | `asset`      | Tag versions, attach metadata, and query across the hierarchy       | `add_tag`, `remove_tag`, `set_metadata`, `remove_metadata`, `query`, `list_tags`, `list_metadata_keys` |
 
-Every response carries the full hierarchy breadcrumb (`workspace > project > sequence > shot`), every input is Zod-validated, every error is human-readable with an actionable next step, and every list is paginated (`{ items, total_count, limit, offset }`, default 20).
+Every response carries the full hierarchy breadcrumb (`workspace > project > sequence > shot`), every input is Zod-validated, every error is human-readable with an actionable next step, and every list is paginated (default page size 20).
+
+Most lists are offset-paginated and return `{ items, total_count, limit, offset }`.
+`version list` is **cursor**-paginated: it returns `next_cursor` alongside those
+fields, and passing a non-zero `offset` is an error rather than a silent no-op —
+read `next_cursor` and pass it back as `cursor`. The `vellum://output-contract`
+resource states this too, so an agent can learn it without reading this file.
 
 ## Providers
 
