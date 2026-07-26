@@ -146,3 +146,99 @@ describe('terminal transitions are an atomic claim across processes', () => {
     expect(countEvents(a.provenance, versionId, 'completed')).toBe(1);
   });
 });
+
+describe('the claim and its provenance event are one unit', () => {
+  // REGRESSION for the fix above. Gating the event on the claim made the event
+  // FOLLOW the transition, which is what stops two processes writing
+  // contradictory records — but it also made the two separately failable. If
+  // the row flipped terminal and the event INSERT then threw (full disk, I/O
+  // error, lock timeout), the version was left permanently terminal with NO
+  // terminal event, and nothing could repair it: the status read short-circuits
+  // terminal rows, the recovery poller only scans non-terminal ones, and
+  // provenance is append-only by design. `reproduce` and `iterate` are blocked
+  // on that version forever.
+  //
+  // The pre-inversion order self-healed this, because a failed event write left
+  // the row non-terminal and the next poll retried. One transaction keeps the
+  // atomic claim and restores that property.
+
+  test('a throwing completed-event append rolls the transition back', () => {
+    const { a, versionId } = twoProcesses();
+
+    expect(() =>
+      a.versions.markCompletedAtomic(versionId, '[]', () => {
+        throw new Error('SQLITE_IOERR: disk failure');
+      }),
+    ).toThrow(/disk failure/);
+
+    // The row must NOT be terminal — that is what makes the next poll retry.
+    const row = a.versions.getVersion(versionId)!;
+    expect(row.status).not.toBe('completed');
+    expect(row.completed_at).toBeNull();
+    expect(countEvents(a.provenance, versionId, 'completed')).toBe(0);
+  });
+
+  test('a throwing failed-event append rolls the transition back', () => {
+    const { a, versionId } = twoProcesses();
+
+    expect(() =>
+      a.versions.markFailedAtomic(versionId, 'DOWNLOAD_FAILED', 'x', () => {
+        throw new Error('SQLITE_FULL: database or disk is full');
+      }),
+    ).toThrow(/disk is full/);
+
+    const row = a.versions.getVersion(versionId)!;
+    expect(row.status).not.toBe('failed');
+    expect(row.completed_at).toBeNull();
+    expect(countEvents(a.provenance, versionId, 'failed')).toBe(0);
+  });
+
+  test('after a rolled-back attempt the version can still be completed cleanly', () => {
+    // The point of the rollback: the state is recoverable, not wedged.
+    const { a, versionId } = twoProcesses();
+
+    expect(() =>
+      a.versions.markCompletedAtomic(versionId, '[]', () => {
+        throw new Error('transient');
+      }),
+    ).toThrow();
+
+    const won = a.versions.markCompletedAtomic(versionId, '[{"filename":"out.png"}]', () =>
+      a.writer.writeCompletedEvent(versionId, null, '[{"filename":"out.png"}]', null),
+    );
+    expect(won).toBe(true);
+    expect(a.versions.getVersion(versionId)!.status).toBe('completed');
+    expect(countEvents(a.provenance, versionId, 'completed')).toBe(1);
+  });
+
+  test('the atomic form still decides exactly one winner across processes', () => {
+    // The property the transaction must not cost us.
+    const { a, b, versionId } = twoProcesses();
+    const wins = [
+      a.versions.markCompletedAtomic(versionId, '[]', () =>
+        a.writer.writeCompletedEvent(versionId, null, '[]', null),
+      ),
+      b.versions.markCompletedAtomic(versionId, '[]', () =>
+        b.writer.writeCompletedEvent(versionId, null, '[]', null),
+      ),
+    ];
+    expect(wins.filter(Boolean)).toHaveLength(1);
+    expect(countEvents(a.provenance, versionId, 'completed')).toBe(1);
+  });
+
+  test('the loser does not run its append at all', () => {
+    const { a, b, versionId } = twoProcesses();
+    let bAppended = false;
+
+    expect(a.versions.markCompletedAtomic(versionId, '[]', () =>
+      a.writer.writeCompletedEvent(versionId, null, '[]', null),
+    )).toBe(true);
+
+    expect(
+      b.versions.markCompletedAtomic(versionId, '[]', () => {
+        bAppended = true;
+      }),
+    ).toBe(false);
+    expect(bAppended).toBe(false);
+  });
+});

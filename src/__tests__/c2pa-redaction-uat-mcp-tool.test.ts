@@ -48,6 +48,7 @@ import { nanoid } from 'nanoid';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { reservePort } from '../test-utils/reserve-port.js';
 
 // ---------------------------------------------------------------
 // Constants — bundled c2pa-node certs (Phase 14 + Plan 16-03/16-04 pattern)
@@ -303,9 +304,6 @@ function readPayload(result: unknown): Record<string, unknown> {
 }
 
 /** Pick a random ephemeral port that won't clash. */
-function pickPort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
 
 // ===============================================================
 // Section A — STDIO over signed seed (Tests 1-5, 12)
@@ -545,7 +543,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 wire-level UAT — HTTP', () => {
 
   beforeAll(async () => {
     seed = await seedSignedVersionInDb({ c2paEnabled: true });
-    const port = pickPort();
+    const port = await reservePort();
     httpHandle = await connectHttp({
       dbPath: seed.dbPath, outputsDir: seed.outputsDir, c2paEnabled: true, port,
     });
@@ -609,7 +607,7 @@ describe.skipIf(!haveOpenssl)('Phase 16 wire-level UAT — HTTP', () => {
   it('Test 9 — C-01: HTTP D-CTX-1 wire-level invariant — multi-encoding scan over active projection', async () => {
     // Use a fresh seed for an unmutated `Version ${versionId}` title.
     const localSeed = await seedSignedVersionInDb({ c2paEnabled: true });
-    const localPort = pickPort();
+    const localPort = await reservePort();
     const localHttp = await connectHttp({
       dbPath: localSeed.dbPath, outputsDir: localSeed.outputsDir, c2paEnabled: true, port: localPort,
     });

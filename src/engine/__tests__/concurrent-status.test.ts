@@ -136,6 +136,68 @@ describe('concurrent getGenerationStatus', () => {
       .get(versionId) as { status: string };
     expect(row.status).toBe('failed');
   });
+  it('a writer that loses the completion claim leaves the record with just the winner\'s completion', async () => {
+    // An end-to-end guard on the invariant: a caller that LOSES the terminal
+    // claim must contribute nothing to the append-only record.
+    //
+    // Honest scope note — this is a guard, not a verified regression test. It
+    // does NOT fail against the code before the fingerprint hook was moved
+    // inside the winner branch: reproducing that duplication needs the losing
+    // process to reach the hook with a winner's completed event already visible
+    // to it, and this single-process simulation does not get there. The hook
+    // gating is pinned at the repo level instead, by "the loser does not run its
+    // append at all" in terminal-transition-claim.test.ts. What this test does
+    // pin is the outcome that matters at the boundary: one completion, no
+    // contradiction, nothing extra.
+    const { stack, versionId } = await seed();
+    const client = stack.client as FakeComfyUIClient;
+    client.statusDelayMs = 60;
+
+    const inFlight = stack.engine.getGenerationStatus(versionId);
+    await new Promise((r) => setTimeout(r, 20));
+    // The "other process" wins the terminal transition mid-download — row AND
+    // event, the way a real winner leaves it. The event matters: the fingerprint
+    // hook bails when there is no completed event to read a prompt blob from, so
+    // a winner simulated by a bare UPDATE cannot expose the duplication at all.
+    stack.sqlite
+      .prepare(
+        "UPDATE versions SET status='completed', outputs_json='[]', completed_at=? WHERE id=? AND completed_at IS NULL",
+      )
+      .run(Date.now(), versionId);
+    stack.sqlite
+      .prepare(
+        "INSERT INTO provenance (id, version_id, event_type, timestamp, prompt_json, outputs_json) VALUES (?,?,?,?,?,?)",
+      )
+      .run(
+        'prov_winner_test',
+        versionId,
+        'completed',
+        Date.now(),
+        JSON.stringify({ '3': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'x.safetensors' } } }),
+        '[]',
+      );
+
+    await inFlight;
+    // The fingerprint hook is fire-and-forget (`void X.catch(...)`), so its
+    // event lands AFTER the completion path returns. Settle before asserting —
+    // without this the test passes against the buggy code simply by reading the
+    // table too early.
+    await new Promise((r) => setTimeout(r, 300));
+    await stack.engine.stop();
+
+    const counts = stack.sqlite
+      .prepare('SELECT event_type, COUNT(*) AS n FROM provenance WHERE version_id=? GROUP BY event_type')
+      .all(versionId) as Array<{ event_type: string; n: number }>;
+    const byType = Object.fromEntries(counts.map((r) => [r.event_type, r.n]));
+
+    // Exactly the winner's one completion, and nothing hanging off it that the
+    // LOSER contributed — no second completion, no failure, and no
+    // models_fingerprinted appended by a caller that did not win the claim.
+    expect(byType.completed ?? 0).toBe(1);
+    expect(byType.models_fingerprinted ?? 0).toBe(0);
+    expect(byType.failed ?? 0).toBe(0);
+  });
+
 });
 
 /**

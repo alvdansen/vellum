@@ -237,6 +237,43 @@ export class VersionRepo {
   }
 
   /**
+   * Claim the failed transition and append its provenance event as ONE unit.
+   *
+   * Gating the event on the claim made the event follow the transition, which
+   * is what stops two processes writing contradictory records. But it also made
+   * the two statements separately failable: if the row flipped terminal and the
+   * event INSERT then threw — a full disk, an I/O error, a lock timeout — the
+   * version was left permanently terminal with no terminal event, and nothing
+   * could repair it. The status read short-circuits terminal rows, the recovery
+   * poller only scans non-terminal ones, and provenance is append-only by
+   * design. `reproduce` and `iterate` are then blocked on that version forever.
+   *
+   * The pre-inversion order self-healed that case, because a failed event write
+   * left the row non-terminal and the next poll retried. Wrapping both in one
+   * transaction keeps the atomic claim AND restores that property: if the
+   * append throws, the transition rolls back with it.
+   *
+   * `append` must be synchronous and must write on this same connection — both
+   * hold for better-sqlite3, which is how it participates in this transaction.
+   */
+  markFailedAtomic(id: string, code: string, message: string, append: () => void): boolean {
+    return this.db.transaction(() => {
+      const won = this.markFailed(id, code, message);
+      if (won) append();
+      return won;
+    });
+  }
+
+  /** Claim the completed transition and append its event as one unit. See markFailedAtomic. */
+  markCompletedAtomic(id: string, outputsJson: string, append: () => void): boolean {
+    return this.db.transaction(() => {
+      const won = this.markCompleted(id, outputsJson);
+      if (won) append();
+      return won;
+    });
+  }
+
+  /**
    * Mark completed — one-shot terminal transition (D-GEN-20 immutability).
    * outputsJson must be a pre-serialised JSON string.
    *

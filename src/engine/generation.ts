@@ -532,9 +532,9 @@ export class GenerationEngine {
         await Promise.all(stored.map((s) => unlink(s.path).catch(() => undefined)));
         const code: ErrorCode = err instanceof TypedError ? err.code : 'DOWNLOAD_FAILED';
         const msg = err instanceof TypedError ? err.message : String(err);
-        if (this.versions.markFailed(row.id, code, msg)) {
-          this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-        }
+        this.versions.markFailedAtomic(row.id, code, msg, () =>
+          this.provenanceWriter.writeFailedEvent(row.id, code, msg),
+        );
         if (err instanceof TypedError) throw err;
         throw new TypedError('DOWNLOAD_FAILED', msg);
       }
@@ -544,9 +544,10 @@ export class GenerationEngine {
     // provider_id LAST so caller-asserted provenance can never spoof the
     // authenticated reporting provider in the append-only record (review fix).
     const neutralJson = JSON.stringify({ ...(input.provenance ?? {}), provider_id: input.providerId });
-    if (this.versions.markCompleted(row.id, JSON.stringify(stored))) {
-      this.provenanceWriter.writeCompletedEvent(row.id, null, JSON.stringify(stored), neutralJson);
-    }
+    const storedJson = JSON.stringify(stored);
+    this.versions.markCompletedAtomic(row.id, storedJson, () =>
+      this.provenanceWriter.writeCompletedEvent(row.id, null, storedJson, neutralJson),
+    );
     // Cost actuals — record the caller-asserted actual spend for this take, if
     // provided, as an append-only sibling event AFTER completion. Fault-isolated
     // like the fingerprint hook (downloadAndPersist): the take is already
@@ -709,9 +710,9 @@ export class GenerationEngine {
       const msg = ambiguous
         ? `${rawMsg} — no response was received, so this request may still be running and may have been charged. Check the provider before resubmitting.`
         : rawMsg;
-      if (this.versions.markFailed(row.id, code, msg)) {
-        this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-      }
+      this.versions.markFailedAtomic(row.id, code, msg, () =>
+        this.provenanceWriter.writeFailedEvent(row.id, code, msg),
+      );
       if (err instanceof TypedError) {
         throw new TypedError(err.code, msg, err.hint, err.ambiguous);
       }
@@ -826,9 +827,9 @@ export class GenerationEngine {
     const providerUnresolvable = row.provider != null && !this.providers.has(row.provider);
     if (!providerUnresolvable && Date.now() - row.created_at > timeoutMs) {
       const msg = `Generation did not complete within ${timeoutMs / 1000}s`;
-      if (this.versions.markFailed(row.id, 'GENERATION_TIMEOUT', msg)) {
-        this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg);
-      }
+      this.versions.markFailedAtomic(row.id, 'GENERATION_TIMEOUT', msg, () =>
+        this.provenanceWriter.writeFailedEvent(row.id, 'GENERATION_TIMEOUT', msg),
+      );
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
@@ -847,9 +848,9 @@ export class GenerationEngine {
       // Edge case: row inserted at submit-time but submit call failed before
       // setJobId (very rare — markFailed runs in the catch in submitGeneration).
       const code = providerFailureCode(provider);
-      if (this.versions.markFailed(row.id, code, 'Version has no job_id')) {
-        this.provenanceWriter.writeFailedEvent(row.id, code, 'Version has no job_id');
-      }
+      this.versions.markFailedAtomic(row.id, code, 'Version has no job_id', () =>
+        this.provenanceWriter.writeFailedEvent(row.id, code, 'Version has no job_id'),
+      );
       const updated = this.versions.getVersion(versionId)!;
       return { entity: updated, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
@@ -865,9 +866,9 @@ export class GenerationEngine {
       // path (drivePoller → getGenerationStatus) inherits this.
       const flat = flattenComfyError(remote.error);
       const code = providerFailureCode(provider);
-      if (this.versions.markFailed(row.id, code, flat)) {
-        this.provenanceWriter.writeFailedEvent(row.id, code, flat);
-      }
+      this.versions.markFailedAtomic(row.id, code, flat, () =>
+        this.provenanceWriter.writeFailedEvent(row.id, code, flat),
+      );
     } else if (mapped === 'running' && row.status !== 'running') {
       this.versions.transition(row.id, 'running');
     }
@@ -1199,9 +1200,9 @@ export class GenerationEngine {
           err instanceof TypedError
             ? err.message
             : `Failed to prepare output path for ${out.filename}: ${(err as Error).message}`;
-        if (this.versions.markFailed(row.id, code, msg)) {
-          this.provenanceWriter.writeFailedEvent(row.id, code, msg);
-        }
+        this.versions.markFailedAtomic(row.id, code, msg, () =>
+          this.provenanceWriter.writeFailedEvent(row.id, code, msg),
+        );
         return;
       }
 
@@ -1235,9 +1236,9 @@ export class GenerationEngine {
       }
       if (lastErr) {
         const msg = `Failed to download output ${out.filename} after ${DOWNLOAD_MAX_ATTEMPTS} attempts`;
-        if (this.versions.markFailed(row.id, 'DOWNLOAD_FAILED', msg)) {
-          this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg);
-        }
+        this.versions.markFailedAtomic(row.id, 'DOWNLOAD_FAILED', msg, () =>
+          this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg),
+        );
         return; // subsequent outputs intentionally left for debug/audit per D-GEN-36
       }
     }
@@ -1304,12 +1305,32 @@ export class GenerationEngine {
     // describes, and gives the failed direction the same guarantee the completed
     // one used to have alone.
     //
-    // The two statements are adjacent and synchronous (better-sqlite3), so
-    // nothing can interleave; only a SIGKILL landing between them could leave a
-    // terminal row without its event — strictly better than the duplicate and
-    // contradictory records this replaces.
-    if (this.versions.markCompleted(row.id, outputsJson)) {
-      this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson);
+    // Claim and append run in ONE transaction. Gating the event on the claim
+    // alone made the two separately failable: the row could flip terminal and
+    // the event INSERT then throw (full disk, I/O error, lock timeout), leaving
+    // a version permanently terminal with no terminal event and no way back —
+    // the status read short-circuits terminal rows, the recovery poller only
+    // scans non-terminal ones, and provenance is append-only. reproduce and
+    // iterate stay blocked on that version forever. The pre-inversion order
+    // self-healed that case because the row stayed non-terminal; the
+    // transaction keeps the atomic claim and restores that property, because a
+    // throwing append rolls the transition back with it.
+    const wonCompletion = this.versions.markCompletedAtomic(row.id, outputsJson, () =>
+      this.provenanceWriter.writeCompletedEvent(row.id, promptBlob, outputsJson, neutralJson),
+    );
+    if (!wonCompletion) {
+      // Another writer reached the terminal transition first. Its outputs_json
+      // is the record, so the files THIS caller just wrote are unreferenced —
+      // resolveCollisionSuffix gave them distinct names, so they are not the
+      // winner's. Say so rather than leaving them to be discovered as mystery
+      // files in the output root. Not deleted: a wrong guess here removes a
+      // real asset, and an orphan costs only disk.
+      console.error(
+        `vellum: version ${row.id} was already finalised by another writer; ` +
+          `${stored.length} downloaded file(s) are unreferenced and can be removed: ` +
+          stored.map((o) => o.path).join(', '),
+      );
+      return;
     }
     // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
     // the synchronous completion writes return. The receiver
@@ -1317,6 +1338,11 @@ export class GenerationEngine {
     // pipeline.ts) wraps async work in `void X.catch(...)` so this call
     // returns synchronously — the generation hot path is NOT delayed.
     // Synchronous throws here are logged but never break the completion path.
+    //
+    // Inside the winner branch: the hook appends a `models_fingerprinted`
+    // event, so a caller that LOST the completion claim firing it too would
+    // duplicate that event — exactly the append-only defect the claim exists to
+    // prevent, one event type over. The winner fires its own.
     try {
       this.fingerprintHook?.(row.id);
     } catch (err) {

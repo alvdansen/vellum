@@ -36,6 +36,7 @@ import { join, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { reservePort } from '../test-utils/reserve-port.js';
 
 const haveOpenssl = (() => {
   try {
@@ -299,7 +300,7 @@ describe.skipIf(!haveOpenssl)('C2PA wire-level UAT — HTTP transport (Test 3)',
   beforeAll(async () => {
     seed = await seedSignedVersionInDb({ c2paEnabled: true });
     // Pick a random ephemeral port.
-    port = 30000 + Math.floor(Math.random() * 30000);
+    port = await reservePort();
     const { spawn } = await import('node:child_process');
     serverProc = spawn(
       'npx',
