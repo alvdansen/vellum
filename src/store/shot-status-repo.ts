@@ -99,6 +99,15 @@ export function insertStatusEvent(
  * (shot_id, created_at) covering index lets SQLite walk the index in
  * reverse for the DESC order without a sort step.
  *
+ * Order is (created_at DESC, rowid DESC). `created_at` is a millisecond
+ * stamp, so a scripted or agent-driven review round lands several
+ * transitions inside one tick; without the second key SQLite is free to
+ * return those ties in index order, which is a FORWARD walk, so the
+ * newest row comes back last and the timeline reads inverted. rowid is
+ * SQLite's monotonic insertion counter, so it breaks the tie by true
+ * write order (id is a nanoid — random, not sortable). Mirrors
+ * getLatestCostRecorded in src/store/provenance-repo.ts.
+ *
  * Returns an empty array (NOT null) when no rows exist — callers handle
  * the 'wip' default via getCurrentStatus, not via null-checks here.
  */
@@ -111,7 +120,7 @@ export function getStatusHistory(
     .select()
     .from(shotStatusEvents)
     .where(eq(shotStatusEvents.shot_id, shotId))
-    .orderBy(desc(shotStatusEvents.created_at))
+    .orderBy(desc(shotStatusEvents.created_at), sql`rowid desc`)
     .limit(limit)
     .all() as ShotStatusEvent[];
 }

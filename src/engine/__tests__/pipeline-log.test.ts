@@ -164,6 +164,30 @@ describe('renderShotPipelineLog — status history', () => {
     expect(idxApproved).toBeGreaterThan(idxReview);
     expect(md).toContain('| pending-review → approved | alex | keeper picked |');
   });
+
+  test('renders same-millisecond transitions in write order, not id order', () => {
+    // A scripted review round: four transitions inside one tick. Input is
+    // newest-first, as getStatusHistory returns it (created_at DESC, rowid
+    // DESC). Ids are deliberately NOT in write order — sorting on them
+    // renders a causally impossible chain (an approval before the rejection
+    // that preceded it), which is what shipped before this test.
+    const history = [
+      statusEvent({ id: 'zzz', from_status: 'pending-review', to_status: 'approved', note: 'signed off', created_at: T0 }),
+      statusEvent({ id: 'aaa', from_status: 'wip', to_status: 'pending-review', note: 'resubmitted', created_at: T0 }),
+      statusEvent({ id: 'mmm', from_status: 'pending-review', to_status: 'wip', note: 'client rejected', created_at: T0 }),
+      statusEvent({ id: 'bbb', from_status: 'wip', to_status: 'pending-review', note: 'sent to client', created_at: T0 }),
+    ];
+    const md = renderShotPipelineLog(baseData({ statusHistory: history }));
+    const order = ['sent to client', 'client rejected', 'resubmitted', 'signed off'].map((n) =>
+      md.indexOf(n),
+    );
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // The chain must end on the approval, not double back to a rejection.
+    expect(md.lastIndexOf('pending-review → approved')).toBeGreaterThan(
+      md.lastIndexOf('pending-review → wip'),
+    );
+  });
 });
 
 describe('renderShotPipelineLog — takes', () => {

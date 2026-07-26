@@ -87,6 +87,28 @@ describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () =
     expect(history[0]!.created_at).toBeGreaterThanOrEqual(history[1]!.created_at);
   });
 
+  test('getStatusHistory orders same-millisecond transitions by write order, not by id', () => {
+    // No sleeps. A scripted or agent-driven review round completes several
+    // transitions inside one millisecond tick, which is the case the
+    // sleep-separated tests above never reach. created_at ties then have to
+    // be broken by rowid; breaking them on `id` (a nanoid) or leaving them
+    // to index order renders a chain that never happened.
+    const written: ShotStatusEvent[] = [
+      insertStatusEvent(db, shotId, 'wip', 'pending-review', 'user', 'sent to client'),
+      insertStatusEvent(db, shotId, 'pending-review', 'wip', 'user', 'client rejected'),
+      insertStatusEvent(db, shotId, 'wip', 'pending-review', 'user', 'resubmitted'),
+      insertStatusEvent(db, shotId, 'pending-review', 'approved', 'supervisor', 'signed off'),
+    ];
+    // Guard the premise: if these ever stop sharing a tick the test is moot.
+    const distinctStamps = new Set(written.map((e) => e.created_at)).size;
+    expect(distinctStamps).toBeLessThan(written.length);
+
+    const history = getStatusHistory(db, shotId);
+    expect(history.map((e) => e.id)).toEqual([...written].reverse().map((e) => e.id));
+    expect(history[0]!.to_status).toBe('approved');
+    expect(getCurrentStatus(db, shotId)).toBe('approved');
+  });
+
   test('getStatusHistory respects the limit parameter', async () => {
     for (let i = 0; i < 5; i++) {
       insertStatusEvent(db, shotId, i === 0 ? 'wip' : 'pending-review', 'pending-review', 'user');

@@ -339,12 +339,19 @@ export function renderShotPipelineLog(data: ShotPipelineLogData): string {
   if (statusHistory.length === 0) {
     lines.push('_No status changes recorded._');
   } else {
-    // Stable oldest-first order — the id tiebreaker makes same-millisecond
-    // transitions deterministic across regenerations (the source query orders
-    // by created_at only).
-    const ordered = [...statusHistory].sort(
-      (a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id),
-    );
+    // Oldest-first, correct for same-millisecond transitions.
+    //
+    // Reverse first: getStatusHistory returns (created_at DESC, rowid DESC),
+    // so reversing yields true write order for rows sharing a millisecond —
+    // which a scripted or agent-driven review round produces routinely.
+    // Then sort ascending by created_at; Array.prototype.sort is stable, so
+    // it repairs any out-of-order distinct stamps without disturbing the tie
+    // order the reverse just established.
+    //
+    // Do NOT tiebreak on `id`: it is a nanoid, so an id tiebreak is
+    // deterministic but causally wrong, and renders a chain that never
+    // happened (approval before the rejection that preceded it).
+    const ordered = [...statusHistory].reverse().sort((a, b) => a.created_at - b.created_at);
     lines.push('| When (UTC) | Transition | By | Note |');
     lines.push('|---|---|---|---|');
     for (const ev of ordered) {
