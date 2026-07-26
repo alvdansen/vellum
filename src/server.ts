@@ -309,12 +309,27 @@ async function main(): Promise<void> {
     );
   }
 
-  // Phase 14 Plan 14-05 — outputs root is configurable via
-  // VELLUM_OUTPUTS_DIR for ops + multi-tenant deployments. Default
-  // 'outputs' relative to cwd (D-WEBUI-26 stable download root pattern).
-  // Tests rely on this to redirect outputs to a temp dir. Mirrors the
-  // VELLUM_MODELS_DIR convention.
-  const outputsDir = process.env.VELLUM_OUTPUTS_DIR ?? 'outputs';
+  // Phase 14 Plan 14-05 — outputs root is configurable via VELLUM_OUTPUTS_DIR
+  // for ops + multi-tenant deployments. Tests rely on this to redirect outputs
+  // to a temp dir. Mirrors the VELLUM_MODELS_DIR convention.
+  //
+  // ABSOLUTE, for the same reason the database path is. This used to be the bare
+  // relative string 'outputs', and every consumer resolved it against
+  // process.cwd() at call time — so under the documented Claude Desktop config
+  // (which launches from `/`) the first generation died on `mkdir 'outputs'`,
+  // and from any other writable cwd the assets scattered there AND the database
+  // durably recorded a RELATIVE path, which then dangled the next time the
+  // server started somewhere else. Booting succeeded either way, so the break
+  // landed on the first generation — the moment of value.
+  //
+  // Resolving a caller-supplied relative VELLUM_OUTPUTS_DIR against cwd (rather
+  // than the package) is deliberate: an operator typing a relative path means it
+  // relative to where they are standing. Only the DEFAULT belongs to the package.
+  const envOutputsDir = process.env.VELLUM_OUTPUTS_DIR?.trim();
+  const outputsDir = envOutputsDir
+    ? path.resolve(envOutputsDir)
+    : path.join(packageRoot, 'outputs');
+  console.error(`vellum: outputs=${outputsDir}`);
   const engine = new Engine(db, repo, versionRepo, provenanceRepo, client, outputsDir, {
     // Multi-provider routing: the full configured-provider map (default = client).
     providers,
