@@ -189,6 +189,8 @@ const POLLER_BOOT_JITTER_MAX_MS = 800;
  */
 export class GenerationEngine {
   private pollers = new Map<string, AbortController>();
+  /** Set by stop(); blocks start()'s queue drain from launching new pollers. */
+  private stopped = false;
   /** versionId → in-flight status check, so concurrent callers share one. */
   private statusMutex = new Map<string, Promise<{ entity: Version; breadcrumb: Breadcrumb }>>();
   private readonly maxConcurrentPollers: number;
@@ -1299,11 +1301,20 @@ export class GenerationEngine {
    * rows (which would instantly hit ComfyUI's 429 rate-limit path).
    */
   async start(): Promise<void> {
+    this.stopped = false;
     const pending = this.versions.listPendingVersions();
     const queue = [...pending];
     let inFlight = 0;
 
     const launch = (row: Version): void => {
+      // The queue drain must not outlive stop(). Aborting a poller synchronously
+      // schedules its `.finally`, which used to launch the next queued row with
+      // a FRESH AbortController and write it back into `this.pollers` — the map
+      // stop() had just cleared. Nothing then held a reference to abort it, so a
+      // shutdown could resurrect a poller that kept writing into the output root
+      // and appending provenance after teardown had begun, which is the exact
+      // invariant Engine.stop()'s inFlightDownloads join exists to protect.
+      if (this.stopped) return;
       inFlight++;
       const controller = new AbortController();
       this.pollers.set(row.id, controller);
@@ -1311,7 +1322,7 @@ export class GenerationEngine {
         this.pollers.delete(row.id);
         inFlight--;
         // Drain the queue as slots free up.
-        while (inFlight < this.maxConcurrentPollers && queue.length > 0) {
+        while (!this.stopped && inFlight < this.maxConcurrentPollers && queue.length > 0) {
           const next = queue.shift()!;
           launch(next);
         }
@@ -1327,6 +1338,9 @@ export class GenerationEngine {
 
   /** Abort every in-flight poller. Called on SIGINT/SIGTERM from server.ts. */
   async stop(): Promise<void> {
+    // Set BEFORE the aborts: abort() synchronously schedules the drain that this
+    // latch has to block.
+    this.stopped = true;
     for (const c of this.pollers.values()) c.abort();
     this.pollers.clear();
   }

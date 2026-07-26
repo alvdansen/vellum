@@ -507,6 +507,36 @@ describe('GenerationEngine recovery poller (start / stop)', () => {
     expect(ctx.fake.calls.length).toBeLessThanOrEqual(before + 1);
   });
 
+  test('stop() also stops rows still waiting in the start() queue', async () => {
+    // REGRESSION. stop() aborted the RUNNING pollers and cleared the map, but
+    // said nothing about the queue behind them. Aborting synchronously schedules
+    // each poller's `.finally`, which drained the next queued row with a fresh
+    // AbortController and wrote it back into the map stop() had just cleared —
+    // so shutdown RESURRECTED a poller that nothing could then abort.
+    //
+    // The old test seeded exactly ONE pending row, so the queue was empty and
+    // the drain path never ran — which is precisely why this shipped. This
+    // engine takes the default cap of 3, so it needs MORE than three rows for
+    // any to be left waiting behind the launched ones.
+    ctx.fake.scenario = 'slow-running';
+    ctx.fake.slowRunningPolls = 10_000;
+    for (let i = 0; i < 6; i++) {
+      const r = ctx.versions.insertVersion(ctx.shotId);
+      ctx.versions.setJobId(r.id, `job-stuck-${i}`);
+    }
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await ctx.engine.start();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await ctx.engine.stop();
+
+    const before = ctx.fake.calls.length;
+    // Well past the 30s backoff ceiling: a resurrected poller would poll here.
+    await vi.advanceTimersByTimeAsync(120_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(ctx.fake.calls.length).toBeLessThanOrEqual(before + 1);
+  });
+
   test('start() with zero pending rows is a no-op (no fake calls)', async () => {
     const before = ctx.fake.calls.length;
     await ctx.engine.start();
