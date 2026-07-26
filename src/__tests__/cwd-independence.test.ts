@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SERVER_ENTRY, READY_MARKER } from '../test-utils/boot-server.js';
+import { readFile } from 'node:fs/promises';
 import { runMigrations } from '../store/migrate.js';
+import { resolveDbPath } from '../resolve-db-path.js';
 
 /**
  * REGRESSION — the server must boot from ANY working directory.
@@ -91,19 +93,59 @@ describe('the server boots from any working directory', () => {
     expect(existsSync(join(dir, 'probe.db'))).toBe(true);
   }, 40_000);
 
-  it('with no --db, resolves the database against the package root, not the caller', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vellum-cwd-'));
-    dirs.push(dir);
+  it('with no --db, resolves the database against the package root, not the caller', () => {
+    // Asserted WITHOUT BOOTING, deliberately.
+    //
+    // This used to spawn a real server with no `--db` and read the path it
+    // logged. That proved the right thing, but booting also OPENS the file and
+    // runs migrations — so `npm test` opened, WAL-mode'd and migrated the
+    // developer's own database in the repo root. Its sibling assertion (the
+    // caller's directory stays free of .db files) passed precisely BECAUSE the
+    // write landed on the real database instead. A contributor running the suite
+    // on a branch that adds a migration applied it to their live data.
+    //
+    // resolveDbPath is pure and takes an injected `exists`, so the same
+    // guarantee is checked against nothing at all.
+    const pkg = '/opt/vellum';
+    expect(resolveDbPath({ packageRoot: pkg, exists: () => false })).toBe(join(pkg, 'vellum.db'));
+    // Never the caller's directory, whatever that happens to be.
+    expect(resolveDbPath({ packageRoot: pkg, exists: () => false })).not.toContain(process.cwd());
+  });
 
-    const stderr = await bootFrom(dir, [], { VELLUM_OUTPUTS_DIR: join(dir, 'out') });
+  it('adopts the pre-rename database in place rather than starting empty beside it', () => {
+    const pkg = '/opt/vellum';
+    const legacyOnly = (p: string): boolean => p.endsWith('vfx-familiar.db');
+    expect(resolveDbPath({ packageRoot: pkg, exists: legacyOnly })).toBe(
+      join(pkg, 'vfx-familiar.db'),
+    );
+    // Once the new name exists it wins, even though the legacy one still does.
+    expect(resolveDbPath({ packageRoot: pkg, exists: () => true })).toBe(join(pkg, 'vellum.db'));
+  });
 
-    expect(stderr).toContain(READY_MARKER);
-    // The db line names an absolute path under the package, and the caller's
-    // directory is left clean — a cwd-relative default littered a fresh, empty
-    // database wherever the client happened to start.
-    expect(stderr).toMatch(/vellum: db=\//);
-    expect(readdirSync(dir).filter((f) => f.endsWith('.db'))).toEqual([]);
-  }, 40_000);
+  it('--db beats VELLUM_DB_PATH beats the package default', () => {
+    const pkg = '/opt/vellum';
+    expect(
+      resolveDbPath({ argDb: '/a.db', envDb: '/b.db', packageRoot: pkg, exists: () => true }),
+    ).toBe('/a.db');
+    expect(resolveDbPath({ envDb: '/b.db', packageRoot: pkg, exists: () => true })).toBe('/b.db');
+    expect(resolveDbPath({ packageRoot: pkg, exists: () => true })).toBe(join(pkg, 'vellum.db'));
+  });
+
+  it('the suite never opens the package database', async () => {
+    // The guarantee the deleted boot gave us, stated directly: every spawn in
+    // this file passes an explicit --db or VELLUM_DB_PATH, so no test can reach
+    // <packageRoot>/vellum.db or the legacy file.
+    const source = await readFile(new URL('./cwd-independence.test.ts', import.meta.url), 'utf8');
+    // Call sites only — the function definition obviously names neither.
+    const calls = source.split('await bootFrom(').slice(1);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      const args = call.slice(0, 400);
+      expect(args, `bootFrom call without an explicit database: ${args.slice(0, 120)}`).toMatch(
+        /--db|VELLUM_DB_PATH/,
+      );
+    }
+  });
 
   it('VELLUM_DB_PATH overrides the default', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vellum-cwd-'));

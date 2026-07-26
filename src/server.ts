@@ -56,6 +56,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { envValue } from './utils/env.js';
+import { resolveDbPath } from './resolve-db-path.js';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { readFile } from 'node:fs/promises';
@@ -184,15 +185,11 @@ async function main(): Promise<void> {
   // same server, same machine, two disjoint sets of work. `VELLUM_DB_PATH` and
   // `--db` still take precedence, in that order of specificity.
   const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const LEGACY_DB_PATH = path.join(packageRoot, 'vfx-familiar.db');
-  const DEFAULT_DB_PATH = path.join(packageRoot, 'vellum.db');
-  const envDbPath = envValue(process.env.VELLUM_DB_PATH);
-  const dbPath =
-    args.db ??
-    (envDbPath ? envDbPath : undefined) ??
-    (!existsSync(DEFAULT_DB_PATH) && existsSync(LEGACY_DB_PATH)
-      ? LEGACY_DB_PATH
-      : DEFAULT_DB_PATH);
+  const dbPath = resolveDbPath({
+    argDb: args.db,
+    envDb: envValue(process.env.VELLUM_DB_PATH),
+    packageRoot,
+  });
   const { db } = openDb(dbPath);
   console.error(`vellum: db=${dbPath}`);
 

@@ -22,19 +22,18 @@ export default defineConfig({
     // 3.7s under the old 10s ceiling, so a machine under parallel load tipped
     // them over and the failure looked like a bug rather than contention.
     //
-    // 30s was not enough. On 2026-07-25 a single loaded run tipped ALL ELEVEN
-    // C2PA files over the ceiling at once — ~5x their 6.3s baseline — while the
-    // same commit passed three consecutive runs on an idle machine. This box has
-    // more cores than a stock CI runner, so a stranger's first `npm test` is
-    // more exposed to this than we are, not less.
+    // 30s is headroom for tests that are SUPPOSED to take seconds, not cover
+    // for a hang: the whole suite finishes in ~20s wall, so anything reaching
+    // this ceiling is genuinely stuck and still fails loudly.
     //
-    // 60s is still headroom for tests that are SUPPOSED to take seconds, not
-    // cover for a hang. The suite finishes in ~20s wall when it is not fighting
-    // for CPU, and CI's own timeout-minutes: 15 is the real backstop against a
-    // genuine hang — this ceiling only decides whether contention reads as a
-    // bug. A flaky red on someone's first run costs more than a hang surfacing
-    // thirty seconds later.
-    testTimeout: 60000,
-    hookTimeout: 60000,
+    // This was briefly raised to 60s after runs where every C2PA file blew the
+    // ceiling at once. That diagnosis was wrong. The machine had two `node -e
+    // while(true)` busy loops pegged at 100% for over a day, plus twelve
+    // orphaned spin loops — all leftovers from earlier flake testing. With them
+    // killed the same suite runs in 20s idle and 54s at --maxWorkers=2, which
+    // is the shape of a small CI runner, and no file comes near 30s. Raising a
+    // timeout to accommodate a broken measurement just hides the next real hang.
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });
