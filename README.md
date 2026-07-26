@@ -14,7 +14,7 @@
   <img alt="Node 20.9–25" src="https://img.shields.io/badge/Node-20.9%E2%80%9325-0c2a3a?style=flat-square" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-0c2a3a?style=flat-square" />
   <img alt="MCP SDK 1.29" src="https://img.shields.io/badge/MCP%20SDK-1.29-ff6b5a?style=flat-square" />
-  <img alt="Tests passing" src="https://img.shields.io/badge/tests-2947%20passing-0c2a3a?style=flat-square" />
+  <img alt="Tests passing" src="https://img.shields.io/badge/tests-2953%20passing-0c2a3a?style=flat-square" />
   <img alt="v2.0" src="https://img.shields.io/badge/release-v2.0-ff6b5a?style=flat-square" />
 </p>
 
@@ -157,7 +157,7 @@ Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) over stdio throug
 ### 4. Full test suite
 
 ```bash
-npm test                              # server suite — 2413 tests
+npm test                              # server suite — 2419 tests
 cd packages/dashboard && npx vitest run   # dashboard suite — 534 tests
 ```
 
