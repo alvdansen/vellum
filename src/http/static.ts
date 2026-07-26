@@ -73,23 +73,49 @@ const FALLBACK_HTML = `<!DOCTYPE html>
  * `npm run build:dashboard` in another terminal should see the dashboard
  * become available without restarting the MCP server.
  */
+/**
+ * Path prefixes that are NOT client-side routes. An unknown path under one of
+ * these is a wrong URL, not a deep link, so it must fall through to a 404
+ * rather than be answered with the app shell — a fetch() for a mistyped API
+ * route should not receive 200 text/html.
+ */
+const NON_SPA_PREFIXES = ['/api', '/mcp', '/webhooks'] as const;
+
+function isClientSideRoute(pathname: string): boolean {
+  return !NON_SPA_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export function createStaticHandler() {
   return async (c: Context, next: Next) => {
     if (!existsSync(distPath)) {
       return c.html(FALLBACK_HTML);
     }
-    // Primary pass: serve the exact-match file at request path.
-    // SPA fallback: on miss, serve index.html so client-side routing handles
-    // the URL. serveStatic's `onNotFound` hook would work too, but nesting a
-    // second serveStatic keeps the middleware composition flat and preserves
-    // the library's range/precompressed/MIME behavior for the fallback file.
+
+    // Each pass gets an inert `next` so a miss returns undefined instead of
+    // running the rest of the chain, and we decide what happens next ourselves.
+    const noop: Next = async () => {};
+
+    // Primary pass: an exact file at the request path.
+    const asset = await serveStatic({ root: distPath })(c, noop);
+    if (asset) return asset;
+
+    if (!isClientSideRoute(c.req.path)) return next();
+
+    // SPA fallback: serve index.html so client-side routing can take the URL.
     //
-    // The inner arrow MUST conform to Hono's `Next` type (`() => Promise<void>`).
-    // The wrapped serveStatic call can return a Response, so we await it and
-    // ignore the return value — serveStatic has already committed the response
-    // via c.body() by the time the promise resolves.
-    return serveStatic({ root: distPath })(c, async () => {
-      await serveStatic({ root: distPath, path: 'index.html' })(c, next);
-    });
+    // The returned Response MUST be returned up the chain. This used to nest
+    // the two calls and discard the inner result, on the stated assumption that
+    // "serveStatic has already committed the response via c.body()". It has
+    // not: c.body() builds a Response, and only RETURNING it sets c.finalized.
+    // So the shell was read off disk, a 200 was constructed, and then thrown
+    // away — Hono saw an unhandled request and fell through. Every dashboard
+    // deep link and every browser refresh outside `/` answered with an error.
+    //
+    // Nothing caught it because the unit tests only cover the dist-absent
+    // branch, and `npm run smoke` drives stdio, which never touches this file.
+    const shell = await serveStatic({ root: distPath, path: 'index.html' })(c, noop);
+    if (shell) return shell;
+
+    return next();
   };
 }
