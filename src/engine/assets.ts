@@ -252,8 +252,12 @@ function buildQuery(f: AssetsQueryFilter): {
     params.push(f.date_to);
   }
 
-  // D-ASST-14 tags AND — RESEARCH Pattern 1 (json_each + HAVING COUNT)
+  // D-ASST-14 tags AND — RESEARCH Pattern 1 (json_each + HAVING COUNT).
+  // Dedupe first: the SQL compares COUNT(DISTINCT tag) against the bound
+  // length, so a repeated entry (['hero','hero']) made the count impossible
+  // to reach and the query silently returned zero rows.
   if (f.tags && f.tags.length > 0) {
+    const uniqueTags = [...new Set(f.tags)];
     where.push(
       `v.id IN (
          SELECT version_id FROM tags
@@ -261,11 +265,21 @@ function buildQuery(f: AssetsQueryFilter): {
          GROUP BY version_id HAVING COUNT(DISTINCT tag) = ?
        )`,
     );
-    params.push(JSON.stringify(f.tags), f.tags.length);
+    params.push(JSON.stringify(uniqueTags), uniqueTags.length);
   }
 
-  // D-ASST-14 metadata AND — RESEARCH Pattern 2 (composite (key,value) pairs)
+  // D-ASST-14 metadata AND — RESEARCH Pattern 2 (composite (key,value) pairs).
+  // Same dedupe (on the key+value pair): metadata is upserted one-value-per-
+  // key, so a duplicated pair inflated the required COUNT(*) past what any
+  // version can have.
   if (f.metadata && f.metadata.length > 0) {
+    const seenPairs = new Set<string>();
+    const uniquePairs = f.metadata.filter((m) => {
+      const k = `${m.key} ${m.value}`;
+      if (seenPairs.has(k)) return false;
+      seenPairs.add(k);
+      return true;
+    });
     where.push(
       `v.id IN (
          SELECT version_id FROM metadata
@@ -276,7 +290,7 @@ function buildQuery(f: AssetsQueryFilter): {
          GROUP BY version_id HAVING COUNT(*) = ?
        )`,
     );
-    params.push(JSON.stringify(f.metadata), f.metadata.length);
+    params.push(JSON.stringify(uniquePairs), uniquePairs.length);
   }
 
   const whereSql = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
@@ -347,13 +361,24 @@ export class AssetsEngine {
    */
   addTag(versionId: string, tag: string): AssetMutationResponse {
     validateTag(tag);
-    const currentCount = this.tagRepo.countTagsForVersion(versionId);
-    if (currentCount >= MAX_TAGS_PER_VERSION) {
-      throw new TypedError(
-        'TAG_LIMIT_EXCEEDED',
-        `Version '${versionId}' already has ${MAX_TAGS_PER_VERSION} tags (max). Remove one before adding.`,
-        `Remove an existing tag with { tool: 'asset', action: 'remove_tag', version_id, tag }`,
-      );
+    // Cap check only gates NEW tags. Re-adding a tag that is already present
+    // must stay a no-op at any count — the cap used to fire first, so a
+    // version at exactly 50 tags rejected the idempotent re-add of a tag it
+    // already had, telling the caller to remove a tag to make room for one
+    // that was present. (setMetadata handled the identical boundary
+    // correctly forty lines below.)
+    const alreadyPresent = this.tagRepo
+      .listTagsForVersion(versionId)
+      .includes(tag);
+    if (!alreadyPresent) {
+      const currentCount = this.tagRepo.countTagsForVersion(versionId);
+      if (currentCount >= MAX_TAGS_PER_VERSION) {
+        throw new TypedError(
+          'TAG_LIMIT_EXCEEDED',
+          `Version '${versionId}' already has ${MAX_TAGS_PER_VERSION} tags (max). Remove one before adding.`,
+          `Remove an existing tag with { tool: 'asset', action: 'remove_tag', version_id, tag }`,
+        );
+      }
     }
     // insertTag pre-checks VERSION_NOT_FOUND internally (RESEARCH Pitfall #3).
     this.tagRepo.insertTag(versionId, tag);

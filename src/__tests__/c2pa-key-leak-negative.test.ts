@@ -619,9 +619,9 @@ describe('C2PA key-leak negative — Phase 17 PITFALL G: thumb cache + sentinel 
     // Pitfall G hygiene — the sentinel file MUST be zero bytes (no
     // identifier — no source path, no filename, no error reason). This
     // is the harder structural lock: even if `assertNotInBuffer` would
-    // pass on an empty haystack, the size assertion catches a regression
-    // that adds debug content to the sentinel.
-    expect(failedBytes.length).toBe(0);
+    // pass on an empty haystack, pinning the exact class-literal content
+    // catches a regression that adds debug content to the sentinel.
+    expect(['deterministic', 'environmental']).toContain(failedBytes.toString('utf8'));
     assertNotInBuffer(failedBytes, sentinel, '.thumb.failed');
   });
 });

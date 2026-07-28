@@ -47,7 +47,11 @@ async function inferSharpDefault() {
 type SharpDefaultExport = Awaited<ReturnType<typeof inferSharpDefault>>;
 
 let cachedSharp: SharpDefaultExport | null = null;
-let cachedSharpFailed: { reason: string; loggedOnce: boolean } | null = null;
+let cachedSharpFailed: { reason: string } | null = null;
+// Claimed synchronously on first call — concurrent first callers share one
+// load and the disabled warning prints once per process (see the ffmpeg
+// loader in video-thumbnail.ts for the failure mode this replaces).
+let sharpLoad: Promise<SharpDefaultExport | null> | null = null;
 
 /**
  * Lazy-load sharp on first call site. Subsequent calls reuse the cached
@@ -63,8 +67,11 @@ let cachedSharpFailed: { reason: string; loggedOnce: boolean } | null = null;
  * Sharp pipeline) on success, null on monotonic fail.
  */
 async function getSharp(): Promise<SharpDefaultExport | null> {
-  if (cachedSharp !== null) return cachedSharp;
-  if (cachedSharpFailed !== null) return null;
+  sharpLoad ??= loadSharpOnce();
+  return sharpLoad;
+}
+
+async function loadSharpOnce(): Promise<SharpDefaultExport | null> {
   try {
     const mod = await import('sharp');
     cachedSharp = mod.default;
@@ -74,14 +81,11 @@ async function getSharp(): Promise<SharpDefaultExport | null> {
     cachedSharp.cache(false);
     return cachedSharp;
   } catch (err) {
-    cachedSharpFailed = { reason: String(err), loggedOnce: false };
-    if (!cachedSharpFailed.loggedOnce) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `vellum: sharp load failed — thumbnails disabled. ${cachedSharpFailed.reason}`,
-      );
-      cachedSharpFailed.loggedOnce = true;
-    }
+    cachedSharpFailed = { reason: String(err) };
+    // eslint-disable-next-line no-console
+    console.warn(
+      `vellum: sharp load failed — thumbnails disabled. ${cachedSharpFailed.reason}`,
+    );
     return null;
   }
 }
@@ -96,6 +100,7 @@ async function getSharp(): Promise<SharpDefaultExport | null> {
 export function __resetSharpStateForTests(): void {
   cachedSharp = null;
   cachedSharpFailed = null;
+  sharpLoad = null;
 }
 
 // ─── Public surface ──────────────────────────────────────────────────────

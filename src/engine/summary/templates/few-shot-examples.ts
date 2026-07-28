@@ -45,8 +45,8 @@ export const FEW_SHOT_EXAMPLES: readonly FewShotExample[] = [
   <version_label>v001</version_label>
   <model_name>flux1-dev</model_name>
   <additional_models></additional_models>
-  <user_prompt>cinematic dragon eye, dramatic close-up</user_prompt>
-  <user_prompt_negative>(none)</user_prompt_negative>
+  <prompt_positive>cinematic dragon eye, dramatic close-up</prompt_positive>
+  <prompt_negative>(none)</prompt_negative>
   <seed>12345</seed>
   <parent_version_label>none</parent_version_label>
   <redacted>false</redacted>
@@ -59,7 +59,7 @@ not "the AI generated the first version" or "this image shows a dragon eye"
 (both of those slip into describing pixels, which the SYSTEM_PROMPT explicitly
 forbids). The model name "flux1-dev" appears verbatim per D-VAL-1 case-sensitive
 gate. The seed appears as "seed 12345" (concrete integer) rather than "with a
-specific seed" (vague). The user_prompt content "cinematic dragon eye" is
+specific seed" (vague). The prompt_positive content "cinematic dragon eye" is
 mentioned as workflow context ("from the cinematic dragon prompt") rather than
 quoted directly — quoting the prompt risks describing the image rather than
 the workflow. The summary stays under 35 words to match peer-review-note length;
@@ -99,8 +99,8 @@ this exact phrasing.
   <version_label>v003</version_label>
   <model_name>flux1-dev</model_name>
   <additional_models>cinematic_fantasy</additional_models>
-  <user_prompt>tight close-up of the dragon's eye, HDRI lighting</user_prompt>
-  <user_prompt_negative>blurry, low quality</user_prompt_negative>
+  <prompt_positive>tight close-up of the dragon's eye, HDRI lighting</prompt_positive>
+  <prompt_negative>blurry, low quality</prompt_negative>
   <seed>42</seed>
   <parent_version_label>v002</parent_version_label>
   <redacted>false</redacted>
@@ -114,7 +114,7 @@ at [seed], [delta description tied to parent]. The phrase "swapping the
 wide-angle env map for an HDRI from the parent shot v002" mentions parent
 v002 by name (D-VAL-1 lineage gate satisfied). The model "flux1-dev"
 appears verbatim. The LoRA "cinematic_fantasy" appears verbatim with role
-("plus the cinematic_fantasy LoRA"). The user_prompt content ("tight
+("plus the cinematic_fantasy LoRA"). The prompt_positive content ("tight
 close-up", "HDRI") is woven into the delta description WITHOUT image
 description — "tighter close-up of the dragon's eye" describes what the
 WORKFLOW is doing (zooming in via prompt) not what the rendered image
@@ -159,8 +159,8 @@ review (LoRA names are tracked in project bibles).
   <version_label>v005</version_label>
   <model_name>sd_xl_base_1.0.safetensors</model_name>
   <additional_models></additional_models>
-  <user_prompt>(redacted)</user_prompt>
-  <user_prompt_negative>(redacted)</user_prompt_negative>
+  <prompt_positive>(redacted)</prompt_positive>
+  <prompt_negative>(redacted)</prompt_negative>
   <seed>7890</seed>
   <parent_version_label>v004</parent_version_label>
   <redacted>true</redacted>
@@ -188,7 +188,7 @@ project codenames, character IP names, plot details, client identity. Phase 16
 redaction is the existing primitive that protects this; Phase 19 must compose
 with it. Two defensive layers operate here. Layer 1 (architectural): the
 D-PRIV-1 allow-list ensures only whitelisted fields ever leave the box —
-the user_prompt field renders as "(redacted)" upstream so no surviving
+the prompt_positive field renders as "(redacted)" upstream so no surviving
 NDA-protected text reaches the LLM. Layer 2 (prose): the summary surfaces
 the FACT of redaction so a downstream Supervisor reading the Frame.io
 comment knows the prompt direction is not visible here. The phrase "the
@@ -221,8 +221,8 @@ with privileged information" (slop) or "the prompt content is unavailable"
   <version_label>v007</version_label>
   <model_name>flux1-dev</model_name>
   <additional_models>cinematic_fantasy, detail_boost, noir_mood</additional_models>
-  <user_prompt>moody close-up, atmospheric, dragon eye glints</user_prompt>
-  <user_prompt_negative>oversaturated</user_prompt_negative>
+  <prompt_positive>moody close-up, atmospheric, dragon eye glints</prompt_positive>
+  <prompt_negative>oversaturated</prompt_negative>
   <seed>2024</seed>
   <parent_version_label>v003</parent_version_label>
   <redacted>false</redacted>
@@ -239,7 +239,7 @@ reviewer would expect that ordering preserved. The phrase "Heavier LoRA
 composition than the parent" is a delta annotation: the parent v003 had only
 ONE LoRA (cinematic_fantasy), so adding two more is a meaningful creative
 direction shift. The phrase "iterating from v003 to push the moody atmospheric
-direction" connects the creative intent (moody/atmospheric in the user_prompt)
+direction" connects the creative intent (moody/atmospheric in the prompt_positive)
 to the workflow change (3 LoRAs stacking) without describing the rendered
 image pixels. Banned-lexicon check: "moody atmospheric" comes from the user
 prompt context, not from AI-register filler. Word count: 41 — slightly
@@ -253,7 +253,7 @@ A Supervisor reviewing this version needs to know which LoRAs are stacked
 and in what order so they can compare to the project bible's approved LoRA
 list and to sister versions in the same shot. Three failure modes the
 example must defend against. Mode 1: invented LoRAs — the LLM reads "moody
-atmospheric" in the user_prompt and hallucinates a "noir_style" LoRA that
+atmospheric" in the prompt_positive and hallucinates a "noir_style" LoRA that
 wasn't applied. The verbatim list "cinematic_fantasy, detail_boost,
 noir_mood" enumerated in the summary blocks this; the SUM-02 verbatim regex
 gate catches it post-hoc. Mode 2: dropped LoRAs — the LLM trims the 3-LoRA
@@ -289,8 +289,8 @@ or "captivating moodiness".
   <version_label>v010</version_label>
   <model_name>sd_xl_base_1.0.safetensors</model_name>
   <additional_models>controlnet_canny</additional_models>
-  <user_prompt>dragon eye, structured composition matching reference</user_prompt>
-  <user_prompt_negative>distorted</user_prompt_negative>
+  <prompt_positive>dragon eye, structured composition matching reference</prompt_positive>
+  <prompt_negative>distorted</prompt_negative>
   <seed>555</seed>
   <parent_version_label>v009</parent_version_label>
   <redacted>false</redacted>
@@ -307,7 +307,7 @@ shifted from free-form sampling (parent v009) to constrained generation
 SPECIFIC ControlNet variant (Canny-edge) — not generic "ControlNet" — because
 Canny-edge is a different creative tool than depth-based or pose-based
 ControlNets and the distinction matters to a Supervisor reviewing the shot.
-The user_prompt phrase "structured composition matching reference" is
+The prompt_positive phrase "structured composition matching reference" is
 echoed in the summary's "lock the composition" — workflow language, not
 image-pixel language. Phase 15's ingredient graph (extractComponentIngredients
 in src/engine/c2pa/ingredient-extractor.ts) surfaces ControlNet preprocessors

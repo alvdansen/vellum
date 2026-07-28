@@ -156,7 +156,7 @@ export function assertApiKeyLeakScan(haystacks: string[]): DimensionResult {
   const fragments = [
     apiKey,
     Buffer.from(apiKey, 'utf16le').toString('binary'),
-    Buffer.from(apiKey, 'utf16le').reverse().toString('binary'),
+    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),
     Buffer.from(apiKey).toString('base64'),
   ];
   for (const haystack of haystacks) {

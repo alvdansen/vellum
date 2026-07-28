@@ -99,6 +99,21 @@ describe('AssetsEngine', () => {
       }
     });
 
+    it('addTag stays idempotent AT the cap — re-adding a present tag is a no-op', () => {
+      // The cap check used to run before the presence check, so a version at
+      // exactly 50 tags rejected the idempotent re-add of a tag it already
+      // had — telling the caller to remove a tag to make room for one that
+      // was present. The documented idempotency must hold at every count.
+      const { v, assets, shot } = buildStack();
+      const ver = v.insertVersion(shot.id);
+      for (let i = 0; i < MAX_TAGS_PER_VERSION; i++) {
+        assets.addTag(ver.id, `tag${i.toString().padStart(3, '0')}`);
+      }
+      const res = assets.addTag(ver.id, 'tag000'); // already present
+      expect(res.entity.tags).toContain('tag000');
+      expect(res.entity.tags).toHaveLength(MAX_TAGS_PER_VERSION);
+    });
+
     it('INV-ASST-23 addTag throws TAG_INVALID for whitespace with whitespace-specific hint', () => {
       const { v, assets, shot } = buildStack();
       const ver = v.insertVersion(shot.id);
@@ -267,6 +282,31 @@ describe('AssetsEngine', () => {
         offset: 0,
       });
       expect(r.items.map((i) => i.id)).toEqual([vA.id]);
+    });
+
+    it('duplicated filter entries match like their deduped form', () => {
+      // The SQL compares COUNT(DISTINCT ...) against the RAW array length, so
+      // ['hero','hero'] demanded two distinct tags from a one-tag filter and
+      // silently returned zero rows; same for a repeated metadata pair.
+      const { v, assets, shot } = buildStack();
+      const ver = v.insertVersion(shot.id);
+      assets.addTag(ver.id, 'hero');
+      assets.setMetadata(ver.id, 'artist', 'tim');
+      const byTags = assets.queryAssets({
+        tags: ['hero', 'hero'],
+        limit: 20,
+        offset: 0,
+      });
+      expect(byTags.items.map((i) => i.id)).toEqual([ver.id]);
+      const byMeta = assets.queryAssets({
+        metadata: [
+          { key: 'artist', value: 'tim' },
+          { key: 'artist', value: 'tim' },
+        ],
+        limit: 20,
+        offset: 0,
+      });
+      expect(byMeta.items.map((i) => i.id)).toEqual([ver.id]);
     });
 
     it('INV-ASST-08 scope XOR — 2 fields → INVALID_SCOPE naming both in hint', () => {

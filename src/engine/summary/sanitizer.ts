@@ -186,7 +186,7 @@ export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
   const fragments = [
     apiKey,                                                       // UTF-8 / ASCII
     Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
-    Buffer.from(apiKey, 'utf16le').reverse().toString('binary'),  // UTF-16BE
+    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
     Buffer.from(apiKey).toString('base64'),                       // base64
   ];
 
@@ -222,7 +222,7 @@ export function assertNoApiKeyInString(text: string): void {
   const fragments = [
     apiKey,                                                       // UTF-8 / ASCII
     Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
-    Buffer.from(apiKey, 'utf16le').reverse().toString('binary'),  // UTF-16BE
+    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
     Buffer.from(apiKey).toString('base64'),                       // base64
   ];
 

@@ -24,7 +24,7 @@ import { Hono } from 'hono';
 import { mkdtemp, rm, mkdir, utimes, readdir, stat as fsStat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
@@ -321,8 +321,10 @@ describe('Engine.generateThumbnail / Engine.invalidateThumbnail (Plan 17-03 Task
         'output.exr.thumb.failed',
       );
       expect(existsSync(sentinel)).toBe(true);
-      // Zero-byte sentinel (D-07 hygiene)
-      expect(statSync(sentinel).size).toBe(0);
+      // Sentinel content is a fixed class literal (no identifiers — D-07).
+      expect(['deterministic', 'environmental']).toContain(
+        readFileSync(sentinel, 'utf8'),
+      );
     } finally {
       await exrSeed.cleanup();
     }
@@ -589,7 +591,9 @@ describe('GET + HEAD /api/versions/:id/thumbnail (Plan 17-03 Task 3)', () => {
       `${seed.filename}.thumb.failed`,
     );
     expect(existsSync(sentinel)).toBe(true);
-    expect((await fsStat(sentinel)).size).toBe(0);
+    expect(['deterministic', 'environmental']).toContain(
+      readFileSync(sentinel, 'utf8'),
+    );
 
     // Capture first-request call count, then clear so the second-request
     // assertion is independent of r1's bookkeeping.

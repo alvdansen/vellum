@@ -171,7 +171,9 @@ describe('fetchProjects / fetchSequences / fetchShots — optional sort param', 
     await fetchProjects('ws_id');
     const calledUrl = fetchSpy.mock.calls[0][0] as string;
     expect(calledUrl).not.toContain('sort=');
-    expect(calledUrl).toBe('/api/workspaces/ws_id/projects');
+    // Tree fetchers always request the server cap (no load-more in the
+    // sidebar; the silent default of 20 made deep sequences unreachable).
+    expect(calledUrl).toBe('/api/workspaces/ws_id/projects?limit=100');
   });
 
   it("Test 10: fetchSequences(projectId, sort) appends ?sort=field%3Adir", async () => {

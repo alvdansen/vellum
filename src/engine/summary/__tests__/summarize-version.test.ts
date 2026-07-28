@@ -237,6 +237,26 @@ describe('Phase 19 summarizeVersion — fallback variants', () => {
     expect(appendCalls.length).toBe(0);
   });
 
+  it('Test 3b — api_key_missing fallback carries the lineage sentence for an iterate', async () => {
+    // The gates used to return before the parent label was resolved, so on
+    // a keyless machine — permanent fallback mode — an iterate and a root
+    // version read identically: the deterministic template's "Iterate from
+    // vNNN." sentence was silently dropped on the only paths that run.
+    const { deps } = buildDeps({
+      apiKey: null,
+      versionMap: {
+        ver_1: { id: 'ver_1', version_number: 3, parent_version_id: 'ver_parent' },
+        ver_parent: { id: 'ver_parent', version_number: 2, parent_version_id: null },
+      },
+    });
+    const r = await summarizeVersion('ver_1', deps);
+    expect(r.source).toBe('fallback');
+    if (r.source === 'fallback') {
+      expect(r.reason).toBe('api_key_missing');
+      expect(r.text).toContain('Iterate from v002');
+    }
+  });
+
   it('Test 4 — fallback circuit_open: breaker tripped → no SDK call', async () => {
     // Trip the breaker by recording FAILURE_THRESHOLD failures.
     const { circuitBreaker } = await import('../circuit-breaker.js');

@@ -254,15 +254,18 @@ describe('Plan 17-01 Task 1 — isCacheFresh (D-07 retry-on-source-change)', () 
 });
 
 describe('Plan 17-01 Task 1 — writeFailedSentinel (Pitfall G hygiene)', () => {
-  it('Test 18: writeFailedSentinel writes a zero-byte file (no identifier in content)', async () => {
+  it('Test 18: writeFailedSentinel writes only the class literal (no identifier in content)', async () => {
     const { mkdir } = await import('node:fs/promises');
     await mkdir(join(root, versionId), { recursive: true });
     const sentinelPath = sentinelPathFor(root, versionId, 'a.png');
     await writeFailedSentinel(sentinelPath);
-    const st = await stat(sentinelPath);
-    expect(st.size).toBe(0);
-    const bytes = await readFile(sentinelPath);
-    expect(bytes.length).toBe(0);
+    // Content is one of two fixed class literals — carries the retry
+    // semantics (environmental failures expire; deterministic ones latch)
+    // and still no identifiers (Pitfall G).
+    const content = (await readFile(sentinelPath)).toString('utf8');
+    expect(['deterministic', 'environmental']).toContain(content);
+    expect(content).not.toContain(versionId);
+    expect(content).not.toContain('a.png');
   });
 });
 

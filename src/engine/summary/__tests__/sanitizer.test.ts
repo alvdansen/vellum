@@ -300,3 +300,31 @@ describe('assertNoApiKeyInPayload — multi-encoding leak scan (D-PRIV-3 + T-19-
     );
   });
 });
+
+describe('assertNoApiKeyInString — true UTF-16BE encoding', () => {
+  const KEY = 'sk-ant-api03-' + 'A'.repeat(24);
+
+  it('catches a key smuggled as REAL UTF-16BE bytes', async () => {
+    // The scan used to build its UTF-16BE fragment with .reverse(), which
+    // yields the UTF-16BE encoding of the REVERSED key — so genuine
+    // UTF-16BE key bytes sailed through all four guards. swap16() is the
+    // correct byte-pair swap.
+    const { assertNoApiKeyInString } = await import('../sanitizer.js');
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = KEY;
+    try {
+      const trueBE = Buffer.from(KEY, 'utf16le').swap16().toString('binary');
+      // Sanity: swap16 output differs from the reversed-key formula.
+      const reversedFormula = Buffer.from(KEY, 'utf16le').reverse().toString('binary');
+      expect(trueBE).not.toBe(reversedFormula);
+      expect(() => assertNoApiKeyInString(`payload with ${trueBE} inside`)).toThrow(
+        /API key fragment leaked/,
+      );
+      // And a clean string still passes.
+      expect(() => assertNoApiKeyInString('an innocent summary')).not.toThrow();
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prev;
+    }
+  });
+});

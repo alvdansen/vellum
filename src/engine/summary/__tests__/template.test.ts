@@ -194,3 +194,19 @@ describe('assemblePromptInput (D-PRIV-5 + BLOCKER #1)', () => {
     expect(result.userTurn).toContain('(no resolved negative)');
   });
 });
+
+describe('few-shot examples use the tags the runtime actually sends', () => {
+  it('examples teach <prompt_positive>/<prompt_negative>, never <user_prompt>', async () => {
+    // All five examples used to demonstrate a <user_prompt> schema no
+    // request ever contained — the model was taught one shape and shown
+    // another, and the injection-defence rule scoped itself to an element
+    // that never appeared.
+    const { FEW_SHOT_EXAMPLES } = await import('../templates/few-shot-examples.js');
+    const { SYSTEM_PROMPT } = await import('../template.js');
+    const examplesText = JSON.stringify(FEW_SHOT_EXAMPLES);
+    expect(examplesText).toContain('<prompt_positive>');
+    expect(examplesText).not.toContain('<user_prompt');
+    expect(SYSTEM_PROMPT).toContain('<prompt_positive>');
+    expect(SYSTEM_PROMPT).not.toContain('<user_prompt>');
+  });
+});

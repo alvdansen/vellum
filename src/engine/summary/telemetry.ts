@@ -145,7 +145,7 @@ export function logSummaryEvent(
     const fragments = [
       apiKey, // UTF-8 / ASCII
       Buffer.from(apiKey, 'utf16le').toString('binary'), // UTF-16LE
-      Buffer.from(apiKey, 'utf16le').reverse().toString('binary'), // UTF-16BE roughly
+      Buffer.from(apiKey, 'utf16le').swap16().toString('binary'), // UTF-16BE
       Buffer.from(apiKey).toString('base64'), // base64
     ];
     for (const frag of fragments) {

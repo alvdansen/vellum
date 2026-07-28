@@ -19,7 +19,7 @@
 // src/__tests__/architecture-purity.test.ts.
 
 import { createHash } from 'node:crypto';
-import { stat, unlink, writeFile } from 'node:fs/promises';
+import { stat, unlink, writeFile, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { nanoid } from 'nanoid';
 
@@ -39,8 +39,8 @@ export function cachePathFor(
 
 /**
  * Sentinel path for a failed thumbnail derivation — D-07 invariant:
- * `<outputsDir>/<versionId>/<filename>.thumb.failed`. Empty file (zero
- * bytes); the file's mtime carries the "when failed" semantic.
+ * `<outputsDir>/<versionId>/<filename>.thumb.failed`. Content is the
+ * SentinelClass literal; mtime carries the "when failed" semantic.
  */
 export function sentinelPathFor(
   outputRoot: string,
@@ -178,7 +178,17 @@ export async function isCacheFresh(
   try {
     const sentinelStat = await stat(sentinelPath);
     if (sentinelStat.mtimeMs >= sourceStat.mtimeMs) {
-      return { fresh: true, via: 'sentinel' };
+      // Deterministic failures latch until the source changes; environmental
+      // ones (and legacy zero-byte sentinels) expire so a fixed machine
+      // recovers on its own instead of serving skeletons forever.
+      const cls = (await readFile(sentinelPath, 'utf8').catch(() => '')).trim();
+      if (cls === 'deterministic') {
+        return { fresh: true, via: 'sentinel' };
+      }
+      if (Date.now() - sentinelStat.mtimeMs < SENTINEL_RETRY_TTL_MS) {
+        return { fresh: true, via: 'sentinel' };
+      }
+      // TTL elapsed — fall through to a retry.
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
@@ -196,8 +206,30 @@ export async function isCacheFresh(
  * negative.test.ts asserts the sentinel file size is zero bytes (no
  * identifier hygiene — Pitfall G regression guard).
  */
-export async function writeFailedSentinel(sentinelPath: string): Promise<void> {
-  await writeFile(sentinelPath, '');
+/**
+ * Failure class recorded IN the sentinel file:
+ *  - 'deterministic' — the source itself can never thumbnail (unsupported
+ *    format, over the size cap). Latch until the source bytes change.
+ *  - 'environmental' — the failure was about the machine, not the source
+ *    (ffmpeg timeout, native binding failed to load — the classic case
+ *    being a NODE_MODULE_VERSION mismatch after a Node upgrade). These
+ *    expire after SENTINEL_RETRY_TTL_MS: a permanent latch here meant
+ *    thumbnails stayed dead across restarts forever, with `find outputs
+ *    -name '*.thumb.failed' -delete` as the only undocumented cure.
+ * A legacy zero-byte sentinel reads as environmental (retry-able) — the
+ * safer default after an upgrade.
+ */
+export type SentinelClass = 'deterministic' | 'environmental';
+
+/** Retry window for environmental sentinel failures. */
+export const SENTINEL_RETRY_TTL_MS = 10 * 60 * 1000;
+
+export async function writeFailedSentinel(
+  sentinelPath: string,
+  cls: SentinelClass = 'environmental',
+): Promise<void> {
+  // Content is one of two fixed literals — still no identifiers (Pitfall G).
+  await writeFile(sentinelPath, cls);
 }
 
 /**

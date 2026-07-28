@@ -68,7 +68,7 @@ function assertNotInBuffer(buf: Buffer, secret: string, label: string): void {
   const fragments = [
     secret, // UTF-8 / ASCII
     Buffer.from(secret, 'utf16le').toString('binary'), // UTF-16LE
-    Buffer.from(secret, 'utf16le').reverse().toString('binary'), // UTF-16BE roughly
+    Buffer.from(secret, 'utf16le').swap16().toString('binary'), // UTF-16BE
     Buffer.from(secret).toString('base64'), // base64
   ];
   const haystack = buf.toString('binary');

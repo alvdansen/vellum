@@ -498,7 +498,7 @@ describe('Phase 19 anthropic-client — flattenAnthropicError multi-encoding lea
 
   it('Test 20 — strips UTF-16BE-encoded apiKey from error.message', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-secret-key-fragment-1234567890';
-    const utf16be = Buffer.from(process.env.ANTHROPIC_API_KEY, 'utf16le').reverse().toString('binary');
+    const utf16be = Buffer.from(process.env.ANTHROPIC_API_KEY, 'utf16le').swap16().toString('binary');
     const err = new Error(`smuggled fragment: ${utf16be}`);
     const out = flattenAnthropicError(err);
     expect(out).not.toContain(utf16be);

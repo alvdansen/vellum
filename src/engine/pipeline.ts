@@ -2910,11 +2910,12 @@ export class Engine {
       fresh = await Thumbnails.isCacheFresh(cachePath, sentinelPath, sourcePath);
     } catch {
       // Source file is unreadable — treat as a derivation failure: write
-      // sentinel and return null. The HTTP route surfaces 503.
+      // sentinel and return null. The HTTP route surfaces 503. Environmental:
+      // the file may reappear (network mount, mid-copy).
       try {
         const { mkdir } = await import('node:fs/promises');
         await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
-        await Thumbnails.writeFailedSentinel(sentinelPath);
+        await Thumbnails.writeFailedSentinel(sentinelPath, 'environmental');
       } catch {
         // best-effort
       }
@@ -2933,11 +2934,11 @@ export class Engine {
     // Cache miss — format-route + dispatch.
     const route = Thumbnails.routeFormat(filename);
     if (route.mode === 'unsupported') {
-      // Ensure parent dir exists for the sentinel write.
+      // Deterministic: this source can never thumbnail — latch until it changes.
       try {
         const { mkdir } = await import('node:fs/promises');
         await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
-        await Thumbnails.writeFailedSentinel(sentinelPath);
+        await Thumbnails.writeFailedSentinel(sentinelPath, 'deterministic');
       } catch {
         // best-effort
       }
@@ -2957,10 +2958,19 @@ export class Engine {
           (err as Error).message
         }`,
       );
+      // source_too_large is a property of the source (latch); everything
+      // else — ffmpeg timeout, native-binding load failure (the classic
+      // NODE_MODULE_VERSION mismatch after a Node upgrade), decode errors —
+      // is treated as environmental and retried after the TTL. A genuinely
+      // corrupt source re-fails once per window, which is cheap; a fixed
+      // machine recovering on its own is the point.
+      const sentinelClass = (err as Error).message.includes('source_too_large')
+        ? ('deterministic' as const)
+        : ('environmental' as const);
       try {
         const { mkdir } = await import('node:fs/promises');
         await mkdir(nodepath.dirname(sentinelPath), { recursive: true });
-        await Thumbnails.writeFailedSentinel(sentinelPath);
+        await Thumbnails.writeFailedSentinel(sentinelPath, sentinelClass);
       } catch {
         // best-effort
       }

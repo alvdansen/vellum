@@ -32,6 +32,7 @@
 
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { isLoopbackHostname } from './local-guard.js';
 import type { Engine } from '../engine/pipeline.js';
 import type {
   EngineEventMap,
@@ -179,9 +180,25 @@ export function createSseHandler(engine: Engine, allowedOrigins: string[] = []) 
     // T-5-01 spoofing mitigation — origin check happens before we open the
     // stream, so a forbidden origin never sees the SSE wire nor triggers any
     // listener registration on the engine emitter.
-    const origin = c.req.header('Origin') ?? '';
-    if (allowedOrigins.length > 0 && !allowedOrigins.includes(origin)) {
-      return c.text('Forbidden', 403);
+    //
+    // Same semantics as local-guard.ts (the sibling guard on this route):
+    // a MISSING Origin header is not a cross-origin request — browsers send
+    // no Origin on a same-origin EventSource GET, so treating '' as an
+    // origin meant setting HTTP_ALLOWED_ORIGINS permanently 403'd the
+    // dashboard's own stream, silently (EventSource does not retry after an
+    // HTTP error). Loopback origins pass for the same reason they pass in
+    // local-guard: that is the dashboard talking to its own server.
+    const origin = c.req.header('Origin');
+    if (allowedOrigins.length > 0 && origin !== undefined && !allowedOrigins.includes(origin)) {
+      let originHostname = '';
+      try {
+        originHostname = new URL(origin).hostname.toLowerCase();
+      } catch {
+        originHostname = '';
+      }
+      if (!isLoopbackHostname(originHostname)) {
+        return c.text('Forbidden', 403);
+      }
     }
 
     return streamSSE(c, async (stream) => {

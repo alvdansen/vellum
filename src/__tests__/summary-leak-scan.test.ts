@@ -59,7 +59,7 @@ const flattenAnthropicErrorMock = vi.hoisted(
         const fragments = [
           apiKey,
           Buffer.from(apiKey, 'utf16le').toString('binary'),
-          Buffer.from(apiKey, 'utf16le').reverse().toString('binary'),
+          Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),
           Buffer.from(apiKey).toString('base64'),
         ];
         for (const frag of fragments) {
@@ -114,7 +114,7 @@ function assertNotInBuffer(haystack: string | Buffer, secret: string, label: str
   const fragments = [
     secret,
     Buffer.from(secret, 'utf16le').toString('binary'),
-    Buffer.from(secret, 'utf16le').reverse().toString('binary'),
+    Buffer.from(secret, 'utf16le').swap16().toString('binary'),
     Buffer.from(secret).toString('base64'),
   ];
   const text = typeof haystack === 'string' ? haystack : haystack.toString('binary');
@@ -435,7 +435,7 @@ describe.skipIf(!haveOpenssl || !haveFixtures)('Phase 19 — multi-encoding API-
     expect(String(utf16Flat).includes(utf16leFrag)).toBe(false);
 
     // UTF-16BE smuggled (reverse-byte form).
-    const utf16beFrag = Buffer.from(SYNTHETIC_KEY, 'utf16le').reverse().toString('binary');
+    const utf16beFrag = Buffer.from(SYNTHETIC_KEY, 'utf16le').swap16().toString('binary');
     const beErr = new Error(`BE leak: ${utf16beFrag}`);
     const beFlat = flattenAnthropicErrorMock(beErr);
     expect(String(beFlat).includes(utf16beFrag)).toBe(false);

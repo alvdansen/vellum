@@ -78,7 +78,13 @@ const BRIGHTNESS_THRESHOLD = 16;
 // ─── Lazy native-binding load + monotonic fail (D-26) ──────────────────
 
 let cachedFfmpegPath: string | null = null;
-let cachedFfmpegFailed: { reason: string; loggedOnce: boolean } | null = null;
+let cachedFfmpegFailed: { reason: string } | null = null;
+// The load promise is claimed SYNCHRONOUSLY on first call, so concurrent
+// first callers share one import and the disabled warning prints once per
+// process. The old `loggedOnce` boolean was set inside the async body —
+// after every concurrent caller had already passed the entry check — so it
+// gated nothing (measured: three concurrent callers, three warnings).
+let ffmpegLoad: Promise<string | null> | null = null;
 
 /**
  * Lazy-load the @ffmpeg-installer/ffmpeg binary path on first call site.
@@ -90,8 +96,11 @@ let cachedFfmpegFailed: { reason: string; loggedOnce: boolean } | null = null;
  * success, null on monotonic fail.
  */
 async function getFfmpegPath(): Promise<string | null> {
-  if (cachedFfmpegPath !== null) return cachedFfmpegPath;
-  if (cachedFfmpegFailed !== null) return null;
+  ffmpegLoad ??= loadFfmpegPathOnce();
+  return ffmpegLoad;
+}
+
+async function loadFfmpegPathOnce(): Promise<string | null> {
   try {
     const mod = await import('@ffmpeg-installer/ffmpeg');
     // The package exports `installer.path`. Under Node's CJS-interop, the
@@ -102,33 +111,21 @@ async function getFfmpegPath(): Promise<string | null> {
       (mod as { default?: { path?: string } }).default?.path ??
       null;
     if (candidate === null || typeof candidate !== 'string') {
-      cachedFfmpegFailed = {
-        reason: 'ffmpeg_path_missing',
-        loggedOnce: false,
-      };
-      if (!cachedFfmpegFailed.loggedOnce) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          'vellum: @ffmpeg-installer/ffmpeg loaded but exposed no `.path` — video thumbnails disabled.',
-        );
-        cachedFfmpegFailed.loggedOnce = true;
-      }
+      cachedFfmpegFailed = { reason: 'ffmpeg_path_missing' };
+      // eslint-disable-next-line no-console
+      console.warn(
+        'vellum: @ffmpeg-installer/ffmpeg loaded but exposed no `.path` — video thumbnails disabled.',
+      );
       return null;
     }
     cachedFfmpegPath = candidate;
     return cachedFfmpegPath;
   } catch (err) {
-    cachedFfmpegFailed = {
-      reason: String(err),
-      loggedOnce: false,
-    };
-    if (!cachedFfmpegFailed.loggedOnce) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `vellum: @ffmpeg-installer/ffmpeg load failed — video thumbnails disabled. ${cachedFfmpegFailed.reason}`,
-      );
-      cachedFfmpegFailed.loggedOnce = true;
-    }
+    cachedFfmpegFailed = { reason: String(err) };
+    // eslint-disable-next-line no-console
+    console.warn(
+      `vellum: @ffmpeg-installer/ffmpeg load failed — video thumbnails disabled. ${cachedFfmpegFailed.reason}`,
+    );
     return null;
   }
 }
@@ -211,6 +208,7 @@ export function __setSpawnFfmpegForTests(fn: SpawnFfmpegFn): void {
 export function __resetFfmpegStateForTests(): void {
   cachedFfmpegPath = null;
   cachedFfmpegFailed = null;
+  ffmpegLoad = null;
   spawnFfmpegFn = realSpawnFfmpeg;
 }
 

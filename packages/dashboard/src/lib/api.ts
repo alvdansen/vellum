@@ -123,8 +123,14 @@ function qs(params?: Record<string, unknown>): string {
 // ================================================================
 
 /** 1. GET /api/workspaces */
+// TREE_FETCH_LIMIT: the sidebar has no load-more affordance yet, so ask for
+// the server cap instead of the silent default (20) — with the default,
+// sequences past #20 were unreachable from the tree entirely, and the sort
+// dropdown re-sorted the cached first 20 client-side without refetching.
+const TREE_FETCH_LIMIT = 100;
+
 export function fetchWorkspaces(): Promise<Workspace[]> {
-  return fetchJson<Workspace[]>('/api/workspaces');
+  return fetchJson<Workspace[]>(`/api/workspaces?limit=${TREE_FETCH_LIMIT}`);
 }
 
 /** 2. GET /api/workspaces/:id */
@@ -143,7 +149,9 @@ export function fetchProjects(
   workspaceId: string,
   sort?: HierarchySort,
 ): Promise<Project[]> {
-  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
+  const query = sort
+    ? qs({ sort: serializeSortValue(sort), limit: TREE_FETCH_LIMIT })
+    : qs({ limit: TREE_FETCH_LIMIT });
   return fetchJson<Project[]>(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/projects${query}`,
   );
@@ -163,7 +171,9 @@ export function fetchSequences(
   projectId: string,
   sort?: HierarchySort,
 ): Promise<Sequence[]> {
-  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
+  const query = sort
+    ? qs({ sort: serializeSortValue(sort), limit: TREE_FETCH_LIMIT })
+    : qs({ limit: TREE_FETCH_LIMIT });
   return fetchJson<Sequence[]>(
     `/api/projects/${encodeURIComponent(projectId)}/sequences${query}`,
   );
@@ -183,7 +193,9 @@ export function fetchShots(
   sequenceId: string,
   sort?: HierarchySort,
 ): Promise<Shot[]> {
-  const query = sort ? qs({ sort: serializeSortValue(sort) }) : '';
+  const query = sort
+    ? qs({ sort: serializeSortValue(sort), limit: TREE_FETCH_LIMIT })
+    : qs({ limit: TREE_FETCH_LIMIT });
   return fetchJson<Shot[]>(
     `/api/sequences/${encodeURIComponent(sequenceId)}/shots${query}`,
   );

@@ -206,10 +206,10 @@ export async function summarizeVersion(
   const isRedacted = signedEvent?.redacted === true;
   const manifestSha256 = signedEvent?.manifest_sha256 ?? null;
 
-  // Helper closure variable — initially null; rebound after Step 3.5 resolution
-  // so the deterministic-template fallback also benefits from BLOCKER #1's
-  // parent-label wiring. The closure pattern lets us declare the helper before
-  // the resolution block but pick up the resolved value when invoked.
+  // Helper closure variable — bound just below, BEFORE the pre-flight
+  // gates, so every fallback path (including api_key_missing/circuit_open,
+  // the only paths a keyless machine takes) carries the parent label into
+  // the deterministic template's lineage sentence.
   let resolvedParentLabelForFallback: string | null = null;
 
   // Helper to build a fallback outcome with the deterministic template
@@ -279,6 +279,21 @@ export async function summarizeVersion(
     }
   }
 
+  // Parent label — resolved BEFORE the pre-flight gates. The two gates
+  // below are the only paths a machine without an API key ever takes
+  // (permanent fallback mode), and they used to return before this binding,
+  // so the deterministic template silently dropped its lineage sentence —
+  // an iterate and a root version read identically exactly where the
+  // fallback is the whole feature. One synchronous repo read; no reason to
+  // defer it.
+  if (version.parent_version_id) {
+    const parent = deps.versionRepo.getVersion(version.parent_version_id);
+    if (parent) {
+      // Phase 3 convention: zero-padded `v001` labels (PROJECT.md naming convention).
+      resolvedParentLabelForFallback = `v${String(parent.version_number).padStart(3, '0')}`;
+    }
+  }
+
   // Step 3: Pre-flight gates → fallback paths.
   if (deps.anthropicConfig === null) {
     return buildFallbackOutcome('api_key_missing');
@@ -315,16 +330,9 @@ export async function summarizeVersion(
     }
   }
 
-  let parentVersionLabel: string | null = null;
-  if (version.parent_version_id) {
-    const parent = deps.versionRepo.getVersion(version.parent_version_id);
-    if (parent) {
-      // Phase 3 convention: zero-padded `v001` labels (PROJECT.md naming convention).
-      parentVersionLabel = `v${String(parent.version_number).padStart(3, '0')}`;
-    }
-  }
-  // Bind closure for any subsequent buildFallbackOutcome call (BLOCKER #1).
-  resolvedParentLabelForFallback = parentVersionLabel;
+  // Parent label was resolved above the pre-flight gates (see there for why);
+  // reuse the binding.
+  const parentVersionLabel: string | null = resolvedParentLabelForFallback;
 
   // Step 4: Sanitize (D-PRIV-1) + leak-scan defence-in-depth + assemble prompt input.
   // BLOCKER #1: promptPositive / promptNegative / parentVersionLabel are now

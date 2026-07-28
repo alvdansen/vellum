@@ -388,7 +388,9 @@ describe('Phase 19 telemetry — multi-encoding API-key leak scan (D-PRIV-3)', (
       'utf8',
     );
     expect(src.includes("Buffer.from(apiKey, 'utf16le').toString('binary')")).toBe(true);
-    expect(src.includes("Buffer.from(apiKey, 'utf16le').reverse().toString('binary')")).toBe(true);
+    expect(src.includes("Buffer.from(apiKey, 'utf16le').swap16().toString('binary')")).toBe(true);
+    // .reverse() encodes the REVERSED key — real UTF-16BE bytes evaded all four guards.
+    expect(src.includes(".reverse().toString('binary')")).toBe(false);
     expect(src.includes("Buffer.from(apiKey).toString('base64')")).toBe(true);
   });
 
