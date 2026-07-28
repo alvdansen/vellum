@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, chmodSync, 
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { TypedError } from '../engine/errors.js';
-import { loadC2paConfigFromEnv } from '../utils/c2pa-config.js';
+import { loadC2paConfigFromEnv, DEFAULT_TSA_URL } from '../utils/c2pa-config.js';
 
 /**
  * Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Plan 14-01 Task 3.
@@ -307,7 +307,11 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
   // MR-01 fix — VELLUM_C2PA_TSA_URL plumbing.
   // ============================================================
 
-  test('Test 12 (MR-01 fix): VELLUM_C2PA_TSA_URL unset → tsaUrl is null (offline-friendly default)', () => {
+  test('Test 12: VELLUM_C2PA_TSA_URL unset → tsaUrl defaults to a working endpoint', () => {
+    // A TSA is mandatory on c2pa-node 0.5.26 — a null default meant every
+    // out-of-the-box sign attempt failed while boot logged "signing
+    // enabled". This test used to pin that null default as
+    // "offline-friendly"; there is no offline signing on this binding.
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
     process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
@@ -316,7 +320,7 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
-    expect(cfg!.tsaUrl).toBeNull();
+    expect(cfg!.tsaUrl).toBe(DEFAULT_TSA_URL);
   });
 
   test('Test 13 (MR-01 fix): VELLUM_C2PA_TSA_URL set → tsaUrl flows through verbatim', () => {
@@ -331,7 +335,7 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
     expect(cfg!.tsaUrl).toBe('https://internal-tsa.example.com/tsa');
   });
 
-  test('Test 14 (MR-01 fix): VELLUM_C2PA_TSA_URL = empty string → treated as unset (null)', () => {
+  test('Test 14: VELLUM_C2PA_TSA_URL = empty string → treated as unset (defaults)', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
     process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
@@ -340,10 +344,10 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
-    expect(cfg!.tsaUrl).toBeNull();
+    expect(cfg!.tsaUrl).toBe(DEFAULT_TSA_URL);
   });
 
-  test('Test 15 (MR-01 fix): VELLUM_C2PA_TSA_URL = whitespace-only → treated as unset (null)', () => {
+  test('Test 15: VELLUM_C2PA_TSA_URL = whitespace-only → treated as unset (defaults)', () => {
     const certPath = writePem('cert.pem');
     const keyPath = writePem('key.pem');
     process.env.VELLUM_C2PA_CERT_PEM_PATH = certPath;
@@ -352,6 +356,6 @@ describe('loadC2paConfigFromEnv — Phase 14 Plan 14-01 Task 3', () => {
 
     const cfg = loadC2paConfigFromEnv();
     expect(cfg).not.toBeNull();
-    expect(cfg!.tsaUrl).toBeNull();
+    expect(cfg!.tsaUrl).toBe(DEFAULT_TSA_URL);
   });
 });

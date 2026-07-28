@@ -32,14 +32,14 @@ export interface C2paConfig {
    *  boot for existence + readability + allowlist-root containment. NEVER
    *  logged. NEVER returned in any tool envelope. T-14-01 / T-14-02 mitigation. */
   readonly privateKeyPemPath: string;
-  /** Phase 14 fix MR-01: optional RFC 3161 Time-Stamp Authority endpoint.
-   *  When `null` (the default when the operator has not set the
-   *  VELLUM_C2PA_TSA_URL env var), the signer wrapper builds a
-   *  LocalSigner WITHOUT the tsaUrl property — matching c2pa-node v0.5.26's
-   *  no-TSA branch. When non-null (operator has opted in to a TSA), the
-   *  string is passed through verbatim to c2pa-node; air-gapped or
-   *  internal-CA deployments can supply their own TSA endpoint without
-   *  touching source. The default is OFFLINE-FRIENDLY: signing succeeds
-   *  fully offline when the env var is unset. */
+  /** RFC 3161 Time-Stamp Authority endpoint. The loader defaults this to
+   *  DEFAULT_TSA_URL when VELLUM_C2PA_TSA_URL is unset, because a TSA is
+   *  mandatory on c2pa-node v0.5.26 — with `null` the signer builds a
+   *  LocalSigner without the property and the binding throws on every sign
+   *  call. `null` stays representable so tests can exercise that failure
+   *  path; production configs from loadC2paConfigFromEnv always carry a
+   *  string. Operators supply an internal TSA via the env var to avoid the
+   *  third-party call; air-gapped deployments cannot sign on this binding
+   *  version. */
   readonly tsaUrl: string | null;
 }

@@ -10,25 +10,21 @@
 //   Concern #10 — RFC4514-safe subject parser (no naive regex)
 //   Concern #11 — lazy native binding load + try/catch (no boot crash)
 //
-// Plan 14-02 RUNTIME DEVIATION (documented in 14-02-SUMMARY.md):
-//   c2pa-node v0.5.26's native binding requires `tsaUrl` to either be an
-//   absent property OR a valid URL string. With the property missing,
-//   `signClaimBytes` throws "TypeError: failed to downcast any to string"
-//   from inside c2pa-rs. With `tsaUrl: ''`, the URL parser throws a
-//   `RelativeUrlWithoutBase` error.
-//
-//   Mitigation: the signer wrapper accepts an optional `tsaUrl` parameter
-//   on `loadSigner`. The LocalSigner literal is built CONDITIONALLY (the
-//   property is OMITTED when tsaUrl is null) so the `tsaUrl: undefined`
-//   downcast bug is sidestepped — c2pa-node treats the absent property as
-//   "no timestamp authority", and signing succeeds fully offline.
-//
-//   Phase 14 fix MR-01: the default is now `null` (NO TSA), and operators
-//   opt in to a TSA via VELLUM_C2PA_TSA_URL. The earlier hard-coded
-//   default of a public RFC 3161 endpoint was removed because (a) it
-//   silently reached a third-party endpoint on every sign call (privacy
-//   surprise + air-gapped deployments fail) and (b) it could not be
-//   disabled without source-level changes. Operator-controllable now.
+// TSA is MANDATORY on c2pa-node v0.5.26 — verified empirically, not from
+// the docs, because this file used to claim the opposite in two places:
+//   - `tsaUrl` absent from the LocalSigner literal → `signClaimBytes`
+//     throws "TypeError: failed to downcast any to string" from c2pa-rs.
+//     Every sign attempt fails. There is NO offline signing on 0.5.26.
+//   - `tsaUrl: ''` → the URL parser throws `RelativeUrlWithoutBase`.
+//   - `tsaUrl: <valid URL>` → signing works.
+// The config loader therefore defaults VELLUM_C2PA_TSA_URL to a public
+// RFC 3161 endpoint (DEFAULT_TSA_URL in utils/c2pa-config.ts) so the
+// out-of-the-box configuration can actually sign; operators point it at
+// an internal TSA via the env var. The trade-off is explicit: every sign
+// call reaches the configured TSA. Air-gapped deployments cannot sign on
+// this binding version — say so, rather than failing every call while
+// logging "signing enabled". `null` remains representable for callers
+// (and tests) that exercise the failure path deliberately.
 
 import { readFile } from 'node:fs/promises';
 import { X509Certificate } from 'node:crypto';
@@ -106,22 +102,12 @@ export interface LoadedSigner {
 const BUFFER_API_MIMETYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png']);
 
 /**
- * Phase 14 fix MR-01: documented fallback TSA used ONLY when `loadSigner` is
- * called WITHOUT a third argument (i.e., legacy callers / tests that haven't
- * been threaded through C2paConfig.tsaUrl yet). Engine call sites in
- * Plan 14-03 always pass an explicit value (operator-supplied via
- * VELLUM_C2PA_TSA_URL OR explicit null when the operator opts out).
- *
- * Mirrors c2pa-node's own `createTestSigner` default (lib/signer.js line 51).
- * Required by c2pa-node v0.5.26's native binding: signClaimBytes throws
- * "TypeError: failed to downcast any to string" when the LocalSigner literal
- * omits `tsaUrl` entirely (see file header — Plan 14-02 RUNTIME DEVIATION).
- *
- * Operators who explicitly want to opt out of any TSA (air-gapped, internal
- * CA only, no third-party calls) pass `null` from the engine; signing will
- * then fail with C2PA_SIGNING_FAILED (the engine surfaces this as
- * status_reason='sign_call_failed'). Operators who want to use an internal
- * TSA pass that URL via VELLUM_C2PA_TSA_URL.
+ * Fallback TSA used only when `loadSigner` is called without a third
+ * argument (direct callers/tests not threaded through C2paConfig). The
+ * engine call site passes `c2paConfig.tsaUrl`, whose loader default is the
+ * same endpoint (DEFAULT_TSA_URL in utils/c2pa-config.ts) — a TSA is
+ * mandatory for any signature at all on c2pa-node v0.5.26 (see file
+ * header). Mirrors c2pa-node's own `createTestSigner` default.
  */
 const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
 
@@ -135,25 +121,19 @@ const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
  * (binding load, file read, cert parse, key parse, unsupported algorithm,
  * c2pa-node createC2pa rejection). NEVER logs key bytes (T-14-01 mitigation).
  *
- * Phase 14 fix MR-01: `tsaUrl` is now operator-controllable via
- * `VELLUM_C2PA_TSA_URL`. The Engine call site (pipeline.ts) passes
- * `c2paConfig.tsaUrl` verbatim. When `tsaUrl` is null, the LocalSigner
- * literal omits the property — c2pa-node v0.5.26 will then fail at sign
- * time (binding bug; documented in file header). Engine's signOutput
- * surfaces this as status_reason='sign_call_failed' so the operator sees
- * a typed manifest_signed event with the reason. For operators who want
- * working signing without setting a TSA URL, the loadSigner default
- * (when called without the 3rd arg) is FALLBACK_TSA_URL — same as
- * c2pa-node's own createTestSigner.
+ * `tsaUrl` is operator-controllable via `VELLUM_C2PA_TSA_URL`; the config
+ * loader defaults it to a working public endpoint because a TSA is
+ * mandatory on c2pa-node v0.5.26 (see file header). The engine passes
+ * `c2paConfig.tsaUrl` verbatim. When a caller passes `null` explicitly,
+ * the LocalSigner literal omits the property and every sign attempt fails
+ * with the binding's downcast error; the engine surfaces that as
+ * status_reason='sign_call_failed' — tests exercise this path on purpose.
  *
  * @param certPemPath  Absolute path to the PEM-encoded cert (chain).
  * @param privateKeyPemPath  Absolute path to the PEM-encoded private key.
- * @param tsaUrl  Optional RFC 3161 TSA endpoint. Default is FALLBACK_TSA_URL
- *                (only used when caller passes nothing for this argument).
- *                Engine sites pass the operator-controlled value (null OR
- *                a custom URL) verbatim. `null` means NO TSA — no
- *                third-party network call at sign time, but signing will
- *                fail on c2pa-node v0.5.26 due to a binding bug.
+ * @param tsaUrl  RFC 3161 TSA endpoint. Default FALLBACK_TSA_URL (only when
+ *                the argument is omitted entirely). `null` means NO TSA,
+ *                which on c2pa-node v0.5.26 means signing cannot succeed.
  */
 export async function loadSigner(
   certPemPath: string,
