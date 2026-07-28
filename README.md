@@ -163,8 +163,8 @@ Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) through **28 wire
 ### 4. Full test suite
 
 ```bash
-npm test                              # server suite — 2496 tests
-cd packages/dashboard && npx vitest run   # dashboard suite — 534 tests
+npm test                              # server suite — 2488 tests
+cd packages/dashboard && npx vitest run   # dashboard suite — 542 tests
 ```
 
 The suite covers hierarchy create/read (there is no update or delete), provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
