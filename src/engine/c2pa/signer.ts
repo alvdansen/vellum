@@ -385,7 +385,7 @@ export async function signEmbedBuffer(
     throw new TypedError(
       'C2PA_SIGNING_FAILED',
       `c2pa-node sign() rejected the asset: ${(err as Error).message}`,
-      'Caller should degrade gracefully (return original bytes) per D-CTX-9.',
+      'The caller degrades gracefully — the original bytes are kept unsigned.',
     );
   }
 }
@@ -420,7 +420,7 @@ export async function signEmbedFile(
     throw new TypedError(
       'C2PA_SIGNING_FAILED',
       `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
-      'Caller should degrade gracefully (skip + log) per D-CTX-9.',
+      'The caller degrades gracefully — signing is skipped and logged.',
     );
   }
 }
