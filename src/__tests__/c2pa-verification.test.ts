@@ -706,6 +706,25 @@ describe.skipIf(!haveOpenssl)('C2PA verification — Concern #8 tamper detection
     await ctx.cleanup();
   });
 
+  it('Test 16b — verifyManifest on Vellum-signed bytes: no spurious gap, trust disclosed', async () => {
+    // Through the project's OWN verifier, not raw c2pa.read. Two defects
+    // pinned here:
+    //  - c2pa-rs reads the actions assertion back as `c2pa.actions.v2`; the
+    //    verifier used to compare against the bare write-side label and
+    //    reported gaps:["c2pa.actions"] on every asset Vellum signed itself.
+    //  - the report now states trust_evaluated:false — c2pa-node 0.5.26
+    //    consults no trust root, and `valid` must not imply that it did.
+    const { verifyManifest } = await import('../engine/c2pa/verifier.js');
+    const report = await verifyManifest({
+      manifestBytes: signedPng,
+      format: 'image/png',
+    });
+    expect(report.gaps).not.toContain('c2pa.actions');
+    expect(report.matched_assertions).toContain('c2pa.actions');
+    expect(report.trust_evaluated).toBe(false);
+    expect(Array.isArray(report.dev_trust_overrides)).toBe(true);
+  });
+
   it('Test 17 — flipping a byte after IDAT marker triggers assertion.dataHash.mismatch', async () => {
     const tampered = Buffer.from(signedPng);
     // Find the IDAT chunk marker — the actual pixel data lives within IDAT.

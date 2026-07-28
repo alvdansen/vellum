@@ -398,6 +398,8 @@ describe('version verify_manifest — dispatch + envelope', () => {
     const fixedReport: VerificationReport = {
       valid: true,
       signature_status: 'valid',
+      trust_evaluated: false,
+      dev_trust_overrides: [],
       matched_assertions: ['c2pa.actions', 'vellum.input'],
       gaps: [],
       failures: [],
@@ -432,6 +434,8 @@ describe('version verify_manifest — dispatch + envelope', () => {
     const fixedReport: VerificationReport = {
       valid: true,
       signature_status: 'valid',
+      trust_evaluated: false,
+      dev_trust_overrides: [],
       matched_assertions: ['c2pa.actions'],
       gaps: [],
       failures: [],
@@ -471,6 +475,8 @@ describe('version verify_manifest — dispatch + envelope', () => {
       .spyOn(stack.engine, 'verifyManifestForVersion')
       .mockResolvedValue({
         valid: false, signature_status: 'no_manifest',
+        trust_evaluated: false,
+        dev_trust_overrides: [],
         matched_assertions: [], gaps: [], failures: [],
         cert_subject: null, signed_at: null,
       });
@@ -490,6 +496,7 @@ describe('version verify_manifest — dispatch + envelope', () => {
     // The engine then either returns no_manifest (unparseable JUMBF) — verified here.
     vi.spyOn(stack.engine, 'verifyManifestForVersion').mockResolvedValue({
       valid: false, signature_status: 'no_manifest',
+      trust_evaluated: false, dev_trust_overrides: [],
       matched_assertions: [], gaps: [], failures: [],
       cert_subject: null, signed_at: null,
     });
@@ -565,6 +572,7 @@ describe('version export_manifest + verify_manifest — invariants', () => {
 
     vi.spyOn(stack.engine, 'verifyManifestForVersion').mockResolvedValue({
       valid: true, signature_status: 'valid',
+      trust_evaluated: false, dev_trust_overrides: [],
       matched_assertions: [], gaps: [], failures: [],
       cert_subject: null, signed_at: null,
     });

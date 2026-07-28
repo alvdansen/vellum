@@ -300,13 +300,8 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
     const createdSurvived = actionsArr.some((act: any) => act?.action === 'c2pa.created');
     expect(createdSurvived).toBe(true);
 
-    // (c) C-01 multi-encoding scan against the ACTIVE manifest projection.
-    //     Note: the C2PA chain-of-custody design preserves the parent manifest
-    //     as a JUMBF ingredient inside the redacted bytes, so a raw-byte scan
-    //     of result.redactedBytes WILL legitimately find the original
-    //     prompt_positive in the parent chain (deferred-items.md tracks
-    //     parent-chain redaction for v1.2). The active-manifest projection is
-    //     the contract surface.
+    // (c) C-01 multi-encoding scan against the ACTIVE manifest projection —
+    //     the value must be gone from the surface a reader is shown.
     const am = store!.active_manifest!;
     const activeProjection = JSON.stringify({
       claim_generator: am.claim_generator,
@@ -316,6 +311,19 @@ describe.skipIf(!haveOpenssl)('Phase 16 E2E — Scenario A (golden path redact p
     });
     const projectionBuf = Buffer.from(activeProjection, 'utf-8');
     assertNotInBuffer(projectionBuf, PROMPT_POSITIVE, 'scenario-a-prompt-positive');
+
+    // (c2) …and the parent chain deliberately RETAINS it inside the same
+    //     bytes (the pre-redaction manifest survives as a parentOf
+    //     ingredient — lineage is the point of keeping it). This is
+    //     presentation-layer redaction, disclosed to callers via
+    //     parent_chain_retains_originals:true in the tool envelope and in
+    //     both tool descriptions. PINNED here on the raw bytes: if a
+    //     c2pa-node upgrade ever gains true parent-chain redaction and this
+    //     assertion starts failing, the envelope field and the descriptions
+    //     must change in the same commit.
+    expect(
+      result.redactedBytes.indexOf(Buffer.from(PROMPT_POSITIVE, 'utf-8')),
+    ).toBeGreaterThan(-1);
 
     // (d) Original manifest_signed event row byte-identical (D-CTX-5).
     const allRows = seed.sqlite

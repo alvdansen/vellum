@@ -44,6 +44,22 @@ export interface VerificationReport {
     | 'untrusted_root'
     | 'unsupported_algorithm'
     | 'no_manifest';
+  /**
+   * ALWAYS false on c2pa-node 0.5.26: the binding exposes no trust-root
+   * configuration, so no chain-to-root evaluation happens. `valid: true`
+   * means the manifest is cryptographically intact and binds to these
+   * bytes — a well-formed chain from ANY CA reports valid, including one
+   * minted seconds ago. Stated in the report because the alternative is a
+   * caller believing trust was checked when it never was.
+   */
+  trust_evaluated: false;
+  /**
+   * Validation codes suppressed by VELLUM_C2PA_TRUST_DEV_CERT='1' before
+   * classification (e.g. signingCredential.untrusted for a self-signed dev
+   * cert). Empty when the override is off or nothing was filtered. Surfaced
+   * so a dev-trusted `valid: true` is distinguishable from a clean one.
+   */
+  dev_trust_overrides: string[];
   matched_assertions: string[]; // labels of valid assertions, in manifest order
   gaps: string[]; // expected-but-missing assertions
   failures: Array<{ assertion: string; reason: string }>;
@@ -86,6 +102,23 @@ const EXPECTED_ASSERTION_LABELS: readonly string[] = [
   'c2pa.actions',
   'vellum.input',
 ];
+
+/** c2pa-rs reads the actions assertion back as `c2pa.actions.v2`; the
+ *  write side (and EXPECTED_ASSERTION_LABELS) use the bare literal. */
+function normalizeActionsLabel(label: string): string {
+  return label === 'c2pa.actions.v2' ? 'c2pa.actions' : label;
+}
+
+/**
+ * validation_status entries reference assertions by JUMBF URI, e.g.
+ * `self#jumbf=c2pa.assertions/c2pa.hash.data`. The assertion label is the
+ * last path segment; null when the entry carries no usable URI.
+ */
+function labelFromValidationUrl(url: string | null | undefined): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  const lastSegment = url.slice(url.lastIndexOf('/') + 1);
+  return lastSegment.length > 0 ? normalizeActionsLabel(lastSegment) : null;
+}
 
 /**
  * Read + verify embedded manifest. Returns a VerificationReport — never
@@ -203,32 +236,51 @@ async function readAndClassify(
     (store.validation_status ?? []) as ValidationStatusMin[];
 
   // D-PLAN-5: when VELLUM_C2PA_TRUST_DEV_CERT='1', the dev-acceptable
-  // codes are filtered from validationStatus BEFORE classification.
+  // codes are filtered from validationStatus BEFORE classification. The
+  // suppressed codes are carried into the report (dev_trust_overrides) so
+  // a dev-trusted `valid` is distinguishable from a clean one.
   const trustDevCert = process.env.VELLUM_C2PA_TRUST_DEV_CERT === '1';
+  const dev_trust_overrides: string[] = trustDevCert
+    ? validationStatus
+        .map((v: ValidationStatusMin) => v.code ?? '')
+        .filter((c: string) => DEV_ACCEPTABLE_CODES.has(c))
+    : [];
   const effectiveValidationStatus: ValidationStatusMin[] = trustDevCert
     ? validationStatus.filter((v: ValidationStatusMin) => !DEV_ACCEPTABLE_CODES.has(v.code ?? ''))
     : validationStatus;
   const signature_status = classifySignatureStatus(effectiveValidationStatus);
 
   // matched_assertions: ALL assertion labels whose validation_status doesn't
-  // explicitly reference them as a failure. The order matches manifest order.
+  // reference them as a failure. validation_status entries carry JUMBF URIs
+  // ("self#jumbf=c2pa.assertions/c2pa.hash.data"), not bare labels — the
+  // previous direct comparison could never match, so matched_assertions
+  // could never shrink and a tampered asset reported every assertion as
+  // matched alongside its dataHash.mismatch failure. Extract the label as
+  // the URI's last path segment.
   const failureLabels = new Set<string>(
     effectiveValidationStatus
-      .map((v: ValidationStatusMin) => (typeof v.url === 'string' ? v.url : ''))
-      .filter((s: string) => s.length > 0),
+      .map((v: ValidationStatusMin) => labelFromValidationUrl(v.url))
+      .filter((s): s is string => s !== null),
   );
   type AssertionMin = { label?: string | null };
+  // c2pa-rs writes the actions assertion back as `c2pa.actions.v2`;
+  // normalize to the write-side literal (same normalization the redaction
+  // path applies) or Vellum reports a gap of `c2pa.actions` on every asset
+  // it signed itself.
   const allLabels: string[] = ((manifest.assertions ?? []) as AssertionMin[])
     .map((a: AssertionMin) => a.label)
-    .filter((s): s is string => typeof s === 'string');
+    .filter((s): s is string => typeof s === 'string')
+    .map(normalizeActionsLabel);
   const matched_assertions = allLabels.filter((l: string) => !failureLabels.has(l));
 
   // gaps: labels expected in a Phase 14/15 manifest but missing from this one.
   const gaps = EXPECTED_ASSERTION_LABELS.filter((l) => !allLabels.includes(l));
 
   // failures: discrete entries from effectiveValidationStatus with assertion + reason.
+  // Same label extraction as failureLabels above, so the failing assertion is
+  // reported as its label ('c2pa.hash.data'), not a raw JUMBF URI.
   const failures = effectiveValidationStatus.map((v: ValidationStatusMin) => ({
-    assertion: typeof v.url === 'string' && v.url.length > 0 ? v.url : 'unknown',
+    assertion: labelFromValidationUrl(v.url) ?? 'unknown',
     reason: typeof v.code === 'string' && v.code.length > 0 ? v.code : 'unknown',
   }));
 
@@ -246,6 +298,8 @@ async function readAndClassify(
   return {
     valid: signature_status === 'valid' && failures.length === 0,
     signature_status,
+    trust_evaluated: false,
+    dev_trust_overrides,
     matched_assertions,
     gaps,
     failures,
@@ -282,6 +336,8 @@ function makeNoManifestResult(
   return {
     valid: false,
     signature_status: 'no_manifest',
+    trust_evaluated: false,
+    dev_trust_overrides: [],
     matched_assertions: [],
     gaps: [],
     failures: [],

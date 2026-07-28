@@ -528,6 +528,8 @@ describe('version redact_manifest — C-08 cross-layer invariants', () => {
     const verifyReport: VerificationReport = {
       valid: true,
       signature_status: 'valid',
+      trust_evaluated: false,
+      dev_trust_overrides: [],
       matched_assertions: ['c2pa.actions', 'vellum.redacted'],
       gaps: [],
       failures: [],

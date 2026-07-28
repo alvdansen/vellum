@@ -433,6 +433,7 @@ function shapeRedactManifestEnvelope(
   manifest_bytes_base64: string;
   redacted_fields: string[];
   not_found: string[];
+  parent_chain_retains_originals: true;
   signed_at: string;
   format: string;
   cert_subject: string;
@@ -444,6 +445,13 @@ function shapeRedactManifestEnvelope(
     manifest_bytes_base64: result.redactedBytes.toString('base64'),
     redacted_fields: result.redactedFields,
     not_found: result.notFound,
+    // Redaction rewrites the ACTIVE manifest's assertions; the pre-redaction
+    // manifest is preserved verbatim as a parentOf ingredient inside the
+    // same bytes (lineage is the point of keeping it). The original values
+    // are therefore still recoverable from these bytes, the file on disk,
+    // and the append-only store. Stated in the envelope because the
+    // alternative is a caller believing the value is gone when it is not.
+    parent_chain_retains_originals: true,
     signed_at: result.signedAt,
     format: result.format,
     cert_subject: result.certSubject,
@@ -503,9 +511,9 @@ export function registerVersion(server: McpServer, engine: Engine) {
         'provenance (full chronological event timeline including workflow_json on submit and prompt_json/models_json/seed on completed events — heavy payload, explicit opt-in; tags/metadata are NOT in the event stream per D-ASST-21), ' +
         // Phase 16 / Plan 16-03 (D-CTX-4) — two new agent-surface actions.
         'export_manifest (returns the C2PA-signed manifest for a version_id in a structured envelope: {version_id, format, signed_at, manifest_bytes_base64, manifest_status: \'present\'|\'absent\'|\'unsupported_format\', cert_subject, ingredients_summary, breadcrumb} per D-PROV-08), ' +
-        'verify_manifest (verifies a C2PA manifest against the configured trust root — accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form), ' +
+        'verify_manifest (verifies a C2PA manifest\'s CRYPTOGRAPHIC INTEGRITY — tamper detection against the asset bytes. It does NOT evaluate the signing certificate against any trust root (none is configurable on c2pa-node 0.5.26): a well-formed chain from any CA reports valid, and the report says so via trust_evaluated:false. Accepts EITHER {version_id} OR {manifest_bytes_base64, format}; returns {valid, signature_status, trust_evaluated, dev_trust_overrides, matched_assertions, gaps, failures, cert_subject, signed_at, breadcrumb}; breadcrumb is null when called via the bytes form), ' +
         // Phase 16 / Plan 16-04 (D-CTX-1) — third agent-surface action.
-        'redact_manifest (strips named fields from a version\'s signed manifest, emits a vellum.redacted assertion preserving the FACT of redaction (NOT the original values), re-signs the asset, and appends a NEW manifest_signed event — original signed event is byte-identical per append-only contract; envelope returns {version_id, manifest_bytes_base64, redacted_fields, not_found, signed_at, format, cert_subject, breadcrumb}). ' +
+        'redact_manifest (replaces named fields in the ACTIVE manifest with a redaction sentinel, emits a vellum.redacted assertion recording that redaction happened, re-signs the asset, and appends a NEW manifest_signed event. IMPORTANT: the pre-redaction manifest is preserved as a parentOf ingredient in the same bytes for lineage, so the ORIGINAL VALUES REMAIN RECOVERABLE from the returned bytes, the file on disk, and the append-only store — this is presentation-layer redaction, not destruction; do not use it to purge secrets. The envelope states this via parent_chain_retains_originals:true. Returns {version_id, manifest_bytes_base64, redacted_fields, not_found, parent_chain_retains_originals, signed_at, format, cert_subject, breadcrumb}). ' +
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).

@@ -71,6 +71,8 @@ describe('VerificationReport — D-CTX-2 type-shape lock (Test 12)', () => {
     const r: VerificationReport = {
       valid: false,
       signature_status: 'no_manifest',
+      trust_evaluated: false,
+      dev_trust_overrides: [],
       matched_assertions: [],
       gaps: [],
       failures: [],
