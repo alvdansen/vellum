@@ -2343,9 +2343,9 @@ export class Engine {
     if (this.c2paConfig === null) return { errorCode: 'cert_load_failed' };
 
     try {
-      // Thread tsaUrl through C2paConfig so the operator
-      // can opt in to a TSA via VELLUM_C2PA_TSA_URL without source-level
-      // changes. Default is null (no TSA — fully offline-friendly).
+      // Thread tsaUrl through C2paConfig. The loader defaults it to a
+      // working public endpoint — a TSA is mandatory on c2pa-node 0.5.26;
+      // null (tests only) makes every sign attempt fail.
       const signer = await loadSigner(
         this.c2paConfig.certPemPath,
         this.c2paConfig.privateKeyPemPath,

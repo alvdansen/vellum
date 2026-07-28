@@ -19,9 +19,13 @@
 // Failure-mode discipline:
 //   - c2pa-rs read() throws / returns null → signature_status='no_manifest'
 //   - native binding load throws → signature_status='no_manifest' (graceful-fail)
-//   - signingCredential.untrusted:
-//       VELLUM_C2PA_TRUST_DEV_CERT='1' → filtered (dev-mode); valid
-//       otherwise → signature_status='untrusted_root' (production default)
+//   - signingCredential.untrusted: mapped to 'untrusted_root', and filtered
+//     when VELLUM_C2PA_TRUST_DEV_CERT='1' (surfaced via dev_trust_overrides).
+//     NOTE: on c2pa-node 0.5.26 this code has not been observed on real
+//     bytes — the binding evaluates no trust root, so even a self-made-CA
+//     chain verifies with an empty validation_status. The mapping is kept
+//     for a future binding that gains trust config; trust_evaluated:false
+//     in the report is what keeps `valid` honest today.
 //   - claimSignature.algorithmUnsupported → 'unsupported_algorithm'
 //   - any other validation_status code → 'invalid'
 

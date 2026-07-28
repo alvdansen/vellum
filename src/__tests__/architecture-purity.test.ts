@@ -758,9 +758,17 @@ describe('architecture purity', () => {
   // update/delete builders by call syntax (provenance-repo.ts only ever
   // touches the provenance table, so any .update(/.delete( in the file is
   // a violation by construction).
-  it('provenance is never UPDATE-d or DELETE-d in src/store/provenance-repo.ts', () => {
-    expect(grepCount('UPDATE provenance', 'src/store/provenance-repo.ts')).toBe(0);
-    expect(grepCount('DELETE.*provenance', 'src/store/provenance-repo.ts')).toBe(0);
+  it('provenance is never UPDATE-d or DELETE-d anywhere in src/store/', () => {
+    // Every repo holds the same db handle, so a mutator in a SIBLING store
+    // file reaches the provenance table just as easily — the file-scoped
+    // version of this guard was bypassed exactly that way during
+    // verification. Raw SQL is scanned store-wide by table name; the ORM
+    // builders are scanned by builder-plus-table ('.update(provenance').
+    expect(grepCount('UPDATE provenance', 'src/store')).toBe(0);
+    expect(grepCount('DELETE FROM provenance', 'src/store')).toBe(0);
+    expect(grepCount('.update(provenance', 'src')).toBe(0);
+    expect(grepCount('.delete(provenance', 'src')).toBe(0);
+    // And the repo file itself never uses ANY mutation builder.
     expect(grepCount('.update(', 'src/store/provenance-repo.ts')).toBe(0);
     expect(grepCount('.delete(', 'src/store/provenance-repo.ts')).toBe(0);
   });

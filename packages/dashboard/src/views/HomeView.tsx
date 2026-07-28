@@ -212,10 +212,24 @@ export function HomeView() {
   // harmless. Fetch errors are swallowed the same way the mount hydration
   // swallows them — the next expand retries.
   useEffect(() => {
+    // Latest-wins guard per cache key: a burst of hierarchy.created events
+    // fires one refetch each, and without the guard a SLOWER earlier
+    // response could land last and overwrite a fresher list (dropping the
+    // newest entity). Same pattern as loadVersionsPage's race guard.
+    const refetchSeq = new Map<string, number>();
+    const claim = (key: string): number => {
+      const next = (refetchSeq.get(key) ?? 0) + 1;
+      refetchSeq.set(key, next);
+      return next;
+    };
+    const isLatest = (key: string, seq: number): boolean =>
+      refetchSeq.get(key) === seq;
     const onHierarchyCreated = (payload: HierarchyCreatedPayload): void => {
       if (payload.entityType === 'workspace') {
+        const seq = claim('__root__');
         fetchWorkspaces()
           .then((raw) => {
+            if (!isLatest('__root__', seq)) return;
             workspaces.value = unwrapList<Workspace>(raw);
           })
           .catch(() => {});
@@ -224,31 +238,37 @@ export function HomeView() {
       const parentId = payload.parentId;
       if (!parentId) return;
       if (payload.entityType === 'project') {
+        const seq = claim(parentId);
         fetchProjects(parentId, treeSort.value)
-          .then((raw) =>
+          .then((raw) => {
+            if (!isLatest(parentId, seq)) return;
             setChildren((prev) => ({
               ...prev,
               projects: { ...prev.projects, [parentId]: unwrapList<Project>(raw) },
-            })),
-          )
+            }));
+          })
           .catch(() => {});
       } else if (payload.entityType === 'sequence') {
+        const seq = claim(parentId);
         fetchSequences(parentId, treeSort.value)
-          .then((raw) =>
+          .then((raw) => {
+            if (!isLatest(parentId, seq)) return;
             setChildren((prev) => ({
               ...prev,
               sequences: { ...prev.sequences, [parentId]: unwrapList<Sequence>(raw) },
-            })),
-          )
+            }));
+          })
           .catch(() => {});
       } else {
+        const seq = claim(parentId);
         fetchShots(parentId, treeSort.value)
-          .then((raw) =>
+          .then((raw) => {
+            if (!isLatest(parentId, seq)) return;
             setChildren((prev) => ({
               ...prev,
               shots: { ...prev.shots, [parentId]: unwrapList<Shot>(raw) },
-            })),
-          )
+            }));
+          })
           .catch(() => {});
       }
     };
