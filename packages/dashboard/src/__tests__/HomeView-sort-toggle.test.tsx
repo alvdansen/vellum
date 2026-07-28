@@ -459,27 +459,28 @@ describe('HomeView — Plan 18-05 sort-toggle interactions', () => {
   });
 
   it('Test 12b: latestCompletedForSelectedShot returns undefined when page 1 is all-NULL (>20 in-progress edge case per CONTEXT.md D-21)', async () => {
-    // Pre-populate versions.value directly with 21 in-progress rows. The
-    // derivation must NOT crash and must NOT return a completed row.
-    versions.value = Array.from({ length: 21 }, (_, i) => ({
-      id: `v${i + 1}`,
-      shot_id: 'shot_z',
-      version_number: i + 1,
-      status: 'running' as const,
-    }));
+    // The mount effect clears and refetches the buffer for the selected shot
+    // (pre-injected signal state does not survive it, by design — the buffer
+    // is server truth). Serve the 21 in-progress rows through the fetch
+    // route; the derivation must NOT crash and must NOT return a completed row.
+    setupHomeView({
+      fetchRoutes: {
+        '/api/shots/shot_z/versions': {
+          items: Array.from({ length: 21 }, (_, i) => ({
+            id: `v${i + 1}`,
+            shot_id: 'shot_z',
+            version_number: i + 1,
+            status: 'running' as const,
+          })),
+          next_cursor: null,
+          total_count: 21,
+        },
+      },
+    });
     selectedShotId.value = 'shot_z';
-    setupHomeView();
-    selectedShotId.value = 'shot_z';
-    versions.value = Array.from({ length: 21 }, (_, i) => ({
-      id: `v${i + 1}`,
-      shot_id: 'shot_z',
-      version_number: i + 1,
-      status: 'running' as const,
-    }));
     render(h(HomeView, null));
     // The derivation in HomeView reads versions.value.find(v => status === 'complete');
     // for an all-running list, that returns undefined → no thumbnail rendered.
-    // Just assert the page renders without crashing AND no `status:'complete'` in versions.
     await waitFor(() => {
       expect(versions.value).toHaveLength(21);
     });
