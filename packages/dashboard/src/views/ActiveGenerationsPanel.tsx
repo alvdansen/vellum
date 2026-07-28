@@ -1,17 +1,17 @@
 /**
  * ActiveGenerationsPanel — right-rail live panel rendering in-flight versions.
  *
- * Subscribes (reactively) to the `activeGenerations` signal from the data layer
- * (Plan 08). Each row shows a version label + a StatusPill (Plan 09 primitive).
- * Terminal rows (status 'complete' | 'failed') are retained per Plan 08's
- * behavior contract — panel only masks them here via a computed filter so the
- * caller can later decide to surface terminal rows elsewhere without churn to
- * the signal surface.
+ * Subscribes (reactively) to the `activeGenerations` signal from the data
+ * layer. Each row shows a version label + a StatusPill. Terminal rows
+ * (status 'complete' | 'failed') are retained in the signal by contract —
+ * panel only masks them here via a computed filter so the caller can later
+ * decide to surface terminal rows elsewhere without churn to the signal
+ * surface.
  *
  * Pure component: no fetch, no mutations, no engine side effects. Reads
  * activeGenerations.value at render time; @preact/signals re-renders on push.
  *
- * SECURITY — T-5-06: version labels flow as JSX text children (Preact
+ * SECURITY (XSS hygiene): version labels flow as JSX text children (Preact
  * auto-escapes). No dangerouslySetInnerHTML.
  */
 

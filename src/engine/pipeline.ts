@@ -10,10 +10,10 @@ import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import { ProposalRepo, type Proposal, type ProposalStatus } from '../store/proposal-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
-// Phase 18 / Plan 18-02 — composite-cursor sort tuple types forwarded
-// through Engine.listVersionsForShot. Plan 18-03 will Zod-parse these at
-// the HTTP boundary; the engine layer trusts the structurally-validated
-// VersionCursor (decoded by Plan 18-01 helper) on entry.
+// Composite-cursor sort tuple types forwarded
+// through Engine.listVersionsForShot. The HTTP boundary Zod-parses these;
+// the engine layer trusts the structurally-validated
+// VersionCursor (decoded by the cursor helper) on entry.
 import type { VersionSort, VersionCursor, HierarchySort } from '../store/sort.js';
 import { TagRepo } from '../store/tag-repo.js';
 import { MetadataRepo } from '../store/metadata-repo.js';
@@ -39,33 +39,33 @@ import type { LookupFn } from '../utils/private-address.js';
 import type { SpendLimit } from '../utils/spend-limits.js';
 import {
   buildManifestDefinition,
-  // Phase 15 / Plan 15-03 — ingredients-aware manifest builder.
+  // Ingredients-aware manifest builder.
   buildManifestWithIngredients,
   BUFFER_SIGNING_MAX_BYTES,
   loadSigner,
   routeFormat,
-  // Phase 15 WR-02 — supported-MIME helper for ingredient asset refs.
+  // Supported-MIME helper for ingredient asset refs.
   getMimeForExtensionOrNull,
-  // Phase 15 / Plan 15-03 — ingredient-aware signers.
+  // Ingredient-aware signers.
   signEmbedBuffer,
   signEmbedFile,
   type LoadedSigner,
   type PrimaryModel,
   type BuildManifestResult,
   type IngredientAssetRef,
-  // Phase 15 / Plan 15-01 — pure ingredient extractors + hasher.
+  // Pure ingredient extractors + hasher.
   extractParentIngredient,
   extractComponentIngredients,
   extractInputAssertion,
-  // Phase 16 / Plan 16-01 — agent-surface types (PROV-V-07).
+  // Agent-surface types (export + verify).
   type ExporterResult,
   type VerificationReport,
-  // Phase 16 / Plan 16-02 — redaction facade type (PROV-V-06).
+  // Redaction facade type.
   type RedactionResult,
 } from './c2pa/index.js';
-// Phase 17 / Plan 17-03 — thumbnail derivation surface. The engine delegates
+// Thumbnail derivation surface. The engine delegates
 // through this barrel so pipeline.ts has ZERO direct sharp / ffmpeg imports
-// (D-23 / D-24 architecture-purity invariants preserved). The barrel also
+// (architecture-purity invariants preserved). The barrel also
 // exports the cache helpers (cachePathFor / sentinelPathFor / writeFailedSentinel
 // / invalidateCache / isCacheFresh / computeETag) used by deriveThumbnail.
 import * as Thumbnails from './thumbnails/index.js';
@@ -80,7 +80,7 @@ import {
   type BreadcrumbEntry,
   type ShotStatus,
 } from '../types/hierarchy.js';
-// Phase 20 / Plan 20-04 — STAT-04 facade dependencies. The repo functions write
+// Shot-status facade dependencies. The repo functions write
 // the dual-mutation atomically (UPDATE shots + INSERT shot_status_events) inside
 // one transaction; getStatusHistory is the canonical read for both
 // listShotStatusHistory and lastChangedAt in getShotStatus.
@@ -89,13 +89,13 @@ import {
   getStatusHistory,
   countStatusEvents,
   type ShotStatusEvent,
-  // Phase 21 / Plan 21-02 — GRID-04 denormalized shot grid reader. The repo
+  // Denormalized shot grid reader. The repo
   // does the single-pass window-function CTE join (shots + latest-completed
   // version + status null-coalesce); the engine facade re-maps the row shape
-  // into the dashboard's payload contract (D-13) and builds thumbnail_url
-  // server-side per RESEARCH Example 1 + PATTERNS §10.
+  // into the dashboard's payload contract and builds thumbnail_url
+  // server-side.
   listShotsForGrid,
-  // Phase 23 / Plan 23-02 — D-01 + D-14: whole-sequence GROUP BY counts +
+  // Whole-sequence GROUP BY counts +
   // EXISTS-clause stale_count. Engine composes the raw repo result with
   // approved_pct math (Math.round in TypeScript) into the dashboard's
   // SequenceStats wire shape before returning from `listShotGrid`.
@@ -122,8 +122,8 @@ import type { C2paConfig } from '../types/c2pa.js';
 
 /**
  * Widened Db type — drizzle() factory returns `BetterSQLite3Database<T> & { $client: Database }`,
- * but the class declaration itself omits `$client`. Plan 04-02 established the
- * widening convention at the repo boundary (tag-repo.ts, metadata-repo.ts); this
+ * but the class declaration itself omits `$client`. The widening convention was
+ * established at the repo boundary (tag-repo.ts, metadata-repo.ts); this
  * file mirrors it. The constructor signature accepts the narrower public-class
  * type (`BaseDb`) and casts once to the widened `Db` for internal use — callers
  * (server.ts, test harnesses) do not need to know about the widening.
@@ -132,16 +132,16 @@ type BaseDb = BetterSQLite3Database<typeof schema>;
 type Db = BaseDb & { $client: SqliteClient };
 
 /**
- * Phase 14 — Concern #6 mitigation. Re-exported from src/engine/c2pa/constants.ts
+ * Signing size cap. Re-exported from src/engine/c2pa/constants.ts
  * to preserve the existing public-symbol contract (`Engine`-adjacent imports
  * use it for sign-time pre-stat). The single source of truth lives in the
  * c2pa module so output-downloader.ts can import without creating a circular
- * dependency on this file. See MR-03 fix in 14-REVIEW-FIX.md.
+ * dependency on this file.
  */
 export { BUFFER_SIGNING_MAX_BYTES };
 
 /**
- * Phase 14 — Plan 14-02 manifest-builder claim_generator includes the
+ * The manifest-builder claim_generator includes the
  * vellum app version. Read from package.json once at module load to
  * keep the signOutput hot path allocation-free. Mirrors the appVersion field
  * surfaced via the buildManifestDefinition contract.
@@ -153,8 +153,8 @@ export { BUFFER_SIGNING_MAX_BYTES };
 const APP_VERSION = '0.1.0';
 
 /**
- * Phase 14 — Plan 14-03 helper. Selects a single PrimaryModel from the latest
- * fingerprinted models for a version + maps the Phase 13 ModelRef shape
+ * Selects a single PrimaryModel from the latest
+ * fingerprinted models for a version + maps the ModelRef shape
  * (with the discriminated `model_hash` / `model_hash_unavailable` fields)
  * onto the c2pa manifest-builder PrimaryModel union.
  *
@@ -162,9 +162,9 @@ const APP_VERSION = '0.1.0';
  * which the manifest-builder describes as
  * "model=unknown; hash_unavailable=no_models_recorded".
  *
- * Picks the FIRST entry in the array as primary. v1.1 ships a single
- * primary model assertion; multi-model assertion graphs land in Phase 15
- * (PROV-V-04 ingredient graph).
+ * Picks the FIRST entry in the array as primary — a single
+ * primary-model assertion for now; richer multi-model coverage is carried
+ * by the ingredient graph.
  */
 function derivePrimaryModel(models: ModelRef[] | null): PrimaryModel | null {
   if (!models || models.length === 0) return null;
@@ -183,7 +183,7 @@ function derivePrimaryModel(models: ModelRef[] | null): PrimaryModel | null {
 }
 
 /**
- * Phase 15 — stream-hash a file's SHA-256 without loading bytes into memory.
+ * Stream-hash a file's SHA-256 without loading bytes into memory.
  * Used by Engine._signOutputInner's embed-file branch when the signed bytes
  * land on disk (signedToPath) rather than in memory (signed Buffer).
  * Returns null on read failure — caller persists null in manifest_signed.
@@ -203,10 +203,10 @@ async function streamSha256(filePath: string): Promise<string | null> {
 }
 
 /**
- * Phase 15 — count ingredients_summary fields from a BuildManifestResult.
+ * Count ingredients_summary fields from a BuildManifestResult.
  * unavailable_count = number of vellum.unavailable_ingredient
  * assertions emitted (parent + components combined). Lockstep with
- * buildManifestWithIngredients (Plan 15-02): every spec lands in
+ * buildManifestWithIngredients: every spec lands in
  * ingredientSpecs[]; specs with assetRef.kind='unavailable' also have a
  * matching vellum.unavailable_ingredient assertion in
  * definition.assertions[] (the audit channel).
@@ -244,22 +244,22 @@ type ListResult<T> = {
 };
 
 /**
- * Engine facade — Phase 1 hierarchy + Phase 2 generation + Phase 3 provenance
- * + Phase 4 assets.
+ * Engine facade — hierarchy + generation + provenance
+ * + assets.
  *
- * Phase 4 constructor change (D-ASST-27): `db` is now the FIRST constructor
+ * Constructor note: `db` is the FIRST constructor
  * argument so TagRepo / MetadataRepo / AssetsEngine can be wired inside without
  * requiring callers to construct them. All `new Engine(...)` call sites get
  * `db` prepended — server.ts + every test harness that builds an Engine.
  *
- * Invariants (D-33 + D-ASST-26):
+ * Invariants:
  *  - Zero MCP SDK imports (architecture-purity test asserts this).
- *  - Shot regex is enforced here before delegating to the repo (D-07, D-33).
+ *  - Shot regex is enforced here before delegating to the repo.
  *  - Missing entities surface as typed {WORKSPACE,PROJECT,SEQUENCE,SHOT,VERSION}_NOT_FOUND.
- *  - Phase 2 generation ops delegate to a composed GenerationEngine.
- *  - Phase 4 asset ops delegate to a composed AssetsEngine.
- *  - getVersion ALWAYS hydrates with tags+metadata (D-ASST-19); listVersionsForShot
- *    hydrates opt-in (D-ASST-20).
+ *  - Generation ops delegate to a composed GenerationEngine.
+ *  - Asset ops delegate to a composed AssetsEngine.
+ *  - getVersion ALWAYS hydrates with tags+metadata; listVersionsForShot
+ *    hydrates opt-in.
  */
 export class Engine {
   private db: Db;
@@ -267,7 +267,7 @@ export class Engine {
   private generation: GenerationEngine;
   private assets: AssetsEngine;
   /**
-   * Phase 5 (D-WEBUI-29): typed event bus for the SSE handler + route tests.
+   * Typed event bus for the SSE handler + route tests.
    * Public readonly — subscribers call `engine.events.onEvent('type', cb)`.
    * Published to by each mutation path below (see the emit* private helpers
    * and the wrapped delegates on submit/reproduce/iterate/status/tag/metadata).
@@ -275,35 +275,35 @@ export class Engine {
   public readonly events: EngineEmitter;
   private requireApproval: boolean;
   private proposalRepo: ProposalRepo;
-  /** Dashboard-stable download root (D-WEBUI-26 + SC-2 Phase 6). Public-readonly
-   * so the HTTP layer can resolve output file paths against it via
-   * EngineForDashboard structural Pick (Plan 06-03 / gap_closure WR-01). */
+  /** Dashboard-stable download root. Public-readonly
+   * so the HTTP layer can resolve output file paths against it via the
+   * EngineForDashboard structural Pick. */
   public readonly outputRoot: string;
-  /** Phase 13 — PROV-V-03 (D-CTX-2). Optional models root for SHA-256
+  /** Optional models root for SHA-256
    *  fingerprinting at completion. NULL in production (ComfyUI Cloud has
-   *  no local model files) → every entry records 'models_dir_not_configured'
-   *  per D-CTX-5. Set via VELLUM_MODELS_DIR env var in src/server.ts. */
+   *  no local model files) → every entry records 'models_dir_not_configured'.
+   *  Set via VELLUM_MODELS_DIR env var in src/server.ts. */
   private readonly modelsDir: string | null;
-  /** Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Optional C2PA
-   *  signing config. NULL means signing is disabled — graceful degradation
-   *  per D-CTX-2: download paths return original bytes unchanged. Both paths
+  /** Optional C2PA
+   *  signing config. NULL means signing is disabled — graceful
+   *  degradation: download paths return original bytes unchanged. Both paths
    *  on the C2paConfig are post-realpath, post-allowlist absolute paths
    *  validated at boot by src/utils/c2pa-config.ts. NEVER read here — the
-   *  signer wrapper (Plan 14-02) is the SOLE consumer of the file bytes. */
+   *  signer wrapper is the SOLE consumer of the file bytes. */
   private readonly c2paConfig: C2paConfig | null;
-  /** Phase 19 — SUM-01..06. Optional Anthropic config for the AI conversational
-   *  summary feature. NULL means summarization is disabled — graceful degradation
-   *  per D-FB-2: Engine.summarizeVersion returns SummaryOutcome=fallback
+  /** Optional Anthropic config for the AI conversational
+   *  summary feature. NULL means summarization is disabled — graceful
+   *  degradation: Engine.summarizeVersion returns SummaryOutcome=fallback
    *  reason='api_key_missing' on every call, dashboards see deterministic-template
    *  content. Never read here — the engine/summary/anthropic-client.ts wrapper
    *  is the SOLE consumer of the API key. Boot validation in
    *  src/utils/anthropic-config.ts throws TypedError('ANTHROPIC_CONFIG_INVALID')
    *  BEFORE Engine construction on malformed env-var input. */
   private readonly anthropicConfig: { apiKey: string } | null;
-  /** Phase 14 — Plan 14-03 lazy-load cache. The c2pa-node native binding +
+  /** Lazy-load cache. The c2pa-node native binding +
    *  cert/key are loaded ONCE per process on the first signOutput call. The
    *  cache holds either the loaded signer OR a typed errorCode (cert_load_failed
-   *  vs native_binding_unavailable per Concern #11). Reset only via a process
+   *  vs native_binding_unavailable). Reset only via a process
    *  restart — the load is monotonic. */
   private signerCache: { signer: LoadedSigner } | null = null;
   private signerLoadFailedReason: {
@@ -311,19 +311,19 @@ export class Engine {
     message: string;
   } | null = null;
   /**
-   * Phase 15 (B4 mitigation) — per-(version, filename) sign mutex. Concurrent
+   * Per-(version, filename) sign mutex. Concurrent
    * signOutput calls for the SAME (versionId, filename) pair coalesce to a
    * single in-flight Promise; the second caller awaits the first's result.
    * Different (versionId, filename) pairs remain parallel — the map is keyed
    * on `${versionId}::${filename}`.
    *
-   * Why compound key (Phase 15 WR-01 fix):
+   * Why compound key:
    *   - Concurrent signs of the SAME (versionId, filename) MUST coalesce —
-   *     this preserves the re-sign idempotency intent from Plan 14-03 / B4
+   *     this preserves the re-sign idempotency intent
    *     (the second caller receives the first's signed buffer / alreadySigned
    *     shortcut without producing a duplicate manifest_signed event).
    *   - Concurrent signs of the SAME versionId but DIFFERENT filenames are a
-   *     legitimate use case (e.g., a future Phase 16 re-derive feature signing
+   *     legitimate use case (e.g., a future re-derive feature signing
    *     multiple outputs of one version in parallel). Returning the first
    *     filename's signed buffer to a caller that asked for a different
    *     filename was a silent-correctness bug — the second filename never got
@@ -332,9 +332,9 @@ export class Engine {
    *     while same-pair concurrency still coalesces.
    *
    * Cleared on settle (try/finally). The mutex is in-process only — multi-
-   * process coordination is out-of-scope for v1.1 (single-server design).
+   * process coordination is out-of-scope (single-server design).
    *
-   * Threat model: T-15-06 — bounded growth. Each entry lives until the
+   * Threat model: bounded growth. Each entry lives until the
    * promise settles. Recovery-poller storms cannot leak entries; settle
    * cleanup is unconditional.
    */
@@ -344,7 +344,7 @@ export class Engine {
   >();
 
   /**
-   * Phase 17 / Plan 17-03 (D-21) — per-(versionId, filename) COALESCING
+   * Per-(versionId, filename) COALESCING
    * mutex for thumbnail derivation. SAME shape as signMutex above (NOT
    * the FIFO assetWriterMutex). Concurrent same-key requests share one
    * in-flight Promise; different keys run in parallel. Pure derivation
@@ -352,7 +352,7 @@ export class Engine {
    * result is a pure function of the source bytes' mtime / sha256.
    *
    * Settle cleanup in try/finally — entry deleted on success or failure.
-   * In-process only (single-server design; threat T-15-06 — bounded growth).
+   * In-process only (single-server design; growth stays bounded).
    */
   private readonly thumbnailMutex = new Map<
     string,
@@ -360,24 +360,24 @@ export class Engine {
   >();
 
   /**
-   * Phase 16 / Plan 16-02 (D-PLAN-2-4 / C-04) — UNIFIED per-(versionId, filename)
+   * UNIFIED per-(versionId, filename)
    * asset-writer mutex. SERIALIZING FIFO semantics — concurrent acquires
    * QUEUE behind prior holders rather than coalescing.
    *
-   * Strategy (a) from the C-04 review: TWO maps. signOutput retains its
-   * COALESCING signMutex above (preserves Phase 14 / 15 idempotent-retry
+   * Strategy: TWO maps. signOutput retains its
+   * COALESCING signMutex above (preserves the idempotent-retry
    * intent — a second sign call for the same (versionId, filename) shares
    * the first's in-flight result). The new assetWriterMutex is the OUTER
    * serializer that prevents signOutput AND redactManifestForVersion from
    * running concurrently on the same compound key — without it, redaction
    * could either coalesce with a sign (wrong-shape result) OR interleave
-   * with it (non-deterministic event-row ordering, breaking T-15-08 audit
+   * with it (non-deterministic event-row ordering, breaking append-only audit
    * invariants).
    *
    * Both Engine.signOutput and Engine.redactManifestForVersion acquire this
    * mutex on entry. acquireAssetWriterLock chains the new task onto the
    * latest in-flight promise for that key (FIFO). 30s acquire timeout maps
-   * to REDACT_TIMEOUT (T-16-15a mitigation).
+   * to REDACT_TIMEOUT (a hung holder must surface as a typed error).
    *
    * Map<key, Promise<void>> — each key's Promise resolves when the most
    * recent task on that key completes (success OR failure). Acquire chains
@@ -386,7 +386,7 @@ export class Engine {
   private readonly assetWriterMutex = new Map<string, Promise<void>>();
 
   /**
-   * In-flight fire-and-forget dashboard-stable downloads (D-WEBUI-26). The
+   * In-flight fire-and-forget dashboard-stable downloads. The
    * completion hook in getGenerationStatus writes to outputRoot/<versionId>/
    * WITHOUT the caller awaiting it, so `stop()` must join these before the
    * process (or a test's temp-dir teardown) tears down the output root — else
@@ -399,7 +399,7 @@ export class Engine {
    * FIFO-serializing acquire — runs `task` AFTER all prior holders for the
    * same compound key release. 30-second timeout maps to REDACT_TIMEOUT.
    * Map entry self-cleans when the in-flight chain settles AND no later
-   * acquire chained behind it (T-15-06 bounded-growth).
+   * acquire chained behind it (bounded growth).
    */
   private async acquireAssetWriterLock<T>(
     versionId: string,
@@ -470,7 +470,7 @@ export class Engine {
       modelsDir?: string | null;
       c2paConfig?: C2paConfig | null;
       anthropicConfig?: { apiKey: string } | null;
-      // Pivot Phase D — inbound ingest trust boundary (registerExternalOutput).
+      // Inbound ingest trust boundary (registerExternalOutput).
       ingestAllowedHosts?: readonly string[];
       ingestFetchImpl?: typeof fetch;
       /** Resolver seam for the ingest private-address guard (tests only). */
@@ -492,7 +492,8 @@ export class Engine {
     } = {},
   ) {
     // Widen once at the boundary — drizzle factory returns the intersection
-    // at runtime, but the class-level type omits $client. Plan 04-02 pattern.
+    // at runtime, but the class-level type omits $client. Same widening
+    // pattern as the repo layer.
     this.db = db as Db;
     this.outputRoot = outputRoot;
     this.modelsDir = options.modelsDir ?? null;
@@ -521,10 +522,10 @@ export class Engine {
         maxInFlightGenerations: options.maxInFlightGenerations,
         spendLimit: options.spendLimit,
       },
-      // Phase 13 — fire-and-forget hook delegates to the async background
+      // Fire-and-forget hook delegates to the async background
       // fingerprinter. The hook itself returns synchronously (returns a void
       // expression of a Promise.catch) so GenerationEngine.downloadAndPersist
-      // is never delayed by hash work (criterion #4). Background errors are
+      // is never delayed by hash work. Background errors are
       // logged via console.error in the .catch() — never re-thrown.
       (versionId: string) => {
         void this.fingerprintModelsForVersion(versionId).catch((err) => {
@@ -535,8 +536,8 @@ export class Engine {
         });
       },
     );
-    // Phase 4 asset wiring — repos constructed internally so callers don't
-    // shoulder the layering. Engine owns asset-repo construction (D-ASST-27).
+    // Asset wiring — repos constructed internally so callers don't
+    // shoulder the layering. Engine owns asset-repo construction.
     const tagRepo = new TagRepo(this.db, versionRepo);
     const metadataRepo = new MetadataRepo(this.db, versionRepo);
     this.assets = new AssetsEngine(
@@ -549,7 +550,7 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 5 — EVENT EMISSION HELPERS (D-WEBUI-29)
+  // EVENT EMISSION HELPERS
   // ================================================================
 
   /** Current ISO timestamp — one place so tests can be time-travel-friendly. */
@@ -563,7 +564,7 @@ export class Engine {
 
   createWorkspace(name: string): { entity: Workspace; breadcrumb: Breadcrumb } {
     const entity = this.repo.createWorkspace(name);
-    // D-WEBUI-29: hierarchy.created fires AFTER the row is inserted so
+    // hierarchy.created fires AFTER the row is inserted so
     // a listener can safely call engine.getWorkspace(entity.id) without race.
     this.events.emitEvent('hierarchy.created', {
       entity_type: 'workspace',
@@ -678,9 +679,9 @@ export class Engine {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): ListResult<Project> {
-    // Phase 18 / Plan 18-03: opts.sort is optional. When provided, the repo
-    // applies the whitelisted sort (Plan 18-01 buildHierarchyOrderBy). When
-    // omitted, the repo preserves pre-Phase-18 ORDER BY (D-10 back-compat for
+    // opts.sort is optional. When provided, the repo
+    // applies the whitelisted sort (buildHierarchyOrderBy). When
+    // omitted, the repo preserves the original ORDER BY (back-compat for
     // MCP tool callers — src/tools/project-tool.ts:88 calls without opts).
     const { items, total_count } = this.repo.listProjects(workspaceId, limit, offset, opts);
     return {
@@ -729,7 +730,7 @@ export class Engine {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): ListResult<Sequence> {
-    // Phase 18 / Plan 18-03: see listProjects for the back-compat invariant.
+    // See listProjects for the back-compat sort invariant.
     const { items, total_count } = this.repo.listSequences(projectId, limit, offset, opts);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('sequence', s.id) })),
@@ -780,7 +781,7 @@ export class Engine {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): ListResult<Shot> {
-    // Phase 18 / Plan 18-03: see listProjects for the back-compat invariant.
+    // See listProjects for the back-compat sort invariant.
     const { items, total_count } = this.repo.listShots(sequenceId, limit, offset, opts);
     return {
       items: items.map((s) => ({ ...s, ...this.breadcrumb.resolve('shot', s.id) })),
@@ -791,16 +792,16 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 20 — SHOT STATUS (STAT-04 facade over shot-status-repo + SSE event)
+  // SHOT STATUS (facade over shot-status-repo + SSE event)
   // ================================================================
 
   /**
-   * STAT-04 — transition a shot to `toStatus`, emitting 'shot.status_changed'.
+   * Transition a shot to `toStatus`, emitting 'shot.status_changed'.
    *
    * The repo writes BOTH (UPDATE shots.status + INSERT shot_status_events) in
    * one transaction so partial writes are impossible. The previousStatus is
-   * read from the in-memory shot.status (null-coalesced to 'wip' per the
-   * STAT-03 default) BEFORE the repo mutates it — this keeps the event payload
+   * read from the in-memory shot.status (null-coalesced to the 'wip'
+   * default) BEFORE the repo mutates it — this keeps the event payload
    * accurate for cross-status transitions. Throws SHOT_NOT_FOUND when the shot
    * does not exist.
    */
@@ -852,7 +853,7 @@ export class Engine {
   }
 
   /**
-   * STAT-04 — read the current status of a shot plus the timestamp of the most
+   * Read the current status of a shot plus the timestamp of the most
    * recent status event. `status` is null-coalesced to 'wip' so callers never
    * need to handle a null state. `lastChangedAt` is null for shots that have
    * never been transitioned. Throws SHOT_NOT_FOUND when the shot does not exist.
@@ -881,7 +882,7 @@ export class Engine {
   }
 
   /**
-   * STAT-04 — list up to `limit` shot status events for a shot, newest-first.
+   * List up to `limit` shot status events for a shot, newest-first.
    * Repo `getStatusHistory` uses the idx_shot_status_events_shot_time covering
    * index for O(log n) bounded reads. Throws SHOT_NOT_FOUND when the shot does
    * not exist.
@@ -1003,21 +1004,19 @@ export class Engine {
     };
   }
 
-  // ===== Phase 21 — GRID-04 denormalized shot grid (Engine.listShotGrid) =====
+  // ===== Denormalized shot grid (Engine.listShotGrid) =====
 
   /**
-   * `listShotGrid` — GRID-04 facade — return a denormalized shot grid payload for the
+   * `listShotGrid` — return a denormalized shot grid payload for the
    * dashboard's ShotGridView. Delegates the single-pass window-function CTE
    * join to `listShotsForGrid` (shot-status-repo) and re-maps the raw repo
-   * rows into the wire contract locked by 21-CONTEXT.md D-13 (server builds
-   * `thumbnail_url` so the dashboard never assembles URL strings; see
-   * 21-PATTERNS.md §10 for the rationale and 21-RESEARCH.md Example 1 for
-   * the verbatim facade body).
+   * rows into the locked wire contract (server builds
+   * `thumbnail_url` so the dashboard never assembles URL strings).
    *
    * The repo's `status` field comes through 'wip'-defaulted (shots.status
    * column default, materialized by shot-status-repo:insertStatusEvent);
    * the facade does NOT re-coalesce. Shots with zero completed versions surface as
-   * `latest_completed_version: null` (D-19 / Phase 17 SkeletonThumbnail
+   * `latest_completed_version: null` (the SkeletonThumbnail
    * fallback path).
    *
    * Throws TypedError('SEQUENCE_NOT_FOUND') for unknown sequenceId — the
@@ -1034,7 +1033,7 @@ export class Engine {
       name: string;
       status: ShotStatus;
       version_count: number;
-      // Phase 23 — D-03 per-row staleness flag, coerced from the repo's
+      // Per-row staleness flag, coerced from the repo's
       // SQLite 0|1 to a real boolean before emitting on the wire.
       is_stale: boolean;
       latest_completed_version: {
@@ -1043,7 +1042,7 @@ export class Engine {
         completed_at: number;
       } | null;
     }>;
-    // Phase 23 — D-02 LOCKED SequenceStats envelope shape. Inlined mirror of
+    // LOCKED SequenceStats envelope shape. Inlined mirror of
     // `SequenceStats` from packages/dashboard/src/types/shot-grid.ts — the
     // architecture-purity test (src/__tests__/architecture-purity.test.ts)
     // forbids dashboard→server imports; we keep the server tree free of
@@ -1072,13 +1071,13 @@ export class Engine {
       sequenceId,
       opts,
     );
-    // Phase 23 / Plan 23-02 — D-01 single-endpoint composition: alongside the
+    // Single-endpoint composition: alongside the
     // paginated `listShotsForGrid` result, run the whole-sequence
     // getSequenceStats query and assemble the wire-shape envelope. The
     // dashboard's `sequenceStats` signal seeds from `body.stats` on every
     // fetchShotGrid call (independent of `shots[]` pagination).
     const rawStats = getSequenceStats(this.db, sequenceId);
-    // D-14 — approved_pct is computed in TypeScript (not SQL) with explicit
+    // approved_pct is computed in TypeScript (not SQL) with explicit
     // divide-by-zero guard. `Math.round((approved/total)*100)` yields an
     // integer in [0..100]; `total === 0 → 0` (never NaN). The repo function
     // initializes all 5 ShotStatus keys to 0, so `rawStats.counts.approved`
@@ -1086,7 +1085,7 @@ export class Engine {
     const approved = rawStats.counts.approved;
     const approved_pct =
       rawStats.total === 0 ? 0 : Math.round((approved / rawStats.total) * 100);
-    // Pitfall 10 — `pending-review` is a hyphenated ShotStatus key so it
+    // `pending-review` is a hyphenated ShotStatus key so it
     // MUST use bracket access (dot access would parse as `counts.pending`
     // followed by a subtraction `- review`).
     const stats = {
@@ -1101,7 +1100,7 @@ export class Engine {
       name: r.name,
       status: r.status,
       version_count: r.version_count,
-      // D-03 + Phase 23 wire-shape coercion: SQLite returns is_stale as
+      // Wire-shape coercion: SQLite returns is_stale as
       // 0|1 (number); the wire shape is `is_stale: boolean`. Boolean(0) ===
       // false; Boolean(1) === true.
       is_stale: Boolean(r.is_stale),
@@ -1156,7 +1155,7 @@ export class Engine {
       providerId,
       allowDuplicate,
     );
-    // D-WEBUI-29: version.created fires AFTER the row is inserted. The
+    // version.created fires AFTER the row is inserted. The
     // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
@@ -1168,7 +1167,7 @@ export class Engine {
   }
 
   /**
-   * Pivot Phase D — inbound registration wrapper. Delegates to the GenerationEngine
+   * Inbound registration wrapper. Delegates to the GenerationEngine
    * and emits version.created (same dashboard signal as submit) so a registered
    * external output shows up in the grid like any other completed version.
    */
@@ -1219,12 +1218,12 @@ export class Engine {
   }
 
   /**
-   * Phase 5 wrapper around GenerationEngine.getGenerationStatus:
+   * Wrapper around GenerationEngine.getGenerationStatus:
    *  - Captures the pre-call status so we can detect transitions.
-   *  - On status change, emits version.status_changed (D-WEBUI-29).
-   *  - On transition to `completed`, fires the dashboard-stable mirror hook
-   *    (D-WEBUI-26) — copies the first output to `outputsDir/versionId/filename`
-   *    so `/api/versions/:id/output` (Plan 04) has a stable lookup path.
+   *  - On status change, emits version.status_changed.
+   *  - On transition to `completed`, fires the dashboard-stable mirror
+   *    hook — copies the first output to `outputsDir/versionId/filename`
+   *    so `/api/versions/:id/output` has a stable lookup path.
    *    Non-fatal: mirrorPersistedOutput swallows failures and returns null.
    */
   async getGenerationStatus(
@@ -1243,7 +1242,7 @@ export class Engine {
         at: this.nowIso(),
       });
     }
-    // D-WEBUI-26: non-fatal dashboard-stable mirror on completion.
+    // Non-fatal dashboard-stable mirror on completion.
     // outputs_json is populated by GenerationEngine.downloadAndPersist BEFORE
     // markCompleted flips the status, so the persisted path is available here.
     if (afterStatus === 'completed' && beforeStatus !== 'completed') {
@@ -1265,13 +1264,13 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 3 — VERSION READS + PROVENANCE + DIFF
+  // VERSION READS + PROVENANCE + DIFF
   // ================================================================
 
   /**
-   * D-PROV-08 + D-ASST-19: always-hydrated version entity. Plan 04-03 extended
-   * this to return VersionWithAssets (tags + metadata inline). Plan 04-05 updates
-   * the tool layer (version-tool.ts) to surface tags + metadata in the response.
+   * Always-hydrated version entity — returns
+   * VersionWithAssets (tags + metadata inline); the tool layer
+   * (version-tool.ts) surfaces tags + metadata in the response.
    */
   getVersion(versionId: string): { entity: VersionWithAssets; breadcrumb: Breadcrumb } {
     const entity = this.versionRepo.getVersion(versionId);
@@ -1287,18 +1286,18 @@ export class Engine {
   }
 
   /**
-   * D-PROV-09 + D-ASST-20 + Phase 18 (Plan 18-02): paginated version list for
-   * a shot via composite-cursor pagination (SORT-01 default Latest with
-   * NULL-pin; SORT-02 whitelist enum surface; SORT-05 stable cursor).
+   * Paginated version list for
+   * a shot via composite-cursor pagination (default Latest with
+   * NULL-pin; whitelist enum sort surface; stable cursor).
    * Opt-in hydration via include_tags / include_metadata flags (default omit
    * keeps payload cheap for list-heavy reads). When neither flag is set, items
-   * are plain Version (Phase 3 parity). Otherwise each item gains the requested
+   * are plain Version (legacy parity). Otherwise each item gains the requested
    * array(s) — tags only, metadata only, or both.
    *
    * The legacy `offset` field on the ListResult shape is preserved as a
-   * constant 0 transitional artifact for the v1.2 dashboard surface — it is
+   * constant 0 transitional artifact for the dashboard surface — it is
    * no longer meaningful under cursor pagination, but downstream callers
-   * (Plan 18-04 lib/api.ts) will drop it from the dashboard's TypeScript
+   * (the dashboard's lib/api.ts) will drop it from the dashboard's TypeScript
    * shape. The `next_cursor` field is the canonical pagination signal.
    */
   listVersionsForShot(
@@ -1338,7 +1337,7 @@ export class Engine {
     return { items: hydrated, total_count, limit, offset: 0, next_cursor };
   }
 
-  /** D-PROV-10: full chronological event history. Empty events[] for pre-Phase-3 rows. */
+  /** Full chronological event history. Empty events[] for rows that predate provenance capture. */
   getProvenance(
     versionId: string,
   ): { events: ProvenanceEvent[]; breadcrumb: Breadcrumb } {
@@ -1401,13 +1400,13 @@ export class Engine {
   }
 
   /**
-   * D-PROV-11, D-PROV-20: same-shot field-level diff. The pure diffVersions
+   * Same-shot field-level diff. The pure diffVersions
    * function enforces same-shot + comparable-state guards — this method only
    * builds the DiffSnapshot pair from repo state + attaches the breadcrumb.
    *
-   * Phase 12 (DEMO-03): when B is reproduce-lineage, attaches a
+   * When B is reproduce-lineage, attaches a
    * reproduction_divergence field carrying SHA-256 mismatch detail and any
-   * persisted partner-API non-determinism warnings (D-CTX-4). NULL for
+   * persisted partner-API non-determinism warnings. NULL for
    * non-reproduce-lineage diffs OR when bytes match AND no warnings recorded.
    * Now async because hash computation reads from disk via streaming SHA-256.
    */
@@ -1420,8 +1419,8 @@ export class Engine {
     const result = pureDiffVersions({ a: snapA, b: snapB });
     const crumbs = this.breadcrumb.resolve('version', versionAId);
 
-    // Phase 12 — only compute reproduction_divergence when B is reproduce-lineage.
-    // Non-reproduce diffs always carry reproduction_divergence: null (criterion #4).
+    // Only compute reproduction_divergence when B is reproduce-lineage.
+    // Non-reproduce diffs always carry reproduction_divergence: null.
     let reproduction_divergence: ReproductionDivergence | null = null;
     const versionB = this.versionRepo.getVersion(versionBId);
     if (versionB && versionB.lineage_type === 'reproduce') {
@@ -1442,7 +1441,7 @@ export class Engine {
   }
 
   /**
-   * Phase 12 — DEMO-03. Resolve the divergence inputs (warnings + hashes) and
+   * Resolve the divergence inputs (warnings + hashes) and
    * delegate to the pure helper. Reads outputs_json on each version to find
    * the first stored filename, hashes the file at <outputRoot>/<versionId>/<filename>.
    * Hashes are independent: if either file is missing we still call the pure
@@ -1464,7 +1463,7 @@ export class Engine {
     }
     const parentFilename = this.getStoredFilenameForVersion(parentVersionId);
     const reproductionFilename = this.getStoredFilenameForVersion(reproductionVersionId);
-    // Phase 12 WR-01: graceful degradation. computeOutputSha256 returns null
+    // Graceful degradation: computeOutputSha256 returns null
     // for the ENOENT (missing file) case but re-throws other I/O errors —
     // EACCES (permission flipped mid-flight), EISDIR (a directory exists at
     // the expected file path), EBUSY (locked), EMFILE (fd exhaustion), etc.
@@ -1516,7 +1515,7 @@ export class Engine {
     const prompt_json = completed?.prompt_json
       ? (JSON.parse(completed.prompt_json) as Record<string, unknown>)
       : null;
-    // Phase 13 — PROV-V-03. Prefer the latest fingerprinted models so diff
+    // Prefer the latest fingerprinted models so diff
     // sees populated hashes after the background fingerprinter ran. Falls
     // through to completed_event.models_json (legacy / pre-fingerprint state)
     // when no 'models_fingerprinted' event exists yet. Returns null on
@@ -1531,7 +1530,7 @@ export class Engine {
         outputCount = 0;
       }
     }
-    // Pivot #2a — the neutral param bag for URL-provider versions, from the
+    // The neutral param bag for URL-provider versions, from the
     // completed event's generation_result_json (a serialized NeutralProvenance).
     // Reduced to { model_id, params } — the two comparable dimensions for diff.
     let neutral_params: Record<string, unknown> | null = null;
@@ -1565,7 +1564,7 @@ export class Engine {
     };
   }
 
-  /** PROV-05: reproduce — delegates to GenerationEngine. */
+  /** Reproduce — delegates to GenerationEngine. */
   async reproduceVersion(
     sourceVersionId: string,
     notes?: string,
@@ -1588,7 +1587,7 @@ export class Engine {
     return result;
   }
 
-  /** PROV-06: iterate — delegates to GenerationEngine. */
+  /** Iterate — delegates to GenerationEngine. */
   async iterateFromVersion(
     sourceVersionId: string,
     overrides?: Record<string, IterateOverride>,
@@ -1814,28 +1813,28 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 13 — MODEL FINGERPRINTING (PROV-V-03)
+  // MODEL FINGERPRINTING
   // ================================================================
 
   /**
-   * Phase 13 — PROV-V-03. Fingerprint every loader-resolved model on the
+   * Fingerprint every loader-resolved model on the
    * completed prompt blob, persist as a sibling 'models_fingerprinted'
    * event (append-only — never UPDATEs the original 'completed' row).
    *
-   * Idempotent (D-CTX `Claude's Discretion` clause): if a fingerprinted
+   * Idempotent: if a fingerprinted
    * event already exists for this version, returns immediately. Used by
    * crash-recovery on boot — re-running on an already-fingerprinted row
    * is a cheap no-op (events scan only, no hashing).
    *
    * Production / ComfyUI Cloud reality: when this.modelsDir is null,
-   * every entry records `model_hash_unavailable: 'models_dir_not_configured'`
-   * per D-CTX-5. Local-dev / self-host paths populate `model_hash` for
+   * every entry records `model_hash_unavailable: 'models_dir_not_configured'`.
+   * Local-dev / self-host paths populate `model_hash` for
    * any model resolvable under the configured root.
    *
    * Background path: called from a `void`-fired callback at the
    * GenerationEngine.downloadAndPersist completion site. Errors are
    * logged via console.error in the caller's `.catch(...)` — never thrown
-   * upward into the generation hot path (criterion #4).
+   * upward into the generation hot path.
    */
   async fingerprintModelsForVersion(versionId: string): Promise<void> {
     // Idempotency check — read events directly so we don't trigger the
@@ -1847,11 +1846,11 @@ export class Engine {
     if (alreadyFingerprinted) return;
 
     const source = this.provenanceRepo.getLatestFingerprints(versionId);
-    if (!source) return; // pre-Phase-13 row or no completed event yet — skip
+    if (!source) return; // pre-fingerprinting row or no completed event yet — skip
     if (source.length === 0) {
       // Empty models array — still record an explicit fingerprinted event
-      // so the idempotency check above sees the work as done. Phase 14
-      // can then rely on "fingerprinted event exists" as the signal that
+      // so the idempotency check above sees the work as done. The signing
+      // path can then rely on "fingerprinted event exists" as the signal that
       // the background path ran for this version.
       this.provenanceRepo.appendModelsFingerprintedEvent(versionId, []);
       return;
@@ -1865,7 +1864,7 @@ export class Engine {
           m.model_name,
         );
         // Discriminated-union narrowing — exactly one of the two fields
-        // is non-null per D-CTX-1.
+        // is non-null by construction.
         if ('model_hash' in result) {
           return {
             node_id: m.node_id,
@@ -1889,13 +1888,13 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 14 — C2PA SIGNING (PROV-V-01 / PROV-V-02 / PROV-V-05)
+  // C2PA SIGNING
   // ================================================================
 
   /**
-   * Phase 14 — PROV-V-01. Sign one output for a version. Always fires a
+   * Sign one output for a version. Always fires a
    * manifest_signed provenance event (success OR failure path). EXCEPTION:
-   * the alreadySigned short-circuit (Concern #7) emits zero events to avoid
+   * the alreadySigned short-circuit emits zero events to avoid
    * log spam from recovery-poller retries.
    *
    * Two input modes:
@@ -1909,14 +1908,14 @@ export class Engine {
    *                        AND unlinking it after the rename. signOutput's
    *                        try/finally cleans the SRC temp regardless.
    *
-   * Failure modes (D-CTX-9 graceful — never throws upward):
+   * Failure modes (graceful — never throws upward):
    *   - signing disabled (no c2paConfig)            -> status_reason='signing_disabled'
    *   - unsupported format (EXR/PSD/unknown)        -> status_reason='unsupported_format'
    *   - cert load failed                            -> status_reason='cert_load_failed'
-   *   - native binding unavailable (Concern #11)    -> status_reason='native_binding_unavailable'
+   *   - native binding unavailable                  -> status_reason='native_binding_unavailable'
    *   - sign call threw (corrupted asset, etc.)     -> status_reason='sign_call_failed'
-   *   - bytes oversized for buffer API (Concern #6) -> status_reason='asset_too_large_for_buffer_api'
-   *   - already signed (Concern #7)                 -> { ..., alreadySigned: true } + zero events
+   *   - bytes oversized for buffer API              -> status_reason='asset_too_large_for_buffer_api'
+   *   - already signed                              -> { ..., alreadySigned: true } + zero events
    */
   async signOutput(
     versionId: string,
@@ -1927,19 +1926,19 @@ export class Engine {
     signedToPath: string | null;
     alreadySigned?: boolean;
   }> {
-    // Phase 15 / B4 — coalesce concurrent sign calls for the SAME
+    // Coalesce concurrent sign calls for the SAME
     // (versionId, filename) pair. Concurrent calls with the SAME versionId but
-    // DIFFERENT filenames execute as TWO independent sign operations (Phase 15
-    // WR-01 fix — the prior versionId-only key returned filename A's signed
+    // DIFFERENT filenames execute as TWO independent sign operations
+    // (the prior versionId-only key returned filename A's signed
     // buffer to callers asking for filename B with no manifest_signed event
     // for B). The compound key preserves re-sign idempotency for matching
     // (version, filename) pairs while letting distinct filenames sign in
     // parallel.
     //
-    // Phase 16 / Plan 16-02 (D-PLAN-2-4 / C-04): the COALESCING signMutex is
+    // The COALESCING signMutex is
     // checked OUTSIDE the FIFO-serializing assetWriterMutex so two concurrent
     // signOutput calls for the same key still share an in-flight Promise
-    // (the existing Phase 14 idempotent-retry intent is preserved). Only the
+    // (the existing idempotent-retry intent is preserved). Only the
     // first caller to acquire the signMutex enters acquireAssetWriterLock —
     // which serializes against any in-flight redactManifestForVersion call
     // on the same (versionId, filename) key.
@@ -1967,7 +1966,7 @@ export class Engine {
   ): Promise<{ signed: Buffer | null; signedToPath: string | null; alreadySigned?: boolean }> {
     const signedAt = new Date().toISOString();
 
-    // Concern #7 — idempotency on re-sign. Read the latest manifest_signed
+    // Idempotency on re-sign. Read the latest manifest_signed
     // event for this version+filename pair. If the prior event was a SUCCESS,
     // skip the re-sign + return alreadySigned. Re-trying after a signed=false
     // (skip / fail) IS allowed — that's the desired behavior when transient
@@ -2024,8 +2023,8 @@ export class Engine {
     }
     const signer = signerOrCode.signer;
 
-    // Path 4: build manifest definition + ingredients (Phase 15). Primary
-    // model derived from the latest fingerprints (Phase 13). NULL
+    // Path 4: build manifest definition + ingredients. Primary
+    // model derived from the latest fingerprints. NULL
     // fingerprints -> "model=unknown; hash_unavailable=no_models_recorded".
     const fingerprints = this.provenanceRepo.getLatestFingerprints(versionId);
     const primaryModel = derivePrimaryModel(fingerprints);
@@ -2048,7 +2047,7 @@ export class Engine {
       manifestForSigning = built;
       ingredientsSummary = summariseIngredientsFromResult(built);
     } else {
-      // No completed event — Phase 14 single-c2pa.created shape, no ingredients.
+      // No completed event — single-c2pa.created shape, no ingredients.
       manifestForSigning = {
         definition: buildManifestDefinition({
           versionId,
@@ -2070,7 +2069,7 @@ export class Engine {
     // Path 5: route to embed-buffer or embed-file with ingredient-aware signers.
     try {
       if (route.mode === 'embed-buffer') {
-        // Concern #6 — pre-stat / size-cap. If caller passed bytes, check
+        // Pre-stat / size-cap. If caller passed bytes, check
         // the buffer length. If caller passed filePath, stat the file.
         const bytes = await this.resolveBufferInput(input);
         if (bytes.length > BUFFER_SIGNING_MAX_BYTES) {
@@ -2107,11 +2106,11 @@ export class Engine {
       }
       // mode === 'embed-file' — MP4 / WebP / TIFF. Drive c2pa-node's file API
       // via signViaTempFiles which manages the temp dir +
-      // 0700/0600 modes + nanoid-suffixed unique partial paths (Concerns #5
-      // and #9). The filename's extension MUST be preserved on the temp paths
+      // 0700/0600 modes + nanoid-suffixed unique partial paths (guards temp
+      // leaks and concurrent-writer collisions). The filename's extension MUST be preserved on the temp paths
       // so c2pa-rs selects the correct asset handler (BMFF for .mp4, RIFF for
       // .webp, TIFF for .tif/.tiff). Without the extension, c2pa-rs silently
-      // emits unsigned output (a Rule 1 silent-failure bug discovered Plan 14-05).
+      // emits unsigned output (a silent-failure bug discovered the hard way).
       const result = await this.signViaTempFiles(
         versionId,
         input,
@@ -2156,7 +2155,7 @@ export class Engine {
   }
 
   /**
-   * Phase 14 — read accessor for the HTTP layer (Plan 14-04). Returns the
+   * Read accessor for the HTTP layer. Returns the
    * latest manifest_signed event payload for a (versionId, filename) pair,
    * or null. The HTTP route uses this to populate the X-C2PA-Signing-Status
    * header on serve.
@@ -2169,12 +2168,12 @@ export class Engine {
   }
 
   // ================================================================
-  // Phase 19 — SUM-01..06. AI Conversational Summary engine facade.
+  // AI Conversational Summary engine facade.
   // Delegates to the pure orchestration in src/engine/summary/index.ts.
   // ================================================================
 
   /**
-   * Phase 19 — SUM-01..06. Engine facade for the AI conversational summary feature.
+   * Engine facade for the AI conversational summary feature.
    * Delegates to the pure orchestration in src/engine/summary/index.ts. Returns
    * a discriminated SummaryOutcome union — never throws to the HTTP layer for
    * fallback paths (mirrors Engine.signOutput shape).
@@ -2186,7 +2185,7 @@ export class Engine {
    *
    * Lazy `await import` — defers loading the summary module (and transitively
    * the Anthropic SDK) until first call, preserving boot-resilience. Mirrors
-   * the Phase 14 c2pa-node lazy-import discipline.
+   * the c2pa-node lazy-import discipline.
    */
   async summarizeVersion(
     versionId: string,
@@ -2206,15 +2205,15 @@ export class Engine {
   }
 
   // ================================================================
-  // Phase 16 / Plan 16-01 — PROV-V-07 agent surface (export + verify).
-  // The redaction primitive (PROV-V-06) lives in Plan 16-02's
+  // Agent surface (export + verify).
+  // The redaction primitive lives in
   // Engine.redactManifestForVersion.
   // ================================================================
 
   /**
-   * Phase 16 — D-CTX-3 export facade. Reads the latest manifest_signed event
+   * Export facade. Reads the latest manifest_signed event
    * for the version's primary output + the embedded-manifest file bytes,
-   * returns base64-encoded snapshot. Plan 16-03's version.export_manifest
+   * returns base64-encoded snapshot. The version.export_manifest
    * tool action consumes this verbatim.
    *
    * Throws TypedError VERSION_NOT_FOUND when the version row does not exist.
@@ -2238,7 +2237,7 @@ export class Engine {
   }
 
   /**
-   * Phase 16 — D-CTX-2 verify facade. Discriminated input: either a versionId
+   * Verify facade. Discriminated input: either a versionId
    * (engine resolves disk bytes + mimeType internally) or a (manifestBytes,
    * format) pair (pure-bytes verification path for redaction round-trips +
    * agent payloads received via base64).
@@ -2266,17 +2265,16 @@ export class Engine {
   }
 
   /**
-   * Phase 16 / Plan 16-02 — D-CTX-1 redaction facade. Delegates to
+   * Redaction facade. Delegates to
    * redactManifestForVersionImpl (lazy-imported). The engine threads:
    *   - this.versionRepo, this.provenanceRepo, this.outputRoot — same as
-   *     Plan 16-01's export/verify facades
-   *   - the loaded signer (Phase 14 lazy-load — D-PLAN-2-1)
-   *   - acquireAssetWriterLock — D-PLAN-2-4 unified FIFO mutex
+   *     the export/verify facades
+   *   - the loaded signer (lazy-load, same cert chain — signer reused)
+   *   - acquireAssetWriterLock — the unified FIFO mutex
    *
-   * D-PLAN-2-1: same cert chain (signer reused). D-PLAN-2-2: algorithm
-   * detected once at signer-load time; reused. D-PLAN-2-3: ingredient
-   * pass-through deferred (parent ingredients not re-mirrored in v1.1;
-   * tracked deferred-items.md).
+   * Algorithm is
+   * detected once at signer-load time; reused. Deferred: ingredient
+   * pass-through (parent ingredients not re-mirrored yet).
    *
    * Throws TypedError REDACT_SIGNING_DISABLED when c2paConfig is null,
    * REDACT_NO_MANIFEST when no signed manifest_signed event exists,
@@ -2289,7 +2287,7 @@ export class Engine {
     versionId: string,
     redactionPolicy: readonly string[],
   ): Promise<RedactionResult> {
-    // C-06 fix: c2paConfig === null is "signing disabled" — distinct
+    // c2paConfig === null is "signing disabled" — distinct
     // semantic from "no manifest". Use the dedicated REDACT_SIGNING_DISABLED
     // code (was REDACT_NO_MANIFEST pre-revision — wrong semantic).
     if (this.c2paConfig === null) {
@@ -2316,7 +2314,7 @@ export class Engine {
       this.outputRoot,
       signerOrCode.signer,
       this.acquireAssetWriterLock.bind(this),
-      // Phase 17 / Plan 17-03 (D-05) — bind engine.invalidateThumbnail so the
+      // Bind engine.invalidateThumbnail so the
       // redact path's atomic-rename hook scrubs the cached thumbnail before
       // the next /thumbnail GET serves stale bytes. The structural callback
       // pattern keeps the c2pa → engine boundary composition-friendly.
@@ -2327,7 +2325,7 @@ export class Engine {
   /**
    * Lazy-load the signer + native binding ONCE per process. Distinguishes
    * 'cert_load_failed' from 'native_binding_unavailable' by inspecting the
-   * thrown error message — Plan 14-02's signer.ts wraps the native binding
+   * thrown error message — signer.ts wraps the native binding
    * load failure with a unique substring ('c2pa-node native binding
    * unavailable') so we can map it precisely.
    *
@@ -2345,7 +2343,7 @@ export class Engine {
     if (this.c2paConfig === null) return { errorCode: 'cert_load_failed' };
 
     try {
-      // Phase 14 fix MR-01: thread tsaUrl through C2paConfig so the operator
+      // Thread tsaUrl through C2paConfig so the operator
       // can opt in to a TSA via VELLUM_C2PA_TSA_URL without source-level
       // changes. Default is null (no TSA — fully offline-friendly).
       const signer = await loadSigner(
@@ -2369,7 +2367,7 @@ export class Engine {
   }
 
   /**
-   * Concern #6 — pre-stat / size-cap helper. For bytes input this is a
+   * Pre-stat / size-cap helper. For bytes input this is a
    * trivial pass-through. For filePath input we read the bytes (the
    * embed-buffer path requires bytes; the embed-file path streams via
    * signEmbedFile + does NOT call this helper).
@@ -2382,15 +2380,15 @@ export class Engine {
   }
 
   /**
-   * Phase 15 (D-CTX-3 / D-CTX-4 / D-CTX-6) — derive ingredients + asset
+   * Derive ingredients + asset
    * refs for a version, then call buildManifestWithIngredients.
    *
    * Returns null when there is no completed event yet (no prompt blob to
-   * walk) — the caller falls back to the Phase 14 single-c2pa.created shape.
+   * walk) — the caller falls back to the single-c2pa.created shape.
    *
    * Asset-ref resolution policy:
    *   - parentOf:    look up parent's outputs_json, take parsed[0]?.filename
-   *                  (B3 — StoredOutput shape verified), check
+   *                  (StoredOutput shape verified), check
    *                  outputRoot/<parentId>/<parentFilename> existence + mime
    *                  via routeFormat. If reachable, assetRef={kind:'file',
    *                  path, mimeType}. If parent's manifest_signed has
@@ -2455,7 +2453,7 @@ export class Engine {
         if (parentFilename === null) {
           ingredientAssetRefs.set('parent', { kind: 'unavailable', reason: 'file_not_found' });
         } else {
-          // Phase 15 WR-02 — when routeFormat cannot classify the parent's
+          // When routeFormat cannot classify the parent's
           // extension, do NOT fall back to 'application/octet-stream'.
           // c2pa-rs dispatches asset handlers by MIME type and rejects
           // octet-stream inside addIngredientsToBuilder, which would propagate
@@ -2503,7 +2501,7 @@ export class Engine {
         continue;
       }
       const safe = nodepath.basename(fname);
-      // Phase 15 WR-02 — same defence-in-depth as parent path: do NOT fall
+      // Same defence-in-depth as parent path: do NOT fall
       // through to 'application/octet-stream' for unclassifiable extensions
       // (c2pa-rs would reject inside addIngredientsToBuilder).
       const compMime = getMimeForExtensionOrNull(safe);
@@ -2543,12 +2541,12 @@ export class Engine {
    * StoredOutput shape (src/comfyui/types.ts):
    * { filename, path, url, content_type, size_bytes }. parsed[0]?.filename
    * is the canonical primary output filename. Single source of truth —
-   * used by both the reproduction-divergence path and the Phase 15
+   * used by both the reproduction-divergence path and the
    * ingredient resolution path.
    *
    * Marked private but reachable via the typed-cast escape hatch the
-   * Phase 14 c2paConfig wiring tests already use (see
-   * pipeline-c2pa-config.test.ts Test 3) so the B3 unit-test in
+   * c2paConfig wiring tests already use (see
+   * pipeline-c2pa-config.test.ts) so the unit test in
    * pipeline-c2pa-ingredients.test.ts can prove the round-trip.
    */
   private getStoredFilenameForVersion(versionId: string): string | null {
@@ -2566,7 +2564,7 @@ export class Engine {
   }
 
   /**
-   * Concern #5 + #9 — temp file orchestration for the ingredients-aware
+   * Temp file orchestration for the ingredients-aware
    * file-API signing path.
    *
    *   Layout:  <outputsDir>/.tmp-c2pa/<versionId>/{src,dest}-<nanoid8>
@@ -2615,7 +2613,7 @@ export class Engine {
       await signEmbedFile(input.filePath, destTempPath, mimeType, result, signer);
       return { signed: null, signedToPath: destTempPath };
     } finally {
-      // Concern #5 — unconditional src cleanup. force:true makes the unlink
+      // Unconditional src cleanup. force:true makes the unlink
       // a no-op when the file does not exist (e.g., write threw before we
       // got here, or filePath input branch never wrote a src temp).
       if (usedSrcTemp) {
@@ -2633,10 +2631,10 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 4 — ASSETS (delegates to composed AssetsEngine)
+  // ASSETS (delegates to composed AssetsEngine)
   // ================================================================
 
-  /** D-ASST-03 + D-ASST-11: idempotent tag add + regex/cap validation. */
+  /** Idempotent tag add + regex/cap validation. */
   addTag(versionId: string, tag: string) {
     const result = this.assets.addTag(versionId, tag);
     this.events.emitEvent('tag.changed', {
@@ -2649,7 +2647,7 @@ export class Engine {
     return result;
   }
 
-  /** D-ASST-03: idempotent tag remove. */
+  /** Idempotent tag remove. */
   removeTag(versionId: string, tag: string) {
     const result = this.assets.removeTag(versionId, tag);
     this.events.emitEvent('tag.changed', {
@@ -2663,9 +2661,9 @@ export class Engine {
   }
 
   /**
-   * D-ASST-03 + D-ASST-08 + D-ASST-11: upsert metadata + regex/cap validation.
+   * Upsert metadata + regex/cap validation.
    *
-   * T-5-02: emitted payload must NOT contain `value` — MetadataChangedPayload
+   * Info-disclosure guard: emitted payload must NOT contain `value` — MetadataChangedPayload
    * type deliberately omits it (see events.ts). Only the key is safe to
    * broadcast over SSE.
    */
@@ -2681,7 +2679,7 @@ export class Engine {
     return result;
   }
 
-  /** D-ASST-03: idempotent metadata remove. */
+  /** Idempotent metadata remove. */
   removeMetadata(versionId: string, key: string) {
     const result = this.assets.removeMetadata(versionId, key);
     this.events.emitEvent('metadata.changed', {
@@ -2694,17 +2692,17 @@ export class Engine {
     return result;
   }
 
-  /** D-ASST-12..18 + D-ASST-22: AND-only filter + pagination + always-hydrated items. */
+  /** AND-only filter + pagination + always-hydrated items. */
   queryAssets(filter: AssetsQueryFilter) {
     return this.assets.queryAssets(filter);
   }
 
-  /** D-ASST-06: scope-aware tag aggregation. */
+  /** Scope-aware tag aggregation. */
   listTags(scope: ScopeFilter & { limit: number | undefined; offset: number | undefined }) {
     return this.assets.listTags(scope);
   }
 
-  /** D-ASST-06: scope-aware metadata-key aggregation. */
+  /** Scope-aware metadata-key aggregation. */
   listMetadataKeys(
     scope: ScopeFilter & { limit: number | undefined; offset: number | undefined },
   ) {
@@ -2712,16 +2710,16 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 5 — DASHBOARD AGGREGATE (D-WEBUI-01)
+  // DASHBOARD AGGREGATE
   // ================================================================
 
   /**
-   * D-WEBUI-01: dashboard landing-page aggregate. Returns the three rails the
+   * Dashboard landing-page aggregate. Returns the three rails the
    * Preact home view renders: non-terminal versions (submitted/running),
    * recently-completed versions, and top-level workspaces.
    *
    * Keeps the landing page a single REST round-trip instead of N small calls.
-   * Plan 05-06 (server.ts mount) exposes this at GET /api/dashboard/home.
+   * The server.ts mount exposes this at GET /api/dashboard/home.
    */
   getDashboardHome(): {
     active_versions: Version[];
@@ -2732,7 +2730,7 @@ export class Engine {
     // already exists (recovery poller uses it on boot) and returns exactly the
     // same subset; we reuse it to avoid adding a second DB method.
     const active = this.versionRepo.listPendingVersions();
-    // SC-1 (Phase 6 gap_closure WR-04): real DB-backed recent-completed list,
+    // Real DB-backed recent-completed list,
     // limit=10 for the home rail. Repo helper handles the SQL; engine stays
     // composition-only (no raw Drizzle here).
     const recent = this.versionRepo.listRecentCompleted(10);
@@ -2745,11 +2743,11 @@ export class Engine {
   }
 
   // ================================================================
-  // PHASE 17 / Plan 17-03 — THUMBNAIL DERIVATION FACADE (VIS-01..03/06)
+  // THUMBNAIL DERIVATION FACADE
   // ================================================================
 
   /**
-   * Phase 17 / Plan 17-03 — D-21 COALESCING facade for thumbnail derivation.
+   * COALESCING facade for thumbnail derivation.
    *
    * Returns the cached `.thumb.webp` filePath + Content-Type + ETag for
    * `(versionId, filename)`, or `null` when the source format is unsupported
@@ -2761,8 +2759,8 @@ export class Engine {
    * Promise via `thumbnailMutex` (signMutex shape). Calls for DIFFERENT keys
    * run in parallel. The mutex entry is deleted on settle (try/finally).
    *
-   * Called from src/http/dashboard-routes.ts GET/HEAD `/api/versions/:id/thumbnail`
-   * (Plan 17-03 Task 3). NEVER throws on derivation failure — the failure path
+   * Called from src/http/dashboard-routes.ts GET/HEAD `/api/versions/:id/thumbnail`.
+   * NEVER throws on derivation failure — the failure path
    * returns null + writes the sentinel.
    */
   async generateThumbnail(
@@ -2784,7 +2782,7 @@ export class Engine {
   }
 
   /**
-   * Phase 17 / Plan 17-03 — D-05 idempotent thumbnail-cache invalidation.
+   * Idempotent thumbnail-cache invalidation.
    *
    * Removes both `<filename>.thumb.webp` and `<filename>.thumb.failed` for
    * `(versionId, filename)` if either exists. Both unlinks are best-effort
@@ -2792,7 +2790,7 @@ export class Engine {
    * regenerate cycle.
    *
    * Called from src/engine/c2pa/redaction.ts AFTER `atomicRename(tempPathFresh,
-   * fullPath)` inside the try block (D-05 ordering — see Plan 17-03 Task 2).
+   * fullPath)` inside the try block — the ordering matters:
    * Calling BEFORE the rename creates a window where the old thumb is deleted
    * but the rewrite failed — UI shows skeleton until next request retries.
    * Calling AFTER ensures invalidation only happens for actually-rewritten
@@ -2808,7 +2806,7 @@ export class Engine {
   }
 
   /**
-   * Phase 17 / Plan 17-03 — private dispatcher. Reads source mtime + sha256
+   * Private dispatcher. Reads source mtime + sha256
    * (when available from outputs_json[0].sha256), checks cache freshness via
    * isCacheFresh, dispatches to format-router, and writes a sentinel on
    * failure paths. Public surface is generateThumbnail (above) which wraps
@@ -2846,7 +2844,7 @@ export class Engine {
       sha256 = null;
     }
 
-    // Cache freshness check — D-07 (cache | sentinel | miss).
+    // Cache freshness check (cache | sentinel | miss).
     let fresh: Thumbnails.CacheFreshness;
     try {
       fresh = await Thumbnails.isCacheFresh(cachePath, sentinelPath, sourcePath);

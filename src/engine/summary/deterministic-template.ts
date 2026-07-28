@@ -1,10 +1,11 @@
 /**
- * Phase 19 — D-FB-1 deterministic-template fallback summary.
+ * Deterministic-template fallback summary.
  *
- * Architecture-purity (Plan 01 grep guard): ZERO imports beyond local types.
+ * Architecture-purity (grep-guard enforced): ZERO imports beyond local types.
  * Pure helper — no I/O, no SDK calls, no DB access.
  *
- * Renders structural sentences (NOT pseudo-conversational prose per D-FB-5).
+ * Renders structural sentences (NOT pseudo-conversational prose — the fallback
+ * must never impersonate the LLM's voice).
  * Pairs with a <WarningPill> in the dashboard so users always see something
  * readable. Mirrors src/engine/diff-summary.ts:48-69 sorted-ordering +
  * capped-output + fallback-string-for-empty pattern.
@@ -14,7 +15,7 @@
  *   "v005 generated with sd_xl_base_1.0.safetensors at seed unspecified. Some prompt fields were redacted."
  *   "v007 provenance unavailable."  // when completed event is null
  *
- * D-VAL-3 round-trip: the redacted-mode output emits 'Some prompt fields were
+ * Redaction round-trip: the redacted-mode output emits 'Some prompt fields were
  * redacted' which contains the substring 'redacted' — the validator's
  * REDACTION_MARKERS array recognises this case-insensitively, so the
  * deterministic-template fallback ALWAYS satisfies the validator's
@@ -61,7 +62,7 @@ export function buildDeterministicSummary(args: BuildDeterministicSummaryArgs): 
     parts.push(`Additional models: ${extras}`);
   }
 
-  // Sentence 4: redaction marker (D-VAL-3 — also satisfies the validator's redaction-marker requirement).
+  // Sentence 4: redaction marker (also satisfies the validator's redaction-marker requirement).
   if (isRedacted) {
     parts.push('Some prompt fields were redacted');
   }

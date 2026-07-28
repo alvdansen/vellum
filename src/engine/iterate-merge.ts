@@ -6,7 +6,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** Dangerous keys that must never be merged (prototype-pollution guard — T-03-02). */
+/** Dangerous keys that must never be merged (prototype-pollution guard). */
 const FORBIDDEN_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function findKSamplerNodes(blob: Record<string, unknown>): string[] {
@@ -26,7 +26,7 @@ export function findKSamplerNodes(blob: Record<string, unknown>): string[] {
 }
 
 /**
- * D-PROV-22: seed convenience. Exactly 1 KSampler → set its inputs.seed.
+ * Seed convenience shortcut. Exactly 1 KSampler → set its inputs.seed.
  * 0 / >1 / negative → TypedError. Returns a deep-clone — does not mutate the input.
  */
 export function applySeedShortcut(
@@ -64,9 +64,9 @@ export function applySeedShortcut(
 }
 
 /**
- * D-PROV-21, D-PROV-23: deep-clone + per-node shallow-merge of inputs + optional class_type.
+ * Deep-clone + per-node shallow-merge of inputs + optional class_type.
  * Throws ITERATE_INVALID_PATCH on unknown node id, non-plain inputs, or forbidden keys.
- * Prototype-pollution guard (T-03-02): rejects __proto__, constructor, prototype
+ * Prototype-pollution guard: rejects __proto__, constructor, prototype
  * both as outer node-id keys and as inputs field keys.
  */
 export function applyOverrides(

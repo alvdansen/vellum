@@ -3,12 +3,12 @@
 // `{items: (Entity & Breadcrumb)[], total_count, limit, offset}` for list.
 //
 // Tools must emit `breadcrumb` (array) + `breadcrumb_text` (string) at top level
-// of the structuredContent payload per D-22. These helpers are the single
+// of the structuredContent payload. These helpers are the single
 // translation point between engine-internal `Breadcrumb` and tool-facing shape.
 
 import type { Breadcrumb, BreadcrumbEntry } from '../types/hierarchy.js';
 
-// Shared tool-input bounds (SEC-01, API-05, RT-01). The published raw
+// Shared tool-input bounds. The published raw
 // ZodRawShape of each tool is deliberately loose (every field optional, no
 // maxima) so the SDK's pre-handler validation never short-circuits; these
 // constants are enforced by the handler-side discriminated-union re-validation
@@ -19,15 +19,15 @@ export const MAX_NOTES_LENGTH = 4000;
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 
-// SEC-02: bounds for `generation.submit` workflow_json. Real workflows are
+// Bounds for `generation.submit` workflow_json. Real workflows are
 // typically <500KB; these caps guard against OOM while leaving headroom for
 // legitimate edge cases (heavy embedded base64 refs, etc.).
 export const MAX_WORKFLOW_NODES = 2000;
 export const MAX_WORKFLOW_BYTES = 5_000_000;
 
-// Phase 4 — asset management (D-ASST-11). TAG_REGEX accepts letters, digits,
+// Asset-management bounds. TAG_REGEX accepts letters, digits,
 // underscore, dash, dot, colon (colon enables `status:approved` namespacing
-// by convention per Area 2 Q1 sub-decision in CONTEXT.md).
+// by convention).
 export const MAX_TAG_LENGTH = 64;
 export const MAX_METADATA_KEY_LENGTH = 64;
 export const MAX_METADATA_VALUE_LENGTH = 2000;
@@ -39,7 +39,7 @@ export const TAG_REGEX = /^[A-Za-z0-9_\-.:]+$/;
  * Shape a create/get engine result into the tool response payload shape.
  *
  * Engine returns `{entity, breadcrumb: {entries, text}}`; tool emits
- * `{entity, breadcrumb: BreadcrumbEntry[], breadcrumb_text: string}` (D-22).
+ * `{entity, breadcrumb: BreadcrumbEntry[], breadcrumb_text: string}`.
  */
 export function shapeCreateOrGet<TEntity>(result: {
   entity: TEntity;
@@ -56,7 +56,7 @@ export function shapeCreateOrGet<TEntity>(result: {
  * Shape a list engine result. Engine merges each entity with its Breadcrumb
  * (`{...entity, entries, text}`); tool splits `entries` / `text` back out into
  * `breadcrumb` / `breadcrumb_text` on each item so every list row carries its
- * own breadcrumb per D-23.
+ * own breadcrumb.
  */
 export function shapeList<TItem>(result: {
   items: (TItem & Breadcrumb)[];
@@ -69,7 +69,7 @@ export function shapeList<TItem>(result: {
   return {
     items: result.items.map((item) => {
       // Engine merges entity fields with Breadcrumb's {entries, text} via spread;
-      // split entries/text out of rest and re-emit under the D-22 key names.
+      // split entries/text out of rest and re-emit under the tool-facing key names.
       const { entries, text, ...rest } = item as TItem & {
         entries: BreadcrumbEntry[];
         text: string;

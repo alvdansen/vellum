@@ -19,17 +19,16 @@ type Db = BetterSQLite3Database<typeof schema> & { $client: SqliteClient };
 
 /**
  * Build the scope JOIN + WHERE + params for tag/metadata scope aggregation queries.
- * Engine (Plan 04-03) validates scope XOR (D-ASST-13); this helper trusts the input
+ * The engine validates scope XOR; this helper trusts the input
  * and branches in workspace → project → sequence → shot order, ignoring extra fields.
  *
- * Module-local (not exported) — duplicated verbatim in metadata-repo.ts per
- * RESEARCH.md §"Alternatives Considered and Rejected" (repo files stay independent;
- * no cross-repo helper extraction in Phase 4).
+ * Module-local (not exported) — duplicated verbatim in metadata-repo.ts
+ * (repo files stay independent;
+ * no cross-repo helper extraction).
  *
- * Source: RESEARCH.md §Pattern 3 + §Operation 5.
  * Security: buildScopeFragment parameterizes every user-derived field via `?`
  * placeholders + `scopeParams`. The returned strings contain zero user input —
- * only fixed column names and JOIN clauses (T-04-02-01 mitigation).
+ * only fixed column names and JOIN clauses (SQL-injection mitigation).
  */
 function buildScopeFragment(scope: ScopeFilter): {
   scopeJoins: string;
@@ -66,21 +65,21 @@ function buildScopeFragment(scope: ScopeFilter): {
 }
 
 /**
- * Repository for Vellum `tags` table (Phase 4 — D-ASST-07, D-ASST-28).
+ * Repository for Vellum `tags` table.
  * Plain CRUD (DELETE allowed, unlike provenance-repo which is structurally
- * append-only). Idempotent mutators per D-ASST-03: insertTag uses ON CONFLICT
+ * append-only). Idempotent mutators: insertTag uses ON CONFLICT
  * DO NOTHING, deleteTag is a plain DELETE (0 rows affected = success).
  *
- * Hard invariants (D-33, D-ASST-26, D-ASST-29):
+ * Hard invariants:
  *  - Zero MCP SDK imports (store layer is engine-pure).
  *  - All inserts/selects use parameterized queries — no string concat with user input.
- *  - Tag regex + length caps enforced in the engine (Plan 04-03); repo trusts input.
- *  - Pre-check version existence before INSERT (RESEARCH Pitfall #3) — surfaces
+ *  - Tag regex + length caps enforced in the engine; repo trusts input.
+ *  - Pre-check version existence before INSERT — surfaces
  *    VERSION_NOT_FOUND as a typed error, never letting SQLITE_CONSTRAINT_FOREIGNKEY leak.
  *
  * Threat-model anchors:
- *  - T-04-02-01 (SQL injection in raw SQL): buildScopeFragment fully parameterizes.
- *  - T-04-02-02 (raw SqliteError leak): pre-check + ON CONFLICT DO NOTHING = no throws.
+ *  - SQL injection in raw SQL: buildScopeFragment fully parameterizes.
+ *  - Raw SqliteError leak: pre-check + ON CONFLICT DO NOTHING = no throws.
  */
 export class TagRepo {
   constructor(
@@ -89,20 +88,20 @@ export class TagRepo {
   ) {}
 
   /**
-   * Insert a tag on a version. Idempotent per D-ASST-03: re-adding an existing
+   * Insert a tag on a version. Idempotent: re-adding an existing
    * (version_id, tag) pair is a no-op (returns { inserted: false } with the
    * existing row's id).
    *
-   * Pre-check pattern (RESEARCH Pitfall #3, hierarchy-repo.ts:99): verify the
+   * Pre-check pattern (mirrors hierarchy-repo.ts:99): verify the
    * parent version exists first so we surface VERSION_NOT_FOUND rather than
-   * SQLITE_CONSTRAINT_FOREIGNKEY. D-ASST-24 reuses VERSION_NOT_FOUND from
-   * Phase 1.
+   * SQLITE_CONSTRAINT_FOREIGNKEY — reusing the established VERSION_NOT_FOUND
+   * error code.
    *
    * SQL: single-statement INSERT ON CONFLICT DO NOTHING with RETURNING id.
    * Empty RETURNING array indicates the UNIQUE(version_id, tag) path fired;
    * we then SELECT the existing id to honor the return contract. No transaction
-   * wrapper (RESEARCH Pitfall #1 — ON CONFLICT + transaction can auto-rollback;
-   * single INSERT is atomic).
+   * wrapper (ON CONFLICT + transaction can auto-rollback;
+   * a single INSERT is atomic).
    */
   insertTag(versionId: string, tag: string): { id: string; inserted: boolean } {
     if (!this.versionRepo.getVersion(versionId)) {
@@ -124,7 +123,7 @@ export class TagRepo {
       return { id: returned[0]!.id, inserted: true };
     }
     // ON CONFLICT DO NOTHING fired — fetch the existing row's id to honor the
-    // return contract (INV-ASST-01: second call returns same id as first).
+    // return contract (second call returns the same id as the first).
     const existing = this.db
       .select({ id: tags.id })
       .from(tags)
@@ -134,11 +133,11 @@ export class TagRepo {
   }
 
   /**
-   * Delete a tag from a version. Idempotent per D-ASST-03: calling on a missing
+   * Delete a tag from a version. Idempotent: calling on a missing
    * (version_id, tag) pair is a no-op (0 rows affected, no throw).
    *
    * Does NOT pre-check version existence — DELETE on a missing row is already
-   * a no-op (INV-ASST-02), so the extra SELECT would be wasted I/O.
+   * a no-op, so the extra SELECT would be wasted I/O.
    */
   deleteTag(versionId: string, tag: string): void {
     this.db
@@ -148,11 +147,11 @@ export class TagRepo {
   }
 
   /**
-   * Return all tags on a version, sorted alphabetical ASC (D-ASST-04 / D-ASST-19).
+   * Return all tags on a version, sorted alphabetical ASC.
    *
    * Uses raw SQL via `this.db.$client.prepare` to leverage
    * `json_group_array(tag ORDER BY tag)` — correlated subquery-style semantics
-   * that render empty sets as `[]` (NOT `[null]` — RESEARCH Pitfall #2). SQLite
+   * that render empty sets as `[]` (NOT `[null]`). SQLite
    * 3.44+ required for ORDER BY inside aggregates; better-sqlite3 12.9.0 bundles
    * SQLite 3.53.0.
    */
@@ -166,9 +165,9 @@ export class TagRepo {
   }
 
   /**
-   * Count tags for a version. Supports engine cap enforcement (D-ASST-11 —
+   * Count tags for a version. Supports engine cap enforcement (the
    * MAX_TAGS_PER_VERSION=50 pre-insert check). TOCTOU race between count →
-   * compare → insert is accepted at demo scale (RESEARCH Pitfall #6).
+   * compare → insert is accepted at demo scale.
    */
   countTagsForVersion(versionId: string): number {
     const row = this.db
@@ -180,7 +179,7 @@ export class TagRepo {
   }
 
   /**
-   * Scope-aware tag aggregation (D-ASST-06, RESEARCH Operation 5).
+   * Scope-aware tag aggregation.
    * Returns `{ items: Array<{name, count}>, total_count }` — items ordered
    * `count DESC, name ASC`, total_count = COUNT(DISTINCT tag) under the scope.
    *
@@ -191,11 +190,11 @@ export class TagRepo {
    *   - { sequence_id }          → JOIN shots; filter sh.sequence_id
    *   - { shot_id }              → filter v.shot_id directly
    *
-   * Engine enforces scope XOR (D-ASST-13). Repo is defensive-only: buildScopeFragment
-   * branches on first-match and ignores extra fields (T-04-02-05 mitigation).
+   * Engine enforces scope XOR. Repo is defensive-only: buildScopeFragment
+   * branches on first-match and ignores extra fields.
    *
    * Wrapped in db.transaction() so items + total_count come from a snapshot-consistent
-   * view (D-ASST-18, RESEARCH Pattern 5).
+   * view.
    */
   listTagsInScope(
     scope: ScopeFilter,

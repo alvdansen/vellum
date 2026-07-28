@@ -1,18 +1,17 @@
-// Phase 17 / Plan 17-01 Task 1 — engine-layer thumbnail module barrel.
+// Engine-layer thumbnail module barrel.
 //
-// This file re-exports the public API surface of the submodules. Plan
-// 17-02 (video-thumbnail), Plan 17-03 (engine facade integration), Plan
-// 17-04 (HTTP route + dashboard component), and Plan 17-05 (verification)
-// import from here.
+// This file re-exports the public API surface of the submodules; the engine
+// facade, the HTTP thumbnail route, and the dashboard component all import
+// from here.
 //
 // Architecture-purity: zero non-thumbnails imports. The sharp import is
 // confined to ./image-thumbnail.ts and the @ffmpeg-installer/ffmpeg
-// import is confined to ./video-thumbnail.ts (Plan 17-02);
+// import is confined to ./video-thumbnail.ts;
 // everything in this barrel is re-export only.
 //
-// image-thumbnail.ts is the sole sharp importer per D-23.
-// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer per D-24
-// (Plan 17-02). video-thumbnail.ts re-encodes its extracted PNG via the
+// image-thumbnail.ts is the sole sharp importer.
+// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer.
+// video-thumbnail.ts re-encodes its extracted PNG via the
 // `getSharpForVideoReencode` helper exported from image-thumbnail.ts so
 // sharp stays single-importer.
 
@@ -30,7 +29,7 @@ export {
   type CacheFreshness,
 } from './cache.js';
 
-// image-thumbnail.ts is the sole sharp importer per D-23.
+// image-thumbnail.ts is the sole sharp importer.
 export {
   generateImageThumbnail,
   getImageBrightness,
@@ -38,7 +37,7 @@ export {
   __resetSharpStateForTests,
 } from './image-thumbnail.js';
 
-// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer per D-24.
+// video-thumbnail.ts is the sole @ffmpeg-installer/ffmpeg importer.
 export {
   generateVideoThumbnail,
   __setSpawnFfmpegForTests,

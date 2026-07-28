@@ -1,6 +1,5 @@
 /**
- * Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Concern #4 mitigation:
- * realpath + allowlist containment.
+ * C2PA cert/key configuration loading: realpath + allowlist containment.
  *
  * Reads cert + key paths from env, resolves symlinks via realpathSync, asserts
  * the resolved paths live inside the allowlist root (cwd by default, override
@@ -8,14 +7,14 @@
  * non-empty, and returns a C2paConfig OR null (signing disabled). Throws
  * TypedError('C2PA_CONFIG_INVALID', ...) when validation fails.
  *
- * Throwing BEFORE any transport connect or tool register is the parity-with-
- * Phase-10 MIGRATION_PENDING-typed-error pattern (D-CTX-9 graceful-fail
+ * Throwing BEFORE any transport connect or tool register follows the same
+ * boot-time convention as the MIGRATION_PENDING typed error (graceful-fail
  * applies at download time; boot-time misconfig fails loud).
  *
- * **Path leak hygiene (Concern #4 / T-14-01 / T-14-12):** Error messages and
+ * **Path leak hygiene:** Error messages and
  * the boot success log emit ONLY the basename of the cert/key files, never
  * the full path. The full resolved paths are stored in the returned
- * C2paConfig for use by Plan 14-02's signer module (which re-reads bytes at
+ * C2paConfig for use by the signer module (which re-reads bytes at
  * sign time but never logs paths).
  *
  * Mirrors the validateBaseUrlFromEnv pattern at src/utils/validate-base-url.ts:
@@ -41,7 +40,7 @@ export const DEFAULT_C2PA_CERT_ROOT_HINT =
 export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com';
 
 /**
- * Phase 14 — PROV-V-01. loadC2paConfigFromEnv reads VELLUM_C2PA_CERT_PEM_PATH
+ * loadC2paConfigFromEnv reads VELLUM_C2PA_CERT_PEM_PATH
  * and VELLUM_C2PA_PRIVATE_KEY_PEM_PATH from env, resolves symlinks via
  * realpathSync, asserts allowlist-root containment, validates existence +
  * readability + non-empty, and returns a C2paConfig or null (signing disabled).
@@ -57,7 +56,7 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   const certPathRaw = env.VELLUM_C2PA_CERT_PEM_PATH;
   const keyPathRaw = env.VELLUM_C2PA_PRIVATE_KEY_PEM_PATH;
 
-  // Both unset → signing disabled (D-CTX-2 graceful degradation).
+  // Both unset → signing disabled (graceful degradation).
   if (!certPathRaw && !keyPathRaw) return null;
 
   // Exactly one set → misconfig.
@@ -86,10 +85,10 @@ export function loadC2paConfigFromEnv(env: NodeJS.ProcessEnv = process.env): C2p
   const certPath = resolveAndValidate(certPathRaw, root, 'cert');
   const keyPath = resolveAndValidate(keyPathRaw, root, 'key');
 
-  // T-14-04 mitigation: warn (do NOT throw) if key file mode is more
+  // Warn (do NOT throw) if key file mode is more
   // permissive than 0600. World-readable / group-readable keys are a
-  // security concern; we surface but don't block. Concern #4: log basename
-  // only — never the full resolved path.
+  // security concern; we surface but don't block. Log basename
+  // only — never the full resolved path (path-leak hygiene).
   const keyStat = statSync(keyPath);
   const mode = keyStat.mode & 0o777;
   if (mode & 0o077) {
@@ -132,7 +131,7 @@ function resolveAndValidate(
     );
   }
 
-  // Allowlist containment. Concern #4: check resolved (post-realpath) path
+  // Allowlist containment. Check the resolved (post-realpath) path
   // so symlink-out-of-allowlist is caught. Message includes the BASENAME
   // (debugging signal — operator can identify which file was rejected) but
   // NEVER the full directory portion (path-leak hygiene).

@@ -5,7 +5,7 @@ import type { GenerationProvider } from '../providers/provider.js';
 import { validateWorkflowFormat } from '../comfyui/format.js';
 
 /**
- * Test double for the real ComfyUIClient that Plan 02-02 will implement.
+ * Test double for the real ComfyUIClient.
  * Mirrors the client's three-method surface (submit/status/download) so engine
  * tests can drive state-machine branches without hitting the network.
  *
@@ -52,9 +52,9 @@ export interface FakeDownloadResult {
 // `implements GenerationProvider` is deliberate: it makes the test double a
 // COMPILE-TIME-CHECKED witness that the interface the engine depends on is
 // actually satisfiable by a non-ComfyUI backend. If the contract and this fake
-// ever drift, the build breaks here (the point of Phase A).
+// ever drift, the build breaks here — that is the point.
 export class FakeComfyUIClient implements GenerationProvider {
-  /** Mirrors the real ComfyUI adapter id (pivot Phase B) — the fake stands in for it. */
+  /** Mirrors the real ComfyUI adapter id — the fake stands in for it. */
   readonly id = 'comfyui-cloud';
   readonly apiErrorCode = 'COMFYUI_API_ERROR' as const;
   calls: FakeCall[] = [];
@@ -73,7 +73,7 @@ export class FakeComfyUIClient implements GenerationProvider {
   cannedOutputs: ComfyOutput[] = [{ filename: 'out.png', subfolder: '', type: 'output' }];
 
   /**
-   * Phase 3 addition: canned return value for fetchResolvedPrompt. Mirrors the
+   * Canned return value for fetchResolvedPrompt. Mirrors the
    * real ComfyUIClient method. Default null exercises the PROVENANCE_UNAVAILABLE
    * path in engine tests; tests set this to a canned blob to exercise the happy
    * prompt-blob-captured path. The real client reads PNG tEXt chunks — this fake
@@ -92,7 +92,7 @@ export class FakeComfyUIClient implements GenerationProvider {
   };
 
   /**
-   * DEMO-02 parity-test escape hatch (Plan 11-02). When set, the
+   * Parity-test escape hatch. When set, the
    * `failed-workflow` scenario uses THIS value verbatim as `StatusResponse.error`
    * (replacing the default `{ node_errors: this.cannedNodeErrors }` wrap). Lets
    * the parity test drive string-error, missing-error, and malformed-error
@@ -118,7 +118,7 @@ export class FakeComfyUIClient implements GenerationProvider {
   statusDelayMs = 0;
 
   /** Mirrors ComfyUIClient.validateRequest so engine+fake tests keep rejecting
-   *  malformed workflows through the provider-routed validation path (Phase C). */
+   *  malformed workflows through the provider-routed validation path. */
   validateRequest(spec: Record<string, unknown>): void {
     validateWorkflowFormat(spec);
   }
@@ -150,7 +150,7 @@ export class FakeComfyUIClient implements GenerationProvider {
         await new Promise((r) => setTimeout(r, this.statusDelayMs));
       }
       if (this.scenario === 'failed-workflow') {
-        // DEMO-02 (Plan 11-02) parity-test escape hatch. Default (null)
+        // Parity-test escape hatch. Default (null)
         // preserves the legacy `{ node_errors: cannedNodeErrors }` wrap so
         // every pre-existing failed-workflow test continues to behave
         // identically. Setting `cannedFailedError` to a custom value (or to
@@ -231,7 +231,7 @@ export class FakeComfyUIClient implements GenerationProvider {
    * write. Delegates to `download()` for scenario-driven failures (hopeless,
    * flaky) so test counters work uniformly across the 2-method surface.
    *
-   * Added in Plan 02-02 Task 2 (Rule 2 auto-add): the GenerationEngine's
+   * Needed because the GenerationEngine's
    * downloadAndPersist calls `client.downloadToPath(filename, opts, destPath)`
    * directly; without this method the fake breaks the engine contract.
    */
@@ -246,7 +246,7 @@ export class FakeComfyUIClient implements GenerationProvider {
     sizeBytes: number;
   }> {
     // download() handles scenario-driven failures. downloadToPath delegates
-    // to the shared streamToPath helper (IM-02) so the atomic-write invariant
+    // to the shared streamToPath helper so the atomic-write invariant
     // lives in exactly one place.
     const result = await this.download(filename, opts);
     let bytes = 0;
@@ -270,7 +270,7 @@ export class FakeComfyUIClient implements GenerationProvider {
   }
 
   /**
-   * Phase 3 addition (D-PROV-05): mirror of the real ComfyUIClient method.
+   * Mirror of the real ComfyUIClient method.
    * Returns `cannedPromptBlob` regardless of path so tests can drive both
    * the null-blob branch (PROVENANCE_UNAVAILABLE reserve) and the captured-blob
    * branch by assigning `fake.cannedPromptBlob = {...}` per test.
@@ -286,6 +286,6 @@ export class FakeComfyUIClient implements GenerationProvider {
     this.downloadCalls = 0;
     this.scenario = 'happy';
     this.cannedPromptBlob = null;
-    this.cannedFailedError = null; // Plan 11-02 DEMO-02 parity field
+    this.cannedFailedError = null; // parity-test escape-hatch field
   }
 }

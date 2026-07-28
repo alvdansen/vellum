@@ -1,17 +1,17 @@
 // packages/dashboard/src/types/review-panel.ts
 //
-// Phase 22 — wire-shape types for the review-and-approval surface.
+// Wire-shape types for the review-and-approval surface.
 //
 // Consumers:
 //   - PATCH /api/shots/:id/status            (SetShotStatusBody → SetShotStatusResponse)
 //   - GET   /api/shots/:id/status-history    (StatusHistoryResponse)
 //   - GET   /api/versions/:a/diff-with/:b    (consumed via existing DiffSummaryShape; not declared here)
 //
-// Architecture-purity (D-WEBUI-31): zero imports from src/. The 5-value
-// shot status union is re-derived from `./shot-grid.js` (which itself
-// re-derives it from the canonical ShotStatusChangedPayload SSE shape in
-// `./events.js`). A future-Phase status addition propagates here
-// automatically — no double-duplication of the 5-state literal.
+// Architecture purity: zero imports from src/. The 5-value shot status
+// union is re-derived from `./shot-grid.js` (which itself re-derives it
+// from the canonical ShotStatusChangedPayload SSE shape in `./events.js`).
+// A future status addition propagates here automatically — no
+// double-duplication of the 5-state literal.
 //
 // Field-naming convention: snake_case for wire-level fields (mirrors the
 // engine ShotStatusEvent row at src/store/shot-status-repo.ts:38 and the
@@ -24,13 +24,14 @@ import type { ShotStatus } from './shot-grid.js';
 import type { Version } from './entities.js';
 
 /**
- * Phase 22 D-04 — mirror of src/store/shot-status-repo.ts:38 ShotStatusEvent.
+ * Mirror of src/store/shot-status-repo.ts:38 ShotStatusEvent.
  *
- * Dashboard never imports from src/ (D-WEBUI-31); the type is hand-mirrored
- * here. MUST match the server's response shape from the engine's
- * `listShotStatusHistory` and the row shape stored in `shot_status_events`.
+ * Dashboard never imports from src/ (architecture purity); the type is
+ * hand-mirrored here. MUST match the server's response shape from the
+ * engine's `listShotStatusHistory` and the row shape stored in
+ * `shot_status_events`.
  *
- * REV-04 invariant: `note` is `null` when the caller did not provide one —
+ * Invariant: `note` is `null` when the caller did not provide one —
  * never the empty string. The popover submit handler converts
  * `note.trim() === ''` to `null` before sending the PATCH body.
  */
@@ -45,7 +46,7 @@ export interface ShotStatusEvent {
 }
 
 /**
- * Phase 22 D-04 — discriminated union for the unified review-panel timeline.
+ * Discriminated union for the unified review-panel timeline.
  *
  * The timeline merges two data sources into one chronologically-sorted feed:
  *   - Version events (from fetchVersions) — each Version contributes one or
@@ -71,32 +72,32 @@ export type ShotHistoryEntry =
     };
 
 /**
- * Phase 22 — the 5 action verbs the review surface supports.
+ * The 5 action verbs the review surface supports.
  *
  * - `approve` / `retake` / `hold` / `omit` map directly to a target
  *   ShotStatus transition.
  * - `restore` is the conditional fifth action — only valid when
- *   `currentStatus === 'omit'` (REV-05) — and writes the system-generated
- *   note `'Restored from omit'` (D-09).
+ *   `currentStatus === 'omit'` — and writes the system-generated
+ *   note `'Restored from omit'`.
  *
  * NOTE: this type alias is the action-bar verb vocabulary; it is NOT the
  * wire-level `to_status` value. The mapping from verb → ShotStatus lives
- * in the popover submit handler (next plan).
+ * in the popover submit handler.
  */
 export type ReviewAction = 'approve' | 'retake' | 'hold' | 'omit' | 'restore';
 
 /**
- * Phase 22 D-19 — body shape sent to PATCH /api/shots/:id/status.
+ * Body shape sent to PATCH /api/shots/:id/status.
  *
- * Server-side Zod schema (src/http/dashboard-routes.ts, added in 22-01):
+ * Server-side Zod schema (src/http/dashboard-routes.ts):
  *   { to_status: enum<SHOT_STATUSES>, note?: string|null (max 500), changed_by?: string (max 100) }
  *
- * REV-04: `note` is the user's free-text note (or `null`). The popover
+ * `note` is the user's free-text note (or `null`). The popover
  * submit handler enforces `note.trim() === '' ? null : note.trim()`
  * client-side; the server Zod re-validates at the trust boundary.
  *
  * `changed_by` defaults to `'user'` server-side when omitted; provided
- * only when a tool-call path needs to override (Phase 22 dashboard path
+ * only when a tool-call path needs to override (the dashboard path
  * leaves it undefined).
  */
 export interface SetShotStatusBody {
@@ -106,7 +107,7 @@ export interface SetShotStatusBody {
 }
 
 /**
- * Phase 22 D-19 — response shape from PATCH /api/shots/:id/status.
+ * Response shape from PATCH /api/shots/:id/status.
  *
  * Mirrors the existing get_status MCP arm output (and re-fetches the
  * recent history snapshot for the dashboard to refresh its timeline
@@ -122,7 +123,7 @@ export interface SetShotStatusResponse {
 }
 
 /**
- * Phase 22 — response shape from GET /api/shots/:id/status-history.
+ * Response shape from GET /api/shots/:id/status-history.
  *
  * Mirrors `engine.listShotStatusHistory` at src/engine/pipeline.ts:788
  * verbatim. NOTE the camelCase `shotId` — the engine returns camelCase

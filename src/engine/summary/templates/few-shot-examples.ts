@@ -1,26 +1,26 @@
 /**
- * Phase 19 — D-LLM-2 hand-curated few-shot examples.
+ * Hand-curated few-shot examples for the summary prompt.
  *
- * Architecture-purity (Plan 01 grep guard): ZERO imports — pure constants only.
+ * Architecture-purity (grep-guard enforced): ZERO imports — pure constants only.
  * Author-curated (NOT generated) to lock the canonical Supervisor/Lead voice.
  *
- * Examples cover the 5 canonical lineage shapes per D-LLM-2:
+ * Examples cover the 5 canonical lineage shapes:
  *   1. Root version (no parent)
- *   2. Iterate from parent (voice-fingerprint match — ROADMAP.md example)
- *   3. Redacted version (D-VAL-3 marker present)
+ *   2. Iterate from parent (voice-fingerprint match)
+ *   3. Redacted version (redaction marker present)
  *   4. Multi-LoRA composition (every LoRA verbatim)
- *   5. ControlNet-driven (Phase 15 ingredient graph reference)
+ *   5. ControlNet-driven (ingredient graph reference)
  *
- * Token budget (REVISED per checker BLOCKER #2): each example targets
+ * Token budget: each example targets
  * ~900-1100 tokens via inline reasoning notes (see the example-notes
  * blocks within each example) containing voice register guidance.
  * Combined with the ~600-token SYSTEM_PROMPT,
  * total cached prefix targets 5000-6000 tokens — well above Haiku 4.5's
- * 4096-token cache floor (RESEARCH.md Pitfall 1) with safety margin.
+ * 4096-token cache floor with safety margin.
  *
  * The earlier ~120-token examples produced a ~1000-token cumulative prefix
- * that silently no-op'd `cache_control` in production. Per checker BLOCKER #2:
- * the runtime token-count assertion (Plan 04 via client.messages.countTokens)
+ * that silently no-op'd `cache_control` in production.
+ * The runtime token-count assertion (via client.messages.countTokens)
  * is the load-bearing CI gate; this expansion is the structural fix.
  *
  * Voice register: declarative, present tense, 25-35 words per summary,
@@ -28,7 +28,7 @@
  * Names model + parent (when applicable) + key delta. Mirrors a peer's
  * Frame.io / ftrack / ShotGrid review-note line.
  *
- * Bumping SUMMARY_TEMPLATE_VERSION (D-LLM-6) is REQUIRED on any edit here.
+ * Bumping SUMMARY_TEMPLATE_VERSION is REQUIRED on any edit here.
  */
 
 export interface FewShotExample {
@@ -153,7 +153,7 @@ review (LoRA names are tracked in project bibles).
     assistant: `v003 is a tighter close-up of the dragon's eye, generated with flux1-dev plus the cinematic_fantasy LoRA at seed 42, swapping the wide-angle env map for an HDRI from the parent shot v002.`,
   },
 
-  // Example 3 — Redacted version (D-VAL-3 marker present)
+  // Example 3 — Redacted version (redaction marker present)
   {
     user: `<provenance>
   <version_label>v005</version_label>

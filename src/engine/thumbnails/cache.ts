@@ -1,4 +1,4 @@
-// Phase 17 / Plan 17-01 Task 1 — pure-ish FS helpers for the thumbnail cache.
+// Pure-ish FS helpers for the thumbnail cache.
 //
 // Path derivation, atomic temp+rename writer, ETag computation, freshness
 // check, failed-sentinel writer, and idempotent invalidator. All exports
@@ -11,8 +11,7 @@
 // final path (`<final>`) are co-located → EXDEV is structurally impossible.
 // The output-downloader.ts renameWithFallback exists to bridge
 // outputsDir/.tmp-c2pa/ → outputsDir/<vid>/ — that boundary is not crossed
-// here. Do NOT add a copyFile fallback; it would be dead code (RESEARCH.md
-// Pattern 3 EXDEV note).
+// here. Do NOT add a copyFile fallback; it would be dead code.
 //
 // Architecture-purity: zero MCP / DB / ORM / HTTP / sharp / ffmpeg /
 // native-binding imports. Verified by the directory-level grep guards in
@@ -24,9 +23,9 @@ import * as path from 'node:path';
 import { nanoid } from 'nanoid';
 
 /**
- * Final path for a successful thumbnail write — D-01 invariant:
+ * Final path for a successful thumbnail write — stable invariant:
  * `<outputsDir>/<versionId>/<filename>.thumb.webp`. The `.thumb.webp`
- * suffix is stable; downstream HTTP routes (Plan 17-03/17-04) compute the
+ * suffix is stable; the downstream HTTP routes compute the
  * same path.
  */
 export function cachePathFor(
@@ -38,7 +37,7 @@ export function cachePathFor(
 }
 
 /**
- * Sentinel path for a failed thumbnail derivation — D-07 invariant:
+ * Sentinel path for a failed thumbnail derivation — stable invariant:
  * `<outputsDir>/<versionId>/<filename>.thumb.failed`. Content is the
  * SentinelClass literal; mtime carries the "when failed" semantic.
  */
@@ -51,7 +50,7 @@ export function sentinelPathFor(
 }
 
 /**
- * Per-call unique partial path — D-22 invariant. Suffix uses nanoid(8) so
+ * Per-call unique partial path. Suffix uses nanoid(8) so
  * two concurrent writers for the same `(versionId, filename)` pick
  * different partial paths and rename to the same final path independently
  * (last-writer-wins on the final). Mirrors output-downloader.ts:188 and
@@ -107,12 +106,12 @@ export async function writeAtomic(
 /**
  * Compute an HTTP ETag for the thumbnail of `sourcePath`.
  *
- * D-06 strategy:
+ * Validator strategy:
  *   - When `sha256` is provided (e.g., from `outputs_json[0].sha256`), use
  *     a strong `sha256:` validator. The provided sha256 is the SOURCE
  *     bytes' content hash — invalidates correctly when bytes change.
  *   - Otherwise, fall back to a `mtime:` short-hash. Stat the source,
- *     hash `mtimeMs` to a 16-char hex prefix. Phase 16 redact rewrites
+ *     hash `mtimeMs` to a 16-char hex prefix. A redact rewrites
  *     the source file → mtime advances → ETag advances → browsers
  *     re-fetch automatically.
  *
@@ -135,7 +134,7 @@ export async function computeETag(
 
 /**
  * Result of an `isCacheFresh` check. The `via` discriminator surfaces WHY
- * the cache is fresh — useful for observability and the Plan 17-03 facade
+ * the cache is fresh — useful for observability and the engine facade
  * which renders the failed-sentinel as a skeleton vs. the cached webp.
  */
 export interface CacheFreshness {
@@ -144,7 +143,7 @@ export interface CacheFreshness {
 }
 
 /**
- * D-07 freshness check for `(cachePath, sentinelPath, sourcePath)`:
+ * Freshness check for `(cachePath, sentinelPath, sourcePath)`:
  *   - If `cachePath` exists and `cache.mtimeMs >= source.mtimeMs` → fresh
  *     via 'cache'. The cached thumbnail post-dates the source bytes; serve
  *     it.
@@ -197,14 +196,14 @@ export async function isCacheFresh(
 }
 
 /**
- * Write a zero-byte sentinel at `sentinelPath` — D-07 / Pitfall G hygiene.
+ * Write a zero-byte sentinel at `sentinelPath` — identifier-leak hygiene.
  *
  * **CRITICAL:** NEVER write the source path, filename, error reason, stack
  * trace, or any other identifier into the sentinel content. The sentinel
  * exists ONLY to mark "we tried to derive at this mtime; do not retry until
  * source advances". The leak-scan extension in src/__tests__/c2pa-key-leak-
  * negative.test.ts asserts the sentinel file size is zero bytes (no
- * identifier hygiene — Pitfall G regression guard).
+ * identifiers — leak-hygiene regression guard).
  */
 /**
  * Failure class recorded IN the sentinel file:
@@ -228,21 +227,21 @@ export async function writeFailedSentinel(
   sentinelPath: string,
   cls: SentinelClass = 'environmental',
 ): Promise<void> {
-  // Content is one of two fixed literals — still no identifiers (Pitfall G).
+  // Content is one of two fixed literals — still no identifiers (leak hygiene).
   await writeFile(sentinelPath, cls);
 }
 
 /**
- * Idempotent cache invalidation — D-05 hook surface. Removes both the
+ * Idempotent cache invalidation — the redact-hook surface. Removes both the
  * cached thumbnail and the failed-sentinel for `(versionId, filename)`.
  *
  * Both unlinks are wrapped in `.catch(() => {})` so an ENOENT (already
  * gone, or never written) does NOT throw. Mirrors the output-downloader.ts
  * EXDEV-fallback's best-effort cleanup shape.
  *
- * Plan 17-03 wires this into `Engine.invalidateThumbnail`; Plan 16-style
- * redact in c2pa/redaction.ts will call the engine facade AFTER the atomic
- * rename of redacted bytes (D-05 hook position).
+ * The engine facade wires this into `Engine.invalidateThumbnail`; the
+ * redact in c2pa/redaction.ts calls the engine facade AFTER the atomic
+ * rename of redacted bytes (the hook must fire post-rename).
  */
 export async function invalidateCache(
   outputRoot: string,

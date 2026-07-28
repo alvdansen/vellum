@@ -1,9 +1,9 @@
 /**
- * Phase 22 / Plan 22-05 — ReviewActionBar.
+ * ReviewActionBar.
  *
  * Sticky-top button row inside ReviewPanel. Composes 4 action buttons
  * (Approve / Request Retake / Hold / Omit) + a conditional Restore button
- * when currentStatus === 'omit' (REV-05 visibility-gated, NOT disabled).
+ * when currentStatus === 'omit' (visibility-gated, NOT disabled).
  *
  * Single popover orchestration: clicking any action button opens the
  * shared StatusChangePopover anchored to that button. Confirm wires to
@@ -11,12 +11,12 @@
  * closes; on error the popover stays open with an inline error pill above
  * the action bar.
  *
- * Action → ShotStatus mapping (REV-01 + REV-05):
+ * Action → ShotStatus mapping:
  *   approve  → 'approved'
  *   retake   → 'pending-review'   (semantic: "request a new pass")
  *   hold     → 'on-hold'
  *   omit     → 'omit'
- *   restore  → 'wip'              (REV-05 lock)
+ *   restore  → 'wip'
  *
  * Pending discipline: actionInFlight signal holds the verb mid-PATCH;
  * the originating button shows aria-busy + pending label; sibling buttons

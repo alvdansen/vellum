@@ -1,24 +1,24 @@
 /**
- * ShotStatusPill — inline color-coded status badge for Phase 21 SHOT statuses.
+ * ShotStatusPill — inline color-coded status badge for SHOT statuses.
  *
  * Distinct from `<StatusPill/>` (4 VERSION statuses: queued/running/complete/failed).
- * Per D-17 these are separate components — the 5 shot statuses (wip / pending-
+ * These are deliberately separate components — the 5 shot statuses (wip / pending-
  * review / approved / on-hold / omit) do NOT overlap with the version status
  * union and the badges live on different surfaces (shot grid card vs version
  * grid card).
  *
- * UI-SPEC §"Color" cross-cutting WCAG 2.1 AA constraint (REQ-01): every status
+ * Cross-cutting WCAG 2.1 AA constraint: every status
  * pill renders saturated background + `--color-bg` text. The text contrast
- * against the dark / light theme backgrounds was pre-computed in UI-SPEC and
+ * against the dark / light theme backgrounds was pre-computed and
  * every token meets the AA 4.5:1 floor — the lowest contrast (`omit` on dark)
  * is 4.8:1; the strictest light-theme token (`omit` on light) is exactly 4.5:1.
  *
  * Visual vocabulary mirrors `StatusPill.tsx:41` (saturated bg + `--color-bg`
  * text + `uppercase tracking-widest` for label-uppercase convention). The
  * tokens are defined in `theme.css` `@theme` block + `[data-theme="light"]`
- * override block (added by Wave 1 21-01-T02).
+ * override block.
  *
- * Landmines preserved (PATTERNS §15):
+ * Landmines preserved:
  *   - NO pulse/spin animation class. Shot statuses are terminal/long-lived
  *     states — never "in flight" — so animation would mislead.
  *   - NO `<StatusPill/>` import or extension. ShotStatus and Status are
@@ -31,10 +31,10 @@ import type { ShotStatus } from '../types/shot-grid.js';
 export interface ShotStatusPillProps {
   status: ShotStatus;
   /**
-   * Phase 22 D-13 dual-mode: when provided, the pill renders as a
+   * Dual-mode: when provided, the pill renders as a
    * `<button aria-haspopup="dialog">` wrapping the inner pill span.
    * When undefined, the pill stays presentational (`<span>` only) —
-   * preserves Phase 21 callers that render the pill inside a non-clickable
+   * preserves callers that render the pill inside a non-clickable
    * context (review-panel header, timeline rows).
    */
   onClick?: () => void;
@@ -49,7 +49,7 @@ export interface ShotStatusPillProps {
 /**
  * Per-status Tailwind classes mapping each ShotStatus to its color token +
  * inverse text. The `var(--color-shot-status-*)` tokens come from
- * `theme.css` @theme block (Wave 1 21-01-T02); the `var(--color-bg)` text
+ * `theme.css` @theme block; the `var(--color-bg)` text
  * is the universal inverse-for-WCAG-AA constant.
  *
  * Tailwind v4 generates `bg-[var(...)]` as a literal arbitrary-value class

@@ -1,21 +1,20 @@
 /**
  * ProgressBar — WCAG 2.1 AA progress-bar primitive.
  *
- * Phase 23 / Plan 23-02 (D-06). Pure component: props-in, no callbacks,
+ * Pure component: props-in, no callbacks,
  * no state. Renders a horizontal bar with the progressbar ARIA role and
  * the full set of aria-value{now,min,max} + aria-label attributes for
  * assistive tech. The bar fill width transitions at 150ms with the
- * Tailwind v4 motion-reduce variant honoring prefers-reduced-motion
- * per D-21 + UI-SPEC A6.
+ * Tailwind v4 motion-reduce variant honoring prefers-reduced-motion.
  *
  * Track color: --color-border (existing token).
- * Fill color: --color-shot-status-approved (Phase 21 token — green
+ * Fill color: --color-shot-status-approved (existing token — green
  * because approval is a success state, reuses the pill color for that
- * status; UI-SPEC §"Color > Subrow color element matrix").
+ * status).
  * Optional label color: --color-fg-muted (supplemental signal — bar
- * carries primary cue; UI-SPEC §"Color").
+ * carries primary cue).
  *
- * SECURITY — T-5-06 / T-23-02-03: dynamic content (ariaLabel, label)
+ * SECURITY — XSS: dynamic content (ariaLabel, label)
  * flows as JSX text children → Preact auto-escapes. The component does
  * NOT use dangerouslySetInnerHTML. The aria-label attribute is also
  * auto-escaped via Preact's prop handling.
@@ -42,7 +41,7 @@ export function ProgressBar({
   label,
   ariaLabel,
 }: ProgressBarProps) {
-  // Defensive clamp per UI-SPEC §"Animation & Motion" line 278:
+  // Defensive clamp:
   // Math.round runs BEFORE clamp so floats are integer-coerced first;
   // clamp ensures aria-valuenow stays within [0, max] even for hostile inputs.
   const clamped = Math.max(0, Math.min(max, Math.round(value)));

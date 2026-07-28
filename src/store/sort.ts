@@ -1,5 +1,5 @@
 /**
- * Phase 18 / Plan 18-01 — Whitelist sort enums + Drizzle ORDER BY composers
+ * Whitelist sort enums + Drizzle ORDER BY composers
  * + composite cursor encoding helpers.
  *
  * Architecture-purity invariants (verified by inline grep test in
@@ -10,7 +10,7 @@
  *   - ZERO filesystem imports
  *   - imports drizzle-orm + ./schema.js only
  *
- * SECURITY notes (Phase 18 RESEARCH §"Security Domain" T-18-01 / T-18-02):
+ * SECURITY notes (SQL-injection surface):
  *   - SortField is a closed string-literal enum; the column reference is
  *     looked up via a Record map; user input never reaches the SQL string.
  *   - SortDirection is a closed enum of two TypeScript literals; the dir
@@ -18,24 +18,23 @@
  *     fragments — user input never reaches the SQL string.
  *   - Cursor decode validates structure before returning; decoder NEVER
  *     throws (returns null on any failure path); HTTP layer maps null to
- *     INVALID_INPUT 4xx (Plan 18-03 wires this).
+ *     INVALID_INPUT 4xx.
  *   - The unsafe-raw escape hatch from drizzle-orm is NEVER used in this
  *     module (sentinel test locks; see Test 14 for the regex anchor).
  *
- * DEVIATION 1 (D-02 in-progress band sub-sort): Plan 18-01 ships the simpler
- *   `versions.id ASC` tiebreaker for v1.2 per researcher recommendation in
- *   18-RESEARCH.md Open Question #2. Strict CASE-expression refinement
- *   (D-02 verbatim says `created_at DESC`) deferred to v1.3 if user feedback
- *   surfaces. nanoid IDs are time-correlated within a session; the divergence
- *   is invisible for typical workloads (≤ 3 in-progress per shot).
+ * DEVIATION 1 (in-progress band sub-sort): ships the simpler
+ *   `versions.id ASC` tiebreaker instead of a strict CASE-expression
+ *   sub-sort by `created_at DESC`; the refinement is deferred until user
+ *   feedback surfaces. nanoid IDs are time-correlated within a session; the
+ *   divergence is invisible for typical workloads (≤ 3 in-progress per shot).
  *
- * DEVIATION 2 (SORT-02 'name' on the version surface): the `versions` table
+ * DEVIATION 2 ('name' on the version surface): the `versions` table
  *   has no `name` column (verified at src/store/schema.ts:66-102). The engine
  *   accepts the value via VERSION_COL_REF['name'] → versions.id (lexicographic
- *   nanoid). The dashboard's GRID_SORT_OPTIONS (Plan 18-04) does NOT expose
+ *   nanoid). The dashboard's GRID_SORT_OPTIONS does NOT expose
  *   this option; only the tree dropdown's HierarchySortField uses `name`
  *   (projects/sequences/shots all have a real `name` column). Keeping `name`
- *   in the engine SortField enum preserves the SORT-02 whitelist surface
+ *   in the engine SortField enum preserves the whitelist surface
  *   (4 fields × 2 dirs = 8 enum values) without a UI surface.
  */
 
@@ -46,10 +45,10 @@ import { versions, projects, sequences, shots } from './schema.js';
 // Type exports — closed enums + sort tuples + cursor shape
 // ============================================================================
 
-/** Version-grid sort universe — 4 keys (SORT-02 whitelist). */
+/** Version-grid sort universe — 4 keys (closed whitelist). */
 export type SortField = 'completed_at' | 'created_at' | 'name' | 'version_number';
 
-/** Tree sort universe — 2 keys (D-07 narrower than version grid). */
+/** Tree sort universe — 2 keys (deliberately narrower than the version grid). */
 export type HierarchySortField = 'name' | 'created_at';
 
 export type SortDirection = 'asc' | 'desc';
@@ -57,20 +56,20 @@ export type SortDirection = 'asc' | 'desc';
 export interface VersionSort { field: SortField; dir: SortDirection; }
 export interface HierarchySort { field: HierarchySortField; dir: SortDirection; }
 
-/** D-03 cursor shape: NULL-bit, sort_value, version_id tiebreaker. */
+/** Cursor shape: NULL-bit, sort_value, version_id tiebreaker. */
 export interface VersionCursor {
-  /** D-01: completed_at IS NULL — true means row is in the in-progress band. */
+  /** completed_at IS NULL — true means row is in the in-progress band. */
   cna: boolean;
   /** Sort value of the trailing row. Type depends on sort.field. */
   sv: number | string | null;
-  /** version_id tiebreaker (SORT-05 stable nanoid). */
+  /** version_id tiebreaker (stable nanoid). */
   vid: string;
 }
 
-/** SORT-01 grid default — Latest. */
+/** Grid default — Latest. */
 export const DEFAULT_VERSION_SORT: VersionSort = { field: 'completed_at', dir: 'desc' };
 
-/** SORT-04 tree default — A→Z. */
+/** Tree default — A→Z. */
 export const DEFAULT_HIERARCHY_SORT: HierarchySort = { field: 'name', dir: 'asc' };
 
 // ============================================================================
@@ -80,8 +79,8 @@ export const DEFAULT_HIERARCHY_SORT: HierarchySort = { field: 'name', dir: 'asc'
 /**
  * For the version grid. Returns a SQL fragment that interpolates the column
  * reference (NOT a string), so Drizzle emits the quoted identifier without
- * parameterization. See 18-RESEARCH.md Pitfall J for the danger of the
- * `${col.name}` anti-pattern.
+ * parameterization. Avoids the `${col.name}` anti-pattern, which would bind
+ * the column NAME as a parameter value instead of an identifier.
  *
  * DEVIATION: 'name' falls back to versions.id (the table has no `name`
  * column — verified at schema.ts:66-102). The dashboard never exposes this
@@ -123,11 +122,11 @@ function dirSql(dir: SortDirection): SQL {
 
 /**
  * Build the version-grid composite ORDER BY:
- *   (completed_at IS NULL) DESC,    -- D-01 NULL-bit pin (always first)
+ *   (completed_at IS NULL) DESC,    -- NULL-bit pin (always first)
  *   <user_col> <dir>,                -- user-selected sort
- *   versions.id ASC                  -- SORT-05 stable tiebreaker (always last)
+ *   versions.id ASC                  -- stable tiebreaker (always last)
  *
- * D-05: for `name` and `version_number`, the NULL-bit term is a no-op (those
+ * Note: for `name` and `version_number`, the NULL-bit term is a no-op (those
  * columns are NOT NULL); the term is included for shape consistency so the
  * cursor pagination's WHERE-after-cursor builder can use the same ordering
  * across all four fields.
@@ -146,7 +145,7 @@ export function buildVersionOrderBy(sort: VersionSort): SQL {
 
 /**
  * Build the hierarchy ORDER BY:
- *   <col> <dir>, <table>.id ASC    -- RT-03 deterministic tiebreaker
+ *   <col> <dir>, <table>.id ASC    -- deterministic tiebreaker
  */
 export function buildHierarchyOrderBy(
   table: typeof projects | typeof sequences | typeof shots,
@@ -172,7 +171,7 @@ export function encodeVersionCursor(c: VersionCursor): string {
 
 /**
  * Decode + structurally validate. Returns null on ANY failure path —
- * never throws. The HTTP layer (Plan 18-03) maps null to INVALID_INPUT 4xx.
+ * never throws. The HTTP layer maps null to INVALID_INPUT 4xx.
  *
  * Validation:
  *   - JSON parses successfully
@@ -210,9 +209,9 @@ export function decodeVersionCursor(s: string): VersionCursor | null {
  *   3. (IS NULL) = cursor.cna_int AND col EQ_PREDICATE AND id > cursor.vid  -- same band+value, tiebreaker
  *
  * <op> is `<` for DESC, `>` for ASC (sortOp inversion). Tiebreaker `>` is
- * always ASC (id ASC tiebreaker is invariant per SORT-05).
+ * always ASC (the id ASC tiebreaker is invariant).
  *
- * NULL handling (Plan 18-02 Rule 1 fix): when cursor.sv === null the cursor
+ * NULL handling: when cursor.sv === null the cursor
  * sits on a row whose sort column is NULL (only possible inside the in-progress
  * band when sort.field === 'completed_at'). SQLite three-valued logic makes
  * `col <op> NULL` and `col = NULL` always unknown, which would silently drop
@@ -225,9 +224,9 @@ export function decodeVersionCursor(s: string): VersionCursor | null {
  *     versions.id ASC tiebreaker.
  *
  * DEVIATION: when cursor.cna === true (cursor inside in-progress band),
- * the simpler v1.2 implementation uses the same `versions.id ASC` tiebreaker
- * as the completed band (matches DEVIATION 1 in the file header). Strict
- * D-02 fidelity (CASE-expression sub-sort by created_at DESC) deferred to v1.3.
+ * the simpler implementation uses the same `versions.id ASC` tiebreaker
+ * as the completed band (matches DEVIATION 1 in the file header). A strict
+ * CASE-expression sub-sort by created_at DESC remains deferred.
  */
 export function buildAfterCursorWhere(
   sort: VersionSort,
@@ -274,7 +273,7 @@ interface VersionLike {
 
 /**
  * Extracts the cursor's sort_value field from a Version row given the
- * sort field. Used by Plan 18-02's listByShot to encode next_cursor from
+ * sort field. Used by listByShot to encode next_cursor from
  * the last row of a page.
  */
 export function readSortValue(row: VersionLike, field: SortField): number | string | null {

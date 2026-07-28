@@ -1,14 +1,14 @@
-// Phase 15 — PROV-V-04 (D-CTX-1). Pure ingredient extraction for the C2PA
+// Pure ingredient extraction for the C2PA
 // manifest's parentOf / componentOf / inputTo assertions. Zero I/O, zero
 // SDK consumption — drives off the resolved prompt blob and the Version
 // record. Architecture-purity: zero MCP / DB / ORM / HTTP / native-c2pa-binding
 // imports.
 //
-// T-15-01 mitigation: extractInputAssertion returns a STRUCTURED, BOUNDED
+// Leak hygiene: extractInputAssertion returns a STRUCTURED, BOUNDED
 // shape (prompt text + sampler params + seed). NO workflow_json verbatim
 // dump — that surface would leak user secrets, API keys, or inline binary.
 //
-// REVISION B5: extractInputAssertion resolves prompt_positive / prompt_negative
+// extractInputAssertion resolves prompt_positive / prompt_negative
 // by FOLLOWING THE KSAMPLER EDGES (positive / negative are
 // [source_node_id, output_index] tuples pointing at CLIPTextEncode-class
 // ancestors). The earlier "first vs second CLIPTextEncode" heuristic was
@@ -24,7 +24,7 @@ import {
 } from '../provenance.js';
 import type { Version } from '../../types/hierarchy.js';
 
-/** T-15-01 — cap inputTo prompt text at 4096 chars; longer values truncate
+/** Cap inputTo prompt text at 4096 chars; longer values truncate
  *  with an explicit marker so verifiers see the truncation as a feature
  *  rather than data corruption. */
 export const INPUT_PROMPT_MAX_CHARS = 4096;
@@ -155,7 +155,7 @@ function compareNodeId(a: string, b: string): number {
 
 /** Recognised text-encoder class names whose inputs.text (or text_g/text_l)
  *  feeds a KSampler positive/negative edge. Add to this list as new
- *  ComfyUI text-encoder nodes appear (v1.2 audit). */
+ *  ComfyUI text-encoder nodes appear. */
 const TEXT_ENCODER_CLASSES: ReadonlySet<string> = new Set([
   'CLIPTextEncode',
   'CLIPTextEncodeSDXL',
@@ -168,8 +168,7 @@ const TEXT_ENCODER_CLASSES: ReadonlySet<string> = new Set([
  *
  *  Note: only direct CLIPTextEncode ancestors are recognised in v1.1.
  *  Deeper traversal through ConditioningCombine / ConditioningConcat /
- *  prompt-graph nodes is deferred to v1.2 — record the limitation in
- *  15-01-SUMMARY.md. */
+ *  prompt-graph nodes is deferred. */
 function resolveCLIPTextFromEdge(
   promptBlob: Record<string, unknown>,
   edge: unknown,
@@ -202,7 +201,7 @@ function resolveCLIPTextFromEdge(
  * Returns NULL when the version has no parent (parent_version_id is null —
  * top-of-lineage version). When parent_version_id is set, the caller MUST
  * provide getParentManifestHash; if that returns null, the ingredient
- * records 'parent_manifest_pending' per D-CTX-6.
+ * records 'parent_manifest_pending'.
  *
  * Pure: zero I/O — the caller is responsible for the manifest-hash lookup.
  */
@@ -262,7 +261,7 @@ export function extractComponentIngredients(
     if (!isPlainObject(raw)) continue;
     const classType = raw.class_type;
     if (typeof classType !== 'string') continue;
-    if (LOADER_CLASS_TYPES.has(classType)) continue; // Phase 13's domain
+    if (LOADER_CLASS_TYPES.has(classType)) continue; // extractModels' domain (provenance.ts)
     if (!IMAGE_INPUT_CLASS_TYPES.has(classType)) continue;
     const inputs = raw.inputs;
     if (!isPlainObject(inputs)) continue;
@@ -281,13 +280,13 @@ export function extractComponentIngredients(
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Public function 3: extractInputAssertion (REVISION B5 — KSampler edge walk)
+// Public function 3: extractInputAssertion (KSampler edge walk)
 // ────────────────────────────────────────────────────────────────────────
 
 /**
  * Build a structured inputTo payload from a resolved prompt blob + seed.
  *
- * REVISION B5: prompt_positive / prompt_negative are resolved by walking
+ * prompt_positive / prompt_negative are resolved by walking
  * KSampler.inputs.positive / inputs.negative as edge tuples
  * [source_node_id, output_index]. We follow each tuple to the referenced
  * node; if its class_type is one of the CLIPTextEncode variants, we read
@@ -302,7 +301,7 @@ export function extractComponentIngredients(
  * prompt_negative are null but the sampler params + seed are still
  * extracted from the first KSampler.
  *
- * T-15-01 mitigation: returns a BOUNDED, STRUCTURED shape — prompt text
+ * Leak hygiene: returns a BOUNDED, STRUCTURED shape — prompt text
  * (truncated at INPUT_PROMPT_MAX_CHARS), sampler params, seed. NEVER
  * the workflow_json verbatim.
  *

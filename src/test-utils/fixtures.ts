@@ -20,7 +20,7 @@ export interface TestDb {
  * Widened Db type — the `drizzle()` factory returns `BetterSQLite3Database<T> &
  * { $client: Database }`, but the class declaration omits `$client`. TagRepo +
  * MetadataRepo need the widened type for their raw-SQL json_group_array paths
- * (Plan 04-02 established the widening convention at the repo boundary). We
+ * (the widening convention lives at the repo boundary). We
  * widen locally in fixtures so every helper can pass `testDb.db as DbWithClient`
  * into the repo constructors without leaking the cast to callers.
  */
@@ -40,15 +40,15 @@ export function makeInMemoryDb(): TestDb {
   sqlite.exec(SCHEMA_DDL);
   sqlite.pragma('user_version = 1');
   const db = drizzle(sqlite, { schema });
-  // Phase 2: keep test parity with prod (src/store/db.ts).
+  // Keep test parity with prod (src/store/db.ts).
   migrate(db, { migrationsFolder: './drizzle' });
   return { db, sqlite };
 }
 
-// =============== Phase 4 seeding helpers (RESEARCH §Test Fixtures Needed) ===============
+// =============== Asset seeding helpers ===============
 //
 // These helpers compose HierarchyRepo + VersionRepo + TagRepo + MetadataRepo so
-// engine and tool tests can seed realistic Phase 4 data without re-writing the
+// engine and tool tests can seed realistic tag/metadata data without re-writing the
 // hierarchy walk or per-version tag/metadata loops. Each helper accepts an
 // existing TestDb (from makeInMemoryDb) so tests own database lifecycle.
 //
@@ -57,7 +57,7 @@ export function makeInMemoryDb(): TestDb {
 // typed plain objects (no classes) so tests can destructure and assert.
 
 /**
- * Phase 4 helper: seed a workspace/project/sequence/shot with N versions plus
+ * Seed a workspace/project/sequence/shot with N versions plus
  * the requested number of tag rows and metadata entries per version.
  *
  * Bulk seeding for query-correctness tests — every version gets distinct tag
@@ -127,7 +127,7 @@ export async function seedAssetFixtures(
  * is overkill (e.g., "attach these exact 3 tags in this order and assert the
  * ASC ordering on read").
  *
- * Tags are inserted via TagRepo.insertTag (idempotent per D-ASST-03) so calling
+ * Tags are inserted via TagRepo.insertTag (idempotent) so calling
  * this twice with overlapping sets is safe.
  */
 export function versionWithTags(
@@ -145,8 +145,8 @@ export function versionWithTags(
  * Quick helper: attach a specific metadata map to a specific version. Assumes
  * the version already exists. Use for focused unit tests.
  *
- * Metadata is upserted via MetadataRepo.upsertMetadata (idempotent per
- * D-ASST-03) so later calls replace earlier values for the same key.
+ * Metadata is upserted via MetadataRepo.upsertMetadata
+ * (idempotent) so later calls replace earlier values for the same key.
  */
 export function versionWithMetadata(
   testDb: TestDb,
@@ -212,9 +212,9 @@ export function hierarchyWithVersionsAcrossScopes(
 
 /**
  * Build N versions with controlled created_at timestamps (in seed order) for
- * date-range boundary tests (D-ASST-15 inclusive-both-ends + INV-ASST-11). The
+ * date-range boundary tests (inclusive-both-ends semantics). The
  * raw UPDATE on versions.created_at is the standard pattern (see
- * src/engine/__tests__/assets.test.ts INV-ASST-10) for overriding the natural
+ * src/engine/__tests__/assets.test.ts) for overriding the natural
  * Date.now()-at-insert timestamp — necessary because insertVersion() always
  * stamps with the current time.
  *
@@ -246,7 +246,7 @@ export async function versionsWithTimestampSpread(
  * Build four versions with each of submitted/running/completed/failed states
  * for status-filter tests. The status column is updated via raw SQL because
  * VersionRepo's public API only exposes state transitions through
- * markCompleted/markFailed; bypassing preserves the Phase 3 invariants while
+ * markCompleted/markFailed; bypassing preserves the transition invariants while
  * giving status-filter tests a ready-made fixture.
  *
  * Returns the shot id + a Record keyed by status so tests can pluck ids by
@@ -283,8 +283,8 @@ export function versionsWithStatusVariety(
 
 /**
  * Seed a version with exactly N tags and M metadata entries for
- * MAX_TAGS_PER_VERSION / MAX_METADATA_PER_VERSION cap tests (D-ASST-11 —
- * 50/100 respectively).
+ * MAX_TAGS_PER_VERSION / MAX_METADATA_PER_VERSION cap tests (50/100
+ * respectively).
  *
  * Defaults to 50 tags + 0 metadata (the common tag-cap fixture). Pass
  * `{ tagCount: 0, metadataCount: 100 }` for a metadata-cap version or
@@ -317,7 +317,7 @@ export function versionsAtCap(
   return ver.id;
 }
 
-// =============== Phase 5 (D-WEBUI-37) ===============
+// =============== Engine-with-outputs stack ===============
 
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -328,8 +328,8 @@ import { FakeComfyUIClient } from './fake-comfyui-client.js';
 import type { ComfyUIClient } from '../comfyui/client.js';
 
 /**
- * Phase 5 (D-WEBUI-37): build a real Engine wired against an in-memory DB AND
- * a fresh tmp directory for outputs/. Used by output-downloader tests (Plan 02)
+ * Build a real Engine wired against an in-memory DB AND
+ * a fresh tmp directory for outputs/. Used by output-downloader tests
  * and end-to-end SSE/route integration tests where a true downloader hook
  * exercise on disk is needed.
  *

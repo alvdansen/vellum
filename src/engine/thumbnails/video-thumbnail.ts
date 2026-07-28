@@ -1,51 +1,50 @@
-// Phase 17 / Plan 17-02 Task 1 — MP4 first-frame thumbnail derivation
+// MP4 first-frame thumbnail derivation
 // (sole @ffmpeg-installer/ffmpeg importer).
 //
-// **D-24 architecture-purity invariant:**
+// **Architecture-purity invariant:**
 //   This file is the SOLE importer of `@ffmpeg-installer/ffmpeg` across src/.
 //   Other modules MUST call into this file's exports rather than import the
 //   ffmpeg package directly. Allowed-set assertion at
-//   src/__tests__/architecture-purity.test.ts (added in Task 2 of this plan
-//   per D-25 SAME-plan rule).
+//   src/__tests__/architecture-purity.test.ts.
 //
-// **D-23 preserved — sharp delegate, NOT direct import:**
+// **Sharp delegate, NOT direct import:**
 //   This file does NOT import `sharp` directly — sharp access is via the
 //   `getSharpForVideoReencode` and `getImageBrightness` delegates from
-//   ./image-thumbnail.js (preserves D-23 sole-importer invariant). The
+//   ./image-thumbnail.js (preserves the sharp sole-importer invariant). The
 //   re-encode of the ffmpeg-extracted PNG to WebP routes through the cached
 //   sharp instance owned by image-thumbnail.ts.
 //
-// **D-26 lazy + monotonic fail:**
+// **Lazy load + monotonic fail:**
 //   `await import('@ffmpeg-installer/ffmpeg')` is deferred to the first call
 //   site. On native-binding load failure, cachedFfmpegFailed is set and ALL
 //   subsequent calls short-circuit without re-attempting the import. The
-//   Plan 17-03 facade converts the typed error into a `.thumb.failed`
+//   engine facade converts the typed error into a `.thumb.failed`
 //   sentinel + structured warning log; the UI degrades to a skeleton.
 //
-// **D-27 license posture:**
+// **License posture:**
 //   `@ffmpeg-installer/ffmpeg` ships an LGPL-2.1 ffmpeg binary in a SEPARATE
 //   process (verified via `node -e "require('@ffmpeg-installer/ffmpeg/package.json').license"`).
 //   Separate-process invocation is MIT-compatible — NOT the rejected
 //   `ffmpeg-static` package which carries a GPL-3.0-or-later viral license.
 //
-// **D-28 representative frame:**
+// **Representative frame:**
 //   First extraction attempt uses `-vf thumbnail` filter — ffmpeg analyses up
 //   to 100 frames and picks the most representative one (skips fade-ins,
 //   slate boards, repeated-frame blocks).
 //
-// **D-29 brightness fallback:**
+// **Brightness fallback:**
 //   If the extracted frame's BT.601 average luma < 16/255, a SECOND spawn
 //   runs with `-ss 1.0` BEFORE `-i` (demuxer-level fast-seek to 1s) to dodge
 //   black-pre-roll fade-ins. The fallback path is delegated through the
 //   `getImageBrightness` helper from image-thumbnail.ts.
 //
-// **D-30 + Pitfall A — bounded resource use:**
+// **Bounded resource use:**
 //   - 100 MB pre-flight hard-skip on source size BEFORE spawning ffmpeg
 //     (avoids OOM on long videos).
 //   - 10 s SIGKILL timeout on each ffmpeg spawn (rejects hung processes).
 //   - Both surface as TypedError reasons (`source_too_large`, `ffmpeg_timeout`).
 //
-// **D-22 atomic write:**
+// **Atomic write:**
 //   ffmpeg → temp PNG (in mkdtemp work dir) → sharp re-encode → temp WebP
 //   (via cache.writeAtomic) → atomic rename to final destPath. The temp
 //   work dir is cleaned up in a finally clause; the WebP partial is
@@ -64,18 +63,18 @@ import {
   getSharpForVideoReencode,
 } from './image-thumbnail.js';
 
-// ─── Locked constants (CONTEXT D-29 / D-30 + PITFALL A) ─────────────────
+// ─── Locked constants (bounded resource use + brightness fallback) ──────
 
-/** Pre-flight source-size cap (D-30 + PITFALL A). */
+/** Pre-flight source-size cap (bounds ffmpeg memory pressure). */
 const SOURCE_SIZE_LIMIT = 100 * 1024 * 1024;
 
-/** Per-spawn ffmpeg SIGKILL timeout (D-30). */
+/** Per-spawn ffmpeg SIGKILL timeout. */
 const FFMPEG_TIMEOUT_MS = 10_000;
 
-/** BT.601 luma threshold for brightness fallback (D-29). */
+/** BT.601 luma threshold for brightness fallback. */
 const BRIGHTNESS_THRESHOLD = 16;
 
-// ─── Lazy native-binding load + monotonic fail (D-26) ──────────────────
+// ─── Lazy native-binding load + monotonic fail ─────────────────────────
 
 let cachedFfmpegPath: string | null = null;
 let cachedFfmpegFailed: { reason: string } | null = null;
@@ -90,7 +89,7 @@ let ffmpegLoad: Promise<string | null> | null = null;
  * Lazy-load the @ffmpeg-installer/ffmpeg binary path on first call site.
  * Subsequent calls reuse the cached value. On load failure, cachedFfmpegFailed
  * is set and the failure is monotonic — subsequent calls return null without
- * re-attempting the dynamic import (D-26).
+ * re-attempting the dynamic import.
  *
  * Returns the absolute path to the host platform's bundled ffmpeg binary on
  * success, null on monotonic fail.
@@ -135,7 +134,7 @@ async function loadFfmpegPathOnce(): Promise<string | null> {
 /**
  * The ffmpeg-spawn helper signature. Returns a Promise that resolves on
  * code 0 exit, rejects on non-zero / timeout / spawn error. The timeout
- * arg surfaces the 10s cap (D-30) — production code passes
+ * arg surfaces the 10s cap — production code passes
  * FFMPEG_TIMEOUT_MS; tests may pass a smaller value to exercise the
  * timeout path quickly.
  */
@@ -221,17 +220,17 @@ export function __resetFfmpegStateForTests(): void {
  * Pipeline:
  *   1. Stat the source — surface ENOENT/EACCES as
  *      TypedError('THUMBNAIL_FAILED', `source_unreadable: ...`).
- *   2. Pre-flight 100 MB hard-skip (D-30 + PITFALL A) — throws
+ *   2. Pre-flight 100 MB hard-skip — throws
  *      TypedError reason='source_too_large' BEFORE any spawn.
- *   3. Lazy-load the ffmpeg binary path (D-26). On null → throw
+ *   3. Lazy-load the ffmpeg binary path. On null → throw
  *      TypedError reason='ffmpeg_load_failed'.
  *   4. mkdir destPath's parent (recursive — idempotent).
  *   5. mkdtemp work dir under os.tmpdir() — cleaned up in finally.
- *   6. First spawn: `-vf thumbnail,scale=640:-1` → temp PNG (D-28
- *      representative-frame selection).
+ *   6. First spawn: `-vf thumbnail,scale=640:-1` → temp PNG
+ *      (representative-frame selection).
  *   7. Brightness check via image-thumbnail.ts's getImageBrightness
  *      helper. If luma < 16/255 → second spawn with `-ss 1.0` BEFORE
- *      `-i` (D-29 demuxer-level fast-seek fallback).
+ *      `-i` (demuxer-level fast-seek fallback).
  *   8. Re-encode PNG → WebP via the sharp delegate
  *      (getSharpForVideoReencode from image-thumbnail.ts) routed
  *      through cache.writeAtomic (atomic temp+rename).
@@ -262,7 +261,7 @@ export async function generateVideoThumbnail(
     );
   }
 
-  // 2. Pre-flight 100 MB skip (D-30 + PITFALL A).
+  // 2. Pre-flight 100 MB skip (bounds ffmpeg memory pressure).
   if (st.size > SOURCE_SIZE_LIMIT) {
     throw new TypedError(
       'THUMBNAIL_FAILED',
@@ -271,7 +270,7 @@ export async function generateVideoThumbnail(
     );
   }
 
-  // 3. Lazy-load ffmpeg binary path (D-26).
+  // 3. Lazy-load ffmpeg binary path.
   const ffmpegPath = await getFfmpegPath();
   if (ffmpegPath === null) {
     throw new TypedError(
@@ -289,7 +288,7 @@ export async function generateVideoThumbnail(
   const pngTemp = join(work, 'frame.png');
 
   try {
-    // 6. First spawn: -vf thumbnail filter (D-28 representative frame).
+    // 6. First spawn: -vf thumbnail filter (representative frame).
     try {
       await spawnFfmpegFn(
         ffmpegPath,
@@ -313,13 +312,13 @@ export async function generateVideoThumbnail(
       throw translateSpawnError(err);
     }
 
-    // 7. Brightness check + D-29 fallback if luma < 16.
+    // 7. Brightness check + fast-seek fallback if luma < 16.
     let luma: number;
     try {
       luma = await getImageBrightness(pngTemp);
     } catch (err) {
       // Brightness check itself failed — surface as sharp_reencode_failed
-      // (the Plan 17-01 helper translates sharp errors to TypedError
+      // (the image-thumbnail helper translates sharp errors to TypedError
       // already; this catch covers TypedError re-throws from there).
       if (err instanceof TypedError) {
         throw new TypedError(
@@ -336,7 +335,7 @@ export async function generateVideoThumbnail(
     }
 
     if (luma < BRIGHTNESS_THRESHOLD) {
-      // D-29: -ss 1.0 BEFORE -i — demuxer-level fast-seek fallback.
+      // -ss 1.0 BEFORE -i — demuxer-level fast-seek fallback.
       try {
         await spawnFfmpegFn(
           ffmpegPath,
@@ -363,7 +362,7 @@ export async function generateVideoThumbnail(
       }
     }
 
-    // 8. Re-encode PNG → WebP via the sharp delegate (D-23 preserved).
+    // 8. Re-encode PNG → WebP via the sharp delegate (sharp stays single-importer).
     const sharp = await getSharpForVideoReencode();
     if (sharp === null) {
       throw new TypedError(

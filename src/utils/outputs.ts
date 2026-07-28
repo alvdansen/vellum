@@ -3,13 +3,13 @@ import path from 'node:path/posix';
 import { TypedError } from '../engine/errors.js';
 
 /**
- * Disk-path helpers for generation outputs (D-GEN-17, D-GEN-33, D-GEN-35).
- * POSIX-style paths (forward slash) — the output tree is OS-agnostic per demo scope.
- * Path-traversal defense (T-02-01-01) lives in `sanitizeRelativeSegment`.
+ * Disk-path helpers for generation outputs.
+ * POSIX-style paths (forward slash) — the output tree is OS-agnostic by design.
+ * Path-traversal defense lives in `sanitizeRelativeSegment`.
  */
 
 /**
- * Render a version number as a v###-formatted label per D-GEN-17.
+ * Render a version number as a v###-formatted label.
  * Pads to 3 digits (v001, v010, v999); unpadded beyond 999 (v1000, v9999).
  */
 export function versionLabel(n: number): string {
@@ -20,14 +20,14 @@ export function versionLabel(n: number): string {
  * Reject any path segment (project/sequence/shot name, versionLabel, or
  * ComfyUI-returned filename) that could escape the output version directory.
  *
- * C1: before this fix, only `filename` was sanitized — project/sequence/shot
+ * Historically only `filename` was sanitized — project/sequence/shot
  * names flowed unchecked into path.join. An agent-created project named `..`
  * or `../../tmp` would cause generation outputs to land outside the outputs
- * root. Phase 2 is the first phase to turn these names into disk paths, so
- * the trust boundary is now load-bearing and must be enforced here.
+ * root. This is the point where those names first become disk paths, so
+ * the trust boundary is load-bearing and must be enforced here.
  *
  * Threats caught:
- *   - ComfyUI returns `../etc/passwd` as a filename (T-02-01-01)
+ *   - ComfyUI returns `../etc/passwd` as a filename
  *   - Agent creates a project named `..` or `../secret`
  *   - Names containing `/`, `\\`, NUL (Windows absolute-path, null-byte tricks)
  *   - Empty or whitespace-only names (would collapse the path)
@@ -85,10 +85,10 @@ export interface BuildOutputPathArgs {
 }
 
 /**
- * Build a POSIX-style relative output path per D-GEN-33:
+ * Build a POSIX-style relative output path:
  *   {root}/{projectName}/{sequenceName}/{shotName}/{versionLabel}/{filename}
  *
- * C1: every segment is sanitized (not just filename). projectName, sequenceName,
+ * Every segment is sanitized (not just filename). projectName, sequenceName,
  * and shotName are user/agent-supplied; versionLabel is engine-generated but we
  * belt-and-suspenders check it anyway. Defense in depth: tool-layer Zod validates
  * inputs, but the trust boundary for disk writes lives here.
@@ -119,9 +119,9 @@ export const MAX_COLLISION_SUFFIX = 10_000;
 /**
  * Return a filename that does not collide with existing files in dirPath.
  * If `img.png` exists, tries `img_1.png`, `img_2.png`, ... until a free slot.
- * Matches Phase 1 D-14 "UNIQUE → suffix increment" pattern.
+ * Matches the "UNIQUE → suffix increment" pattern used for entity names.
  *
- * IP-02: single readdir() + in-memory Set lookup (O(1) per candidate) instead
+ * Single readdir() + in-memory Set lookup (O(1) per candidate) instead
  * of sequential access() calls (O(n) syscalls). Preserves semantics — returns
  * the first unused suffix up to MAX_COLLISION_SUFFIX. If the directory is
  * missing (ENOENT), treats it as empty and returns `filename` unchanged.

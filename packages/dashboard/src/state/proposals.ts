@@ -2,7 +2,7 @@
  * Approval-gate signal bag + load/decide orchestration (no silent credit
  * spend). Backs the <ApprovalsPanel/> view.
  *
- * Module pattern mirrors state/shot-grid.ts (Phase 21 convention): module-
+ * Module pattern mirrors state/shot-grid.ts: module-
  * singleton signals + a load helper + decide handlers, zero src/ traversals
  * for architecture-purity (D-WEBUI-31). SSE is NOT wired for proposals (there
  * is no proposal SSE channel today); the panel refreshes explicitly after each
@@ -95,7 +95,7 @@ export const proposalCounts = signal<{
  * The live pending-spend backlog — the count of `proposed` proposals awaiting
  * a decision. Prefers the accurate server-side count (`proposalCounts`); falls
  * back to the loaded page's total_count when the active filter is 'proposed',
- * else the loaded-page tally (mirrors shot-grid aggregateCounts Pitfall 8:
+ * else the loaded-page tally (same discipline as shot-grid's aggregateCounts:
  * never a misleadingly-full-history number).
  */
 export const pendingProposalCount = computed<number>(() => {

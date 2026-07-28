@@ -3,7 +3,7 @@
  * version's primary output. Mounted in VersionDrawer's Output section
  * alongside the original-file thumbnail link.
  *
- * Phase 14 Plan 04 (Task 2) primitive. Mirrors the StatusPill / WarningPill
+ * Mirrors the StatusPill / WarningPill
  * structural shape (rounded-full, uppercase tracking, --color-bg text on
  * a saturated CSS-token background) — three intent variants:
  *
@@ -12,20 +12,20 @@
  *   - unknown  → muted   (--color-fg-muted)          "C2PA: pending"
  *
  * `unsigned` reasons are translated via a known-codes map (the 6 enum values
- * Plan 14-03 emits, plus a defensive 'unknown' fallback). Unknown / unmapped
+ * the engine emits, plus a defensive 'unknown' fallback). Unknown / unmapped
  * reason codes pass through a character-class sanitization filter
  * `replace(/[^\w ]/g, '')` so a malicious or unexpected code can never carry
- * HTML / script content into the rendered DOM (T-14-11 mitigation;
+ * HTML / script content into the rendered DOM (XSS mitigation;
  * defence-in-depth on top of Preact's automatic text-node escaping).
  *
- * SECURITY — T-14-11: badge text is rendered via Preact JSX text
+ * SECURITY — XSS: badge text is rendered via Preact JSX text
  * interpolation. We do NOT use dangerouslySetInnerHTML. All children are
  * TEXT_NODEs. Even if the server-trusted enum is bypassed and a malicious
  * reason string reaches this component, the character-class filter strips
  * angle brackets / quotes / slashes / equals BEFORE rendering, AND Preact's
  * default text-node behavior escapes any leftovers as text content.
  *
- * v1.1 scope reduction (Plan 14-03 Concern #2 carried forward): the badge is
+ * v1.1 scope reduction: the badge is
  * the ONLY surfacing of signing state in the dashboard. There is NO sidecar
  * download link in v1.1 — c2pa-node v0.5.26 has no public sidecar API.
  * EXR/PSD outputs surface as `unsigned (unsupported format)`.
@@ -38,7 +38,7 @@ export type C2paBadgeStatus =
 
 /**
  * Translation map: server-trusted enum → human-readable text. Mirrors the 6
- * status_reason codes Plan 14-03's Engine.signOutput emits (Concern #2 v1.1
+ * status_reason codes Engine.signOutput emits (v1.1 scope
  * reduction: NO `sidecar` field; EXR/PSD surface as `unsupported_format`).
  *
  * Unknown codes fall through to the character-class sanitization filter
@@ -54,7 +54,7 @@ const REASON_TEXT: Record<string, string> = {
 };
 
 /**
- * T-14-11 sanitization filter for unmapped / unknown reason codes. Strips any
+ * XSS sanitization filter for unmapped / unknown reason codes. Strips any
  * character that is not a word character or space. Even a code containing
  * `<script>alert(1)</script>` becomes `scriptalert1script` — no angle
  * brackets, no quotes, no slashes, no equals. JSX text interpolation also
@@ -93,7 +93,7 @@ export function C2paBadge({ status }: C2paBadgeProps) {
       </span>
     );
   }
-  // unsigned — translate known codes, sanitize unknown ones (T-14-11).
+  // unsigned — translate known codes, sanitize unknown ones (XSS defence).
   const translated = REASON_TEXT[status.reason];
   const text = translated ?? sanitizeUnknownReason(status.reason);
   // The full label flows through JSX text interpolation — Preact escapes as

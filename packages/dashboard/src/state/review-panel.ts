@@ -1,16 +1,16 @@
 /**
- * Phase 22 — review panel + A/B compare modal signal bag (D-18).
+ * Review panel + A/B compare modal signal bag (D-18).
  *
  * Per-domain signal module: declares the 6 module-singleton signals the
- * Phase 22 review surface keys on. Module pattern mirrors state/shot-grid.ts
- * (Phase 21 convention — `signal<T>(initial)` + JSDoc per export + zero
+ * review surface keys on. Module pattern mirrors state/shot-grid.ts
+ * (`signal<T>(initial)` + JSDoc per export + zero
  * src/ traversals for architecture-purity).
  *
  * Landmines preserved:
- *  - `onShotStatusChanged` STAYS in state/shot-grid.ts (RESEARCH A7).
+ *  - `onShotStatusChanged` STAYS in state/shot-grid.ts.
  *    Reference equality of the handler matters for the SSE off-subscription
  *    cleanup — relocating it would break that.
- *  - Review-panel state is NEVER mirrored into the URL (UI-SPEC L728-732).
+ *  - Review-panel state is NEVER mirrored into the URL.
  *    Reload returns to the default view; overlays are session-local.
  *
  * Architecture-purity (D-WEBUI-31): no server-tree imports;
@@ -30,8 +30,8 @@ import type { ReviewAction } from '../types/review-panel.js';
  * D-02 mutex discriminator — selects which right-rail overlay is mounted.
  *
  * `null` = no overlay open. `'version'` = VersionDrawer mounted (existing
- * Phase 21 surface; the companion signal is `selectedVersionId` in
- * state/versions.ts). `'review'` = ReviewPanel mounted (Phase 22; the
+ * surface; the companion signal is `selectedVersionId` in
+ * state/versions.ts). `'review'` = ReviewPanel mounted (the
  * companion signal is `activeReviewShotId` below).
  *
  * Mutation: only via OverlayHost's exported helpers. Direct mutation from
@@ -45,7 +45,7 @@ export const activeOverlay = signal<'review' | 'version' | null>(null);
  * Companion signal to `activeOverlay === 'review'`. Holds the shot id whose
  * review panel is open. MUST be non-null whenever activeOverlay='review';
  * OverlayHost guards via console.warn + null render otherwise (defensive,
- * never throws — D-decision: warn-on-inconsistency keeps the surface alive).
+ * never throws — warn-on-inconsistency keeps the surface alive).
  */
 export const activeReviewShotId = signal<string | null>(null);
 
@@ -59,7 +59,7 @@ export const activeReviewShotId = signal<string | null>(null);
  * Shape `{ a, b }` (not a tuple) lets test mutations target each side
  * independently without re-creating the whole record. LRU caching of the
  * thumbnail Image() objects across (a, b) tuples is D-14's secondary
- * decision and lives inside ReviewTimeline (22-07), NOT here.
+ * decision and lives inside ReviewTimeline, NOT here.
  */
 export const compareSelection = signal<{
   a: string | null;
@@ -84,7 +84,7 @@ export const compareModalOpen = signal<boolean>(false);
  * ActionButton as `aria-busy` and disables siblings. Null when no action
  * is pending (ready to accept the next click).
  *
- * Mutated by ReviewActionBar (22-05) immediately before the optimistic
+ * Mutated by ReviewActionBar immediately before the optimistic
  * status flip, cleared after the PATCH resolves OR rejects.
  */
 export const actionInFlight = signal<ReviewAction | null>(null);

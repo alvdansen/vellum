@@ -1,18 +1,18 @@
 /**
- * Phase 18 / Plan 18-04 — sort-related dashboard helpers.
+ * Sort-related dashboard helpers.
  *
  * Surface (9 exports + SortOption type):
  *   - parseSortValue / serializeSortValue — string ↔ {field, dir} round-trip
- *   - hydrateSortState — URL → localStorage → defaults reconciliation (D-13/D-15)
+ *   - hydrateSortState — URL → localStorage → defaults reconciliation
  *   - persistGridSort / persistTreeSort — write signal + localStorage + URL
- *   - setBoundedLocalStorageEntry — companion-key LRU primitive (D-25)
- *   - compareTreeNodes — client-side tree re-sort comparator (D-discretion)
+ *   - setBoundedLocalStorageEntry — companion-key LRU primitive
+ *   - compareTreeNodes — client-side tree re-sort comparator
  *   - GRID_SORT_OPTIONS / TREE_SORT_OPTIONS — UI dropdown configurations
  *
  * Architecture-purity (D-WEBUI-31): zero imports from src/. Types come from
  * the local mirror at './sortTypes.js'.
  *
- * DEVIATION 1 (this plan; lockstep with DEVIATION 2 in src/store/sort.ts):
+ * DEVIATION 1 (lockstep with DEVIATION 2 in src/store/sort.ts):
  *   GRID_SORT_OPTIONS has 3 entries (Latest, Oldest, Version ↓). 'Name A→Z'
  *   is DROPPED from grid options because the `versions` table has no `name`
  *   column (verified at src/store/schema.ts:66-102; the engine SortField
@@ -22,12 +22,12 @@
  *   columns.
  *
  * Security model (defence-in-depth at every untrusted-input boundary):
- *   - parseSortValue NEVER throws — D-16 graceful-fallback contract
+ *   - parseSortValue NEVER throws — graceful-fallback contract
  *   - hydrateSortState wraps URL parse + localStorage read in try/catch
  *   - persistGridSort / persistTreeSort silently fall through on quota
- *     exceeded (Pitfall E from 18-RESEARCH.md; matches ThemeToggle precedent)
+ *     exceeded (matches the ThemeToggle precedent)
  *   - All localStorage values are JSON-validated against the same whitelist
- *     used at the URL parse boundary (D-24 + D-16 unified)
+ *     used at the URL parse boundary
  */
 
 import type {
@@ -58,13 +58,13 @@ const HIERARCHY_FIELDS: ReadonlySet<HierarchySortField> = new Set([
 const DIRS: ReadonlySet<SortDirection> = new Set(['asc', 'desc']);
 
 // ============================================================================
-// SortOption type + GRID/TREE option arrays (UI-SPEC §"Copywriting Contract")
+// SortOption type + GRID/TREE option arrays
 // ============================================================================
 
 export interface SortOption<F extends string = string> {
   /** Stable id used as localStorage value AND URL query param value. Format: 'field:dir'. */
   id: string;
-  /** User-facing label (verbatim per UI-SPEC). Plain text — no HTML. */
+  /** User-facing label (locked verbatim). Plain text — no HTML. */
   label: string;
   /** Field portion of the id — exposed for type-safe consumers. */
   field: F;
@@ -89,7 +89,7 @@ export const GRID_SORT_OPTIONS: ReadonlyArray<SortOption<SortField>> = [
 ];
 
 /**
- * TREE_SORT_OPTIONS — 4 entries verbatim per D-07.
+ * TREE_SORT_OPTIONS — 4 entries, locked verbatim.
  * Default (first entry) is name:asc — matches DEFAULT_HIERARCHY_SORT.
  */
 export const TREE_SORT_OPTIONS: ReadonlyArray<SortOption<HierarchySortField>> = [
@@ -105,7 +105,7 @@ export const TREE_SORT_OPTIONS: ReadonlyArray<SortOption<HierarchySortField>> = 
 
 /**
  * Parse 'field:dir' against the passed-in field whitelist. Returns null on
- * any failure path (NEVER throws). D-16 graceful-fallback contract.
+ * any failure path (NEVER throws). Graceful-fallback contract.
  *
  * Validates structurally: presence of colon, field membership in whitelist,
  * dir membership in {asc, desc}. Non-string inputs (null/undefined) collapse
@@ -135,14 +135,14 @@ export function serializeSortValue(s: { field: string; dir: SortDirection }): st
 }
 
 // ============================================================================
-// localStorage scope keys (D-23 — global per-pane, NOT per-shot)
+// localStorage scope keys (global per-pane, NOT per-shot)
 // ============================================================================
 
 const STORAGE_PREFIX = 'vellum';
 const GRID_SORT_KEY = 'sort:grid';
 const TREE_SORT_KEY = 'sort:tree';
 const LRU_KEY_SUFFIX = '_lru';
-const LRU_MAX_KEYS = 50; // D-25 forward-compat cap
+const LRU_MAX_KEYS = 50; // forward-compat cap
 
 // ============================================================================
 // hydrateSortState — pure state machine (URL → localStorage → defaults)
@@ -152,7 +152,7 @@ const LRU_MAX_KEYS = 50; // D-25 forward-compat cap
  * Read JSON from localStorage and validate against the field whitelist.
  * Returns null on missing / invalid / parse-error / localStorage-unavailable.
  *
- * D-24 invariant: localStorage value shape is JSON `{ field, dir }`; both
+ * Invariant: localStorage value shape is JSON `{ field, dir }`; both
  * fields validated against the same whitelist used at the URL boundary.
  * Invalid → null → caller falls back to default + overwrites (Test 11).
  */
@@ -186,25 +186,25 @@ function readLocalStorageSort<F extends string>(
 }
 
 /**
- * SORT-03 hydrate: URL wins (D-13), else localStorage (validated), else default.
+ * Hydrate: URL wins, else localStorage (validated), else default.
  *
  * Side-effect rules:
  *   - URL had valid value → leave localStorage alone, no URL write (already explicit).
  *   - URL missing/invalid AND localStorage valid → use localStorage AND
- *     write URL via replaceState (D-15 — URL always shows current sort).
+ *     write URL via replaceState (the URL always shows the current sort).
  *   - Both missing/invalid → use default AND write both URL + localStorage.
  *
- * D-13: URL-wins-doesn't-touch-localStorage — sharing a URL with a sort
+ * URL-wins-doesn't-touch-localStorage — sharing a URL with a sort
  * tweak does NOT permanently rewrite the recipient's persistent sort
  * preference; their localStorage stays untouched.
  *
- * D-14: history.replaceState (NOT pushState) — sort is a view setting, not
+ * history.replaceState (NOT pushState) — sort is a view setting, not
  * a navigation event; back button must not replay sort toggles.
  *
- * D-15: URL is always explicit — replaceState fills in any missing param so
+ * URL is always explicit — replaceState fills in any missing param so
  * deep-link-back-to-page-with-sort-X always works.
  *
- * Call ONCE on dashboard mount (HomeView useEffect — Plan 18-05 wires this).
+ * Call ONCE on dashboard mount (a HomeView useEffect wires this).
  */
 export function hydrateSortState(): {
   gridSort: VersionSort;
@@ -252,7 +252,7 @@ export function hydrateSortState(): {
   const finalGrid: VersionSort = urlGrid ?? lsGrid ?? DEFAULT_VERSION_SORT;
   const finalTree: HierarchySort = urlTree ?? lsTree ?? DEFAULT_HIERARCHY_SORT;
 
-  // Side-effect: ensure URL is explicit (D-15) — write any missing param.
+  // Side-effect: ensure URL is explicit — write any missing param.
   if (urlObj && typeof history !== 'undefined') {
     let urlChanged = false;
     if (!urlGrid) {
@@ -273,7 +273,7 @@ export function hydrateSortState(): {
   }
 
   // Side-effect: write defaults to localStorage when no localStorage value
-  // existed AND no URL value either (genuine first-time visitor). D-13: URL
+  // existed AND no URL value either (genuine first-time visitor). URL
   // wins doesn't touch localStorage; rewrite ONLY when LS was missing/invalid.
   if (!urlGrid && !lsGrid) {
     setBoundedLocalStorageEntry(
@@ -360,7 +360,7 @@ export function persistTreeSort(next: HierarchySort): void {
 }
 
 // ============================================================================
-// setBoundedLocalStorageEntry — companion-key LRU primitive (D-25)
+// setBoundedLocalStorageEntry — companion-key LRU primitive
 // ============================================================================
 
 /**
@@ -368,13 +368,13 @@ export function persistTreeSort(next: HierarchySort): void {
  * LRU eviction. Companion key `${prefix}:_lru` holds an ordered string[] of
  * keys (most-recent first). When count > maxKeys, evict from the tail.
  *
- * D-25 forward-compat: Phase 19 may add `summary:` keys; v1.3 may add
+ * Forward-compat: future features may add `summary:` keys or
  * per-shot scope keys. The cap=50 default stops localStorage growth at
  * any single prefix while preserving the most-recently-used N entries.
  *
  * Edge cases (all silent — never throws):
  *   - localStorage unavailable (privacy mode, server-side) → silent no-op
- *   - Quota exceeded mid-write → silent fall-through (Pitfall E)
+ *   - Quota exceeded mid-write → silent fall-through
  *   - Corrupt _lru companion → treated as empty, rebuilt
  *   - Setting the same key repeatedly → moves to front, no duplication
  */
@@ -419,12 +419,12 @@ export function setBoundedLocalStorageEntry(
     localStorage.setItem(fullKey, value);
     localStorage.setItem(lruKey, JSON.stringify(lruList));
   } catch {
-    // quota / privacy mode — silent (Pitfall E)
+    // quota / privacy mode — silent
   }
 }
 
 // ============================================================================
-// compareTreeNodes — client-side tree re-sort comparator (D-discretion)
+// compareTreeNodes — client-side tree re-sort comparator
 // ============================================================================
 
 /**
@@ -434,9 +434,9 @@ export function setBoundedLocalStorageEntry(
  *
  * Tradeoff vs server SQLite ORDER BY: SQLite default collation (BINARY)
  * may diverge from localeCompare for non-ASCII strings. For typical ASCII
- * project names, results match. Open Question #4 in 18-RESEARCH.md flagged
- * this; researcher recommendation accepted: ship localeCompare; revisit
- * if real divergence surfaces in v1.3.
+ * project names, results match. Known and accepted divergence:
+ * ship localeCompare; revisit
+ * if real divergence surfaces.
  *
  * Returns a negative number if a < b, positive if a > b, zero if equal.
  * Suitable for direct use as the comparator in Array.prototype.sort().

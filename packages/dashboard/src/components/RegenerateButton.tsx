@@ -1,13 +1,13 @@
 /**
- * RegenerateButton — Phase 19 / Plan 19-06 SUM-04 thin presentational button
- * with a 1Hz cooldown countdown.
+ * RegenerateButton — thin presentational button with a 1Hz cooldown
+ * countdown.
  *
- * Architecture-purity (D-WEBUI-31): zero imports from `src/`. The component
+ * Architecture-purity: zero imports from `src/`. The component
  * imports only from sibling dashboard modules (../lib/copy.js) and from
  * `preact/hooks` for the countdown tick. Mirrors the
  * SortDropdown.tsx / WarningPill.tsx file-shape precedent.
  *
- * Three render states (UI-SPEC §"<RegenerateButton/> API contract"):
+ * Three render states:
  *   - default  (regenerateAvailableAtMs <= now, !isFetching) → "Regenerate"
  *   - cooldown (regenerateAvailableAtMs > now, !isFetching)  → "Regenerate (Ns)"
  *                                                              tabular-nums
@@ -23,11 +23,11 @@
  *     tab order, blocks click events).
  *   - aria-label is REQUIRED — caller passes regenerateButtonAriaLabel(label).
  *   - aria-busy='true' during isFetching — assistive tech announces the
- *     "doing work" state (UI-SPEC accessibility contract).
+ *     "doing work" state.
  *   - prefers-reduced-motion: the 1Hz tick is text content, not animation;
- *     does not violate the reduced-motion contract (per UI-SPEC).
+ *     does not violate the reduced-motion contract.
  *
- * Layout-stability (UI-SPEC + D-FB-6 sibling): `tabular-nums` Tailwind class
+ * Layout-stability: `tabular-nums` Tailwind class
  * keeps the (Ns) digit width fixed across countdown ticks so the button does
  * not jitter as the countdown progresses.
  */
@@ -90,7 +90,7 @@ export function RegenerateButton({
       : 0;
 
   // Fetching wins over cooldown — an active fetch means the cooldown already
-  // passed (UI-SPEC button-state precedence).
+  // passed.
   const isDisabled = isFetching || cooldownSeconds > 0;
   const label = isFetching
     ? REGENERATE_BUTTON_FETCHING
@@ -98,8 +98,7 @@ export function RegenerateButton({
       ? regenerateButtonCooldownLabel(cooldownSeconds)
       : REGENERATE_BUTTON_LABEL;
 
-  // Match View Diff button styling verbatim per UI-SPEC color/spacing matrix
-  // (see VersionDrawer.tsx:218-222).
+  // Match View Diff button styling verbatim (see VersionDrawer.tsx:218-222).
   const baseClass =
     'rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-normal tabular-nums text-[var(--color-bg)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] disabled:opacity-50';
   const composed = className ? `${baseClass} ${className}` : baseClass;

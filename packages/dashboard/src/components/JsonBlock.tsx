@@ -3,13 +3,13 @@
  *
  * Pure component: props-in, no callbacks (read-only display).
  *
- * SECURITY — T-5-06 (XSS mitigation):
+ * SECURITY (XSS mitigation):
  *   Data is rendered as a React/Preact text child via {JSON.stringify(data, null, 2)}.
  *   Preact's virtual DOM auto-escapes string children as text nodes — no raw HTML
  *   parsing. dangerouslySetInnerHTML is NEVER used. Verified by grep in CI.
  *
  * This component deliberately ships no syntax highlighting in the primitive layer.
- * Richer highlighting (prism/shiki/hand-rolled tokenizer per UI-SPEC.md) can be
+ * Richer highlighting (prism/shiki/hand-rolled tokenizer) can be
  * added in a later plan without touching any call site — the contract stays
  * "JSON.stringify in a <pre>".
  */

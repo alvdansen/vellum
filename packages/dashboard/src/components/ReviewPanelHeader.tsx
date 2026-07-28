@@ -1,12 +1,12 @@
 /**
- * Phase 22 / Plan 22-05 — ReviewPanelHeader.
+ * ReviewPanelHeader.
  *
  * Top strip of the right-rail review panel: title prefix + shot name +
  * presentational ShotStatusPill + close X. SSE updates to the shot's
  * status propagate via the parent's currentStatus prop (parent reads
  * `shotGrid.value.shots.find(...)` so the prop refreshes on every render).
  *
- * Architecture-purity (D-WEBUI-31): only sibling dashboard imports.
+ * Architecture-purity: only sibling dashboard imports.
  */
 
 import type { JSX } from 'preact';

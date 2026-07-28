@@ -3,7 +3,7 @@
  *   (workspace → project → sequence → shot)
  *
  * Pure component: props-in, callbacks-out. No fetch, no signal reads, no side
- * effects. Parent (Plan 10 views) passes the workspaces array + selection +
+ * effects. Parent views pass the workspaces array + selection +
  * expand state + handlers.
  *
  * Expand state is lifted to the parent via `expandedIds: Set<string>` +
@@ -16,18 +16,18 @@
  *
  * Type contract:
  *   - Minimal structural types declared inline below. The real hierarchy types
- *     live in the data layer (Plan 08) — our types are structurally compatible
+ *     live in the data layer — our types are structurally compatible
  *     via TypeScript duck-typing.
  *
- * Phase 17 / Plan 17-05 — depth=3 shot rows gain a leading thumbnail slot
- * (D-13). When TreeShot.latestCompletedVersion is provided → real thumb;
- * when absent → SkeletonThumbnail width=80 height=45 fallback (D-14/D-15).
- * Sequence + Project + Workspace rows stay text-only (D-16 LOCKED — exactly
+ * Depth=3 shot rows carry a leading thumbnail slot.
+ * When TreeShot.latestCompletedVersion is provided → real thumb;
+ * when absent → SkeletonThumbnail width=80 height=45 fallback.
+ * Sequence + Project + Workspace rows stay text-only (exactly
  * one thumbnail-rendering caller in this file, in the shot.map() context).
  *
- * Phase 21 / Plan 21-03 — sequence rows gain a TRAILING grid-icon affordance
- * (D-01: per-sequence; D-02: click flips activeView via parent callback;
- * D-05: active sequence visualized via aria-current="page" + accent fill).
+ * Sequence rows carry a TRAILING grid-icon affordance
+ * (per-sequence; click flips activeView via parent callback;
+ * active sequence visualized via aria-current="page" + accent fill).
  * Only the depth=2 SequenceNode passes a non-empty `trailing` prop to TreeRow
  * (workspace/project/shot rows remain unchanged). The icon is hidden when
  * onOpenGrid is undefined (graceful absence — keeps the tree pure for
@@ -41,7 +41,7 @@
  *   - Active grid-icon: aria-current="page" (WCAG-blessed "you are here";
  *     NOT aria-selected which is reserved for listbox semantics)
  *
- * SECURITY — T-5-06: Workspace/project/sequence/shot names are rendered as
+ * SECURITY: Workspace/project/sequence/shot names are rendered as
  * JSX text children (auto-escaped by Preact). dangerouslySetInnerHTML is
  * not used.
  */
@@ -63,11 +63,11 @@ export interface TreeShot {
   id: string;
   name: string;
   /**
-   * Phase 17 / Plan 17-05 — latest completed version under this shot. Drives
-   * the leading thumb slot at size='sm' per D-13. Undefined → SkeletonThumbnail
-   * fallback (D-14/D-15). HomeView populates this from the local versions
+   * Latest completed version under this shot. Drives
+   * the leading thumb slot at size='sm'. Undefined → SkeletonThumbnail
+   * fallback. HomeView populates this from the local versions
    * cache; shots without loaded versions render the skeleton (graceful
-   * degradation per UI-SPEC §"Empty states").
+   * degradation).
    */
   latestCompletedVersion?: { id: string; label: string; status: 'complete' };
 }
@@ -99,7 +99,7 @@ export interface TreeSidebarProps {
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
   /**
-   * Phase 21 / Plan 21-03 (D-01, D-02) — when provided, every sequence row
+   * When provided, every sequence row
    * gets a trailing grid-icon button; clicking it invokes onOpenGrid(seqId)
    * (with `e.stopPropagation` so the row-expand chevron does NOT also fire).
    * When undefined, no grid icons render — keeps the tree pure for consumers
@@ -107,7 +107,7 @@ export interface TreeSidebarProps {
    */
   onOpenGrid?: (sequenceId: string) => void;
   /**
-   * Phase 21 / Plan 21-03 (D-05) — the sequence id whose grid is currently
+   * The sequence id whose grid is currently
    * displayed in the parent's ShotGridView (or undefined / null when the
    * shot-grid view is not active). The matching sequence's grid icon
    * receives aria-current="page" and the accent-fill class.
@@ -273,7 +273,7 @@ function SequenceNode({
 }: SequenceNodeProps) {
   const expanded = expandedIds.has(sequence.id);
   const hasChildren = !!sequence.shots?.length;
-  // Phase 21 — D-05: active state when the parent's ShotGridView is currently
+  // Active state when the parent's ShotGridView is currently
   // displaying THIS sequence. Drives both aria-current and the accent fill.
   const isCurrentGrid = currentGridSequenceId === sequence.id;
   return (
@@ -286,13 +286,13 @@ function SequenceNode({
         isSelected={false}
         onClick={() => onToggleExpand(sequence.id)}
         onToggle={() => onToggleExpand(sequence.id)}
-        // Phase 21 — D-01: grid-icon affordance (sequence rows only).
+        // Grid-icon affordance (sequence rows only).
         trailing={
           onOpenGrid ? (
             <button
               type="button"
               onClick={(e) => {
-                // D-02: stopPropagation prevents the row's onClick
+                // stopPropagation prevents the row's onClick
                 // (onToggleExpand) from firing when the grid icon is clicked.
                 e.stopPropagation();
                 onOpenGrid(sequence.id);
@@ -353,14 +353,14 @@ interface TreeRowProps {
   onClick: () => void;
   onToggle: () => void;
   /**
-   * Phase 17 / Plan 17-05 — optional leading thumbnail slot. Sequence /
-   * Project / Workspace TreeRow callers omit this prop (D-16 LOCKED — only
+   * Optional leading thumbnail slot. Sequence /
+   * Project / Workspace TreeRow callers omit this prop (only
    * the depth=3 shot-row caller passes it). When undefined, the slot is
    * not rendered and the row stays text-only.
    */
   thumbnail?: VNode;
   /**
-   * Phase 21 / Plan 21-03 — optional trailing slot (mirrors `thumbnail` for
+   * Optional trailing slot (mirrors `thumbnail` for
    * the right-edge affordance). Only SequenceNode passes a non-empty trailing
    * (the grid-icon button). Workspace/Project/Shot rows leave this undefined.
    * Rendered with `ml-auto` so it always sits flush against the right edge

@@ -1,6 +1,6 @@
 // packages/dashboard/src/state/active-generations.ts
 //
-// @preact/signals-backed store for the Active Generations panel (Plan 05-10).
+// @preact/signals-backed store for the Active Generations panel.
 // Driven by two SSE event handlers that the dispatcher in ../lib/events.ts
 // will wire via onSseEvent('version.created', onVersionCreated) +
 // onSseEvent('version.status_changed', onVersionStatusChanged).
@@ -8,8 +8,6 @@
 // Architecture-purity invariant (D-WEBUI-31): this file performs zero
 // server-tree relative-import traversals. Uses dashboard-local payload types
 // from ../types/events.ts.
-//
-// Plan 05-08 Task 2 (GREEN).
 
 import { signal } from '@preact/signals';
 import type {
@@ -41,10 +39,10 @@ export const activeGenerations = signal<ActiveGeneration[]>([]);
  * Handler for the 'version.created' SSE event. Appends a new queued row.
  *
  * Idempotency note: this implementation does NOT dedupe by versionId. The
- * plan behavior contract asserts "two onVersionCreated calls -> two entries"
+ * behavior contract asserts "two onVersionCreated calls -> two entries"
  * (see tests) so the store trusts the server to not re-emit 'version.created'
  * for the same versionId. If duplicate frames become an issue at runtime, a
- * follow-up plan can add a dedupe guard without changing the public API.
+ * follow-up can add a dedupe guard without changing the public API.
  */
 export function onVersionCreated(payload: VersionCreatedPayload): void {
   activeGenerations.value = [

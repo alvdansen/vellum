@@ -1,5 +1,5 @@
 /**
- * Phase 18 / Plan 18-04 — <LoadMoreButton/> pagination affordance.
+ * <LoadMoreButton/> — pagination affordance.
  *
  * Pure presentational component owning the "Load N more (M remaining)" surface
  * + loading-state opacity + disabled-while-fetching + inline error pill on
@@ -9,8 +9,7 @@
  * when `remaining === 0` or `next_cursor === null`. The component itself does
  * NOT receive a "should render?" prop; absence is the parent's contract.
  *
- * UI-SPEC §"<LoadMoreButton/> API contract" (lines 297-345) is the source of
- * truth for the API + render contract:
+ * API + render contract:
  *   - Default (remaining > 0, !isFetching, !errorMessage):
  *       <button>Load {min(pageSize, remaining)} more
  *         <span class="num">({remaining} remaining)</span>
@@ -23,19 +22,19 @@
  *         <div role="alert">…errorMessage… · <button>Retry</button></div>
  *       </div>
  *
- * Design-token reuse (UI-SPEC §"Color usage matrix"):
+ * Design-token reuse:
  *   - Default button: --color-surface bg, --color-fg text, --color-border
  *   - Loading: opacity-50 + cursor-not-allowed
  *   - Error pill: --color-status-failed bg + --color-bg fg + --color-border outline
- *     (mirrors WarningPill design-token-reuse pattern from Phase 12)
+ *     (mirrors the WarningPill design-token-reuse pattern)
  *
- * SECURITY (T-18-03 — out of scope for this component, see SortDropdown.tsx
+ * SECURITY (XSS — out of scope for this component, see SortDropdown.tsx
  * header for full notes): the errorMessage prop is passed by the parent —
- * v1.2 fixes its origin to LOAD_MORE_ERROR_PREFIX_FAILED / NETWORK constants
+ * its origin is fixed to LOAD_MORE_ERROR_PREFIX_FAILED / NETWORK constants
  * + server-emitted string, both controlled. Preact text-node interpolation
  * auto-escapes. NO dangerouslySetInnerHTML.
  *
- * Architecture-purity (D-WEBUI-31): zero imports from src/. Imports only
+ * Architecture-purity: zero imports from src/. Imports only
  * from sibling lib/copy.js for the verbatim copy strings.
  */
 
@@ -53,7 +52,7 @@ export interface LoadMoreButtonProps {
   remaining: number;
   /**
    * Page size for the next fetch. Default 20 per CLAUDE.md
-   * "Paginate all list queries (default 20)" + D-18.
+   * "Paginate all list queries (default 20)".
    */
   pageSize?: number;
   /**
@@ -63,8 +62,7 @@ export interface LoadMoreButtonProps {
   onClick: () => void;
   /**
    * True while the next-page fetch is in flight. Disables the button +
-   * shows loading state (opacity-50 + 'Loading…' label per researcher
-   * recommendation in UI-SPEC).
+   * shows loading state (opacity-50 + 'Loading…' label).
    */
   isFetching: boolean;
   /**

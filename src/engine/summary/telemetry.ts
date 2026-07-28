@@ -1,27 +1,27 @@
 /**
- * Phase 19 — D-PRIV-3 + AI-SPEC §7 production monitoring telemetry.
+ * Production monitoring telemetry for the summary feature.
  *
- * Architecture-purity (extends Plan 01 grep guards): this file imports zero
+ * Architecture-purity (grep-guard enforced): this file imports zero
  * SDK / DB-driver / ORM / HTTP-server packages. Pure helper emitting
- * structured log lines via console.error (matches Phase 14 c2pa-config
+ * structured log lines via console.error (matches the c2pa-config
  * boot-log convention). The architecture-purity test enforces the invariant
  * by file-level grep — the package names ARE intentionally absent from this
  * docstring so the assertion reads cleanly.
  *
- * D-PRIV-3 strict contract — counts + timings ONLY. NEVER include prompt
+ * Strict privacy contract — counts + timings ONLY. NEVER include prompt
  * text, response text, summary_text, prompt_positive, prompt_negative,
  * user_prompt, system_prompt, response, or response_text fields.
  * Multi-encoding leak scan (UTF-8 / UTF-16LE / UTF-16BE / base64) applies
- * to every emit — extends the v1.1 cross-cutting invariant from
+ * to every emit — extends the cross-cutting invariant from
  * src/__tests__/c2pa-redaction-e2e.test.ts:76-92.
  *
- * Sampling per AI-SPEC §7 Smart Sampling Strategy:
+ * Sampling strategy:
  *   - outcome='fallback' → emit in full (diagnostic surface)
  *   - outcome='live'     → emit full metadata (cost-projection flywheel)
  *   - outcome='cache_hit' → 1% deterministic sample
  *     (hash(version_id + timestamp_minute) mod 100 == 0)
  *
- * The flattenAnthropicError helper (Plan 04 anthropic-client.ts) is the
+ * The flattenAnthropicError helper (anthropic-client.ts) is the
  * upstream defence on error paths — telemetry NEVER receives raw
  * error.message strings. The reason field is a structured outcome enum
  * (e.g., 'circuit_open', 'validation_failed'), not free-form text.
@@ -95,19 +95,19 @@ export function assertNoBannedFields(event: Record<string, unknown>): void {
 }
 
 /**
- * Emit a structured telemetry event to stderr. Counts + timings only per
- * D-PRIV-3 — the contract is enforced by:
+ * Emit a structured telemetry event to stderr. Counts + timings only —
+ * the privacy contract is enforced by:
  *   (1) the SummaryTelemetryEvent TypeScript type (compile-time gate)
  *   (2) assertNoBannedFields runtime check (defence-in-depth gate)
  *   (3) multi-encoding leak scan over the JSON-serialized payload
  *       (catches an API-key fragment smuggled into a string field)
  *
- * Sampling rules (AI-SPEC §7):
+ * Sampling rules:
  *   outcome='fallback'  → always emit (diagnostic surface)
  *   outcome='live'      → always emit (cost-projection flywheel)
  *   outcome='cache_hit' → emit on 1% deterministic sample
  *
- * Output format: `vellum: <json>` — matches Phase 14 c2pa-config
+ * Output format: `vellum: <json>` — matches the c2pa-config
  * boot-log convention so a single grep over stderr archives covers both.
  *
  * @param event the structured telemetry event
@@ -152,7 +152,7 @@ export function logSummaryEvent(
     }
   }
 
-  // Emit to console.error — matches Phase 14 c2pa-config boot-log
+  // Emit to console.error — matches the c2pa-config boot-log
   // convention. The vellum prefix marks this as engine-layer telemetry.
   console.error(`vellum: ${payload}`);
 }

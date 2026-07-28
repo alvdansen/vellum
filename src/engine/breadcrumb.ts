@@ -4,17 +4,16 @@ import type { BreadcrumbEntry, Breadcrumb, EntityType } from '../types/hierarchy
 import { TypedError } from './errors.js';
 import { versionLabel } from '../utils/outputs.js';
 
-/** Breadcrumb text separator — locked by D-22. */
+/** Breadcrumb text separator — locked; changing it breaks the breadcrumb text contract. */
 const SEP = ' > ';
 
 /**
  * Resolves breadcrumb context for any hierarchy entity by walking the parent chain
- * leaf→root. Phase 1: workspace/project/sequence/shot (4 levels). Phase 2: extends
+ * leaf→root. Originally workspace/project/sequence/shot (4 levels); later extended
  * with a `'version'` leaf that walks versions → shots → sequences → projects →
- * workspaces (5 levels). 5-entry breadcrumb text pattern: 'ws > proj > seq > shot > v001'
- * (D-GEN-05).
+ * workspaces (5 levels). 5-entry breadcrumb text pattern: 'ws > proj > seq > shot > v001'.
  *
- * Breadcrumb resolution must live here (D-35) — never in tools, never in repos.
+ * Breadcrumb resolution must live here — never in tools, never in repos.
  */
 export class BreadcrumbResolver {
   constructor(

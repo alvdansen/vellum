@@ -1,7 +1,7 @@
 /**
  * VersionDrawer — right-rail drawer rendering the selected version's detail.
  *
- * Per must-have contract (Plan 05-10 frontmatter):
+ * Must-have contract:
  *   "VersionDrawer renders version timeline + a provenance section + a
  *    'View Diff' button"
  *
@@ -10,14 +10,14 @@
  *   - timeline section: created / completed timestamps (the version's own
  *     lifecycle events; fills "timeline" contract at a single-version scope)
  *   - provenance section: events array from GET /api/versions/:id/provenance,
- *     each rendered via JsonBlock (Plan 09 primitive — auto-escaped text node)
+ *     each rendered via JsonBlock (auto-escaped text node)
  *   - when View Diff is clicked: opens a DiffDrawer with the previous version
  *     (by version_number in the shot's versions list) as "before" and this
  *     version as "after". Also lazy-fetches the structured diff summary.
  *
- * Drawer width locked via --drawer-version-width (560px) per UI-SPEC.md.
+ * Drawer width locked via --drawer-version-width (560px).
  *
- * SECURITY — T-5-06: all dynamic content flows through JSX text children or
+ * SECURITY: all dynamic content flows through JSX text children or
  * through JsonBlock (which wraps in <pre>{JSON.stringify(...)}</pre>). No
  * dangerouslySetInnerHTML. Provenance events never interpolate into HTML.
  */
@@ -53,8 +53,8 @@ import type { Version } from '../types/entities.js';
 import { versionLabel, normalizeStatus } from '../lib/shape.js';
 
 /**
- * Shape of the /api/versions/:id/provenance JSON response (Plan 08's
- * getProvenance returns `unknown`; we narrow to the documented shape here).
+ * Shape of the /api/versions/:id/provenance JSON response (getProvenance
+ * returns `unknown`; we narrow to the documented shape here).
  * `events` is the chronological ProvenanceEvent array; each element is an
  * opaque record the dashboard renders verbatim via JsonBlock.
  */
@@ -64,14 +64,14 @@ interface ProvenanceResponse {
 }
 
 /**
- * Phase 12 — DEMO-03 (D-CTX-4) divergence shape carried on the diff response
- * envelope when version B is reproduce-lineage. `null` means either "not a
- * reproduce-lineage diff" or "bytes match AND no warnings" — the dashboard
- * renders nothing in that case (criterion #4).
+ * Divergence shape carried on the diff response envelope when version B is
+ * reproduce-lineage. `null` means either "not a reproduce-lineage diff" or
+ * "bytes match AND no warnings" — the dashboard renders nothing in that
+ * case.
  *
  * The shape is duplicated here verbatim from the engine layer's
- * src/types/provenance.ts::ReproductionDivergence per D-WEBUI-31 (no
- * server-tree imports under packages/dashboard/src/**).
+ * src/types/provenance.ts::ReproductionDivergence — no server-tree imports
+ * are allowed under packages/dashboard/src/**.
  */
 interface ReproductionDivergence {
   sha256_mismatch: { parent: string; reproduction: string } | null;
@@ -97,25 +97,25 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
   const [provenance, setProvenance] = useState<Array<Record<string, unknown>>>([]);
   const [diff, setDiff] = useState<DiffSummaryShape | null>(null);
   const [showDiff, setShowDiff] = useState(false);
-  // Phase 14 Plan 04 Task 2 — C2PA signing status for the version's primary
+  // C2PA signing status for the version's primary
   // output. Default { status: 'unknown' } so the badge renders 'C2PA: pending'
   // immediately on mount and updates once the HEAD response lands. Network
   // errors leave it at 'unknown' (getC2paStatus never throws — defence in
   // depth).
   const [c2paStatus, setC2paStatus] = useState<C2paStatus>({ status: 'unknown' });
 
-  // Phase 19 / Plan 19-06 — per-version AI conversational summary state +
+  // Per-version AI conversational summary state +
   // auto-fetch on version.id change + 500ms client-side debounce on
   // Regenerate. Mirrors the C2PA status auto-fetch pattern at lines 119-133
   // verbatim (let alive = true cancellation guard).
   const [summary, setSummary] = useState<SummaryState>({ state: 'loading' });
 
-  // D-PRIV-2 — first-use disclosure gate. Reads localStorage at mount; the
+  // First-use disclosure gate (privacy). Reads localStorage at mount; the
   // muted "AI summary uses your prompt text" note renders ABOVE the body
   // until the user clicks Regenerate (auto-acks the disclosure) or until
   // localStorage explicitly carries the ack key. SSR / privacy-mode browsers
   // (where localStorage throws) degrade to "no first-use note" via the
-  // try/catch — acceptable per UI-SPEC researcher discretion.
+  // try/catch — an acceptable degradation.
   const [showFirstUseDisclosure, setShowFirstUseDisclosure] = useState<boolean>(
     () => {
       try {
@@ -129,7 +129,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
     },
   );
 
-  // 500ms client-side debounce for Regenerate (SUM-04 + D-FB-4). Captured as
+  // 500ms client-side debounce for Regenerate. Captured as
   // a ref so successive clicks are compared against the most-recent click
   // timestamp without re-rendering the drawer.
   const lastRegenerateClickRef = useRef<number>(0);
@@ -153,9 +153,9 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
     };
   }, [version.id]);
 
-  // Phase 14 Plan 04 Task 2 — auto-fetch C2PA signing status via HEAD on the
+  // Auto-fetch C2PA signing status via HEAD on the
   // output route. The HEAD is lightweight (no body); the route reads the
-  // latest manifest_signed event written by Plan 14-03's downloader hook.
+  // latest manifest_signed event written by the downloader hook.
   // getC2paStatus never throws (defence in depth) — it collapses network /
   // parse failures to { status: 'unknown' }, so the badge always renders.
   useEffect(() => {
@@ -174,7 +174,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
     };
   }, [version.id]);
 
-  // Phase 19 / Plan 19-06 — auto-fetch the AI summary on version.id change.
+  // Auto-fetch the AI summary on version.id change.
   // Mirrors the C2PA effect above (lines 159-173) verbatim — same `let alive
   // = true` cancellation guard, same defensive `.catch` collapsing to a
   // local error state. Mirrors the global summarySignal so cross-component
@@ -202,16 +202,15 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
   async function handleRegenerate(): Promise<void> {
     // 500ms client-side debounce — captures the most-recent click timestamp;
     // ignores clicks that fire faster than the debounce window. Pairs with
-    // the 60s server-side throttle (Plan 19-05) to form the 2-line defence
-    // against thrash (T-19-35 mitigation).
+    // the 60s server-side throttle to form the 2-line defence
+    // against thrash.
     const now = Date.now();
     if (now - lastRegenerateClickRef.current < 500) return;
     lastRegenerateClickRef.current = now;
 
-    // D-PRIV-2 — auto-ack the first-use disclosure on the first Regenerate
+    // Auto-ack the first-use disclosure on the first Regenerate
     // click. localStorage may throw in privacy-mode browsers; the try/catch
-    // degrades the ack to in-memory only (acceptable per UI-SPEC researcher
-    // discretion).
+    // degrades the ack to in-memory only (an acceptable degradation).
     if (showFirstUseDisclosure) {
       try {
         localStorage.setItem(SUMMARY_FIRST_USE_LOCALSTORAGE_KEY, 'true');
@@ -242,12 +241,12 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
       ? summary.regenerateAvailableAtMs
       : null;
 
-  // Phase 12 — DEMO-03 (D-CTX-2). Auto-fetch diff when this version is
+  // Auto-fetch diff when this version is
   // reproduce-lineage AND a priorVersion exists, so the WarningPill and
   // side-by-side comparison block can render on drawer mount without the user
   // having to click "View Diff". Reuses the same `diff` state slot as the
-  // "View Diff" button, so a subsequent click does not refetch (T-12-10
-  // mitigation: `diff !== null` early-return guarantees a single fetch per
+  // "View Diff" button, so a subsequent click does not refetch (the
+  // `diff !== null` early-return guarantees a single fetch per
   // drawer-open). Network failures leave diff=null — pill and block do not
   // render, which is the same UX as the bit-identical happy path.
   useEffect(() => {
@@ -312,12 +311,12 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
               {label}
             </h2>
             <StatusPill status={status} />
-            {/* Pivot #5 — which backend produced this version. Renders nothing
+            {/* Which backend produced this version. Renders nothing
                 for legacy rows with no provider stamp. */}
             <ProviderBadge provider={version.provider} />
-            {/* Phase 12 — DEMO-03. Pill renders iff the engine attached a
+            {/* Pill renders iff the engine attached a
                 non-null reproduction_divergence on the diff response. Hardcoded
-                ariaLabel — no user-controlled data flows here (T-12-11). */}
+                ariaLabel — no user-controlled data flows here. */}
             {diff?.reproduction_divergence != null && (
               <WarningPill
                 label="non-deterministic"
@@ -344,11 +343,11 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           </div>
         </header>
 
-        {/* Phase 19 / Plan 19-06 — AI conversational summary section.
-            Renders FIRST in the drawer body (above Output) per UI-SPEC visual
-            hierarchy. Children are the relocated SUM-07 Provenance disclosure
-            (the standalone Provenance <section> from Phase 5 is now wrapped in
-            a <details> here for the SUM-07 collapsed-by-default contract). */}
+        {/* AI conversational summary section.
+            Renders FIRST in the drawer body (above Output) — top of the visual
+            hierarchy. Children are the relocated Provenance disclosure
+            (the previously standalone Provenance <section> is now wrapped in
+            a <details> here so provenance is collapsed by default). */}
         <SummarySection
           summary={summary}
           regenerateAvailableAtMs={regenerateAvailableAtMs}
@@ -395,10 +394,10 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
                 loading="lazy"
               />
             </a>
-            {/* Phase 14 Plan 04 Task 2 — C2PA signing badge. Reads status via
+            {/* C2PA signing badge. Reads status via
                 HEAD on the output route (X-C2PA-Signing-Status header) so no
-                additional bytes are transferred. v1.1 has NO sidecar download
-                link (Concern #2 scope reduction); v1.2 will add one when
+                additional bytes are transferred. Deliberately NO sidecar
+                download link yet; one can be added when
                 c2pa-node exposes a real sidecar API. */}
             <div class="mt-2 flex items-center gap-2">
               <C2paBadge status={c2paStatus} />
@@ -406,12 +405,12 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           </section>
         ) : null}
 
-        {/* Phase 12 — DEMO-03. Side-by-side parent vs reproduction comparison.
+        {/* Side-by-side parent vs reproduction comparison.
             Renders iff the engine reports both outputs are present on disk
-            (parent_output_present && reproduction_output_present). Per
-            criterion #4, when bytes match AND no warnings the engine sends
+            (parent_output_present && reproduction_output_present).
+            When bytes match AND no warnings the engine sends
             reproduction_divergence: null and this block does not render.
-            T-12-08 disposition: <img> srcs reuse the existing
+            <img> srcs reuse the existing
             /api/versions/:id/output route (same auth posture as the single-
             output render above). */}
         {diff?.reproduction_divergence?.parent_output_present &&
@@ -474,7 +473,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
           </ul>
         </section>
 
-        {/* Phase 19 / Plan 19-06 (SUM-07): the standalone Provenance section
+        {/* The standalone Provenance section
             previously rendered here is now relocated INSIDE <SummarySection>'s
             children slot above as a <details>/<summary> disclosure. */}
       </aside>

@@ -1,24 +1,24 @@
 /**
- * Phase 22 / Plan 22-07 — QuickApproveButton (D-10 + D-12).
+ * QuickApproveButton.
  *
  * Hover-only Check icon button positioned absolute top-right of the
- * ShotGridCard thumbnail. D-10: opacity-0 by default, opacity-100 on
+ * ShotGridCard thumbnail. Opacity-0 by default, opacity-100 on
  * group-hover OR group-focus-within (keyboard accessibility — focus path
  * exposes the button even when the mouse isn't over the card).
  *
- * REV-02 optimistic flow (Pattern 3):
+ * Optimistic flow:
  *  1. Click → opens StatusChangePopover anchored to the button
  *  2. Confirm → mutate shotGrid.value.shots[idx].status='approved' BEFORE
  *     awaiting PATCH (optimistic)
  *  3. On success: no further change — SSE shot.status_changed arrives and
- *     hits the idempotent onShotStatusChanged handler (Pitfall 8: it
+ *     hits the idempotent onShotStatusChanged handler (it
  *     converges to the broadcast value; no special coordination)
  *  4. On failure: revert the mutation AND set quickApproveError = shotId.
- *     Auto-dismiss after 5s with Pitfall 5 guard: the setTimeout no-ops
+ *     Auto-dismiss after 5s with a stale-timer guard: the setTimeout no-ops
  *     if quickApproveError already changed (e.g., the user retried
  *     successfully or another shot's error displaced it).
  *
- * Pitfall 4 averted: this button is a SIBLING of the thumbnail-button and
+ * Nested-button hazard averted: this button is a SIBLING of the thumbnail-button and
  * ShotStatusPill button inside ShotGridCard's outer `<div class="group">`.
  * Never nested inside another button.
  */
@@ -54,7 +54,7 @@ export function QuickApproveButton({
     if (idx < 0) return;
     const priorStatus = currentStatus;
 
-    // 1. Optimistic mutation FIRST (D-12)
+    // 1. Optimistic mutation FIRST
     shotGrid.value = {
       ...current,
       shots: current.shots.map((s, i) =>
@@ -84,7 +84,7 @@ export function QuickApproveButton({
         };
       }
       quickApproveError.value = shotId;
-      // Auto-dismiss after 5s — Pitfall 5: guard with signal-value check
+      // Auto-dismiss after 5s — guard with signal-value check
       // so a stale timer never overwrites the current error state.
       setTimeout(() => {
         if (quickApproveError.value === shotId) {

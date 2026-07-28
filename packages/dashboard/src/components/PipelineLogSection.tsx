@@ -1,6 +1,6 @@
 /**
  * PipelineLogSection — a collapsible per-shot pipeline-log panel rendered
- * inside the ReviewPanel (Phase 22 review surface). Surfaces the engine's
+ * inside the ReviewPanel review surface. Surfaces the engine's
  * cost + provenance accounting: the append-only status timeline, every take
  * with its recorded actual vs estimated cost, gate proposals, and the
  * recorded-spend total — all produced by Engine.getShotPipelineLog as markdown

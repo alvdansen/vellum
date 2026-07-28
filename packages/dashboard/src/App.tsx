@@ -2,35 +2,35 @@
  * App — root component. Owns:
  *   - Top-level layout (header with home button + brand + ThemeToggle;
  *     flexible body)
- *   - Boot hydration (Phase 21 / Plan 21-06 gap closure — see below)
- *   - SSE lifecycle (startSse on mount, stopSse on unmount per D-WEBUI-03)
+ *   - Boot hydration (URL state hydrated before SSE — see below)
+ *   - SSE lifecycle (startSse on mount, stopSse on unmount)
  *   - SSE → signals bridge:
  *       onSseEvent('version.created', onVersionCreated)
  *       onSseEvent('version.status_changed', onVersionStatusChanged)
- *       onSseEvent('shot.status_changed', onShotStatusChanged)  — Phase 21
- *   - View routing (signal-driven; D-03):
+ *       onSseEvent('shot.status_changed', onShotStatusChanged)
+ *   - View routing (signal-driven):
  *       activeView === 'home'      → <HomeView/>
  *       activeView === 'shot-grid' → <ShotGridView/>
- *   - Global overlays (Phase 22 / 22-04): <OverlayHost/> branches on
+ *   - Global overlays: <OverlayHost/> branches on
  *     activeOverlay between ReviewPanel and VersionDrawer regardless of
  *     activeView. Pattern: any future overlay keyed on a global signal
  *     mounts as a sibling of <AppBody> here, not inside a view.
  *
- * Phase 21 / Plan 21-04 Task T02:
+ * Header navigation:
  *   - Home button is a <button aria-label="Back to home view"> with the
  *     lucide-preact Home icon at size 16; positioned BEFORE the brand text
- *     inside a flex container (D-03). The button's color reflects the active
+ *     inside a flex container. The button's color reflects the active
  *     view: accent when home is active, muted otherwise.
  *   - The third SSE handler ('shot.status_changed') routes to
  *     `onShotStatusChanged` from state/shot-grid.ts (the same module-scope
  *     reference is passed to both on/offSseEvent so events.ts:116
- *     listeners.delete(fn) succeeds — D-22 reference-equality contract).
+ *     listeners.delete(fn) succeeds — reference-equality contract).
  *   - The body now conditionally renders HomeView or ShotGridView based on
  *     activeView. activeView is module-singleton in state/shot-grid.ts; any
  *     consumer (the TreeSidebar grid-icon via HomeView, the home button
  *     above, URL hydrateShotGridUrlState) writing to it flips the view.
  *
- * Phase 21 / Plan 21-06 (gap closure — 21-AUDIT.md root pattern):
+ * Boot-order rationale:
  *   - URL hydration runs HERE, before SSE subscription. Previously each
  *     view called its own hydrate function inside a useEffect in the view
  *     component, so the URL-keyed signals (activeView, treeSort, gridSort)
@@ -42,7 +42,7 @@
  * Pure glue — no fetch (views own their own hydration), no mutation other
  * than signal updates via the SSE bridge + the home button click handler.
  *
- * SECURITY — T-5-06: brand text + aria-label are literals from copy.ts;
+ * SECURITY: brand text + aria-label are literals from copy.ts;
  * no dynamic HTML rendering here.
  */
 
@@ -82,12 +82,12 @@ import {
 
 export function App() {
   useEffect(() => {
-    // Phase 21 / Plan 21-06 — hydrate URL state BEFORE SSE bridges.
+    // Hydrate URL state BEFORE SSE bridges.
     // The order matters: hydrateShotGridUrlState() may flip activeView
     // before any view component mounts, ensuring the correct view surface
     // renders on first paint for a deep link like `?view=shot-grid&seq=…`.
     // hydrateSortState() reconciles URL > localStorage > defaults for
-    // gridSort/treeSort signals (D-13/D-15/D-16); applied here so the
+    // gridSort/treeSort signals; applied here so the
     // values are stable before HomeView's page-1 fetch effect runs.
     hydrateShotGridUrlState();
     const { gridSort: initGrid, treeSort: initTree } = hydrateSortState();
@@ -100,7 +100,7 @@ export function App() {
 
     onSseEvent('version.created', onVersionCreated);
     onSseEvent('version.status_changed', onVersionStatusChanged);
-    // Phase 21 / D-22 — module-scope onShotStatusChanged reference. The
+    // Module-scope onShotStatusChanged reference. The
     // SAME function ref is passed to offSseEvent below so events.ts:116
     // Set.delete(fn) finds it; lifting the handler into state/shot-grid.ts
     // makes the module export reference-stable across renders.
@@ -191,13 +191,13 @@ export function App() {
         </div>
         {isApprovals ? null : <ActiveGenerationsPanel />}
       </div>
-      {/* Phase 22 / Plan 22-04 — generalised overlay host (D-02 mutex).
+      {/* Generalised overlay host — overlays are mutually exclusive.
        *  OverlayHost branches on activeOverlay between ReviewPanel and
-       *  VersionDrawer; backward-compat fallback covers legacy
-       *  selectedVersionId direct-mutation flow (21-AUDIT.md Bugs 2 + 5
-       *  invariants preserved). ABCompareHost sibling renders the z-30
-       *  A/B compare modal when compareModalOpen=true (placeholder until
-       *  Plan 22-06 ships the real ABCompareView composition). */}
+       *  VersionDrawer; a backward-compat fallback covers the legacy
+       *  selectedVersionId direct-mutation flow (its open/close
+       *  invariants are preserved). ABCompareHost sibling renders the
+       *  z-30 A/B compare modal when compareModalOpen=true (placeholder
+       *  until the real ABCompareView composition lands). */}
       <OverlayHost />
       <ABCompareHost />
     </div>

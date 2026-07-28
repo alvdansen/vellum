@@ -1,21 +1,21 @@
-// Phase 14 — D-CTX-3 native-embed format routing (revised 2026-04-30).
+// Native-embed format routing for C2PA signing.
 //
 // Pure function — no I/O, no side effects. Returns one of three routes:
 //  - { mode: 'embed-buffer', mimeType }  — JPEG / PNG (c2pa-node buffer API)
 //  - { mode: 'embed-file', mimeType }    — MP4 / WebP / TIFF (c2pa-node file API)
 //  - { mode: 'unsupported', reason }     — EXR / PSD (native-handler-missing) OR unknown extension
 //
-// **v1.1 scope (Concern #2 reduction):**
+// **v1.1 scope (no sidecar mode):**
 // c2pa-node v0.5.26 has NO public sidecar/external-manifest API. EXR + PSD have
 // no c2pa-rs handler. Producing a "sidecar" by signing a placeholder PNG and
 // writing those bytes alongside an EXR is cryptographically invalid (the
-// manifest's data hash binds to the placeholder, not the EXR). Plan 14-03
-// surfaces these as manifest_signed: false / status_reason: 'unsupported_format'
-// provenance events; the original file is left unmodified on disk. See
-// REQUIREMENTS.md v1.2 deferred items for the cryptographic-sidecar work.
+// manifest's data hash binds to the placeholder, not the EXR). The signing
+// pipeline surfaces these as manifest_signed: false / status_reason:
+// 'unsupported_format' provenance events; the original file is left
+// unmodified on disk. Cryptographic-sidecar support is deferred.
 //
-// Extension matching is case-insensitive (T-14-08 mitigation: ComfyUI Cloud
-// sometimes returns mixed-case filenames). The mimeType strings are the C2PA
+// Extension matching is case-insensitive (ComfyUI Cloud sometimes returns
+// mixed-case filenames). The mimeType strings are the C2PA
 // standard registrations and match what c2pa-node expects in its
 // asset.mimeType field.
 //
@@ -23,9 +23,9 @@
 // c2pa-node imports. Pure-function module.
 
 /**
- * D-CTX-3 discriminated union — three routing modes only. The absence of a
+ * Discriminated union — three routing modes only. The absence of a
  * `sidecar` mode is structurally locked: c2pa-node v0.5.x has no
- * cryptographically-bound sidecar API in the public surface (Concern #2).
+ * cryptographically-bound sidecar API in the public surface.
  */
 export type FormatRoute =
   | { mode: 'embed-buffer'; mimeType: string }
@@ -70,7 +70,7 @@ const NATIVE_HANDLER_MISSING_TABLE: Record<string, string> = {
   '.psd': 'image/vnd.adobe.photoshop',
 };
 
-/** Public exports for downstream consumers (Plan 14-03 / 14-04 / 14-05). */
+/** Public exports for downstream consumers. */
 export const EMBED_BUFFER_FORMATS: readonly string[] = Object.values(BUFFER_TABLE);
 export const EMBED_FILE_FORMATS: readonly string[] = Object.values(FILE_TABLE);
 export const UNSUPPORTED_NATIVE_FORMATS: readonly string[] = Object.values(
@@ -79,7 +79,8 @@ export const UNSUPPORTED_NATIVE_FORMATS: readonly string[] = Object.values(
 
 /**
  * Pure function — extension lookup against three tables. Case-insensitive
- * (T-14-08 mitigation). Returns one of the three FormatRoute variants.
+ * (mixed-case filenames occur in the wild). Returns one of the three
+ * FormatRoute variants.
  */
 export function routeFormat(filename: string): FormatRoute {
   const dot = filename.lastIndexOf('.');
@@ -102,7 +103,7 @@ export function routeFormat(filename: string): FormatRoute {
 }
 
 /**
- * Phase 15 WR-02 — supported-MIME helper for the ingredient asset-ref path.
+ * Supported-MIME helper for the ingredient asset-ref path.
  *
  * Returns the c2pa-rs-supported MIME type for the filename's extension, or
  * `null` if the extension is unknown OR routes to a format that c2pa-rs has
@@ -115,7 +116,7 @@ export function routeFormat(filename: string): FormatRoute {
  * Why null for native-handler-missing (EXR/PSD): c2pa-rs has no asset
  * handler for these formats, so passing their MIME type to createIngredient
  * would still fail. Treating them as unavailable matches the
- * sign-time signal Plan 14-03 already uses for the SIGNING asset
+ * sign-time signal the signing pipeline already uses for the SIGNING asset
  * (status_reason='unsupported_format' on the version itself).
  *
  * Pure function — no I/O. Mirrors routeFormat's case-insensitive lookup.

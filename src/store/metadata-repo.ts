@@ -17,15 +17,13 @@ type Db = BetterSQLite3Database<typeof schema> & { $client: SqliteClient };
 
 /**
  * Build the scope JOIN + WHERE + params for metadata aggregation queries.
- * DUPLICATED VERBATIM from tag-repo.ts per RESEARCH.md §"Alternatives Considered
- * and Rejected" — repo files stay independent; cross-repo extraction is deferred
- * (Plan 05 may consolidate if complexity warrants).
+ * DUPLICATED VERBATIM from tag-repo.ts — repo files stay independent by
+ * design; cross-repo extraction is deferred
+ * (may consolidate later if complexity warrants).
  *
  * Security: every user-derived field is parameterized via `?` placeholders +
  * `scopeParams`. The returned strings contain only fixed column names and JOIN
- * clauses, zero user input — T-04-02-01 mitigation.
- *
- * Source: RESEARCH.md §Pattern 3 + §Operation 5.
+ * clauses, zero user input — SQL-injection mitigation.
  */
 function buildScopeFragment(scope: ScopeFilter): {
   scopeJoins: string;
@@ -62,21 +60,21 @@ function buildScopeFragment(scope: ScopeFilter): {
 }
 
 /**
- * Repository for Vellum `metadata` table (Phase 4 — D-ASST-08, D-ASST-28).
- * Plain CRUD (DELETE allowed). Mutators are idempotent per D-ASST-03:
- * upsertMetadata uses INSERT ON CONFLICT DO UPDATE (value + created_at refresh
- * per D-ASST-08); deleteMetadata is a plain DELETE.
+ * Repository for the Vellum `metadata` table.
+ * Plain CRUD (DELETE allowed). Mutators are idempotent:
+ * upsertMetadata uses INSERT ON CONFLICT DO UPDATE (value + created_at
+ * refresh); deleteMetadata is a plain DELETE.
  *
- * Hard invariants (D-33, D-ASST-26, D-ASST-29):
+ * Hard invariants:
  *  - Zero MCP SDK imports (store layer is engine-pure).
  *  - All inserts/selects use parameterized queries — no string concat with user input.
- *  - Key regex + length caps + value size enforced in the engine (Plan 04-03).
- *  - Pre-check version existence before INSERT (RESEARCH Pitfall #3) — surfaces
+ *  - Key regex + length caps + value size enforced in the engine.
+ *  - Pre-check version existence before INSERT — surfaces
  *    VERSION_NOT_FOUND as a typed error, never letting SQLITE_CONSTRAINT_FOREIGNKEY leak.
  *
  * Threat-model anchors:
- *  - T-04-02-01 (SQL injection in raw SQL): buildScopeFragment fully parameterizes.
- *  - T-04-02-02 (raw SqliteError leak): pre-check + ON CONFLICT DO UPDATE = no throws.
+ *  - SQL injection in raw SQL: buildScopeFragment fully parameterizes.
+ *  - Raw SqliteError leak: pre-check + ON CONFLICT DO UPDATE = no throws.
  */
 export class MetadataRepo {
   constructor(
@@ -85,21 +83,22 @@ export class MetadataRepo {
   ) {}
 
   /**
-   * Upsert a metadata entry on a version. Idempotent per D-ASST-03:
+   * Upsert a metadata entry on a version. Idempotent:
    *   - first call (version_id+key new) → INSERT path, returns new meta_ id.
    *   - subsequent calls with same (version_id, key) → UPDATE path, returns the
    *     SAME id as the first call, writes new value + new created_at.
    *
-   * D-ASST-08 locks created_at as a "last-touch" timestamp — refreshes on every
+   * created_at is a "last-touch" timestamp — refreshes on every
    * upsert via `excluded.created_at`.
    *
-   * Pre-check pattern (RESEARCH Pitfall #3, hierarchy-repo.ts:99): verify the
+   * Pre-check pattern (as in hierarchy-repo.ts:99): verify the
    * parent version exists first so we surface VERSION_NOT_FOUND rather than
-   * SQLITE_CONSTRAINT_FOREIGNKEY. D-ASST-24 reuses VERSION_NOT_FOUND from Phase 1.
+   * SQLITE_CONSTRAINT_FOREIGNKEY. Reuses the existing VERSION_NOT_FOUND code.
    *
    * SQL: INSERT ON CONFLICT(version_id, key) DO UPDATE SET value=excluded.value,
    * created_at=excluded.created_at RETURNING id. Unlike ON CONFLICT DO NOTHING
-   * (Pitfall #1), DO UPDATE completes normally — RETURNING always yields one row.
+   * (whose RETURNING emits nothing on conflict), DO UPDATE completes
+   * normally — RETURNING always yields one row.
    */
   upsertMetadata(versionId: string, key: string, value: string): { id: string } {
     if (!this.versionRepo.getVersion(versionId)) {
@@ -125,16 +124,17 @@ export class MetadataRepo {
       .all() as Array<{ id: string }>;
     // DO UPDATE RETURNING always emits one row (insert or update path) — no
     // fallback SELECT needed. On UPDATE path, returned[0].id is the EXISTING
-    // row's id (not the fresh id generated above), satisfying INV-ASST-03.
+    // row's id (not the fresh id generated above), preserving id stability
+    // across repeated upserts.
     return { id: returned[0]!.id };
   }
 
   /**
-   * Delete a metadata entry by (version_id, key). Idempotent per D-ASST-03:
+   * Delete a metadata entry by (version_id, key). Idempotent:
    * calling on a missing key is a no-op (0 rows affected, no throw).
    *
    * Does NOT pre-check version existence — DELETE on a missing row is already
-   * a no-op (INV-ASST-04), so the extra SELECT would be wasted I/O.
+   * a no-op, so the extra SELECT would be wasted I/O.
    */
   deleteMetadata(versionId: string, key: string): void {
     this.db
@@ -144,13 +144,12 @@ export class MetadataRepo {
   }
 
   /**
-   * Return all metadata entries on a version, sorted ASC by key
-   * (D-ASST-04 / D-ASST-19).
+   * Return all metadata entries on a version, sorted ASC by key.
    *
    * Uses raw SQL via `this.db.$client.prepare` with
    * `json_group_array(json_object('key', key, 'value', value) ORDER BY key)` —
-   * correlated subquery-style that renders empty sets as `[]` (NOT `[null]` —
-   * RESEARCH Pitfall #2). Requires SQLite 3.44+ for ORDER BY in aggregates;
+   * correlated subquery-style that renders empty sets as `[]` (NOT `[null]`,
+   * the classic json_group_array footgun). Requires SQLite 3.44+ for ORDER BY in aggregates;
    * better-sqlite3 12.9.0 bundles 3.53.0.
    */
   listMetadataForVersion(versionId: string): MetadataKV[] {
@@ -164,8 +163,8 @@ export class MetadataRepo {
 
   /**
    * Count metadata entries for a version. Supports engine cap enforcement
-   * (D-ASST-11 — MAX_METADATA_PER_VERSION=100 pre-upsert check). TOCTOU race
-   * accepted at demo scale (RESEARCH Pitfall #6).
+   * (MAX_METADATA_PER_VERSION=100 pre-upsert check). TOCTOU race
+   * accepted at demo scale.
    */
   countMetadataForVersion(versionId: string): number {
     const row = this.db
@@ -177,7 +176,7 @@ export class MetadataRepo {
   }
 
   /**
-   * Scope-aware metadata-key aggregation (D-ASST-06, RESEARCH Operation 5).
+   * Scope-aware metadata-key aggregation.
    * Counts KEYS (not key+value pairs) — an artist filtering "what metadata
    * keys are used on my project's versions" wants key names as the axis.
    *
@@ -185,11 +184,11 @@ export class MetadataRepo {
    * `count DESC, name ASC`, total_count = COUNT(DISTINCT key) under the scope.
    *
    * Scope modes handled by buildScopeFragment (workspace / project / sequence /
-   * shot / empty-global). Engine enforces XOR (D-ASST-13); repo is
-   * defensive-only (T-04-02-05 mitigation).
+   * shot / empty-global). Engine enforces the one-scope-at-a-time XOR; repo is
+   * defensive-only.
    *
    * Wrapped in db.transaction() so items + total_count come from a snapshot-
-   * consistent view (D-ASST-18, RESEARCH Pattern 5).
+   * consistent view.
    */
   listMetadataKeysInScope(
     scope: ScopeFilter,

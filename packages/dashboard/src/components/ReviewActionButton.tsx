@@ -1,12 +1,12 @@
 /**
- * Phase 22 / Plan 22-05 — ReviewActionButton.
+ * ReviewActionButton.
  *
  * Single reusable button used in the review-panel action bar (one per
- * action). Per UI-SPEC L717 these are COMMAND buttons (open a popover),
+ * action). These are COMMAND buttons (open a popover),
  * not toggle buttons — so the ARIA pattern is `aria-haspopup="dialog"` +
  * `aria-expanded={popoverIsOpen}`, NOT `aria-pressed`.
  *
- * Disabled discipline (D-12):
+ * Disabled discipline:
  *  - `disabled` (HTML attr) AND `aria-disabled={disabled || isPending}`
  *    so screen readers announce the state.
  *  - `aria-busy={isPending}` marks the originating button during its

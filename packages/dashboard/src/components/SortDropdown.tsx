@@ -1,20 +1,19 @@
 /**
- * Phase 18 / Plan 18-04 — <SortDropdown/> WAI-ARIA APG combobox + listbox.
+ * <SortDropdown/> — WAI-ARIA APG combobox + listbox.
  *
- * Reused for BOTH grid sort and tree sort instances (D-08 — single component
+ * Reused for BOTH grid sort and tree sort instances (single component
  * type, two parent-rendered instances). Generic over the field enum so the
  * grid passes <SortDropdown<SortField>/> with GRID_SORT_OPTIONS, and the
  * tree passes <SortDropdown<HierarchySortField>/> with TREE_SORT_OPTIONS.
  *
- * Render contract (UI-SPEC §"<SortDropdown/> API contract" + §"Dimensional
- * contract"):
+ * Render contract:
  *   - Closed: trigger button only; popover NOT in DOM (no listbox <ul>)
  *   - Open: same trigger; popover absolute-positioned below; chevron rotated
  *     180deg via Tailwind rotate-180; option list with selected option marked
  *     by a Check icon (lucide-preact)
  *
- * Accessibility (WAI-ARIA APG combobox 1.2 select-only pattern, simplified
- * for non-typeahead v1.2):
+ * Accessibility (WAI-ARIA APG combobox 1.2 select-only pattern, simplified:
+ * no typeahead):
  *   - Trigger: role='combobox' + aria-haspopup='listbox' + aria-expanded +
  *     aria-controls + aria-activedescendant + aria-label (required prop)
  *   - Popover: role='listbox' + tabIndex=-1 + matching id (so trigger's
@@ -39,15 +38,15 @@
  *
  * Motion: chevron rotates 180deg via CSS transition-transform (≤150ms) which
  * the existing theme.css `prefers-reduced-motion: reduce` rule handles
- * automatically. Popover unmount/remount has NO animation per Phase 5
- * restraint (UI-SPEC).
+ * automatically. Popover unmount/remount has NO animation — deliberate
+ * motion restraint.
  *
- * SECURITY (T-18-03): option labels render as JSX text children — Preact
+ * SECURITY: option labels render as JSX text children — Preact
  * auto-escapes. NO dangerouslySetInnerHTML; option labels come from the
  * hardcoded GRID_SORT_OPTIONS / TREE_SORT_OPTIONS constants (sortHelpers.ts)
  * — never user-controlled.
  *
- * Architecture-purity (D-WEBUI-31): zero imports from src/. Types come from
+ * Architecture purity: zero imports from src/. Types come from
  * the local mirror at '../lib/sortTypes.js'.
  */
 
@@ -65,7 +64,7 @@ import type { SortDirection } from '../lib/sortTypes.js';
 export interface SortOption<TField extends string = string> {
   /** Stable id used as encoded value in localStorage + URL state. Format: 'field:dir'. */
   id: string;
-  /** User-facing label (verbatim per UI-SPEC). Plain text — no HTML. */
+  /** User-facing label. Plain text — no HTML. */
   label: string;
   /** Field portion of id — exposed for type-safe consumers. */
   field: TField;
@@ -79,14 +78,14 @@ export interface SortDropdownProps<TField extends string = string> {
    * GRID_SORT_OPTIONS or TREE_SORT_OPTIONS (or any custom list of
    * SortOption<TField>). The component does NOT validate the ids — the
    * engine ORDER BY whitelist + URL/localStorage validators are the
-   * authoritative gates per D-16 / D-24.
+   * authoritative gates.
    */
   options: ReadonlyArray<SortOption<TField>>;
   /**
    * The currently-selected sort. The trigger renders the matching option's
    * label; the popover marks the matching option with aria-selected='true'
    * + a Check icon. If no match, the trigger renders the first option's
-   * label (defensive fallback per UI-SPEC).
+   * label (defensive fallback).
    */
   value: { field: TField; dir: SortDirection };
   /**
@@ -97,7 +96,7 @@ export interface SortDropdownProps<TField extends string = string> {
    */
   onChange: (next: { field: TField; dir: SortDirection }) => void;
   /**
-   * ARIA label for the trigger button. Required (D-discretion):
+   * ARIA label for the trigger button. Required:
    *   - Grid instance: 'Sort versions by'
    *   - Tree instance: 'Sort tree by'
    * Imported as named constants from lib/copy.ts (SORT_GRID_ARIA_LABEL /

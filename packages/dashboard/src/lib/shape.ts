@@ -2,7 +2,7 @@
 //
 // Small dashboard-local shape helpers shared across views. Adapts the raw
 // server REST shapes (Version with `version_number` + union status) to the
-// props shape the Plan 09 primitives expect (VersionCardVersion with `label`
+// props shape the view primitives expect (VersionCardVersion with `label`
 // + StatusPill Status union).
 //
 // Architecture-purity invariant (D-WEBUI-31): this file performs zero
@@ -38,15 +38,15 @@ export function versionLabel(v: Pick<Version, 'id' | 'version_number'>): string 
  *
  * undefined returns 'queued' (defensive default for missing-status payloads).
  *
- * SC-6 (Phase 6 gap_closure IN-04): the previous implementation ended with
- * a silent `return 'queued'` fallback. After CR-01 closure (Plan 05-13) the
+ * The previous implementation ended with
+ * a silent `return 'queued'` fallback. The
  * SSE adapter at src/http/sse.ts:108 SERVER_TO_DASHBOARD_STATUS already
  * guarantees union-valid statuses on the wire — the fallback no longer
  * rescues any real defect. Replacing it with `_exhaustive: never` makes
  * future drift impossible to ignore: adding a 7th status to Version['status']
  * fails `npx tsc --noEmit` at the default arm immediately. Pattern matches
  * the established `_exhaustive: never` idiom at src/http/sse.ts:135
- * `toDashboardPayload` (RESEARCH.md §Pattern: Exhaustive Switch with never).
+ * `toDashboardPayload` (exhaustive switch with never).
  */
 export function normalizeStatus(raw: Version['status'] | undefined): Status {
   // Defensive: undefined is a valid input (Version.status is optional).
@@ -74,10 +74,10 @@ export function normalizeStatus(raw: Version['status'] | undefined): Status {
 /**
  * Unwrap a paginated list response from the server. The Engine's list*
  * methods return ListResult<T> = { items, total_count, limit, offset } but
- * Plan 08's api.ts is typed to return `T[]` directly (known Plan 08 shape
- * drift — see handoff notes in 05-08-SUMMARY.md). At runtime the body is
+ * api.ts is typed to return `T[]` directly (known shape
+ * drift). At runtime the body is
  * actually the wrapper object; we handle both shapes defensively here so a
- * follow-up plan correcting api.ts's typing (to ListResult<T>) doesn't
+ * follow-up correcting api.ts's typing (to ListResult<T>) doesn't
  * require churn through every view.
  *
  * Accepts: `T[]` (pre-unwrap) OR `{ items: T[] }` (wrapper shape). Always

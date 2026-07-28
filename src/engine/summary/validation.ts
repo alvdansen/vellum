@@ -1,16 +1,16 @@
 /**
- * Phase 19 — D-VAL-4 pure validation helper.
+ * Pure summary-validation helper.
  *
- * Architecture-purity (Plan 01 grep guard): ZERO imports beyond local types.
+ * Architecture-purity (grep-guard enforced): ZERO imports beyond local types.
  * Adversarial review can read the file in isolation; tests mock nothing.
  *
  * The two validation modes:
  *   - Non-redacted: at least ONE model_name from models_json appears verbatim
- *     (case-sensitive substring) in the summary text — D-VAL-1.
+ *     (case-sensitive substring) in the summary text.
  *   - Redacted: summary contains a marker ('redacted' / 'partial' / 'redaction',
- *     case-insensitive substring) — D-VAL-3 disclosure requirement.
+ *     case-insensitive substring) — the redaction-disclosure requirement.
  *
- * Validation gates the cache write (D-VAL-2 enforced by Plan 04 facade).
+ * Validation gates the cache write (enforced by the engine facade).
  * On miss, the engine renders the deterministic-template fallback. The user
  * clicking "Regenerate" produces a fresh attempt — different temperature
  * draw may pass on next click.
@@ -34,7 +34,7 @@ export function validateSummary(
   }
 
   if (isRedacted) {
-    // D-VAL-3: redaction marker is mandatory; model-name regex skipped for
+    // Redaction marker is mandatory; model-name regex skipped for
     // redacted versions because the redaction event may have stripped the
     // model_name entirely from sanitized payload.
     const lower = text.toLowerCase();
@@ -42,9 +42,9 @@ export function validateSummary(
     return hasMarker ? { ok: true } : { ok: false, reason: 'missing_redaction_marker' };
   }
 
-  // D-VAL-1: at least ONE model name appears verbatim (case-sensitive).
+  // At least ONE model name must appear verbatim (case-sensitive).
   // Models_json names are the same canonical strings that flow into the C2PA
-  // manifest (Phase 13 PROV-V-03 surface), so case-sensitivity is correct.
+  // manifest, so case-sensitivity is correct.
   const hasModelName = models.some(
     (m) => m.model_name.length > 0 && text.includes(m.model_name),
   );

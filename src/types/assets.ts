@@ -1,12 +1,9 @@
-// Pure type definitions for Vellum asset management (Phase 4).
+// Pure type definitions for Vellum asset management (tags + metadata).
 // ZERO imports from drizzle/zod/mcp — engine, store, and tools all consume these.
-// Refs: D-ASST-07 (Tag), D-ASST-08 (MetadataEntry), D-ASST-12 (AssetsQueryFilter),
-//       D-ASST-22 (VersionWithAssets), D-ASST-06 (ScopeFilter / TagCount /
-//       MetadataKeyCount).
 
 import type { Version } from './hierarchy.js';
 
-/** D-ASST-07: a single tag attachment on a version. */
+/** A single tag attachment on a version. */
 export interface Tag {
   id: string;          // tag_<nanoid>
   version_id: string;
@@ -14,23 +11,23 @@ export interface Tag {
   created_at: number;  // epoch ms
 }
 
-/** D-ASST-08: a single metadata entry on a version. */
+/** A single metadata entry on a version. */
 export interface MetadataEntry {
   id: string;          // meta_<nanoid>
   version_id: string;
   key: string;         // matches TAG_REGEX
   value: string;       // any UTF-8 ≤ MAX_METADATA_VALUE_LENGTH
-  created_at: number;  // refreshed on upsert (D-ASST-08)
+  created_at: number;  // refreshed on upsert
 }
 
-/** D-ASST-05: metadata shape as surfaced on hydrated version responses. */
+/** Metadata shape as surfaced on hydrated version responses. */
 export interface MetadataKV {
   key: string;
   value: string;
 }
 
 /**
- * D-ASST-22: version entity extended with tags + metadata arrays, as returned
+ * Version entity extended with tags + metadata arrays, as returned
  * by every asset.query item and by version.get. Tags ASC alphabetical;
  * metadata ASC by key.
  */
@@ -39,7 +36,7 @@ export type VersionWithAssets = Version & {
   metadata: MetadataKV[];
 };
 
-/** D-ASST-12: input shape for asset.query. All fields optional except limit/offset resolution. */
+/** Input shape for asset.query. All fields optional except limit/offset resolution. */
 export interface AssetsQueryFilter {
   workspace_id?: string;
   project_id?: string;
@@ -54,7 +51,7 @@ export interface AssetsQueryFilter {
   offset: number;                     // resolved default 0
 }
 
-/** D-ASST-06: scope echo shape for list_tags / list_metadata_keys responses. */
+/** Scope echo shape for list_tags / list_metadata_keys responses. */
 export interface ScopeFilter {
   workspace_id?: string;
   project_id?: string;
@@ -62,7 +59,7 @@ export interface ScopeFilter {
   shot_id?: string;
 }
 
-/** D-ASST-06 item shape for asset.list_tags and asset.list_metadata_keys. */
+/** Item shape for asset.list_tags and asset.list_metadata_keys. */
 export interface TagCount {
   name: string;
   count: number;

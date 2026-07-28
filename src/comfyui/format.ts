@@ -2,15 +2,15 @@ import { TypedError } from '../engine/errors.js';
 import type { NodeError } from './types.js';
 
 /**
- * SEC-02: byte-size cap for workflow_json (serialized). Real workflows are
+ * Byte-size cap for workflow_json (serialized). Real workflows are
  * <500KB; 5MB leaves headroom for legitimate edge cases while blocking OOM.
  * Matches src/tools/shape.ts MAX_WORKFLOW_BYTES — duplicated here to keep
- * comfyui/format.ts free of tool-layer imports (D-33 purity).
+ * comfyui/format.ts free of tool-layer imports (layer purity).
  */
 const MAX_WORKFLOW_BYTES = 5_000_000;
 
 /**
- * Pure format validators for ComfyUI workflow JSON (D-GEN-23, D-GEN-27).
+ * Pure format validators for ComfyUI workflow JSON.
  * No I/O, no network, no DB. Imports only TypedError from engine/errors.
  *
  * Two top-level distinctions:
@@ -65,7 +65,7 @@ export function isApiFormat(payload: unknown): boolean {
  * with a format-specific hint. UI-format check runs first so the common "wrong export"
  * case gets the actionable Dev Mode hint instead of a generic one.
  *
- * SEC-02: also enforces a byte-size ceiling. Runs once via JSON.stringify; for
+ * Also enforces a byte-size ceiling. Runs once via JSON.stringify; for
  * legitimate workflows (<500KB) this is a negligible fraction of the eventual
  * POST-to-ComfyUI cost. For adversarial multi-MB payloads it caps memory
  * pressure before the network roundtrip.
@@ -86,7 +86,7 @@ export function validateWorkflowFormat(payload: unknown): void {
       "Expected an object keyed by numeric strings, each value with 'class_type' (string) and 'inputs' (object).",
     );
   }
-  // SEC-02 byte-size guard. Happens AFTER format checks so an obviously-wrong
+  // Byte-size guard. Happens AFTER format checks so an obviously-wrong
   // shape gets the more helpful hint; a well-shaped but oversized payload gets
   // the size-specific message.
   const serialized = JSON.stringify(payload);
@@ -100,7 +100,7 @@ export function validateWorkflowFormat(payload: unknown): void {
 }
 
 /**
- * Flatten the first actionable node_errors entry per D-GEN-27.
+ * Flatten the first actionable node_errors entry into a single line.
  * Returns null if the object is empty, malformed, or missing the expected shape.
  *
  * Example:
@@ -124,14 +124,14 @@ export function extractFirstNodeError(nodeErrors: unknown): string | null {
 
 /**
  * Flatten any ComfyUI Cloud error payload to a single human-readable string.
- * Single source of truth for the three-branch flatten chain (DEMO-02).
+ * Single source of truth for the three-branch flatten chain.
  *
  * Branches (in order):
  *   1. If `error` is an object with a populated `.node_errors` payload that
  *      extractFirstNodeError can flatten, return that flattened string.
  *   2. Else if `error` is a non-empty string, return it verbatim.
- *   3. Else return the literal "ComfyUI reported failed" — preserves the IT-10
- *      cancelled-status contract and the v1.0 dashboard fallback rendering.
+ *   3. Else return the literal "ComfyUI reported failed" — preserves the
+ *      cancelled-status contract and the dashboard's fallback rendering.
  *
  * Always returns a non-empty string. Never throws. Never returns null.
  *
@@ -139,8 +139,7 @@ export function extractFirstNodeError(nodeErrors: unknown): string | null {
  *   - src/comfyui/client.ts (submit-time 4xx branch)
  *   - src/engine/generation.ts (status / recovery-poller failed branch)
  *
- * Closes the duplicated extraction shape between those two call sites
- * (DEMO-02; ROADMAP Phase 11 success criterion #2).
+ * Closes the duplicated extraction shape between those two call sites.
  */
 export function flattenComfyError(error: unknown): string {
   // Branch 1: object with .node_errors → try extractFirstNodeError.
@@ -152,6 +151,7 @@ export function flattenComfyError(error: unknown): string {
   }
   // Branch 2: non-empty string verbatim.
   if (typeof error === 'string' && error.length > 0) return error;
-  // Branch 3: fallback. IT-10 contract — this exact literal must remain.
+  // Branch 3: fallback. Contract — this exact literal must remain (tests
+  // assert on it verbatim).
   return 'ComfyUI reported failed';
 }

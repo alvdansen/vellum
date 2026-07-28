@@ -1,13 +1,13 @@
 /**
- * Phase 22 / Plan 22-05 — ReviewPanel.
+ * ReviewPanel.
  *
  * Top-level composition of the right-rail review panel. Mounted by
- * OverlayHost when activeOverlay='review' (D-02 mutex with VersionDrawer).
+ * OverlayHost when activeOverlay='review' (mutex with VersionDrawer).
  *
- * Layout top-to-bottom (D-03 sticky-action-bar lock):
+ * Layout top-to-bottom (action bar stays pinned above the timeline):
  *  - ReviewPanelHeader     — title + ShotStatusPill + close X
  *  - ReviewActionBar       — 4-or-5 action buttons + popover orchestration
- *  - ReviewTimeline        — unified version+status events feed (D-04)
+ *  - ReviewTimeline        — unified version+status events feed
  *
  * Pure-composition: no signals, no fetch — the caller (OverlayHost) does
  * the cache-miss fetch and passes resolved data via props. This keeps the

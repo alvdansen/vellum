@@ -1,4 +1,4 @@
-// Hono error-middleware for the dashboard REST + SSE surface (Phase 5 / D-WEBUI-34).
+// Hono error-middleware for the dashboard REST + SSE surface.
 //
 // - statusForCode(): pure code → HTTP status mapping. Pattern-based with explicit
 //   overrides for codes that don't fit the pattern (TAG_INVALID, *_UNAVAILABLE, etc.).
@@ -6,14 +6,13 @@
 //     • Converts any TypedError thrown below the route boundary into
 //       { error: { code, message } } with the mapped status.
 //     • Converts unknown Error instances into 500 + { error: { code: 'INTERNAL_ERROR', message } }.
-//     • Never leaks stack traces (T-5-09 mitigation — verified by unit test).
+//     • Never leaks stack traces (verified by unit test).
 //
-// Architecture note: this file is part of the HTTP layer (D-WEBUI-28 /
-// D-WEBUI-31), so it has zero MCP SDK imports and zero SQLite imports
-// (tool-engine separation). The architecture-purity test does substring
-// grep against file text, so avoid spelling the package sentinels in
-// comments here — paraphrase matches the Phase 4 / Plan 05-02 convention
-// and keeps the test signal strong (STATE.md decisions line 119).
+// Architecture note: this file is part of the HTTP layer, so it has zero
+// MCP SDK imports and zero SQLite imports (tool-engine separation). The
+// architecture-purity test does substring grep against file text, so avoid
+// spelling the package sentinels in comments here — paraphrasing keeps the
+// test signal strong.
 
 import type { ErrorHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -64,7 +63,7 @@ const BAD_GATEWAY_CODES = new Set<string>([
   'DOWNLOAD_FAILED',
 ]);
 
-// Phase 17 / Plan 17-03 — Explicit 503 set for transient/derived-resource
+// Explicit 503 set for transient/derived-resource
 // failures. THUMBNAIL_FAILED surfaces when sharp/ffmpeg derivation throws or
 // the source format is unsupported. The dashboard onError handler swaps the
 // <Thumbnail/> render to a <SkeletonThumbnail/> on either 500 or 503; 503 is
@@ -74,10 +73,10 @@ const SERVICE_UNAVAILABLE_CODES = new Set<string>([
   'THUMBNAIL_FAILED',
 ]);
 
-// Phase 19 / Plan 19-05 — Explicit 429 set for rate-limit / throttle codes.
+// Explicit 429 set for rate-limit / throttle codes.
 // SUMMARY_THROTTLED surfaces from POST /api/versions/:id/summary/regenerate
 // when the same versionId is requested within the 60s server-side cooldown
-// window (SUM-04). 429 (Too Many Requests) is the standard HTTP semantics for
+// window. 429 (Too Many Requests) is the standard HTTP semantics for
 // throttled endpoints; clients can read Retry-After if added later.
 const TOO_MANY_REQUESTS_CODES = new Set<string>([
   'SUMMARY_THROTTLED',
@@ -105,7 +104,7 @@ const BAD_REQUEST_CODES = new Set<string>([
  *   4. Unprocessable set → 422.
  *   5. Conflict set → 409.
  *   6. Service unavailable set → 503.
- *   7. Too-many-requests set → 429 (Phase 19 SUMMARY_THROTTLED).
+ *   7. Too-many-requests set → 429 (SUMMARY_THROTTLED).
  *   8. Unknown code → 500 (fallthrough; original code is preserved in the body
  *      by `typedErrorHandler`).
  */
@@ -123,8 +122,8 @@ export function statusForCode(code: string): number {
 }
 
 /**
- * Hono ErrorHandler shared by every dashboard REST route (Plan 05-04) and the
- * SSE endpoint (Plan 05-05). Usage:
+ * Hono ErrorHandler shared by every dashboard REST route and the
+ * SSE endpoint. Usage:
  *
  *   import { typedErrorHandler } from './error-middleware.js';
  *   app.onError(typedErrorHandler);

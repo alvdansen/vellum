@@ -1,5 +1,4 @@
-// src/http/static.ts — static asset handler for the Preact dashboard
-// (Plan 05-06, D-WEBUI-04 / D-WEBUI-26 / D-WEBUI-27 / T-5-04).
+// src/http/static.ts — static asset handler for the Preact dashboard.
 //
 // Serves pre-built assets from `packages/dashboard/dist/` — a single-page app
 // where unknown paths fall through to `index.html` (SPA routing). When dist/
@@ -7,11 +6,11 @@
 // workflow without the UI built), a fallback HTML page is served instead of
 // throwing, so the MCP server and `/api/*` routes still function.
 //
-// Architecture purity (D-WEBUI-28 / D-WEBUI-31): no MCP SDK imports, no direct
+// Architecture purity: no MCP SDK imports, no direct
 // SQLite imports, no engine dependency. This is pure file serving + a 6-line
 // fallback.
 //
-// T-5-04 path traversal: @hono/node-server's serveStatic rejects paths
+// Path traversal: @hono/node-server's serveStatic rejects paths
 // containing `..` segments and double separators BEFORE resolving against
 // root (see dist/serve-static.mjs#67-72). The check runs per-request, so we
 // inherit the mitigation without additional code.

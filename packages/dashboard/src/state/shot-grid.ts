@@ -1,28 +1,26 @@
 /**
  * packages/dashboard/src/state/shot-grid.ts
  *
- * Phase 21 / Plan 21-02 — Task T05.
- *
- * Co-locates the Phase 21 ShotGridView signal bag, the SSE-driven
+ * Co-locates the ShotGridView signal bag, the SSE-driven
  * `onShotStatusChanged` handler (D-22), the `aggregateCounts` computed
  * (D-14), and the URL-state hydrate/persist helpers (D-09). The view
- * (`<ShotGridView/>` shipping in Wave 4) consumes these by direct import.
+ * (`<ShotGridView/>`) consumes these by direct import.
  *
  * Architecture-purity invariant (D-WEBUI-31): this file performs zero
  * server-tree relative-import traversals — only the dashboard-local
  * `../types/*` barrels and the `@preact/signals` + `zod` libraries.
  *
- * Landmines preserved (PATTERNS §13):
+ * Landmines preserved:
  *   - DO NOT subscribe to SSE inside this module's top level. The
- *     subscription belongs in `App.tsx`'s useEffect (Wave 4) so the
+ *     subscription belongs in `App.tsx`'s useEffect so the
  *     register/unregister lifecycle is tied to the dashboard mount.
  *   - DO NOT call `persistShotGridUrlState()` at module top level.
  *     Callers invoke it explicitly after signal mutations (consumer
- *     pattern matches Phase 18 `persistGridSort` precedent).
- *   - DO NOT use `history` push semantics — D-09 LOCKED `replaceState` only.
+ *     pattern matches the `persistGridSort` precedent).
+ *   - DO NOT use `history` push semantics — D-09 locks `replaceState` only.
  *     Filter and view changes are view settings, not navigation events;
  *     they must not pollute browser back-stack.
- *   - DO NOT throw on URL parse failures — mirror Phase 18 D-16 graceful
+ *   - DO NOT throw on URL parse failures — follow the D-16 graceful
  *     fallback: log `console.warn` and return defaults.
  */
 
@@ -32,14 +30,14 @@ import type { ShotStatusChangedPayload } from '../types/events.js';
 import type { ShotGridResponse, ShotStatus } from '../types/shot-grid.js';
 
 // ============================================================================
-// SIGNALS (D-14, D-22, RESEARCH Pattern 4-5)
+// SIGNALS (D-14, D-22)
 // ============================================================================
 
 /**
  * Current view — toggled by the header home icon (→ 'home'), the TreeSidebar
  * grid-icon (→ 'shot-grid'), and the header approvals button (→ 'approvals',
  * the approval-gate inbox). Signal-driven view routing per D-03; no
- * router library added. See 21-CONTEXT.md D-04 — switching `activeView` does
+ * router library added. Per D-04, switching `activeView` does
  * NOT clear `selectedShotId` or `selectedSequenceForGrid`.
  */
 export const activeView = signal<'home' | 'shot-grid' | 'approvals'>('home');
@@ -47,10 +45,10 @@ export const activeView = signal<'home' | 'shot-grid' | 'approvals'>('home');
 /**
  * Sequence-header expanded/collapsed state. Open by default (D-15 contract).
  *
- * Phase 21 / Plan 21-06 (gap closure for 21-AUDIT.md root pattern):
+ * Why module-level rather than component state:
  *   Moved from `useState` inside `<ShotGridView/>` because ShotGridView is
  *   unmounted whenever `activeView === 'home'`, which silently resets a
- *   useState back to its default. The audit (§4) treats this as a
+ *   useState back to its default. This is a
  *   view-independent concern — D-15 says "session-only state (no
  *   localStorage)" which is exactly what a module-singleton signal provides:
  *   survives view remounts, resets on full page reload.
@@ -102,7 +100,7 @@ export const gridIsFetching = signal<boolean>(false);
 /**
  * Most-recent load-more error message, or `null` when the last load-more
  * attempt succeeded. Drives the `<LoadMoreButton/>` retry pill (already
- * wired by Phase 18 reused component).
+ * wired by the reused component).
  */
 export const gridLoadMoreError = signal<string | null>(null);
 
@@ -116,10 +114,10 @@ export const gridLoadMoreError = signal<string | null>(null);
  * free — when `onShotStatusChanged` mutates a shot's status, this
  * `computed` re-derives reactively and the mini-pills re-render.
  *
- * Caveat (RESEARCH Pitfall 8): for sequences with > 50 shots the counts
+ * Caveat: for sequences with > 50 shots the counts
  * reflect the "loaded so far" page — `shots[]` is the paginated buffer,
- * not the full sequence. Phase 23 OVR-01 ships the full server-computed
- * stats widget; Phase 21 ships only this client-side approximation.
+ * not the full sequence. The server-computed stats widget (OVR-01)
+ * carries the full numbers; this is only a client-side approximation.
  */
 export const aggregateCounts = computed<Record<ShotStatus, number>>(() => {
   const init: Record<ShotStatus, number> = {
@@ -142,13 +140,13 @@ export const aggregateCounts = computed<Record<ShotStatus, number>>(() => {
 
 /**
  * SSE handler for `shot.status_changed` events. Subscribed by `App.tsx`'s
- * useEffect (Wave 4) via `onSseEvent('shot.status_changed', onShotStatusChanged)`.
+ * useEffect via `onSseEvent('shot.status_changed', onShotStatusChanged)`.
  *
- * Three defensive branches (RESEARCH Pitfalls 2, 3, 4 + A2 cross-sequence):
+ * Three defensive branches (incl. the A2 cross-sequence case):
  *   1. shotGrid is null → no-op (no grid loaded, nothing to update)
  *   2. cross-sequence event (payload.sequenceId !== current sequence) →
  *      ignore (the user navigated away; the stale signal still holds the
- *      previous sequence's grid). T-21-09 disposition.
+ *      previous sequence's grid; T-21-09).
  *   3. unknown shotId → `.map`'s identity passthrough leaves the row
  *      unchanged; safe against out-of-order frames or already-replaced
  *      rows.
@@ -172,13 +170,13 @@ export function onShotStatusChanged(payload: ShotStatusChangedPayload): void {
 }
 
 // ============================================================================
-// URL STATE — hydrate / persist (D-09, PATTERNS §13)
+// URL STATE — hydrate / persist (D-09)
 // ============================================================================
 
 /**
  * URL-state shape for the shot grid view (D-09). Zod whitelist refuses
  * anything outside this set; the engine + dashboard never see raw user
- * strings. Mirrors Phase 18 D-16 fallback-with-warning precedent.
+ * strings. Follows the D-16 fallback-with-warning precedent.
  */
 const ShotGridUrlSchema = z.object({
   seq: z.string().min(1).optional(),
@@ -192,7 +190,7 @@ const ShotGridUrlSchema = z.object({
 /**
  * Read the current URL search params, validate via the Zod whitelist, and
  * apply any valid values to the matching signals. Called once by
- * `App.tsx`'s mount useEffect (Wave 4).
+ * `App.tsx`'s mount useEffect.
  *
  * Failure modes (NEVER throws to caller):
  *   - SSR / no window → return without touching signals
@@ -242,12 +240,12 @@ export function hydrateShotGridUrlState(): void {
 
 /**
  * Mirror the current signal values into the URL via the History API
- * replace-state path (D-09 LOCKED — NEVER add to history; sort/filter/view changes are not
+ * replace-state path (D-09 — NEVER add to history; sort/filter/view changes are not
  * navigation events).
  *
  * Idempotent and safe to call on every signal mutation. Silent failure on
  * SSR / sandboxed `history` (some embed contexts block replaceState) —
- * matches Phase 18 precedent.
+ * matches the `persistGridSort` precedent.
  */
 export function persistShotGridUrlState(): void {
   if (

@@ -11,7 +11,7 @@
  * failure pill, but owns no fetch. All decision side effects run through
  * ProposalDecisionBar → the state-layer helpers.
  *
- * SECURITY — T-5-06: every dynamic value (provider, cost, notes, request,
+ * SECURITY — XSS: every dynamic value (provider, cost, notes, request,
  * error) renders as a JSX text child or through JsonBlock (JSON.stringify in a
  * <pre>) — Preact auto-escapes; no dangerouslySetInnerHTML.
  */

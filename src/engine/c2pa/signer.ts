@@ -1,14 +1,14 @@
-// Phase 14 — PROV-V-01 (D-CTX-2 + D-CTX-6). Engine-layer signer wrapper.
+// Engine-layer C2PA signer wrapper.
 //
 // This is the ONLY file in the codebase that imports c2pa-node. The
 // architecture-purity test asserts:
 //   grep -rE "from\s*['\"]c2pa-node|import\s*\(\s*['\"]c2pa-node" src/
 //   (excluding __tests__) returns matches ONLY in src/engine/c2pa/signer.ts.
 //
-// REVISION fixes:
-//   Concern #1  — algorithm detection via X509Certificate (no hard-coded ES256)
-//   Concern #10 — RFC4514-safe subject parser (no naive regex)
-//   Concern #11 — lazy native binding load + try/catch (no boot crash)
+// Hardening notes:
+//   - algorithm detection via X509Certificate (no hard-coded ES256)
+//   - RFC4514-safe subject parser (no naive regex)
+//   - lazy native binding load + try/catch (no boot crash)
 //
 // TSA is MANDATORY on c2pa-node v0.5.26 — verified empirically, not from
 // the docs, because this file used to claim the opposite in two places:
@@ -31,7 +31,7 @@ import { X509Certificate } from 'node:crypto';
 import { TypedError } from '../errors.js';
 import type { BuildManifestResult, IngredientSpec } from './manifest-builder.js';
 
-// c2pa-node native binding — loaded lazily (Concern #11).
+// c2pa-node native binding — loaded lazily so a broken binding cannot crash boot.
 type C2paNodeModule = typeof import('c2pa-node');
 let c2paNodeModule: C2paNodeModule | null = null;
 let c2paNodeLoadError: Error | null = null;
@@ -40,7 +40,7 @@ let c2paNodeLoadError: Error | null = null;
  * Lazy + try/catch'd native binding load. The first invocation attempts the
  * dynamic import; subsequent invocations reuse the cached module OR throw
  * the cached load error wrapped in `C2PA_SIGNER_LOAD_FAILED`. Server boot
- * NEVER calls this — Plan 14-03's engine hook is the first call site at
+ * NEVER calls this — the engine's signing hook is the first call site at
  * download time.
  */
 async function ensureC2paNode(): Promise<C2paNodeModule> {
@@ -67,8 +67,8 @@ async function ensureC2paNode(): Promise<C2paNodeModule> {
 
 /**
  * Returns true if c2pa-node has loaded successfully OR has not yet been
- * attempted. Returns false ONLY after a load attempt failed. Plan 14-03's
- * graceful-fail uses this to short-circuit retries.
+ * attempted. Returns false ONLY after a load attempt failed. The engine's
+ * graceful-fail path uses this to short-circuit retries.
  *
  * NOTE: this returns `true` BEFORE the first load attempt — the load is
  * lazy + can fail at first call. Callers cannot rely on this returning
@@ -118,7 +118,7 @@ const FALLBACK_TSA_URL = 'http://timestamp.digicert.com';
  *
  * Throws `TypedError('C2PA_SIGNER_LOAD_FAILED', ...)` on any failure path
  * (binding load, file read, cert parse, key parse, unsupported algorithm,
- * c2pa-node createC2pa rejection). NEVER logs key bytes (T-14-01 mitigation).
+ * c2pa-node createC2pa rejection). NEVER logs key bytes.
  *
  * `tsaUrl` is operator-controllable via `VELLUM_C2PA_TSA_URL`; the config
  * loader defaults it to a working public endpoint because a TSA is
@@ -139,7 +139,7 @@ export async function loadSigner(
   privateKeyPemPath: string,
   tsaUrl: string | null = FALLBACK_TSA_URL,
 ): Promise<LoadedSigner> {
-  const c2paNode = await ensureC2paNode(); // Concern #11 — fails loud if binding broken
+  const c2paNode = await ensureC2paNode(); // fails loud if binding broken
 
   let certPemBytes: Buffer;
   let privateKeyPemBytes: Buffer;
@@ -156,7 +156,7 @@ export async function loadSigner(
     );
   }
 
-  // Parse cert + detect algorithm (Concern #1).
+  // Parse cert + detect algorithm.
   let cert: X509Certificate;
   try {
     cert = new X509Certificate(certPemBytes);
@@ -169,7 +169,7 @@ export async function loadSigner(
   }
   const algorithm = detectSigningAlgorithm(cert, c2paNode.SigningAlgorithm);
 
-  // Derive subject summary (Concern #10).
+  // Derive a path-leak-free subject summary.
   const certSubjectSummary = deriveCertSubjectSummary(cert);
 
   // Build C2pa instance. The LocalSigner literal omits `tsaUrl` entirely
@@ -204,7 +204,7 @@ export async function loadSigner(
 }
 
 /**
- * Concern #1 — match cert algorithm to c2pa-node SigningAlgorithm enum.
+ * Match cert algorithm to c2pa-node SigningAlgorithm enum.
  *
  * Detection priority for RSA-PSS:
  *   1. asymmetricKeyDetails.hashAlgorithm (bound RSA-PSS keys expose this)
@@ -279,7 +279,7 @@ function detectSigningAlgorithm(
 }
 
 /**
- * Concern #10 — RFC4514-safe subject parser.
+ * RFC4514-safe subject parser.
  *
  * Walks `cert.subject` (Node X509Certificate emits one `attr=value` line per
  * RDN attribute, RFC2253-style). Splits each line on the FIRST UNESCAPED
@@ -322,7 +322,7 @@ function unescapeRfc4514(s: string): string {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Phase 15 / Plan 15-03 — ingredient-aware signers.
+// Ingredient-aware signers.
 // ──────────────────────────────────────────────────────────────────────────
 //
 // signer.ts is STILL the only file in src/ that imports the native binding.
@@ -331,10 +331,10 @@ function unescapeRfc4514(s: string): string {
 // Specs with assetRef.kind === 'unavailable' are skipped here — their audit
 // trail lives in result.definition.assertions[] as a
 // vellum.unavailable_ingredient custom assertion (emitted by
-// buildManifestWithIngredients in Plan 15-02).
+// buildManifestWithIngredients).
 
 /**
- * Phase 15 — sign + embed manifest into a buffer asset (JPEG / PNG only),
+ * Sign + embed manifest into a buffer asset (JPEG / PNG only),
  * threading IngredientSpec[] through the native binding's createIngredient +
  * manifestBuilder.addIngredient API before sign.
  *
@@ -348,13 +348,13 @@ function unescapeRfc4514(s: string): string {
  *
  * Specs with assetRef.kind === 'unavailable' are SKIPPED — their audit
  * trail lives in definition.assertions as vellum.unavailable_ingredient
- * (emitted by buildManifestWithIngredients in Plan 15-02).
+ * (emitted by buildManifestWithIngredients).
  *
  * Throws `TypedError('C2PA_SIGNING_FAILED', ...)` on:
  *   - unsupported MIME type (caller passed video/mp4, etc.)
  *   - c2pa-node sign() rejection (corrupted asset, network failure on TSA, etc.)
  *
- * The engine hook catches this as a graceful-fail per D-CTX-9 — the caller
+ * The engine hook catches this as a graceful-fail — the caller
  * keeps the original bytes.
  */
 export async function signEmbedBuffer(
@@ -391,7 +391,7 @@ export async function signEmbedBuffer(
 }
 
 /**
- * Phase 15 — sign + embed manifest into a file asset (MP4 / WebP / TIFF /
+ * Sign + embed manifest into a file asset (MP4 / WebP / TIFF /
  * JPEG / PNG file form), threading IngredientSpec[] through the native
  * binding's createIngredient + manifestBuilder.addIngredient API before sign.
  *
@@ -426,7 +426,7 @@ export async function signEmbedFile(
 }
 
 /**
- * Phase 15 — drive the native binding's createIngredient + addIngredient for
+ * Drive the native binding's createIngredient + addIngredient for
  * each spec. Specs with assetRef.kind === 'unavailable' are skipped — those
  * are recorded as vellum.unavailable_ingredient custom assertions
  * inside result.definition.assertions (emitted by
@@ -436,7 +436,7 @@ export async function signEmbedFile(
  * compute its own labeled SHA. We do NOT supply a precomputed hash — the
  * native binding API requires the asset bytes regardless.
  *
- * Plan 15-03 RUNTIME DEVIATION (Rule 1 — broken API surface):
+ * RUNTIME DEVIATION (the published API surface is broken):
  *   The native binding v0.5.26 declares `export enum Relationship` in
  *   dist/js-src/types.d.ts, but NO matching dist/js-src/types.js file ships
  *   in the published tarball — `index.js` re-exports neither types.d.ts nor
@@ -469,7 +469,7 @@ async function addIngredientsToBuilder(
       title: spec.title,
       // No `hash` override — the native binding computes its labeled SHA
       // from the asset bytes. The manifest_signed event still records OUR
-      // bytewise sha256 of the signed output (Plan 15-03 Engine.signOutput);
+      // bytewise sha256 of the signed output (Engine.signOutput);
       // per-ingredient labeled hashes belong to the native binding's domain.
     });
     // Literal string values per the Relationship enum declaration in

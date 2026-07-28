@@ -1,5 +1,4 @@
-// src/engine/output-downloader.ts — non-fatal dashboard-stable output mirror
-// (D-WEBUI-26).
+// src/engine/output-downloader.ts — non-fatal dashboard-stable output mirror.
 //
 // Mirrors an already-persisted output into outputsDir/<versionId>/<filename>
 // (the stable path `/api/versions/:id/output` serves). Called from the
@@ -8,7 +7,7 @@
 // roll that back. Every failure path returns null after logging — the caller
 // must never see a thrown error.
 //
-// Phase 14 (PROV-V-01) addition: the optional `engine` parameter unlocks a
+// C2PA addition: the optional `engine` parameter unlocks a
 // post-mirror signing hook. After the mirror lands, the file is REPLACED in
 // place via atomic mkstemp -> rename when c2paConfig is configured AND the
 // format routes to embed-buffer / embed-file. Architecture-purity preserved:
@@ -17,10 +16,10 @@
 // engine.signOutput (declared via the EngineForC2pa structural Pick) so the
 // native-binding import remains centralized in the engine c2pa module.
 //
-// Architecture-purity invariants (D-WEBUI-31):
+// Architecture-purity invariants:
 //  - Zero MCP SDK imports (enforced by architecture-purity.test.ts substring grep).
 //  - Zero imports from any HTTP-server layer.
-//  - Zero direct imports from the C2PA native binding (Plan 14-03 Concern #11 boundary).
+//  - Zero direct imports from the C2PA native binding (sole-importer boundary).
 //  - Only imports: node:fs/promises, node:path, nanoid.
 
 import {
@@ -37,14 +36,14 @@ import { nanoid } from 'nanoid';
 import { BUFFER_SIGNING_MAX_BYTES } from './c2pa/constants.js';
 
 /**
- * Phase 14 (PROV-V-01) — minimal Engine surface needed by the downloader.
+ * Minimal Engine surface needed by the downloader.
  *
  * Structural pick rather than a hard import on the Engine class: the
  * downloader is engine-aware ONLY at the type level so the architecture
  * boundary stays composition-friendly and tests can pass a stub engine
  * without instantiating the full Engine facade.
  *
- * The contract is precisely the Plan 14-03 Task 2 signOutput method's
+ * The contract is precisely the signOutput method's
  * shape — see Engine.signOutput in src/engine/pipeline.ts.
  */
 export type EngineForC2pa = {
@@ -60,27 +59,27 @@ export type EngineForC2pa = {
 };
 
 /**
- * Phase 14 (Concern #6) — defence-in-depth size cap. Imported from the
+ * Defence-in-depth size cap. Imported from the
  * c2pa-module shared-constants barrel (src/engine/c2pa/constants.ts) so
- * pipeline.ts and output-downloader.ts can never drift. See MR-03 in
- * 14-REVIEW-FIX.md — the legacy duplicate has been removed and a single
- * source of truth is enforced via this import.
+ * pipeline.ts and output-downloader.ts can never drift — the legacy
+ * duplicate has been removed and a single source of truth is enforced
+ * via this import.
  */
 
 /**
- * Phase 14 (PROV-V-01) — read or stream the just-mirrored file, call
+ * Read or stream the just-mirrored file, call
  * engine.signOutput, atomic-overwrite via UNIQUE mkstemp -> rename.
  *
- * Errors are logged + swallowed (D-CTX-9 graceful — defence-in-depth):
+ * Errors are logged + swallowed (graceful degradation — defence-in-depth):
  *   engine.signOutput already catches everything internally and emits a
  *   manifest_signed event with status_reason=...; this function's catch
  *   is a belt-and-suspenders guard for unexpected throws.
  *
- * Concerns honored:
- *   #6 — pre-stat picks bytes-input vs. filePath-input by file size
- *   #7 — engine.signOutput handles idempotency (alreadySigned guard)
- *   #9 — UNIQUE partial path scheme (`<destPath>.c2pa-signed.<8-char-nanoid>`)
- *        prevents concurrent-writer collision
+ * Invariants honored:
+ *   - pre-stat picks bytes-input vs. filePath-input by file size
+ *   - engine.signOutput handles idempotency (alreadySigned guard)
+ *   - UNIQUE partial path scheme (`<destPath>.c2pa-signed.<8-char-nanoid>`)
+ *     prevents concurrent-writer collision
  */
 async function signFileInPlace(
   engine: EngineForC2pa,
@@ -89,7 +88,7 @@ async function signFileInPlace(
   filename: string,
 ): Promise<void> {
   try {
-    // Concern #6 — pre-stat to choose buffer-input vs filePath-input path.
+    // Pre-stat to choose buffer-input vs filePath-input path.
     // Oversized files skip the readFile to avoid OOM; the engine's file-API
     // path streams via c2pa-rs and does not need the full bytes in memory.
     const st = await stat(destPath);
@@ -101,7 +100,7 @@ async function signFileInPlace(
     const result = await engine.signOutput(versionId, filename, signInput);
 
     if (result.alreadySigned) {
-      // Concern #7 — file was already signed in a prior run. The original
+      // File was already signed in a prior run. The original
       // bytes were either pre-existing (signed) OR the fake re-overwrote
       // them with the un-signed Cloud bytes; either way the engine's
       // idempotency guard signals not-to-resign.
@@ -114,7 +113,7 @@ async function signFileInPlace(
     }
 
     if (result.signed !== null) {
-      // Buffer mode — write signed bytes to UNIQUE partial path (Concern #9).
+      // Buffer mode — write signed bytes to a UNIQUE partial path.
       // Use nanoid(8) for the per-call unique suffix; two concurrent writers
       // for the same versionId+filename will pick different partial paths
       // and rename to the same final path independently.
@@ -130,7 +129,7 @@ async function signFileInPlace(
       await renameWithFallback(result.signedToPath, destPath);
     }
   } catch (err) {
-    // Defence-in-depth (D-CTX-9). engine.signOutput should never throw —
+    // Defence-in-depth. engine.signOutput should never throw —
     // it catches every signing path internally and emits a typed
     // manifest_signed event. This catch handles unexpected throws (e.g.,
     // disk full during the writeFile).
@@ -167,7 +166,7 @@ async function signFileInPlace(
  * fail on consumed staging. `sourcePath` comes from the version's own
  * outputs_json (written by this process), never from agent input.
  *
- * NON-FATAL (D-WEBUI-26): the version is already completed and a mirror
+ * NON-FATAL: the version is already completed and a mirror
  * failure must not roll that back. Returns null after logging.
  */
 export async function mirrorPersistedOutput(
@@ -188,7 +187,7 @@ export async function mirrorPersistedOutput(
     if (srcPath !== destPath) {
       await mkdir(versionDir, { recursive: true });
       // Atomic publish — a partially-copied file must never be servable.
-      // Unique suffix so two concurrent mirrors cannot collide (Concern #9).
+      // Unique suffix so two concurrent mirrors cannot collide.
       const partialPath = `${destPath}.mirror.${nanoid(8)}.partial`;
       try {
         await copyFile(srcPath, partialPath);

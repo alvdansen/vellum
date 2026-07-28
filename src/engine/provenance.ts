@@ -1,7 +1,7 @@
 import type { ModelRef } from '../types/provenance.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
 
-/** D-PROV-06 loader class_types. */
+/** Loader class_types whose model references are extracted for provenance. */
 export const LOADER_CLASS_TYPES: ReadonlySet<string> = new Set([
   'CheckpointLoader',
   'CheckpointLoaderSimple',
@@ -14,7 +14,7 @@ export const LOADER_CLASS_TYPES: ReadonlySet<string> = new Set([
   'StyleModelLoader',
 ]);
 
-/** D-PROV-22 KSampler class_types for seed extraction and iterate.seed shortcut. */
+/** KSampler class_types for seed extraction and iterate.seed shortcut. */
 export const KSAMPLER_CLASS_TYPES: ReadonlySet<string> = new Set([
   'KSampler',
   'KSamplerAdvanced',
@@ -22,20 +22,19 @@ export const KSAMPLER_CLASS_TYPES: ReadonlySet<string> = new Set([
   'SamplerCustomAdvanced',
 ]);
 
-/** Phase 15 (D-CTX-1; v1.1 audit per Plan 15-01 REVISION C1/C2) — non-loader
- *  image-input class types. Used by extractComponentIngredients to walk the
- *  resolved prompt blob for control / mask / img2img / inpaint images that
- *  should appear as c2pa.ingredient {relationship: 'componentOf'}
+/** Non-loader image-input class types. Used by extractComponentIngredients
+ *  to walk the resolved prompt blob for control / mask / img2img / inpaint
+ *  images that should appear as c2pa.ingredient {relationship: 'componentOf'}
  *  assertions. Disjoint from LOADER_CLASS_TYPES — loader nodes resolve model
- *  files (Phase 13 fingerprinting); image-input nodes consume image bytes.
+ *  files (model fingerprinting); image-input nodes consume image bytes.
  *
- *  v1.1 NOT included (deferred to v1.2 audit): pack-shipped IP-Adapter
+ *  NOT included (deferred): pack-shipped IP-Adapter
  *  node variants (~12 forms in the IP-Adapter Plus pack). A defensive audit
- *  against the installed pack source is out-of-scope for v1.1.
+ *  against the installed pack source is out-of-scope for now.
  *
- *  v1.1 NOT included (deliberately moved to LOADER side): the IP-Adapter
+ *  NOT included (deliberately moved to LOADER side): the IP-Adapter
  *  model-loader and CLIP-Vision-loader classes — both consume model files
- *  from disk, not image bytes. They belong on the Phase 13 fingerprinting
+ *  from disk, not image bytes. They belong on the model-fingerprinting
  *  domain, not here. */
 export const IMAGE_INPUT_CLASS_TYPES: ReadonlySet<string> = new Set([
   'LoadImage',
@@ -46,8 +45,7 @@ export const IMAGE_INPUT_CLASS_TYPES: ReadonlySet<string> = new Set([
   'ControlNetApplyAdvanced',
 ]);
 
-/** Phase 15 (D-CTX-1; v1.1 audit per Plan 15-01 REVISION C1/C2) — per
- *  IMAGE_INPUT_CLASS_TYPES class, the canonical input field name(s).
+/** Per IMAGE_INPUT_CLASS_TYPES class, the canonical input field name(s).
  *  Mirrors MODEL_FIELD_BY_CLASS.
  *
  *  Two field-shape kinds:
@@ -81,7 +79,7 @@ export const MODEL_FIELD_BY_CLASS: Record<string, string[]> = {
   StyleModelLoader: ['style_model_name'],
 };
 
-/** Phase 13 (D-CTX-2). Per loader class_type, the canonical models-subdir
+/** Per loader class_type, the canonical models-subdir
  *  under VELLUM_MODELS_DIR — `MODEL_DIR_BY_CLASS` mirrors the structure
  *  of `MODEL_FIELD_BY_CLASS` above; every key in LOADER_CLASS_TYPES MUST
  *  appear here so fingerprintModel never falls into the
@@ -113,11 +111,12 @@ function pickModelName(inputs: Record<string, unknown>, fields: string[]): strin
 }
 
 /**
- * D-PROV-06: walk the resolved prompt blob for loader nodes and emit
+ * Walk the resolved prompt blob for loader nodes and emit
  * ModelRef[]. Sorted by node_id (numeric ascending) so the output is
  * deterministic across runs.
  *
- * Pure: zero IO. Model hashes always null in Phase 3.
+ * Pure: zero IO. Model hashes always null here — the async fingerprinting
+ * pass fills them in later.
  */
 export function extractModels(promptBlob: Record<string, unknown>): ModelRef[] {
   const out: ModelRef[] = [];
@@ -190,7 +189,7 @@ export class ProvenanceWriter {
     versionId: string,
     promptBlob: Record<string, unknown> | null,
     outputsJson: string,
-    // Pivot Phase B/D — optional serialized NeutralProvenance for non-ComfyUI
+    // Optional serialized NeutralProvenance for non-ComfyUI
     // backends and externally-registered outputs. Stored in generation_result_json.
     neutralResultJson?: string | null,
   ): void {

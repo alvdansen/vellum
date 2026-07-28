@@ -1,21 +1,19 @@
 // packages/dashboard/src/state/versions.ts
 //
 // @preact/signals-backed store for the versions list under the selected
-// shot, plus the currently-open version-detail drawer target (Plan 05-10).
+// shot, plus the currently-open version-detail drawer target.
 //
 // Architecture-purity invariant (D-WEBUI-31): this file performs zero
 // server-tree relative-import traversals. Uses dashboard-local entity DTOs
 // from ../types/entities.ts and dashboard-local sort types from ../lib/sortTypes.ts.
 //
-// Plan 05-08 Task 2 — lightweight signal bag consumed by Plan 05-10
+// Lightweight signal bag consumed by the version-list and drawer
 // components. The version list is hydrated via fetchVersions(shotId, ...)
 // when selectedShotId changes; the drawer target mirrors a row click.
 //
-// Phase 18 / Plan 18-05 Task 1 — extends the signal bag with sort + cursor
-// pagination state. The new signals (gridSort, gridCursor, gridTotalCount,
-// gridIsFetching, gridLoadMoreError) are read by HomeView (Plan 18-05 Task 2)
-// to drive the SortDropdown + LoadMoreButton primitives. Per researcher
-// recommendation in 18-RESEARCH.md Open Question #5, gridIsFetching is a
+// The sort + cursor pagination signals (gridSort, gridCursor, gridTotalCount,
+// gridIsFetching, gridLoadMoreError) are read by HomeView to drive the
+// SortDropdown + LoadMoreButton primitives. gridIsFetching is a
 // signal (cross-component visibility) rather than local useState.
 
 import { signal } from '@preact/signals';
@@ -32,7 +30,7 @@ export const versions = signal<Version[]>([]);
 export const selectedVersionId = signal<string | null>(null);
 
 // ============================================================================
-// Phase 18 / Plan 18-05 — grid sort + cursor pagination state
+// Grid sort + cursor pagination state
 // ============================================================================
 
 /**

@@ -2,9 +2,9 @@
  * StatusPill — inline color-coded status badge for versions.
  *
  * Pure component: props-in, no callbacks (read-only display).
- * Status colors map 1:1 to UI-SPEC.md status pill contract (ComfyUI slot colors).
+ * Status colors map 1:1 to the ComfyUI slot colors.
  *
- * Status vocabulary matches CONTEXT.md SSE payload field:
+ * Status vocabulary matches the SSE payload field:
  *   - queued     (pre-running, grey)
  *   - running    (in-flight, amber + pulse)
  *   - complete   (terminal success, green)

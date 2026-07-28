@@ -2,51 +2,50 @@
  * Thumbnail — thin presentational wrapper component owning lazy-load
  * <img loading="lazy"> + skeleton fallback + C2PA shield overlay logic.
  *
- * Phase 17 / Plan 17-04 Task 3 primitive. Consumed by VersionCard +
- * TreeSidebar shot rows in Plan 17-05; this file ships the public API
- * contract (UI-SPEC §"<Thumbnail/> API contract" lines 181-237) so Plan 05
- * can plug it into the actual consumers without further coordination.
+ * Consumed by VersionCard +
+ * TreeSidebar shot rows; this file owns the public API
+ * contract so consumers
+ * can plug it in without further coordination.
  *
- * Render contract (verbatim from UI-SPEC):
+ * Render contract:
  *   - version.status !== 'complete' → <SkeletonThumbnail/> at the size
- *     variant's dimensions, aria-busy='true' on the wrapper (D-07 unified
+ *     variant's dimensions, aria-busy='true' on the wrapper (unified
  *     skeleton for in-progress / loading / failed)
  *   - version.status === 'complete' AND no thumbnail-fetch error →
  *     <img loading="lazy" src={getThumbnailUrl(version.id)} class="object-contain"
  *           alt={ariaLabel ?? defaultAlt} width={W} height={H} /> wrapped
  *     in <div class="relative aspect-video">
  *   - browser onerror fires → swap to <SkeletonThumbnail/> AND set
- *     aria-label='Preview unavailable for ${version.label}' (D-07 same shimmer)
+ *     aria-label='Preview unavailable for ${version.label}' (same shimmer)
  *   - c2paStatus.status === 'signed' AND complete AND no error → append
- *     <C2paShield/> absolute-positioned bottom-right (D-10 LOCKED — predicate
+ *     <C2paShield/> absolute-positioned bottom-right (predicate
  *     is signed-only; unsigned + unknown + undefined render NO overlay)
  *
- * Dimensional contract (UI-SPEC §"Dimensional contract"):
+ * Dimensional contract:
  *   - size='card' (default): aspect-video w-full (height computed from width
  *     via 16:9 ratio); explicit width=640 height=360 HTML attrs for CLS=0
  *   - size='sm': aspect-video flex-shrink-0 with inline width: 80px style;
  *     explicit width=80 height=45 HTML attrs for CLS=0
  *
- * Click-target contract (UI-SPEC §"Click-target contract" + D-11 LOCKED):
+ * Click-target contract:
  *   - <Thumbnail/> itself has NO click handler. Clicks bubble to the parent
  *     VersionCard <button> or TreeRow <div role="treeitem"> — both already
  *     own their own onClick wiring upstream of this component
  *
- * Performance contract (UI-SPEC §"Performance contract" + REQUIREMENTS.md
- * VIS-01):
+ * Performance contract:
  *   - loading="lazy" — browser-native lazy-load (NO IntersectionObserver shim)
  *   - explicit width + height HTML attributes — guarantees CLS=0 on initial paint
  *   - decoding="async" — frees the main thread during decode
  *
- * SECURITY notes (mirrors VersionCard.tsx T-5-06):
+ * SECURITY notes (mirrors VersionCard.tsx):
  *   - alt={ariaLabel ?? `Output for ${version.label}`} — JSX text interpolation;
  *     Preact escapes the version label as a TEXT_NODE attribute. No
  *     dangerouslySetInnerHTML is used.
  *
- * v1.2 NOTE: <Thumbnail/> is consumer-agnostic — it does NOT fetch
+ * NOTE: <Thumbnail/> is consumer-agnostic — it does NOT fetch
  * c2paStatus itself; the parent threads it down via prop. The existing
  * VersionDrawer pattern (auto-fetch via useEffect calling getC2paStatus)
- * is preserved verbatim by Plan 17-05's wiring.
+ * is preserved verbatim by the consumers' wiring.
  */
 
 import { useState } from 'preact/hooks';
@@ -61,20 +60,20 @@ export type ThumbnailSize = 'card' | 'sm';
 
 /**
  * Minimal version shape needed by Thumbnail. The full Version record from
- * the data layer (Phase 8 entities.ts) is structurally compatible — any
+ * the data layer (entities.ts) is structurally compatible — any
  * object with these fields satisfies the prop type. Mirrors the
  * VersionCardVersion pattern from VersionCard.tsx.
  */
 export interface ThumbnailVersion {
   id: string;
   /**
-   * Output filename — reserved for v1.3 multi-output; v1.2 server resolves
-   * outputs_json[0].filename internally. v1.2 callers leave this undefined.
+   * Output filename — reserved for future multi-output; the server resolves
+   * outputs_json[0].filename internally today. Callers leave this undefined.
    */
   filename?: string;
   /**
    * Version status governs render path: 'complete' → real thumbnail;
-   * otherwise → skeleton (D-07 unified treatment).
+   * otherwise → skeleton (unified treatment).
    */
   status: Status;
   /**
@@ -95,8 +94,8 @@ export interface ThumbnailProps {
   size?: ThumbnailSize;
   /**
    * C2PA signing status. When undefined or not 'signed', NO shield is
-   * rendered (D-10 LOCKED). Source of truth is the X-C2PA-Signing-Status
-   * response header from HEAD /api/versions/:id/output (Phase 14 contract);
+   * rendered. Source of truth is the X-C2PA-Signing-Status
+   * response header from HEAD /api/versions/:id/output;
    * dashboard consumes via getC2paStatus from lib/api.ts.
    */
   c2paStatus?: C2paStatus;
@@ -123,7 +122,7 @@ export function Thumbnail({
   const isComplete = version.status === 'complete';
   const showSkeleton = !isComplete || imgError;
 
-  // Wrapper class matrix per UI-SPEC §"Dimensional contract".
+  // Wrapper class matrix (dimensional contract):
   // 'card' → fluid width via aspect-video w-full
   // 'sm'   → flex-shrink-0 + inline width: 80px style (TreeSidebar density)
   const wrapperClass =
@@ -132,7 +131,7 @@ export function Thumbnail({
       : 'relative block aspect-video w-full overflow-hidden rounded';
   const wrapperStyle = size === 'sm' ? { width: '80px' } : undefined;
 
-  // Skeleton render path — D-07 unified treatment for queued/running/failed
+  // Skeleton render path — unified treatment for queued/running/failed
   // AND browser-onerror fallback (no broken image icons; same shimmer).
   // The wrapper dictates the shape (aspect-video, fluid for cards / 80px for
   // sm); the skeleton fills it, so it tracks the same footprint the real
@@ -153,15 +152,14 @@ export function Thumbnail({
   }
 
   // Complete + no error render path — real <img> + optional shield.
-  // Shield class matrix per UI-SPEC §"Spacing Scale" Phase 17 fixed-pixel
-  // exceptions table:
+  // Shield class matrix (fixed-pixel exceptions to the spacing scale):
   //   sm:   absolute right-1 bottom-1 h-3.5 w-3.5  (4px offset, 14×14 px)
   //   card: absolute right-1.5 bottom-1.5 h-5 w-5  (6px offset, 20×20 px)
   const shieldClass =
     size === 'sm'
       ? 'absolute right-1 bottom-1 h-3.5 w-3.5'
       : 'absolute right-1.5 bottom-1.5 h-5 w-5';
-  // Explicit width + height HTML attributes for CLS=0 (REQUIREMENTS.md VIS-01).
+  // Explicit width + height HTML attributes for CLS=0.
   // 'card' uses 640×360 as the intrinsic-ratio attributes; CSS aspect-video +
   // w-full lets the browser compute the actual rendered size from the ratio.
   const widthAttr = size === 'sm' ? 80 : 640;

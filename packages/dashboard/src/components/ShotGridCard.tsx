@@ -1,28 +1,28 @@
 /**
  * ShotGridCard — single shot tile for the shot-grid CSS Grid.
  *
- * Phase 22 / Plan 22-07 — D-13 refactor: the Phase 21 whole-card-button
- * structure is REVERSED. Outer is now a `<div class="group relative">`
- * with three SIBLING `<button>` children (Pitfall 4 — never nested):
+ * The earlier whole-card-button structure is REVERSED here. Outer is now a
+ * `<div class="group relative">`
+ * with three SIBLING `<button>` children (nested-button hazard — never nested):
  *
  *   (a) Thumbnail button  — onSelect(versionId) → openVersionDrawer
- *                          (preserves Phase 21 D-19 thumb→VersionDrawer)
+ *                          (thumb click opens the VersionDrawer)
  *   (b) ShotStatusPill    — onClick → openReviewPanel(shotId)
  *                          (dual-mode pill; opens the review panel)
  *   (c) QuickApproveButton — hover-only Check icon; opens
  *                          StatusChangePopover anchored to itself; on
- *                          Confirm, optimistic + revert flow (D-12)
+ *                          Confirm, optimistic + revert flow
  *
  * The outer `class="group"` is the Tailwind v4 hover-state vehicle that
- * lets QuickApproveButton's `group-hover:opacity-100` work (D-10).
+ * lets QuickApproveButton's `group-hover:opacity-100` work.
  *
- * Inline error pill (REV-02): when quickApproveError signal equals this
+ * Inline error pill: when quickApproveError signal equals this
  * shot's id, render a WarningPill inside the card pinned to the bottom.
  *
- * Architecture-purity (D-WEBUI-31) preserved — only sibling dashboard
+ * Architecture-purity preserved — only sibling dashboard
  * imports.
  *
- * SECURITY — T-5-06 / VersionCard precedent: shot.name + version count
+ * SECURITY — VersionCard precedent: shot.name + version count
  * + relative timestamp render as JSX text children (Preact auto-escapes).
  */
 
@@ -49,8 +49,8 @@ import {
 export interface ShotGridCardProps {
   shot: ShotGridRow;
   /**
-   * Phase 21 contract preserved: callers pass a versionId-selection
-   * handler. Phase 22 callers should pass `openVersionDrawer` from
+   * Callers pass a versionId-selection
+   * handler — typically `openVersionDrawer` from
    * OverlayHost; legacy callers writing `selectedVersionId` directly
    * still work via OverlayHost's backward-compat fallback.
    */
@@ -73,7 +73,7 @@ export function ShotGridCard({
 
   const cardBody = (
     <div class="group relative w-full overflow-hidden rounded">
-      {/* (a) Thumbnail button — preserves Phase 21 D-19 (thumb → VersionDrawer) */}
+      {/* (a) Thumbnail button — thumb click opens the VersionDrawer */}
       <button
         type="button"
         onClick={
@@ -106,7 +106,7 @@ export function ShotGridCard({
         )}
       </button>
 
-      {/* (c) QuickApproveButton — only when hasVersion (D-10 hover-only) */}
+      {/* (c) QuickApproveButton — only when hasVersion (hover-only) */}
       {hasVersion ? (
         <QuickApproveButton
           shotId={shot.id}
@@ -117,7 +117,7 @@ export function ShotGridCard({
 
       <div class="flex flex-col gap-1 p-2 text-[var(--color-fg)]">
         <div class="flex items-center justify-between gap-2">
-          {/* (b) ShotStatusPill button — opens review panel (D-01 two-affordance card) */}
+          {/* (b) ShotStatusPill button — opens review panel (two-affordance card) */}
           <ShotStatusPill
             status={shot.status}
             onClick={() => openReviewPanel(shot.id)}

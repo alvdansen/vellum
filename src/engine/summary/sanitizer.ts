@@ -1,51 +1,51 @@
 /**
- * Phase 19 — D-PRIV-1 + D-PRIV-3. Adversarial-review-class allow-list sanitizer.
+ * Adversarial-review-class allow-list sanitizer.
  *
  * The summary template explicitly names which provenance fields may leave the
  * box. Anything not on the allow-list is stripped before the Anthropic API
- * call. Mirrors the Phase 14 c2pa-node "restricted module" precedent:
+ * call. Mirrors the c2pa-node "restricted module" precedent:
  * each new field surfaced in summaries is a code change, not a config tweak.
  *
- * Architecture-purity (Plan 01 grep guard): ZERO imports from anthropic SDK,
+ * Architecture-purity (grep-guard enforced): ZERO imports from anthropic SDK,
  * MCP SDK, SQLite-driver, ORM, or HTTP frameworks. This file MUST be readable
  * in isolation by an adversarial reviewer.
  *
- * Trust boundary (D-PRIV-2): User-authored prompt text (positive + negative
- * resolved via Phase 15 KSampler edge walk in `extractInputAssertion` from
+ * Trust boundary: User-authored prompt text (positive + negative
+ * resolved via the KSampler edge walk in `extractInputAssertion` from
  * src/engine/c2pa/ingredient-extractor.ts) is passed through verbatim. The
  * dashboard exposes a one-time first-use disclosure. The trust boundary
  * rationale is the same as for ComfyUI Cloud — the user already chose to
  * send this text upstream.
  *
  * IMPORTANT: This file is a pure helper. It does NOT call extractInputAssertion
- * directly — Plan 04 facade resolves the prompts upstream and threads the
+ * directly — the engine facade resolves the prompts upstream and threads the
  * resolved strings into SanitizeProvenanceInput.promptPositive /
  * SanitizeProvenanceInput.promptNegative. Keeping the resolution upstream
  * preserves architecture-purity (sanitizer has zero engine imports).
  *
- * Defence-in-depth (D-PRIV-3): assertNoApiKeyInPayload performs a
+ * Defence-in-depth: assertNoApiKeyInPayload performs a
  * multi-encoding leak scan (UTF-8 / UTF-16LE / UTF-16BE / base64) on the
  * sanitized output to catch the cache-poisoning surface in case Anthropic
  * (or a future provider) returns content containing a key fragment. The
- * scan covers prompt_positive / prompt_negative as well — even D-PRIV-2
- * verbatim trust does NOT bypass D-PRIV-3 defence-in-depth (T-19-13b).
+ * scan covers prompt_positive / prompt_negative as well — even the
+ * verbatim trust extended to user prompt text does NOT bypass the leak scan.
  *
- * ALLOW_LIST authorization rationale (revised per checker WARNING #9):
- *   - 6 fields enumerated by D-PRIV-1: model_name, prompt_positive,
+ * ALLOW_LIST authorization rationale:
+ *   - 6 core provenance fields: model_name, prompt_positive,
  *     prompt_negative, seed, parent_version_id, ingredient_summary_counts.
- *   - 1 field added cross-authorized by D-VAL-3: `redacted`. The validator
+ *   - 1 structural field: `redacted`. The validator
  *     (validation.ts) needs to know whether to apply the redaction-marker
- *     regex (D-VAL-3 disclosure requirement). The boolean itself is not
- *     user-content — it is structural metadata. Adversarial review surface
- *     audited explicitly here so reviewers do not need to cross-reference
- *     CONTEXT.md to verify provenance.
+ *     regex (redaction-disclosure requirement). The boolean itself is not
+ *     user-content — it is structural metadata. The authorization for each
+ *     field is audited explicitly here so reviewers can verify the surface
+ *     without cross-referencing anything else.
  */
 
 import type { ModelRef } from '../../types/provenance.js';
 import type { ProvenanceCompletedPayload } from '../../store/provenance-repo.js';
 
 /**
- * D-PRIV-1: explicit allow-list. Iteration uses these literal keys (never
+ * Explicit allow-list. Iteration uses these literal keys (never
  * input keys), defending against prototype pollution attacks where a
  * malicious provenance payload tries to surface attacker-controlled fields
  * via __proto__ or constructor pollution.
@@ -54,13 +54,13 @@ import type { ProvenanceCompletedPayload } from '../../store/provenance-repo.js'
  * review can audit the surface by reading this constant.
  */
 export const ALLOW_LIST = [
-  'model_name',                  // From models_json[].name (Phase 13 fingerprints) — D-PRIV-1
-  'prompt_positive',             // KSampler edge walk (Phase 15 extractInputAssertion) — D-PRIV-1 + D-PRIV-2 trust boundary
-  'prompt_negative',             // KSampler edge walk (Phase 15 extractInputAssertion) — D-PRIV-1 + D-PRIV-2 trust boundary
-  'seed',                        // From prompt_json.KSampler.seed (Phase 3) — D-PRIV-1
-  'parent_version_id',           // From version.parent_version_id (Phase 3) — D-PRIV-1
-  'ingredient_summary_counts',   // From Phase 15 ingredient graph — D-PRIV-1
-  'redacted',                    // From manifest_signed.redacted (Phase 16) — D-VAL-3 cross-authorization (validator needs to select redaction-marker regex mode)
+  'model_name',                  // From models_json[].name (model fingerprints)
+  'prompt_positive',             // KSampler edge walk (extractInputAssertion) — user-prompt trust boundary
+  'prompt_negative',             // KSampler edge walk (extractInputAssertion) — user-prompt trust boundary
+  'seed',                        // From prompt_json.KSampler.seed
+  'parent_version_id',           // From version.parent_version_id
+  'ingredient_summary_counts',   // From the ingredient graph
+  'redacted',                    // From manifest_signed.redacted — validator needs it to select redaction-marker regex mode
 ] as const;
 
 export interface SanitizedProvenance {
@@ -76,24 +76,24 @@ export interface SanitizedProvenance {
   seed: number | null;
   /** Parent version label (e.g., "v002") for iterate-lineage; null if root. */
   parent_version_label: string | null;
-  /** Phase 15 ingredient summary counts (e.g., { lora: 2, controlnet: 1 }). */
+  /** Ingredient summary counts (e.g., { lora: 2, controlnet: 1 }). */
   ingredient_summary_counts: Record<string, number>;
-  /** Phase 16 redacted boolean — drives D-VAL-3 redaction-marker requirement. */
+  /** Redacted boolean — drives the validator's redaction-marker requirement. */
   redacted: boolean;
   /** Version label (e.g., "v003") for the summary subject. */
   version_label: string;
 }
 
 /**
- * Input shape — Plan 04 facade pre-resolves prompt_positive / prompt_negative
- * via Phase 15's extractInputAssertion (src/engine/c2pa/ingredient-extractor.ts)
+ * Input shape — the engine facade pre-resolves prompt_positive / prompt_negative
+ * via extractInputAssertion (src/engine/c2pa/ingredient-extractor.ts)
  * and threads the resolved strings here. Keeping the edge-walk logic upstream
  * preserves the sanitizer's architecture-purity (zero engine imports).
  *
- * REVISED per checker BLOCKER #1: promptPositive / promptNegative are now
- * REQUIRED input fields. Plan 04 must populate these from the KSampler edge
- * walk before invoking sanitizeProvenance. The earlier hardcoded null defaults
- * silently broke D-PRIV-2 + SUM-01 + SUM-02 + SUM-07.
+ * promptPositive / promptNegative are deliberately
+ * REQUIRED input fields. The facade must populate these from the KSampler edge
+ * walk before invoking sanitizeProvenance. An earlier version defaulted them
+ * to null, silently dropping the prompts from every summary.
  */
 export interface SanitizeProvenanceInput {
   versionLabel: string;
@@ -101,9 +101,9 @@ export interface SanitizeProvenanceInput {
   completed: ProvenanceCompletedPayload | null;
   models: ModelRef[] | null;
   isRedacted: boolean;
-  /** D-PRIV-2 trust boundary — pre-resolved by Plan 04 via extractInputAssertion. null when no KSampler edge resolves. */
+  /** User-prompt trust boundary — pre-resolved by the facade via extractInputAssertion. null when no KSampler edge resolves. */
   promptPositive: string | null;
-  /** D-PRIV-2 trust boundary — pre-resolved by Plan 04 via extractInputAssertion. null when no KSampler edge resolves. */
+  /** User-prompt trust boundary — pre-resolved by the facade via extractInputAssertion. null when no KSampler edge resolves. */
   promptNegative: string | null;
   ingredientCounts?: Record<string, number>;
 }
@@ -112,10 +112,10 @@ export interface SanitizeProvenanceInput {
  * Iterate over ALLOW_LIST keys, never input keys (prototype pollution defence).
  * Returns only fields on the allow-list; everything else is stripped.
  *
- * REVISED per BLOCKER #1: prompt_positive / prompt_negative now flow through
- * verbatim from input.promptPositive / input.promptNegative (D-PRIV-2 trust
- * boundary). Plan 04 facade is responsible for upstream resolution via
- * Phase 15's extractInputAssertion.
+ * prompt_positive / prompt_negative flow through
+ * verbatim from input.promptPositive / input.promptNegative (user-prompt trust
+ * boundary). The engine facade is responsible for upstream resolution via
+ * extractInputAssertion.
  */
 export function sanitizeProvenance(input: SanitizeProvenanceInput): SanitizedProvenance {
   const models = input.models ?? [];
@@ -131,8 +131,8 @@ export function sanitizeProvenance(input: SanitizeProvenanceInput): SanitizedPro
   const out: SanitizedProvenance = {
     model_name: models[0]?.model_name ?? 'unknown_model',
     additional_models: models.slice(1).map((m) => m.model_name),
-    prompt_positive: input.promptPositive,  // D-PRIV-2 trust boundary verbatim passthrough
-    prompt_negative: input.promptNegative,  // D-PRIV-2 trust boundary verbatim passthrough
+    prompt_positive: input.promptPositive,  // trust-boundary verbatim passthrough
+    prompt_negative: input.promptNegative,  // trust-boundary verbatim passthrough
     seed,
     parent_version_label: input.parentVersionLabel,
     ingredient_summary_counts: input.ingredientCounts ?? {},
@@ -144,11 +144,11 @@ export function sanitizeProvenance(input: SanitizeProvenanceInput): SanitizedPro
 }
 
 /**
- * D-PRIV-3 — the 4-encoding fragment list every leak scan checks for:
+ * The 4-encoding fragment list every leak scan checks for:
  * UTF-8/ASCII, UTF-16LE, UTF-16BE (binary views), and base64. Single source
  * of truth shared by this module's guards, telemetry.ts, and
  * anthropic-client.ts (all three live in the same purity domain). Mirrors
- * the Phase 16 multi-encoding precedent at
+ * the multi-encoding precedent at
  * src/__tests__/c2pa-redaction-e2e.test.ts:76-92.
  */
 export function apiKeyFragments(apiKey: string): string[] {
@@ -161,13 +161,13 @@ export function apiKeyFragments(apiKey: string): string[] {
 }
 
 /**
- * Defence-in-depth (D-PRIV-3): multi-encoding leak scan on the OUTBOUND payload.
- * Mirrors the Phase 16 multi-encoding helper at
+ * Defence-in-depth: multi-encoding leak scan on the OUTBOUND payload.
+ * Mirrors the multi-encoding helper at
  * src/__tests__/c2pa-redaction-e2e.test.ts:76-92 verbatim.
  *
  * Throws Error if any encoding of the API key appears in the sanitized
- * payload — including the prompt_positive / prompt_negative fields (which now
- * carry user-authored content per D-PRIV-2). Adversarial review can verify
+ * payload — including the prompt_positive / prompt_negative fields (which
+ * carry user-authored content verbatim). Adversarial review can verify
  * this by reading the file in isolation.
  *
  * The scan runs against TWO haystacks for completeness:
@@ -176,9 +176,9 @@ export function apiKeyFragments(apiKey: string): string[] {
  *      binary fragments smuggled into string fields. JSON escapes control
  *      bytes (e.g., 0x00) so JSON-haystack alone misses these.
  *
- * Scanning both haystacks aligns with the Phase 16 cross-cutting invariant
+ * Scanning both haystacks aligns with the cross-cutting invariant
  * (UTF-8 / UTF-16LE / UTF-16BE / base64 leak scan applies at every persistence
- * boundary). T-19-13b mitigation explicitly covers smuggled-key detection.
+ * boundary), which explicitly covers smuggled-key detection.
  */
 export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
@@ -188,7 +188,7 @@ export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
 
   // Concatenate every string-typed field into one binary haystack. JS strings
   // are UTF-16 internally and preserve any code unit, so smuggled UTF-16LE/BE
-  // bytes survive concatenation. Mirrors the Phase 16 file-bytes scan pattern
+  // bytes survive concatenation. Mirrors the redaction file-bytes scan pattern
   // applied at the field-content level.
   const stringFields = [
     payload.model_name,
@@ -214,7 +214,7 @@ export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
 }
 
 /**
- * Phase 19 D-PRIV-3 — post-LLM defence-in-depth.
+ * Post-LLM defence-in-depth.
  *
  * The pre-call sanitizer above scans inputs (sanitized provenance) before the
  * SDK call. This helper scans a single string (typically `llmResult.text`)

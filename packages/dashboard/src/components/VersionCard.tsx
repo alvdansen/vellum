@@ -2,24 +2,23 @@
  * VersionCard — single version's thumbnail + metadata card for the shot-detail grid.
  *
  * Pure component: props-in, callbacks-out. No fetch, no signal reads, no side
- * effects. Parent (Plan 10 views) passes the Version record + selected flag +
+ * effects. Parent views pass the Version record + selected flag +
  * onSelect handler.
  *
  * Type contract:
  *   - `Version` shape below is the minimal field set this component reads.
- *   - Full Version type lives in the data layer (Plan 08 types/entities.ts) —
- *     that file is owned by another parallel agent, so we declare the minimal
+ *   - Full Version type lives in the data layer (types/entities.ts) —
+ *     we declare the minimal
  *     structural type this card needs and let the wider Version shape be
  *     structurally compatible via TypeScript's duck-typing.
  *
- * Phase 17 / Plan 17-05 — the inline <img src={getOutputUrl(...)}> at lines
- * 52-59 is REPLACED with <Thumbnail size='card'/>. D-19 LOCKED: the previous
- * crop-to-fill class is gone; Thumbnail uses object-contain semantics
+ * The preview renders via <Thumbnail size='card'/>, which
+ * uses object-contain semantics — no crop-to-fill
  * (no letterbox cropping; transparent letterbox bars adapt to theme).
- * The existing <button> wrapper at lines 42-50 is UNCHANGED — clicks bubble
- * through Thumbnail (which has no click handlers per D-11) to onSelect.
+ * The <button> wrapper owns the click — clicks bubble
+ * through Thumbnail (which has no click handlers) to onSelect.
  *
- * SECURITY — T-5-06: {version.label} is rendered as text via Preact's virtual
+ * SECURITY: {version.label} is rendered as text via Preact's virtual
  * DOM (auto-escaped). dangerouslySetInnerHTML is not used.
  */
 
@@ -44,11 +43,11 @@ export interface VersionCardProps {
   isSelected: boolean;
   onSelect: (versionId: string) => void;
   /**
-   * Phase 17 / Plan 17-05 — c2paStatus governs the <C2paShield/> overlay
-   * (D-10 LOCKED — predicate is `c2paStatus?.status === 'signed'`). Optional:
+   * c2paStatus governs the <C2paShield/> overlay
+   * (predicate is `c2paStatus?.status === 'signed'`). Optional:
    * when undefined or not 'signed', NO shield is rendered. Threaded through
    * to <Thumbnail/> verbatim. Existing call sites in HomeView do NOT yet
-   * provide c2paStatus, so the optional default keeps the v1.1 surface
+   * provide c2paStatus, so the optional default keeps the surface
    * backward-compatible until that wiring lands.
    */
   c2paStatus?: C2paStatus;

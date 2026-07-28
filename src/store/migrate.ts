@@ -1,7 +1,7 @@
-// Phase 10 — migrate-on-boot hardening (DEMO-01).
+// Migrate-on-boot hardening.
 // Wraps drizzle's migrator with a pending-count pre-check + typed-error
-// failure surface so the boot path (Plan 10-02) and the stale-DB fixture test
-// (Plan 10-03) share a single audited code path.
+// failure surface so the boot path and the stale-DB fixture test
+// share a single audited code path.
 //
 // Architecture-purity contract: zero MCP-SDK imports, zero HTTP-transport
 // imports, zero imports from any transport layer. The directory-level guard
@@ -22,7 +22,7 @@ import { TypedError } from '../engine/errors.js';
  *   migrator ran. On a clean (already-current) DB this is 0.
  * - `skipped`: true iff `applied === 0` and the migrator was a no-op.
  *
- * Phase 10 success criterion #4: a clean DB is a no-op — the helper
+ * Invariant: a clean DB is a no-op — the helper
  * returns `{ applied: 0, skipped: true }` and the migrator is invoked
  * idempotently with no schema or lock contention.
  */
@@ -80,7 +80,7 @@ function countAppliedRows(db: BetterSQLite3Database<Record<string, never>>): num
 /**
  * Run pending Drizzle migrations against `db` with typed-error wrapping.
  *
- * Phase 10 (DEMO-01). Replaces the unguarded `migrate(db, ...)` call
+ * Replaces the unguarded `migrate(db, ...)` call
  * that previously lived inline in `openDb()` (src/store/db.ts:71).
  *
  * Behavior:

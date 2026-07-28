@@ -1,37 +1,37 @@
 /**
- * SummarySection — Phase 19 / Plan 19-06 SUM-01..07 thin-wrapper composition
+ * SummarySection — thin-wrapper composition
  * component for the AI conversational summary surface.
  *
- * Architecture-purity (D-WEBUI-31): zero imports from `src/`. Composes
+ * Architecture purity: zero imports from `src/`. Composes
  * existing dashboard primitives (WarningPill, RegenerateButton) + a new
- * skeleton block + a children slot for the relocated SUM-07 Provenance
+ * skeleton block + a children slot for the relocated Provenance
  * disclosure.
  *
  * Discriminated-state render — branches on `summary.state` (loading / success
  * / fallback / error). Mirrors C2paBadge's discriminated-render pattern at
  * packages/dashboard/src/components/C2paBadge.tsx:71-110.
  *
- * SECURITY — T-5-06 / T-19-33: ALL dynamic content flows through JSX text
+ * SECURITY: ALL dynamic content flows through JSX text
  * children. The component does NOT use any innerHTML-style escape hatch.
- * summary.text comes from the engine (post D-VAL-1/3 validation gate) or
+ * summary.text comes from the engine (post validation gate) or
  * from the deterministic-template fallback — never user-supplied at the
  * component boundary, AND Preact's text-node escape is the second line of
  * defence.
  *
  * Accessibility:
  *   - <section> wrapper carries aria-labelledby pointing at <h3> id
- *   - aria-busy='true' during loading state (mirrors Phase 17 thumbnail pattern)
+ *   - aria-busy='true' during loading state (mirrors the thumbnail loading pattern)
  *   - Skeleton bars carry aria-hidden='true' + role='presentation' (decorative
  *     for SR users; the section's aria-busy already announces "loading")
- *   - WarningPill ARIA label is the long-form SUM-06 disclosure for SR users
- *   - Body <p> renders summary.text via JSX text-child interpolation (T-5-06)
+ *   - WarningPill ARIA label is the long-form fallback disclosure for SR users
+ *   - Body <p> renders summary.text via JSX text-child interpolation (escaped)
  *
- * Layout-stability invariant (D-FB-6, BLOCKER #4 revision-1): the section
+ * Layout-stability invariant: the section
  * header text ('SUMMARY'), header bounding-box, and child DOM-slot positions
  * are identical across `success` and `fallback` states. The fallback path
  * adds a <WarningPill/> ABOVE the body <p> WITHIN the same DOM slot — no new
  * section header, no header-height change. Verified by the DOM-stability
- * test in __tests__/SummarySection.test.tsx (Test 16).
+ * test in __tests__/SummarySection.test.tsx.
  */
 
 import type { ComponentChildren } from 'preact';
@@ -56,7 +56,7 @@ export interface SummarySectionProps {
    */
   regenerateAvailableAtMs?: number | null;
   /**
-   * D-PRIV-2 first-use disclosure gate — true when the user has NOT yet
+   * First-use privacy-disclosure gate — true when the user has NOT yet
    * dismissed the "AI summary uses your prompt text" note. Parent
    * (VersionDrawer) reads localStorage to compute this.
    */
@@ -69,7 +69,7 @@ export interface SummarySectionProps {
    */
   versionLabel: string;
   /**
-   * SUM-07 disclosure children — VersionDrawer passes the relocated
+   * Disclosure children — VersionDrawer passes the relocated
    * Provenance section wrapped in a <details> disclosure. Rendered AFTER the
    * summary body, INSIDE this section.
    */
@@ -118,7 +118,7 @@ export function SummarySection({
         />
       </header>
 
-      {/* D-PRIV-2 first-use disclosure — gated by parent (VersionDrawer reads
+      {/* First-use privacy disclosure — gated by parent (VersionDrawer reads
           localStorage). Renders as a muted note ABOVE the body. */}
       {showFirstUseDisclosure && (
         <p
@@ -171,7 +171,7 @@ export function SummarySection({
         </>
       )}
 
-      {/* SUM-07 disclosure slot — children are rendered after the body so the
+      {/* Disclosure slot — children are rendered after the body so the
           collapsible Provenance details lives at the bottom of the section. */}
       {children}
     </section>
@@ -179,7 +179,7 @@ export function SummarySection({
 }
 
 /**
- * 3-line sentence-shaped skeleton block (UI-SPEC: 14px height, widths
+ * 3-line sentence-shaped skeleton block (14px height, widths
  * 95%/100%/60%, gap-1.5 = 6px; uses the existing animate-skeleton-shimmer
  * keyframe from theme.css). Decorative — the section's aria-busy='true'
  * announces the loading state to assistive tech.

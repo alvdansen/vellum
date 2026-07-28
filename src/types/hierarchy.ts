@@ -2,7 +2,7 @@
 // ZERO imports — this file is the canonical type source consumed by engine, store, and tools.
 
 /**
- * MNT-04: single source of truth for the shot naming convention (D-07).
+ * Single source of truth for the shot naming convention.
  * Lowercase `sh` prefix + at least 3 digits (e.g. `sh010`, `sh0200`). The engine
  * enforces the regex before any DB work (pipeline.ts); the shot tool's Zod
  * schema enforces it at the tool boundary for early rejection. Keeping both
@@ -41,7 +41,7 @@ export interface Shot {
 }
 
 /**
- * IAC-05: closed set of version lifecycle states (D-GEN-18 state machine).
+ * Closed set of version lifecycle states (the generation state machine).
  * Engine-level `mapState` already treats this as a closed union; narrowing
  * the type here lets callers pattern-match exhaustively and catches stale
  * string comparisons at compile time. The SQLite column stays TEXT — a
@@ -51,7 +51,7 @@ export interface Shot {
 export type VersionStatus = 'submitted' | 'running' | 'completed' | 'failed';
 
 /**
- * STAT-01: closed set of shot production states. Free DAG — no transition
+ * Closed set of shot production states. Free DAG — no transition
  * guards. Supervisors can transition any → any. The SQLite column stays
  * TEXT with DEFAULT 'wip'; the SHOT_STATUSES constant is the single source
  * of truth for the valid set (grep test enforces no inline string comparisons).
@@ -69,16 +69,16 @@ export interface Version {
   notes: string | null;
   created_at: number;
   completed_at: number | null;
-  // Phase 2 additions — D-GEN-19 (all nullable):
+  // Generation-outcome fields (all nullable):
   error_code: string | null;
   error_message: string | null;
   outputs_json: string | null;
-  // Phase 3 additions — D-PROV-33 (nullable).
+  // Lineage (nullable).
   lineage_type: 'reproduce' | 'iterate' | null;
-  // Phase 12 addition — DEMO-03 (D-CTX-5). JSON-encoded string[] persisted
+  // JSON-encoded string[] persisted
   // at engine.reproduceVersion time. NULL on legacy rows.
   reproduction_warnings_json: string | null;
-  // Pivot Phase B addition. The GenerationProvider adapter id that produced this
+  // The GenerationProvider adapter id that produced this
   // version ('comfyui-cloud', 'replicate', …). Optional in the TS view because
   // additive/dual-read: DB rows post-migration always carry it (value-or-null),
   // but hand-built literals predating the pivot may omit it (absent ≡ null).

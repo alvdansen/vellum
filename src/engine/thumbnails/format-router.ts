@@ -1,23 +1,23 @@
-// Phase 17 / Plan 17-01 Task 1 — pure thumbnail format router (D-CTX 17/I).
+// Pure thumbnail format router.
 //
 // Pure function — no I/O, no side effects. Returns one of three routes:
 //  - { mode: 'image', mimeType }       — PNG/JPEG/WebP/TIFF (sharp can decode)
-//  - { mode: 'video', mimeType }       — MP4 (ffmpeg first-frame extraction in Plan 17-02)
+//  - { mode: 'video', mimeType }       — MP4 (ffmpeg first-frame extraction)
 //  - { mode: 'unsupported', reason }   — anything else (EXR/PSD/HEIC/unknown)
 //
-// **v1.2 scope:** Plan 17-01 ships the IMAGE path only. The VIDEO arm is
-// reachable but its derivation pipeline (Plan 17-02 video-thumbnail.ts) is
-// out of scope for this plan. The router is shared by both image and video
-// paths so Plan 17-02 imports it from the same barrel.
+// **v1.2 scope:** the IMAGE path shipped first. The VIDEO arm is
+// reachable and its derivation pipeline (video-thumbnail.ts) ships
+// separately. The router is shared by both image and video
+// paths, imported from the same barrel.
 //
-// Extension matching is case-insensitive (mirrors c2pa/format-router.ts T-14-08
+// Extension matching is case-insensitive (mirrors the c2pa/format-router.ts
 // rationale: ComfyUI Cloud sometimes returns mixed-case filenames). The
 // mimeType strings are the standard registrations.
 //
 // Architecture-purity: zero MCP / DB / ORM / HTTP / sharp / ffmpeg imports —
 // pure-function module. Verified by directory-level grep guards in
 // src/__tests__/architecture-purity.test.ts and the file-level allowed-set
-// assertion that pins sharp to image-thumbnail.ts (D-23 / D-25).
+// assertion that pins sharp to image-thumbnail.ts.
 
 /**
  * Discriminated union — three routing modes only. The absence of a
@@ -41,7 +41,7 @@ export type FormatRoute =
 /**
  * Image extensions sharp can decode for thumbnail derivation. PNG/JPEG/WebP
  * are universal; TIFF is included because generation outputs sometimes
- * land as multi-page TIFF (Phase 14 already routes TIFF for c2pa signing,
+ * land as multi-page TIFF (the c2pa signer already routes TIFF,
  * and sharp's libvips backend handles TIFF natively).
  *
  * THIS TABLE IS ROUTING, NOT A SECURITY BOUNDARY. libvips picks its decoder by
@@ -62,7 +62,7 @@ const IMAGE_TABLE: Record<string, string> = {
 };
 
 /**
- * Video extensions handled by ffmpeg first-frame extraction (Plan 17-02).
+ * Video extensions handled by ffmpeg first-frame extraction.
  * v1.2 ships MP4 only; other container formats (mov/webm/mkv) defer to
  * v1.3+ when telemetry shows demand.
  */

@@ -1,5 +1,5 @@
 /**
- * Phase 21 — formatRelativeTime: convert an epoch-ms timestamp to a short
+ * formatRelativeTime: convert an epoch-ms timestamp to a short
  * human-readable string like "just now", "2h ago", "3d ago".
  *
  * Pure function — no side effects, no Date.now() shimming (caller passes a
@@ -18,7 +18,7 @@
  *
  * Future-timestamp handling: `Math.max(0, ...)` clamps negative deltas to
  * zero, so a future epochMs returns "just now" rather than a "-5m ago"
- * astonishment. The 30-day month bucket is an accepted UI-SPEC approximation
+ * astonishment. The 30-day month bucket is an accepted approximation
  * (real calendars are 28-31 days; for "Updated 2mo ago" surface this is fine).
  */
 import {

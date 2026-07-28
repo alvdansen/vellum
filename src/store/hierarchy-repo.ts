@@ -32,10 +32,10 @@ function isUniqueViolation(err: unknown): boolean {
  * Drizzle rows). Wraps SQLite UNIQUE violations into TypedError('DUPLICATE_NAME')
  * and missing-parent pre-checks into TypedError('PARENT_NOT_FOUND').
  *
- * Hard invariants (D-33, D-34):
+ * Hard invariants:
  *  - Zero MCP SDK imports (store is engine-pure).
  *  - All inserts/selects use Drizzle parameterized queries — no raw string concat with user input.
- *  - Shot regex validation is NOT performed here; it lives in the engine (D-07, D-33).
+ *  - Shot regex validation is NOT performed here; it lives in the engine (store stays validation-free).
  */
 export class HierarchyRepo {
   constructor(private db: Db) {}
@@ -75,7 +75,7 @@ export class HierarchyRepo {
     limit: number,
     offset: number,
   ): { items: Workspace[]; total_count: number } {
-    // RT-03: deterministic pagination ordering. created_at as primary sort (so
+    // Deterministic pagination ordering. created_at as primary sort (so
     // newer rows naturally land on later pages); id as a stable tiebreaker for
     // rows created in the same millisecond.
     const items = this.db
@@ -133,7 +133,7 @@ export class HierarchyRepo {
 
   /**
    * Set (or clear, with null) a project's Hybrid-v1 output-naming template. Plain
-   * column update — the naming_template column exists from the Phase 1 schema.
+   * column update — the naming_template column exists from the base schema.
    * Throws PROJECT_NOT_FOUND when the project does not exist. Returns the updated row.
    */
   setProjectNamingTemplate(projectId: string, template: string | null): Project {
@@ -159,11 +159,11 @@ export class HierarchyRepo {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): { items: Project[]; total_count: number } {
-    // D-10 back-compat: when opts.sort is OMITTED, ORDER BY preserves the
-    // pre-Phase-18 `created_at ASC, id ASC` shape so existing MCP tool callers
+    // Back-compat: when opts.sort is OMITTED, ORDER BY preserves the
+    // original `created_at ASC, id ASC` shape so existing MCP tool callers
     // (src/tools/project-tool.ts:88) continue to receive byte-identical
     // ordering. When opts.sort is provided, buildHierarchyOrderBy emits
-    // `<col> <dir>, projects.id ASC` (RT-03 deterministic tiebreaker preserved).
+    // `<col> <dir>, projects.id ASC` (deterministic tiebreaker preserved).
     const itemsQuery =
       workspaceId !== undefined
         ? (() => {
@@ -238,7 +238,7 @@ export class HierarchyRepo {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): { items: Sequence[]; total_count: number } {
-    // D-10 back-compat (see listProjects). Pre-Phase-18 ORDER BY preserved
+    // Back-compat (see listProjects). Original ORDER BY preserved
     // when opts.sort is omitted; tool callers (src/tools/sequence-tool.ts:88)
     // unaffected.
     const itemsQuery =
@@ -276,7 +276,7 @@ export class HierarchyRepo {
   // ================================================================
 
   createShot(sequenceId: string, name: string): Shot {
-    // Shot regex validation lives in the engine (D-07, D-33). Repo only enforces
+    // Shot regex validation lives in the engine. Repo only enforces
     // parent existence and uniqueness.
     if (!this.getSequence(sequenceId)) {
       throw new TypedError(
@@ -290,7 +290,7 @@ export class HierarchyRepo {
       sequence_id: sequenceId,
       name,
       created_at: Date.now(),
-      // Phase 20 (STAT-01): default 'wip' matches migration 0008 column
+      // Default 'wip' matches migration 0008 column
       // DEFAULT and shotStatusEvents history null-coalesce. Repo writes the
       // explicit value so SCHEMA_DDL bootstrap (which omits the status
       // column) stays compatible — the actual DB column lands via 0008.
@@ -322,7 +322,7 @@ export class HierarchyRepo {
     offset: number,
     opts?: { sort?: HierarchySort },
   ): { items: Shot[]; total_count: number } {
-    // D-10 back-compat (see listProjects). Pre-Phase-18 ORDER BY preserved
+    // Back-compat (see listProjects). Original ORDER BY preserved
     // when opts.sort is omitted; tool callers (src/tools/shot-tool.ts:94)
     // unaffected.
     const itemsQuery =

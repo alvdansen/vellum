@@ -1,6 +1,6 @@
 // packages/dashboard/src/state/hierarchy.ts
 //
-// @preact/signals-backed store for the TreeSidebar hierarchy (Plan 05-09).
+// @preact/signals-backed store for the TreeSidebar hierarchy.
 // Tracks the currently-loaded workspaces list plus the "selected path" —
 // one ID per hierarchy level so the sidebar can highlight the open chain.
 //
@@ -8,11 +8,11 @@
 // server-tree relative-import traversals. Uses dashboard-local entity DTOs
 // from ../types/entities.ts and dashboard-local sort types from ../lib/sortTypes.ts.
 //
-// Plan 05-08 Task 2 — lightweight signal bag consumed by Plan 05-09
-// components. Each signal is default-null / empty; view components hydrate
+// Lightweight signal bag consumed by the TreeSidebar components. Each
+// signal is default-null / empty; view components hydrate
 // them via api.ts fetches on mount or on node expansion.
 //
-// Phase 18 / Plan 18-05 Task 1 — adds the treeSort signal. D-09 single
+// treeSort signal: the D-09 single
 // tree-wide sort applies to ALL hierarchy levels uniformly (workspaces,
 // projects, sequences, shots within their parent's children array). The
 // dashboard re-sorts client-side via compareTreeNodes (sortHelpers.ts) so
@@ -41,7 +41,7 @@ export const selectedSequenceId = signal<string | null>(null);
 export const selectedShotId = signal<string | null>(null);
 
 // ============================================================================
-// Phase 18 / Plan 18-05 — tree-wide sort state
+// Tree-wide sort state
 // ============================================================================
 
 /**

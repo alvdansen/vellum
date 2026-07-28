@@ -1,24 +1,24 @@
-// Phase 16 / Plan 16-02 — PROV-V-06. Redaction primitive: strip named
+// Redaction primitive: strip named
 // fields from a manifest JSON, emit a vendor-namespaced
-// vellum.redacted assertion (D-CTX-1) preserving the FACT of
+// vellum.redacted assertion preserving the FACT of
 // redaction (NOT the original values), then re-sign the asset bytes
-// with the same cert (Phase 14 D-CTX-2 single-cert config).
+// with the same cert (single-cert config).
 //
 // Architecture-purity:
 //   - PURE helpers (this file's first 4 exports) have ZERO external imports
 //     except TypedError + the manifest-builder type surface
-//   - The integration helper (redactManifestForVersionImpl, Task 2) uses
+//   - The integration helper (redactManifestForVersionImpl) uses
 //     LAZY native-binding loading via dynamic import — same discipline as
 //     signer.ts (see signer.ts ensureC2paNode pattern for reference)
 //
-// D-CTX-1: the vellum.redacted assertion shape mirrors Phase 15's
+// The vellum.redacted assertion shape mirrors the
 //   vellum.input pattern: {label: 'vellum.redacted',
 //   data: {redacted_fields: string[], redacted_at: ISO8601}}. Original
 //   values appear NOWHERE in the redacted MANIFEST JSON output — this is
 //   a structural invariant tested at every layer (helper, integration,
-//   E2E in Plan 16-05).
+//   E2E).
 //
-// D-CTX-1 SCOPE LIMITATION (C-01 fix): redaction operates on the C2PA
+// SCOPE LIMITATION: redaction operates on the C2PA
 // ACTIVE manifest's JSON ONLY. The following are UNCHANGED by this primitive:
 //   - ASSET BINARY: PNG tEXt/iTXt chunks, EXIF, ICC profile metadata, ID3
 //     tags, video container metadata, pixel data itself.
@@ -34,8 +34,7 @@
 // embedded in PNG tEXt chunks by an external tool) MUST use a separate
 // asset-scrubbing tool BEFORE calling redact_manifest. Callers requiring
 // parent-chain scrubbing must use the c2pa-rs manifest-removal API
-// directly (out of scope for v1.1; tracked deferred-items.md as a v1.2
-// follow-up if surfaced by a caller).
+// directly (out of scope for v1.1; deferred until surfaced by a caller).
 //
 // The redaction primitive's contract is bounded to the ACTIVE manifest:
 //   (a) the active_manifest fields show redacted values
@@ -45,7 +44,7 @@
 // multi-encoding scan; tests at the integration layer verify the
 // active-manifest invariant via c2pa.read on the re-signed bytes.
 //
-// D-CTX-8: redaction policy DSL is bounded:
+// The redaction policy DSL is bounded:
 //   - max 32 entries per policy
 //   - max 64 dotted/bracketed segments per entry
 //   - REJECT `..`, regex metacharacters, unmatched brackets
@@ -60,11 +59,11 @@ import type { ManifestDefinition, ManifestAssertion } from './manifest-builder.j
  *  manifest sees an unambiguous redaction marker. */
 const REDACTED_SENTINEL = '[REDACTED]';
 
-/** Policy-entry caps per D-CTX-8 / D-PLAN-2-5. Surfaced via REDACT_POLICY_INVALID. */
+/** Policy-entry caps. Surfaced via REDACT_POLICY_INVALID. */
 const MAX_POLICY_ENTRIES = 32;
 const MAX_PATH_SEGMENTS = 64;
 
-/** C-05: Combined depth cap — segments + manifest data depth. Bounds
+/** Combined depth cap — segments + manifest data depth. Bounds
  *  worst-case recursion against pathological policies + nested data. */
 const MAX_WALK_DEPTH = 32;
 
@@ -126,10 +125,10 @@ export function applyRedactionPolicy(
     }
   }
 
-  // Append vellum.redacted assertion (D-CTX-1).
+  // Append vellum.redacted assertion.
   // Even when redactedFields is empty (every path was not_found), we still
   // append the assertion so the audit trail records that a redaction was
-  // attempted; Plan 16-04's tool layer surfaces this as a soft warning.
+  // attempted; the tool layer surfaces this as a soft warning.
   const redactedAssertion: ManifestAssertion = {
     label: 'vellum.redacted',
     data: {
@@ -144,10 +143,10 @@ export function applyRedactionPolicy(
 
 /**
  * Pure helper: build a fresh ManifestDefinition wrapping the redacted JSON.
- * The redaction call site (integration helper, Task 2) uses this to produce
+ * The redaction call site (integration helper) uses this to produce
  * the input to signer.signEmbedBuffer. The result intentionally
  * matches the BuildManifestResult shape EXCEPT that ingredientSpecs is empty
- * — D-PLAN-2-3 ingredient pass-through is handled at the integration layer
+ * — ingredient pass-through is handled at the integration layer
  * by reading the parent manifest's c2pa-node ingredient graph and threading
  * it through the BuildManifestResult.ingredientSpecs slot directly (NOT here).
  */
@@ -185,7 +184,7 @@ function validatePolicy(policy: readonly string[]): void {
         `Redaction policy entry must be a non-empty string (got ${typeof entry})`,
       );
     }
-    // C-05 hardening: reject NUL bytes, Unicode bidi overrides, CR/LF, % < > ;
+    // Hardening: reject NUL bytes, Unicode bidi overrides, CR/LF, % < > ;
     // BEFORE the traversal/regex checks. These chars have no legitimate
     // place in a structural path DSL.
     // Bidi overrides (Trojan-Source class — codepoint ranges U+202A-U+202E + U+2066-U+2069):
@@ -199,7 +198,7 @@ function validatePolicy(policy: readonly string[]): void {
         'Reject NUL, CR/LF, Unicode bidi overrides (U+202A-U+202E, U+2066-U+2069), %, <, >, ;.',
       );
     }
-    // C-05 hardening: cap label-value length inside [label='X'] to 256 chars.
+    // Hardening: cap label-value length inside [label='X'] to 256 chars.
     const labelMatch = entry.match(/\[label\s*=\s*['"]([^'"]+)['"]\]/);
     if (labelMatch && labelMatch[1]!.length > 256) {
       throw new TypedError(
@@ -329,7 +328,7 @@ function walkAndRedact(
   idx: number,
   depth: number = 0,
 ): boolean {
-  // C-05: depth guard — combined policy segments + manifest data nesting.
+  // Depth guard — combined policy segments + manifest data nesting.
   if (depth > MAX_WALK_DEPTH) {
     throw new TypedError(
       'REDACT_POLICY_INVALID',
@@ -387,7 +386,7 @@ function walkAndRedact(
   return any;
 }
 
-/** Replace any value with the redaction sentinel. C-01 fix: recursive
+/** Replace any value with the redaction sentinel. Recursive
  *  walk that DESCENDS into nested objects/arrays preserving STRUCTURE
  *  (downstream type-narrowing relies on object/array shape) but replaces
  *  every LEAF (string / number / boolean / null) with the sentinel.
@@ -433,7 +432,7 @@ export type AssetWriterAcquire = <T>(
   task: () => Promise<T>,
 ) => Promise<T>;
 
-/** Phase 17 / Plan 17-03 (D-05) — function-shape of the engine's thumbnail
+/** Function-shape of the engine's thumbnail
  *  invalidation callback. Called AFTER the atomicRename inside the try block
  *  (NOT before — calling before creates a stale-cache window when the rewrite
  *  fails). Engine.invalidateThumbnail is idempotent (best-effort unlink of
@@ -479,9 +478,9 @@ export function __resetRedactionStateForTests(): void {
 }
 
 /** Project the c2pa-rs `ResolvedManifest.assertions` into our ManifestAssertion
- *  union (Phase 16 / D-CTX-1 + C-03). c2pa-rs renames `c2pa.actions` →
+ *  union. c2pa-rs renames `c2pa.actions` →
  *  `c2pa.actions.v2` on read (the actions-v2 spec rev). On write, our
- *  manifest-builder emits the shorter `c2pa.actions` literal (Phase 14
+ *  manifest-builder emits the shorter `c2pa.actions` literal (the
  *  CreatedActionAssertion union). When redaction reads-back native-binding
  *  output and re-builds a ManifestDefinition, unmapped labels would fail
  *  validation downstream. Normalize:
@@ -505,7 +504,7 @@ export function extractAssertions(
   const normalized: ManifestAssertion[] = [];
   for (const a of out) {
     if (typeof a.label !== 'string') continue;
-    // C-03: normalize the v2 label to the write-side literal.
+    // Normalize the v2 label to the write-side literal.
     const label = a.label === 'c2pa.actions.v2' ? 'c2pa.actions' : a.label;
     if (!KNOWN_ASSERTION_LABELS.has(label)) {
       // Unknown label — drop rather than pass through unsafely.
@@ -533,28 +532,29 @@ function parsePrimaryOutputFilename(outputsJson: string | null): string | null {
 /**
  * Engine-side integration entry point. Reads the parent's signed bytes,
  * extracts the parent manifest JSON via c2pa.read, applies the redaction
- * policy via applyRedactionPolicy, re-signs via the SAME signer Phase 14
+ * policy via applyRedactionPolicy, re-signs via the SAME signer the engine
  * loaded (signer arg below; engine threads it through), and appends a NEW
  * manifest_signed event with redacted=true.
  *
- * D-PLAN-2-1: same cert chain (signer is the loaded LoadedSigner from
+ * Invariants:
+ * - same cert chain (signer is the loaded LoadedSigner from
  *   the engine's first signOutput call; redaction does NOT load a new one).
- * D-PLAN-2-2: signer.algorithm is reused as-is.
- * D-PLAN-2-3: ingredientSpecs is empty for the redacted manifest — the
+ * - signer.algorithm is reused as-is.
+ * - ingredientSpecs is empty for the redacted manifest — the
  *   parent's ingredient graph is structurally separate from assertions[].
  *   Re-signing with a NEW manifest definition (just the redacted assertions)
  *   emits a fresh manifest. v1.2 may extend ingredientSpecs to mirror
  *   parent.ingredients[].
  *
- * Per-(versionId, filename) UNIFIED `assetWriterMutex` (D-PLAN-2-4 / C-04):
+ * Per-(versionId, filename) UNIFIED `assetWriterMutex`:
  * the engine wraps the entire redaction flow so concurrent signOutput +
  * redactManifestForVersion calls on the same (versionId, filename) serialize
  * with FIFO semantics (NOT coalescing).
  *
- * Disk write is ATOMIC (C-04): `redactedBytes` written to a temp path then
+ * Disk write is ATOMIC: `redactedBytes` written to a temp path then
  * `fs.rename` to the original output path; on rename failure the temp is
  * cleaned up + the original file is unchanged. After atomic write, the
- * audit row is appended via appendManifestSignedRedactedEvent (C-06: if the
+ * audit row is appended via appendManifestSignedRedactedEvent (if the
  * insert fails, REDACT_DB_WRITE_FAILED surfaces — disk has been overwritten
  * but the caller knows the audit row is missing).
  *
@@ -576,7 +576,7 @@ export async function redactManifestForVersionImpl(
   outputsDir: string,
   signer: LoadedSigner,
   assetWriterAcquire: AssetWriterAcquire,
-  // Phase 17 / Plan 17-03 (D-05) — optional callback invoked AFTER atomicRename
+  // Optional callback invoked AFTER atomicRename
   // succeeds. Engine binds engine.invalidateThumbnail; tests pass a stub or
   // omit (defaults to a no-op). Failures inside the callback are NON-FATAL
   // (try/catch swallow + console.warn) so the redact success path is preserved.
@@ -688,7 +688,7 @@ export async function redactManifestForVersionImpl(
     // for the redaction helper. We carry forward only the fields the
     // redaction policy can reach: claim_generator, format, title,
     // assertions[]. Ingredient relationships are NOT redacted here
-    // (D-PLAN-2-3 deferred-ingredient-mirror).
+    // (ingredient-mirror deferred).
     const parentDef: ManifestDefinition = {
       claim_generator:
         typeof store.active_manifest.claim_generator === 'string'
@@ -709,8 +709,8 @@ export async function redactManifestForVersionImpl(
     const applied = applyRedactionPolicy(parentDef, redactionPolicy, now);
     const redactedDef = buildRedactedManifestDefinition(applied.redactedJson);
 
-    // Build a BuildManifestResult with empty ingredientSpecs (D-PLAN-2-3
-    // v1.1 — ingredient graph not re-mirrored; tracked deferred).
+    // Build a BuildManifestResult with empty ingredientSpecs — the
+    // ingredient graph is not re-mirrored in v1.1 (deferred).
     const buildResult: BuildManifestResult = {
       definition: redactedDef,
       ingredientSpecs: [] as IngredientSpec[],
@@ -750,7 +750,7 @@ export async function redactManifestForVersionImpl(
 
     const signedAt = now();
 
-    // C-04 fix: ATOMIC disk write of redactedBytes to the version's
+    // ATOMIC disk write of redactedBytes to the version's
     // primary output path. Without this, the disk file remains the ORIGINAL
     // signed bytes — a subsequent verify_manifest by versionId would verify
     // STALE original bytes. The write is atomic via temp + rename.
@@ -764,10 +764,10 @@ export async function redactManifestForVersionImpl(
     try {
       await atomicWriteFile(tempPathFresh, redactedBytes);
       await atomicRename(tempPathFresh, fullPath);
-      // Phase 17 / Plan 17-03 (D-05) — invalidate thumbnail cache AFTER the
+      // Invalidate thumbnail cache AFTER the
       // rewrite lands. Idempotent unlink of <fullPath>.thumb.webp +
       // <fullPath>.thumb.failed via the engine's invalidateCache delegate.
-      // Per Pattern 7: ordering is critical — invalidating BEFORE the rename
+      // Ordering is critical — invalidating BEFORE the rename
       // creates a stale-cache window if the rename fails. Calling AFTER ensures
       // invalidation only happens for actually-rewritten bytes.
       try {
@@ -791,7 +791,7 @@ export async function redactManifestForVersionImpl(
     }
 
     // Append NEW manifest_signed event with redacted=true.
-    // D-PLAN-2-5 (Plan 16-02): the audit row's redacted_fields surfaces BOTH
+    // The audit row's redacted_fields surfaces BOTH
     // matched paths (verbatim) AND not-found paths (prefixed `not_found:`) so
     // the trail records every redaction *attempt*. Without the not_found
     // entries, an "all paths missed" redaction would write an event row with
@@ -802,9 +802,9 @@ export async function redactManifestForVersionImpl(
       ...applied.redactedFields,
       ...applied.notFound.map((p) => `not_found:${p}`),
     ];
-    // Phase 19 D-PRIV-3 follow-up: compute the new manifest_sha256 from the
+    // Compute the new manifest_sha256 from the
     // re-signed redacted bytes so the cache-key invariant is fully observable.
-    // Pre-Phase-19, the redacted payload omitted manifest_sha256 — the cache
+    // Previously, the redacted payload omitted manifest_sha256 — the cache
     // miss still occurred (null !== original SHA), but downstream consumers
     // could not read the new SHA from the audit row directly. Mirrors the
     // original-sign computation at pipeline.ts:1317 / :1348-1351.
@@ -821,7 +821,7 @@ export async function redactManifestForVersionImpl(
       redacted: true,
       redacted_fields: auditRedactedFields,
     };
-    // C-06 fix: if the DB insert throws, do NOT return RedactionResult
+    // If the DB insert throws, do NOT return RedactionResult
     // (caller would believe redaction succeeded but no audit row exists).
     try {
       provenanceRepo.appendManifestSignedRedactedEvent(versionId, newPayload);

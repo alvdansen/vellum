@@ -11,8 +11,8 @@ import type {
 import type { SummaryOutcome } from '../engine/summary/index.js';
 
 /**
- * Phase 5: shared empty Breadcrumb fixture — used by every fake getter so the
- * SSE/route tests that assert on the bare-domain shape (D-WEBUI-05) get a
+ * Shared empty Breadcrumb fixture — used by every fake getter so the
+ * SSE/route tests that assert on the bare-domain shape get a
  * predictable, easy-to-match value.
  */
 const EMPTY_BREADCRUMB: Breadcrumb = { entries: [], text: '' };
@@ -20,13 +20,13 @@ const EMPTY_BREADCRUMB: Breadcrumb = { entries: [], text: '' };
 type ListResult<T> = { items: (T & Breadcrumb)[]; total_count: number; limit: number; offset: number };
 
 /**
- * Fake Engine for Phase 5 SSE / dashboard-route tests (D-WEBUI-37).
+ * Fake Engine for SSE / dashboard-route tests.
  *
  * Surface mirrors the real Engine facade methods that the dashboard REST routes
  * call. Each method returns canned fixtures by default but can be overridden via
  * the `cans` map for per-test scenarios. The `events` field is the typed
- * `EngineEmitter` (Plan 02, D-WEBUI-29) — SSE tests (Plan 03) get typed
- * `.onEvent('version.created', cb)` calls with no runtime change from Plan 01
+ * `EngineEmitter` — SSE tests get typed
+ * `.onEvent('version.created', cb)` calls
  * (EngineEmitter extends EventEmitter → structural narrow).
  *
  * Test pattern:
@@ -39,10 +39,10 @@ type ListResult<T> = { items: (T & Breadcrumb)[]; total_count: number; limit: nu
 export class FakeEngine {
   public readonly events: EngineEmitter = new EngineEmitter();
   public readonly calls: Array<{ method: string; args: unknown[] }> = [];
-  /** SC-2 (Phase 6): mirror Engine.outputRoot so EngineForDashboard structural
+  /** Mirror Engine.outputRoot so EngineForDashboard structural
    * Pick accepts FakeEngine without a cast. Default 'outputs' matches the
    * Engine constructor default; tests that need a tmp dir can re-assign by
-   * widening the type at the test seam (see dashboard-routes.test.ts SC-2 block). */
+   * widening the type at the test seam (see dashboard-routes.test.ts). */
   public outputRoot: string = 'outputs';
 
   /** Per-test override map. Tests populate the relevant entries before invoking routes. */
@@ -69,17 +69,17 @@ export class FakeEngine {
       workspaces: [] as Workspace[],
     },
     /**
-     * Phase 19 / Plan 19-05 — per-versionId SummaryOutcome override map. Tests
+     * Per-versionId SummaryOutcome override map. Tests
      * set entries here to control engine.summarizeVersion's discriminated
      * outcome (cache_hit / live / fallback variants). Default fallback returned
      * when entry missing — avoids the test having to wire every outcome variant.
      */
     summaryOutcomes: new Map<string, SummaryOutcome>(),
     /**
-     * Phase 19 / Plan 19-05 — per-versionId TypedError override. When set, the
+     * Per-versionId TypedError override. When set, the
      * engine.summarizeVersion fake throws the configured error (mirrors the
-     * VERSION_NOT_FOUND surface from Plan 19-04 Step 1 — only TypedError that
-     * propagates through to HTTP per Pattern G).
+     * production VERSION_NOT_FOUND surface — the only TypedError that
+     * propagates through to HTTP).
      */
     summaryErrors: new Map<string, Error>(),
   };
@@ -153,7 +153,7 @@ export class FakeEngine {
           sequence_id: 'seq_1',
           name: 'sh010',
           created_at: 0,
-          // Phase 20 (STAT-01): default 'wip' matches the production
+          // Default 'wip' matches the production
           // migration 0008 DEFAULT for shots.status.
           status: 'wip',
         } satisfies Shot,
@@ -232,7 +232,7 @@ export class FakeEngine {
       this.cans.diffs.get(`${a}::${b}`) ?? {
         summary: 'no changes',
         changes: { params: [], models: [], seed: null, workflow: [], metadata: [] },
-        // Phase 12 — DEMO-03 (D-CTX-4). Default null on FakeEngine — tests
+        // Default null on FakeEngine — tests
         // that need a non-null divergence populate cans.diffs explicitly.
         reproduction_divergence: null,
         breadcrumb: [] as BreadcrumbEntry[],
@@ -288,7 +288,7 @@ export class FakeEngine {
     };
   }
 
-  // ============== Dashboard aggregate (D-WEBUI-01) ==============
+  // ============== Dashboard aggregate ==============
   getDashboardHome(): {
     active_versions: Version[];
     recent_versions: Version[];
@@ -298,9 +298,9 @@ export class FakeEngine {
     return this.cans.dashboardHome;
   }
 
-  // ============== Phase 14 Plan 04 — C2PA signing-status read accessor ======
+  // ============== C2PA signing-status read accessor ======
   /**
-   * Default returns null (no manifest_signed event yet) — pre-Phase-14 tests
+   * Default returns null (no manifest_signed event yet) — tests
    * that don't care about C2PA continue to work unchanged. Tests that exercise
    * the X-C2PA-Signing-Status header path override this method on a per-test
    * instance: `engine.getC2paStatusForVersion = (v, f) => signedPayload(f)`.
@@ -318,7 +318,7 @@ export class FakeEngine {
     return null;
   }
 
-  // ============== Phase 19 Plan 19-05 — AI conversational summary surface ===
+  // ============== AI conversational summary surface ===
   /**
    * Default returns a fallback SummaryOutcome with reason='api_key_missing' so
    * tests that don't care about the summary route get a consistent envelope
@@ -327,7 +327,7 @@ export class FakeEngine {
    *
    * The route in src/http/dashboard-routes.ts NEVER throws for engine-side
    * failure paths (api_key_missing / circuit_open / etc. become 'fallback'
-   * SummaryOutcome variants and surface as 200 + envelope per D-FB-1) — only
+   * SummaryOutcome variants and surface as 200 + envelope) — only
    * VERSION_NOT_FOUND TypedError surfaces and translates to 404.
    */
   async summarizeVersion(

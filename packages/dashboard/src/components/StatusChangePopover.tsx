@@ -1,16 +1,16 @@
 /**
- * StatusChangePopover — shared anchored confirmation popover for Phase 22's
+ * StatusChangePopover — shared anchored confirmation popover for the
  * 5 review actions (approve / retake / hold / omit / restore).
  *
- * D-05 (single shared component): consumed by both ReviewActionBar (in 22-05)
- * and QuickApproveButton (in 22-07). The only visual differentiator across
+ * Single shared component: consumed by both ReviewActionBar
+ * and QuickApproveButton. The only visual differentiator across
  * actions is the prompt sentence — popover styling stays identical, no
- * destructive variant (D-08 lock: Omit is reversible via Restore).
+ * destructive variant (Omit is reversible via Restore).
  *
- * D-09 (Restore textarea-hide): action='restore' renders no textarea; the
+ * Restore hides the textarea: action='restore' renders no textarea; the
  * submitted note is always the literal RESTORE_NOTE_SYSTEM_TEXT constant.
- * Other actions trim the note and substitute null when blank (REV-04 +
- * D-07 client-side discipline).
+ * Other actions trim the note and substitute null when blank (blank notes
+ * are stored as null, never as an empty string).
  *
  * Mechanics borrowed verbatim from SortDropdown (SortDropdown.tsx:155-211):
  *  - outside-click via document.mousedown while open (mousedown not click
@@ -19,7 +19,7 @@
  *  - focus-return on any close path (anchorRef.current?.focus() BEFORE
  *    onCancel fires, so focus never falls to <body> on unmount).
  *
- * Pitfall 9 (RESEARCH lines 681-685): the popover is NEVER wrapped in
+ * The popover is NEVER wrapped in
  * <form>. Cancel + Confirm are explicit type="button" with onClick handlers
  * so Enter inside the textarea inserts a newline (not submit).
  */
@@ -56,8 +56,8 @@ export interface StatusChangePopoverProps {
   anchorRef: RefObject<HTMLElement>;
   isOpen: boolean;
   /**
-   * Called with the final note string (or null when blank, per REV-04/D-07).
-   * For action='restore', note is always RESTORE_NOTE_SYSTEM_TEXT (D-09).
+   * Called with the final note string (or null when blank).
+   * For action='restore', note is always RESTORE_NOTE_SYSTEM_TEXT.
    * Parent is responsible for closing the popover (set isOpen=false) on success.
    */
   onConfirm: (note: string | null) => Promise<void>;
@@ -102,7 +102,7 @@ export function StatusChangePopover({
         !popoverRef.current?.contains(t) &&
         !anchorRef.current?.contains(t)
       ) {
-        // focus-return BEFORE close (Pattern E — don't drop focus to body)
+        // focus-return BEFORE close — don't drop focus to body
         anchorRef.current?.focus();
         onCancel();
       }

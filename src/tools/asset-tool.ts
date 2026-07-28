@@ -33,8 +33,8 @@ import type { Breadcrumb } from '../types/hierarchy.js';
 void _versionLabel;
 
 /**
- * Phase 4 asset tool — registers the 7-action MCP tool `asset` (D-ASST-01,
- * D-ASST-02). Thin Zod-validated delegate (D-33) to engine methods.
+ * Asset tool — registers the 7-action MCP tool `asset`.
+ * Thin Zod-validated delegate to engine methods.
  *
  * Actions (discriminated on `action`):
  *  - add_tag          — idempotent tag insert, max 50 per version
@@ -46,13 +46,13 @@ void _versionLabel;
  *  - list_metadata_keys — scope-aware metadata-key aggregation
  *
  * Envelope invariants:
- *  - D-25 dual-form: every response carries {structuredContent, content:[{type,text}]}
- *  - D-22/D-ASST-04: mutator responses carry the refreshed VersionWithAssets
+ *  - Dual-form: every response carries {structuredContent, content:[{type,text}]}
+ *  - Mutator responses carry the refreshed VersionWithAssets
  *    plus breadcrumb (5 entries) + breadcrumb_text ("ws > project > seq > shot > v001")
- *  - D-ASST-05: query items each include tags + metadata + breadcrumb inline
- *  - D-ASST-06: list_tags / list_metadata_keys echo the input scope
- *  - D-28/D-32: ZodError is caught and re-wrapped as INVALID_INPUT with input.<path>;
- *    the raw Zod stack NEVER reaches the agent (T-04-04-02 mitigation)
+ *  - Query items each include tags + metadata + breadcrumb inline
+ *  - list_tags / list_metadata_keys echo the input scope
+ *  - ZodError is caught and re-wrapped as INVALID_INPUT with input.<path>;
+ *    the raw Zod stack NEVER reaches the agent (no internals leak)
  */
 
 // ================================================================
@@ -62,7 +62,7 @@ void _versionLabel;
 const VersionIdZ = z.string().min(1).max(MAX_ID_LENGTH);
 
 // ================================================================
-// Per-action discriminated schemas (D-ASST-12..18)
+// Per-action discriminated schemas
 // ================================================================
 
 const AddTagInput = z.object({
@@ -110,11 +110,11 @@ const AssetInputSchema = z.discriminatedUnion('action', [
 
 // ================================================================
 // Response shapers — flatten Breadcrumb into {breadcrumb: entries,
-// breadcrumb_text: text} on every response (D-22 invariant).
+// breadcrumb_text: text} on every response (envelope invariant).
 // ================================================================
 
 /**
- * D-ASST-04: shape mutator response (add_tag / remove_tag / set_metadata /
+ * Shape mutator response (add_tag / remove_tag / set_metadata /
  * remove_metadata). Engine returns a refreshed VersionWithAssets + Breadcrumb;
  * tool emits {entity, breadcrumb: BreadcrumbEntry[], breadcrumb_text: string}.
  * The engine already attaches `version_label` inside AssetsEngine.buildMutationResponse.
@@ -131,7 +131,7 @@ function shapeMutationResponse(result: {
 }
 
 /**
- * D-ASST-05 + D-ASST-22: shape asset.query response. Items already carry
+ * Shape asset.query response. Items already carry
  * breadcrumb from the engine (queryAssets return type); this shaper flattens
  * each item's Breadcrumb to the standard form and emits the paginated envelope.
  */
@@ -157,7 +157,7 @@ function shapeQueryResponse(result: {
 }
 
 /**
- * D-ASST-06: shape list_tags / list_metadata_keys response. No breadcrumb on
+ * Shape list_tags / list_metadata_keys response. No breadcrumb on
  * aggregate lists — scope is echoed instead so the agent can verify the intended
  * scope was used. Engine returns a concrete ScopeFilter already.
  */
@@ -182,20 +182,20 @@ function shapeTagListResponse(result: {
 // ================================================================
 
 /**
- * Register the `asset` MCP tool on the supplied server (D-ASST-01). Thin
- * Zod-validated delegate (D-33) to the composed Engine's 7 asset methods.
+ * Register the `asset` MCP tool on the supplied server. Thin
+ * Zod-validated delegate to the composed Engine's 7 asset methods.
  *
- * RT-01/RT-02: raw ZodRawShape exposed to MCP for `tools/list` introspection;
+ * Raw ZodRawShape exposed to MCP for `tools/list` introspection;
  * the discriminated union re-validates inside the handler so the ZodError catch
  * branch is reachable (defence-in-depth with the engine's own raw-JS validation).
  *
  * Error model:
- *  - ZodError       → INVALID_INPUT with `input.<path>` in message (D-32,
- *                     T-04-04-02 mitigation — no Zod stack leaks to the agent)
- *  - TypedError     → flows through toolError unchanged (D-28)
+ *  - ZodError       → INVALID_INPUT with `input.<path>` in message
+ *                     (no Zod stack leaks to the agent)
+ *  - TypedError     → flows through toolError unchanged
  *    (VERSION_NOT_FOUND, TAG_INVALID, METADATA_INVALID, TAG_LIMIT_EXCEEDED,
  *     METADATA_LIMIT_EXCEEDED, INVALID_SCOPE, INVALID_INPUT from engine)
- *  - Anything else  → toolError re-wraps as INVALID_INPUT (D-13 defence)
+ *  - Anything else  → toolError re-wraps as INVALID_INPUT (defence-in-depth)
  */
 export function registerAsset(server: McpServer, engine: Engine): void {
   server.registerTool(
@@ -213,10 +213,10 @@ export function registerAsset(server: McpServer, engine: Engine): void {
         'list_tags (scope-aware tag name+count aggregation, ordered count DESC, name ASC), ' +
         'list_metadata_keys (scope-aware metadata key name+count aggregation). ' +
         'All mutator responses carry the refreshed version with inline tags + metadata + breadcrumb.',
-      // Raw ZodRawShape (RT-01): SDK wraps into z.object for tools/list.
+      // Raw ZodRawShape: SDK wraps into z.object for tools/list.
       // Every field is .optional() at this layer so the SDK's pre-handler
       // validation never short-circuits — the handler's AssetInputSchema.parse()
-      // is the single source of truth for shape enforcement (RT-02).
+      // is the single source of truth for shape enforcement.
       inputSchema: z.object({
         action: z.enum([
           'add_tag',

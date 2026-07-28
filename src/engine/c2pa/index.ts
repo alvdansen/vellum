@@ -1,8 +1,8 @@
-// Phase 14 / Plan 14-02 — engine-layer C2PA module barrel export.
+// Engine-layer C2PA module barrel export.
 //
-// This file re-exports the public API surface of the three submodules.
-// Plan 14-03 (engine integration), Plan 14-04 (HTTP route), and Plan 14-05
-// (verification tests) import from here.
+// This file re-exports the public API surface of the submodules. The engine
+// integration, the HTTP route, and the verification tests all import from
+// here.
 //
 // Architecture-purity: zero non-c2pa imports. The c2pa-node import is
 // confined to ./signer.ts; everything in the barrel is re-export only.
@@ -12,9 +12,8 @@ export {
   type BuildManifestOptions,
   type ManifestDefinition,
   type PrimaryModel,
-  // Phase 15 / Plan 15-02 — additive types (BuildManifestResult surface) and
-  // discriminated assertion union. Plan 15-03 (Engine.signOutput) consumes
-  // these from the barrel.
+  // Additive types (BuildManifestResult surface) and discriminated
+  // assertion union. Engine.signOutput consumes these from the barrel.
   type ManifestAssertion,
   type CreatedActionAssertion,
   type VendorInputAssertion,
@@ -27,7 +26,7 @@ export {
 
 export {
   routeFormat,
-  // Phase 15 WR-02 — supported-MIME helper used by Engine.signOutput's
+  // Supported-MIME helper used by Engine.signOutput's
   // ingredient asset-ref resolution to avoid passing 'application/octet-stream'
   // (which c2pa-rs rejects) for unclassifiable extensions.
   getMimeForExtensionOrNull,
@@ -40,7 +39,7 @@ export {
 export {
   loadSigner,
   isC2paNodeAvailable,
-  // Phase 15 / Plan 15-03 — ingredient-aware entry points. Drive the native
+  // Ingredient-aware entry points. Drive the native
   // binding's createIngredient + manifestBuilder.addIngredient for each spec
   // before sign. Architecture-purity preserved: signer.ts is STILL the only
   // file in src/ that imports the native binding.
@@ -49,14 +48,14 @@ export {
   type LoadedSigner,
 } from './signer.js';
 
-// Phase 15 / Plan 15-03 — re-export buildManifestWithIngredients so engine
+// Re-export buildManifestWithIngredients so engine
 // callers (pipeline.ts) only need the c2pa barrel for the full flow.
 export { buildManifestWithIngredients } from './manifest-builder.js';
 
 export { BUFFER_SIGNING_MAX_BYTES } from './constants.js';
 
-// Phase 15 / Plan 15-01 — pure ingredient extraction primitives. Consumed by
-// Plan 15-02 (manifest builder extension) and Plan 15-03 (engine integration).
+// Pure ingredient extraction primitives. Consumed by the manifest-builder
+// extension and the engine integration.
 export {
   extractParentIngredient,
   extractComponentIngredients,
@@ -68,7 +67,7 @@ export {
   type InputAssertion,
 } from './ingredient-extractor.js';
 
-// Phase 16 / Plan 16-01 — PROV-V-07 agent-surface primitives. Pure-async
+// Agent-surface primitives. Pure-async
 // reader (exporter.ts) + lazy-binding verifier (verifier.ts). Engine facade
 // methods Engine.exportManifestForVersion / verifyManifestForVersion delegate
 // here.
@@ -79,7 +78,7 @@ export {
   type VerifyManifestInput,
 } from './verifier.js';
 
-// Phase 16 / Plan 16-02 — PROV-V-06 redaction primitive. Pure helpers (apply +
+// Redaction primitive. Pure helpers (apply +
 // build) live in redaction.ts; the integration helper that re-signs via
 // signer.ts is also exported for the Engine facade (Engine.redactManifestForVersion).
 export {

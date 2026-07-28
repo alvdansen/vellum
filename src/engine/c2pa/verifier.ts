@@ -1,25 +1,25 @@
-// Phase 16 / Plan 16-01 — PROV-V-07. Async verifier wrapping c2pa-node's
-// createC2pa().read({asset}). Returns a VerificationReport (D-CTX-2 shape)
+// Async verifier wrapping c2pa-node's
+// createC2pa().read({asset}). Returns a VerificationReport
 // suitable for the version.verify_manifest tool envelope.
 //
 // Architecture-purity:
 //   - ZERO MCP imports
 //   - ZERO SQLite-driver imports, ZERO ORM imports
-//   - c2pa-node import is LAZY (Phase 14 Concern #11 pattern, mirror of signer.ts)
+//   - c2pa-node import is LAZY (mirror of signer.ts)
 //
-// Per D-CTX-7, the architecture-purity test (src/__tests__/architecture-purity.test.ts)
-// is updated this plan to allow c2pa-node imports in signer.ts + exporter.ts +
+// The architecture-purity test (src/__tests__/architecture-purity.test.ts)
+// allows c2pa-node imports in signer.ts + exporter.ts +
 // verifier.ts (the three engine modules that legitimately need the native binding —
 // note exporter.ts itself does NOT import c2pa-node; the allowed-set merely
-// reserves the slot for the wave).
+// reserves the slot).
 //
-// No re-signing happens here — Plan 16-02's redaction.ts handles the re-sign
+// No re-signing happens here — redaction.ts handles the re-sign
 // workflow. The verifier is read-only.
 //
 // Failure-mode discipline:
 //   - c2pa-rs read() throws / returns null → signature_status='no_manifest'
 //   - native binding load throws → signature_status='no_manifest' (graceful-fail)
-//   - signingCredential.untrusted (D-PLAN-5):
+//   - signingCredential.untrusted:
 //       VELLUM_C2PA_TRUST_DEV_CERT='1' → filtered (dev-mode); valid
 //       otherwise → signature_status='untrusted_root' (production default)
 //   - claimSignature.algorithmUnsupported → 'unsupported_algorithm'
@@ -33,8 +33,8 @@ import type { ProvenanceRepo } from '../../store/provenance-repo.js';
 import type { VersionRepo } from '../../store/version-repo.js';
 
 /**
- * D-CTX-2 — VerificationReport shape. Locked at the engine boundary.
- * The tool envelope (Plan 16-03) spreads this verbatim into structuredContent.
+ * VerificationReport shape. Locked at the engine boundary.
+ * The tool envelope spreads this verbatim into structuredContent.
  */
 export interface VerificationReport {
   valid: boolean;
@@ -86,7 +86,7 @@ export type VerifyManifestInput =
       format: string;
     };
 
-// D-PLAN-5 dev-acceptable codes (mirror Phase 14
+// Dev-acceptable codes (mirror
 // src/__tests__/c2pa-verification.test.ts:241-247). Filtered from
 // validation_status BEFORE classification when
 // VELLUM_C2PA_TRUST_DEV_CERT='1'.
@@ -200,7 +200,7 @@ export async function verifyManifest(
 /**
  * Lazy-load c2pa-node + invoke read; classify into VerificationReport.
  *
- * Native binding load failure (Phase 14 Concern #11 mirror) and c2pa-rs read
+ * Native binding load failure (mirror of signer.ts) and c2pa-rs read
  * exceptions BOTH degrade to 'no_manifest' — the verifier is read-only and
  * agents see a clean discriminated outcome rather than an opaque load error.
  */
@@ -235,7 +235,7 @@ async function readAndClassify(
   const validationStatus: ValidationStatusMin[] =
     (store.validation_status ?? []) as ValidationStatusMin[];
 
-  // D-PLAN-5: when VELLUM_C2PA_TRUST_DEV_CERT='1', the dev-acceptable
+  // When VELLUM_C2PA_TRUST_DEV_CERT='1', the dev-acceptable
   // codes are filtered from validationStatus BEFORE classification. The
   // suppressed codes are carried into the report (dev_trust_overrides) so
   // a dev-trusted `valid` is distinguishable from a clean one.
@@ -273,7 +273,7 @@ async function readAndClassify(
     .map(normalizeActionsLabel);
   const matched_assertions = allLabels.filter((l: string) => !failureLabels.has(l));
 
-  // gaps: labels expected in a Phase 14/15 manifest but missing from this one.
+  // gaps: labels expected in a Vellum-signed manifest but missing from this one.
   const gaps = EXPECTED_ASSERTION_LABELS.filter((l) => !allLabels.includes(l));
 
   // failures: discrete entries from effectiveValidationStatus with assertion + reason.
@@ -309,12 +309,12 @@ async function readAndClassify(
 }
 
 /**
- * Map c2pa-rs validation_status codes to the D-CTX-2 signature_status union.
+ * Map c2pa-rs validation_status codes to the signature_status union.
  * Priority: untrusted_root > unsupported_algorithm > no_manifest > invalid > valid.
  * The first matching code wins (so e.g. an untrusted-root + dataHash-mismatch
  * report surfaces as 'untrusted_root' — the cert chain failure is upstream).
  *
- * D-PLAN-5: c2pa-rs uses `signingCredential.untrusted` (NOT
+ * c2pa-rs uses `signingCredential.untrusted` (NOT
  * `claimSignature.untrusted`) — verified at
  * src/__tests__/c2pa-verification.test.ts:241-247.
  */

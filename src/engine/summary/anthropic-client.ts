@@ -1,11 +1,11 @@
-// Phase 19 — SUM-01. Engine-layer Anthropic Messages API wrapper.
+// Engine-layer Anthropic Messages API wrapper.
 //
 // This is the ONLY file in the codebase that imports @anthropic-ai/sdk. The
 // architecture-purity test asserts:
 //   grep -rE "from\s*['\"]@anthropic-ai/sdk|import\s*\(\s*['\"]@anthropic-ai/sdk" src/
 //   (excluding __tests__) returns matches ONLY in src/engine/summary/anthropic-client.ts.
 //
-// Mirrors Phase 14 c2pa-node sole-importer discipline (src/engine/c2pa/signer.ts:1-225).
+// Mirrors the c2pa-node sole-importer discipline (src/engine/c2pa/signer.ts:1-225).
 // Exposes generateSummary, flattenAnthropicError, __resetAnthropicSdkStateForTests;
 // the Engine facade in src/engine/summary/index.ts is the SOLE caller.
 //
@@ -14,11 +14,12 @@
 // load error wrapped in TypedError('ANTHROPIC_SDK_LOAD_FAILED'). Server boot
 // NEVER calls this path.
 //
-// Retry budget (D-FB-4 + RESEARCH.md Pitfall 2): single retry with 1s backoff
+// Retry budget: single retry with 1s backoff
 // at the engine layer. SDK retries DISABLED via maxRetries: 0 on BOTH the
-// client constructor AND every per-request options arg (defence-in-depth).
+// client constructor AND every per-request options arg (defence-in-depth —
+// SDK-level retries would silently multiply the engine's retry budget).
 //
-// Error hygiene (D-PRIV-3 + D-PRIV-4): flattenAnthropicError strips API key
+// Error hygiene: flattenAnthropicError strips API key
 // fragments in 4 encodings (UTF-8 / UTF-16LE / UTF-16BE / base64) + the
 // sk-ant-... regex pattern. Mirrors the multi-encoding leak scan precedent
 // at src/__tests__/c2pa-redaction-e2e.test.ts:76-92.
@@ -87,15 +88,15 @@ export async function generateSummary(
 
   const client = new Anthropic({
     apiKey,
-    maxRetries: 0,    // D-FB-4: engine owns retry; disable SDK retry (Pitfall 2)
-    timeout: 10_000,  // 10s per-call timeout (D-FB-4; SDK default is 10 minutes)
+    maxRetries: 0,    // engine owns retry; disable SDK retry
+    timeout: 10_000,  // 10s per-call timeout (SDK default is 10 minutes)
   });
 
   // First attempt.
   try {
     return await invokeAnthropic(client, promptInput, options?.signal);
   } catch (err) {
-    // Retry once on transient errors only (D-FB-4).
+    // Retry once on transient errors only.
     if (isTransient(err, sdk)) {
       await sleep(1000);  // 1s backoff
       return await invokeAnthropic(client, promptInput, options?.signal);
@@ -111,20 +112,20 @@ async function invokeAnthropic(
 ): Promise<{ text: string; prompt_tokens: number; completion_tokens: number }> {
   const message = await client.messages.create(
     {
-      model: 'claude-haiku-4-5-20251001',  // D-LLM-1 dated pin
-      max_tokens: 180,                      // D-LLM-3 hard ceiling
-      temperature: 0.7,                     // D-LLM-4
+      model: 'claude-haiku-4-5-20251001',  // dated pin — never a floating alias
+      max_tokens: 180,                      // hard ceiling on summary length
+      temperature: 0.7,
       system: [
         {
           type: 'text',
           text: promptInput.system,
-          cache_control: { type: 'ephemeral' },  // D-LLM-5 — 5min TTL prefix cache
+          cache_control: { type: 'ephemeral' },  // 5min TTL prefix cache
         },
       ],
       messages: [{ role: 'user', content: promptInput.userTurn }],
     },
     {
-      maxRetries: 0,    // Defence-in-depth: also pass per-request (Pitfall 2)
+      maxRetries: 0,    // Defence-in-depth: also pass per-request
       timeout: 10_000,
       signal,           // Optional cancellation support
     },
@@ -134,7 +135,7 @@ async function invokeAnthropic(
   const textBlock = message.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text') {
     throw new TypedError(
-      'ANTHROPIC_SDK_LOAD_FAILED',  // Engine maps to fallback 'validation_failed' per WARNING #10 pruning
+      'ANTHROPIC_SDK_LOAD_FAILED',  // Engine maps this to the fallback 'validation_failed' outcome
       'Anthropic returned no text content block (Pitfall 8 — empty or non-text first block)',
       'Engine wrapper degrades to deterministic-template fallback via validateSummary empty branch.',
     );
@@ -162,7 +163,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Strip API key from any error string in 4 encodings (D-PRIV-3 + D-PRIV-4).
+ * Strip API key from any error string in 4 encodings.
  *
  * The fragment list is the shared apiKeyFragments helper from sanitizer.ts
  * (single source of truth for the 4-encoding scan; mirrors the precedent at
@@ -171,7 +172,7 @@ function sleep(ms: number): Promise<void> {
  * The Anthropic SDK auto-redacts auth headers in error messages, but
  * historical 0.x versions have leaked partial keys via debug-mode message
  * strings. flattenAnthropicError is the defence-in-depth gate before any
- * error string reaches a log line or a cache row (Pitfall 4).
+ * error string reaches a log line or a cache row.
  */
 export function flattenAnthropicError(err: unknown): string {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';

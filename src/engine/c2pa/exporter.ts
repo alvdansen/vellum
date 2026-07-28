@@ -1,21 +1,21 @@
-// Phase 16 / Plan 16-01 — PROV-V-07. Pure-async exporter for the v1.1
+// Pure-async C2PA manifest exporter for the
 // agent surface. Reads the latest manifest_signed event for a version's
 // primary output + the embedded-manifest file bytes from disk. Returns a
 // base64-encoded snapshot suitable for the tool envelope.
 //
-// This module is the EXPORT half of D-CTX-3. The redaction primitive
-// (Plan 16-02) re-uses parts of this read path; the verifier (Plan 16-01
-// sibling file verifier.ts) re-uses the disk-read discipline.
+// This module is the EXPORT half of the manifest export/redaction pair. The
+// redaction primitive re-uses parts of this read path; the verifier
+// (sibling file verifier.ts) re-uses the disk-read discipline.
 //
 // Architecture-purity:
 //   - ZERO MCP imports
 //   - ZERO native-binding imports — the exporter just reads the embedded-
 //     manifest file bytes verbatim. The native binding is needed only
-//     for verify (verifier.ts) and re-sign (Plan 16-02 reuses signer.ts).
+//     for verify (verifier.ts) and re-sign (which reuses signer.ts).
 //   - Repo access is via Pick<...> dependency injection (zero SQLite-
 //     driver imports, zero ORM imports).
 //
-// Path-traversal safety (T-16-01 mitigation):
+// Path-traversal safety:
 //   - filename is path.basename'd before path.join
 //   - resolved path is asserted to live within outputsDir/<versionId>/
 //   - traversal attempts throw TypedError EXPORT_PATH_TRAVERSAL_REJECTED
@@ -27,7 +27,7 @@ import type { ProvenanceRepo } from '../../store/provenance-repo.js';
 import type { VersionRepo } from '../../store/version-repo.js';
 
 /**
- * Phase 16 — exporter return shape per CONTEXT.md specifics block.
+ * Exporter return shape.
  * - manifest_status discriminates the three outcomes: present / absent /
  *   unsupported_format. The latter is distinct from absent because it
  *   reflects the SIGNER's deliberate choice (EXR/PSD/unknown ext) — the
@@ -60,8 +60,8 @@ export interface ExporterResult {
  * (outputs_json[0].filename) and return the embedded-manifest file bytes
  * as base64.
  *
- * D-PLAN-4: base64 wrapper is appropriate for v1.1 typical sizes (~1 MB);
- * streaming export deferred per CONTEXT.md.
+ * The base64 wrapper is appropriate for typical manifest sizes (~1 MB);
+ * streaming export is deliberately deferred.
  *
  * @throws TypedError VERSION_NOT_FOUND when versionRepo.getVersion returns null
  * @throws TypedError EXPORT_PATH_TRAVERSAL_REJECTED when filename has traversal chars
@@ -87,7 +87,7 @@ export async function exportManifest(
     return makeAbsentResult();
   }
 
-  // Path-traversal guard at the boundary (T-16-01).
+  // Path-traversal guard at the boundary.
   assertSafeFilename(filename);
 
   // Read latest manifest_signed event for (versionId, filename).
@@ -124,7 +124,7 @@ export async function exportManifest(
   try {
     bytes = await readFile(fullPath);
   } catch (err) {
-    // ENOENT graceful-fail (Phase 14 D-CTX-9 pattern) — disk file deleted
+    // ENOENT graceful-fail — disk file deleted
     // or downloader hadn't completed; we surface 'absent' rather than
     // throwing so agent UX is consistent.
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {

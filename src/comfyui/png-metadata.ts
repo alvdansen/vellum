@@ -1,5 +1,5 @@
 /**
- * D-PROV-05: extract tEXt chunk values from PNG buffers.
+ * Extract tEXt chunk values from PNG buffers.
  *
  * ComfyUI writes the resolved prompt JSON into a tEXt chunk with keyword
  * 'prompt' on every image output; the source workflow JSON lands in a

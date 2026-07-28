@@ -1,7 +1,7 @@
 // packages/dashboard/src/types/entities.ts
 //
 // Dashboard-local entity types. Mirrors the REST response shapes from
-// src/http/dashboard-routes.ts (Plan 05-04) — plain DTOs the UI renders.
+// src/http/dashboard-routes.ts — plain DTOs the UI renders.
 //
 // Duplicated per D-WEBUI-31 (no server imports under packages/dashboard/src/**).
 // These types are intentionally minimal: only the fields the dashboard reads.
@@ -49,15 +49,15 @@ export interface Version {
   tags?: string[];
   metadata?: Array<{ key: string }>;
   /**
-   * Phase 12 — DEMO-03. Lineage marker for reproduce/iterate paths. Optional +
-   * nullable: legacy rows (pre-Phase-3) and originals (from generation.submit)
+   * DEMO-03 — lineage marker for reproduce/iterate paths. Optional +
+   * nullable: legacy rows (predating lineage tracking) and originals (from generation.submit)
    * carry null/undefined. The dashboard branches on this in VersionDrawer to
    * decide whether to auto-fetch the diff response (which carries the
    * reproduction_divergence signal) on drawer mount.
    */
   lineage_type?: 'reproduce' | 'iterate' | null;
   /**
-   * Pivot enhancement #5 — the generation backend that produced this version
+   * The generation backend that produced this version
    * ('comfyui-cloud' | 'replicate' | 'fal' | …), from versions.provider. Optional
    * + nullable: legacy pre-pivot rows carry null/undefined. Surfaced as a
    * ProviderBadge in the VersionDrawer header.

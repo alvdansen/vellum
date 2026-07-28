@@ -1,8 +1,7 @@
 /**
  * DiffDrawer — 2nd-level drawer rendering before/after version comparison.
  *
- * Per must-have contract (Plan 05-10 frontmatter):
- *   "DiffDrawer renders before/after version cards side by side"
+ * Contract: renders before/after version cards side by side.
  *
  * Composition:
  *   - header: title + close button
@@ -18,8 +17,8 @@
  *
  * Pure component: props-in, callbacks-out. No fetch, no signal reads.
  *
- * SECURITY — T-5-06: all dynamic content (version labels, summary text) flows
- * as JSX text children (Preact auto-escapes). No dangerouslySetInnerHTML.
+ * SECURITY (XSS hygiene): all dynamic content (version labels, summary text)
+ * flows as JSX text children (Preact auto-escapes). No dangerouslySetInnerHTML.
  */
 
 import { VersionCard } from '../components/VersionCard.js';
@@ -30,7 +29,7 @@ import type { VersionCardVersion } from '../components/VersionCard.js';
 /**
  * Minimal diff summary surface the drawer renders. The server returns a richer
  * DiffResponse; we read only `summary` (a human-readable one-liner) here. The
- * full `changes` structure is rendered by a future plan's richer diff view.
+ * full `changes` structure is rendered by the richer A/B diff view.
  */
 export interface DiffSummary {
   summary: string;

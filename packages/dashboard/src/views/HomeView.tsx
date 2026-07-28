@@ -1,38 +1,37 @@
 /**
  * HomeView — primary two-pane layout: TreeSidebar (left) + shot-detail panel.
  *
- * Per must-have contract (Plan 05-10 frontmatter):
- *   "HomeView renders TreeSidebar and a shot detail panel side by side"
+ * Contract: renders TreeSidebar and a shot detail panel side by side.
  *
  * Composition:
  *   - LEFT pane: sort strip (SORT_STRIP_LABEL + tree SortDropdown) +
- *     TreeSidebar (Plan 09 primitive) reading from `workspaces` signal plus
+ *     TreeSidebar reading from `workspaces` signal plus
  *     a local nested `tree` state that lazy-hydrates on expand.
  *   - RIGHT pane: sort strip (SORT_STRIP_LABEL + grid SortDropdown) +
  *     scrollable shot-detail panel (VersionCard list driven by the `versions`
  *     signal under the currently-selected shot) + LoadMoreButton footer.
  *   - OVERLAY: the version-detail drawer renders at App.tsx scope via
- *     <VersionDrawerHost/> (Phase 21 / Plan 21-06 — moved out of HomeView).
+ *     <VersionDrawerHost/> (moved out of HomeView).
  *     HomeView writes `selectedVersionId.value` via VersionCard onSelect.
  *
- * Phase 18 / Plan 18-05 Task 2 — Sortable folder dropdown integration:
- *   - Sort hydration runs in App.tsx's boot useEffect (moved here from
- *     HomeView in Phase 21 / Plan 21-06 per the 21-AUDIT.md root pattern);
+ * Sortable folder dropdown integration:
+ *   - Sort hydration runs in App.tsx's boot useEffect (moved there from
+ *     HomeView so it runs once at boot scope, before any view mounts);
  *     gridSort and treeSort signals are stable before this view mounts.
- *   - Two SortDropdown instances (D-08 reuse) render above tree + grid; the
- *     same component handles both with TField generic constraint.
+ *   - Two SortDropdown instances (one shared component) render above tree +
+ *     grid; the same component handles both with TField generic constraint.
  *   - LoadMoreButton renders at the version-list bottom ONLY when
- *     gridCursor.value !== null AND versionsList.length > 0 (SORT-05).
- *   - Grid sort onChange: cursor reset (D-19) + scroll-to-top (D-19) + URL
+ *     gridCursor.value !== null AND versionsList.length > 0.
+ *   - Grid sort onChange: cursor reset + scroll-to-top + URL
  *     replaceState + localStorage write via persistGridSort.
  *   - Tree sort onChange: client-side re-sort via compareTreeNodes at all 4
- *     hierarchy levels (D-09 single tree-wide sort, NOT per-level); NO new
- *     fetches fire (D-discretion: client-side over server re-fetch).
- *   - Versions fetch useEffect migrates to paginated buffer semantics:
+ *     hierarchy levels (one single tree-wide sort, NOT per-level); NO new
+ *     fetches fire (client-side re-sort chosen over server re-fetch).
+ *   - Versions fetch useEffect uses paginated buffer semantics:
  *     replace on shot/sort change, append on Load more click.
  *
  * Data hydration:
- *   - On App mount (App.tsx boot useEffect, hoisted in 21-06): sort signals
+ *   - On App mount (App.tsx boot useEffect): sort signals
  *     reconcile URL > localStorage > defaults.
  *   - On HomeView mount: fetchWorkspaces() → workspaces signal (top of tree).
  *   - On workspace expand: fetchProjects(id, treeSort.value) → children cache.
@@ -42,9 +41,9 @@
  *     REPLACE versions.value (paginated buffer reset).
  *   - On Load more click: fetchVersions(shotId, {sort, cursor}) → APPEND.
  *
- * SECURITY — T-5-06 + T-18-03: all dynamic content (workspace/project/
+ * SECURITY (XSS hygiene): all dynamic content (workspace/project/
  *   sequence/shot names, version labels, sort option labels) flows as JSX
- *   text children via the Plan 09 + 18-04 primitives. No
+ *   text children via the shared primitives. No
  *   dangerouslySetInnerHTML. SortDropdown labels come from hardcoded
  *   GRID_SORT_OPTIONS / TREE_SORT_OPTIONS constants — never user-controlled.
  */
@@ -99,8 +98,8 @@ import {
   gridIsFetching,
   gridLoadMoreError,
 } from '../state/versions.js';
-// Phase 21 / Plan 21-04 Task T02 — TreeSidebar grid-icon click flips
-// activeView via the Wave-2 signals + mirrors into URL state (D-01, D-02).
+// TreeSidebar grid-icon click flips activeView via the shot-grid
+// signals + mirrors into URL state.
 import {
   activeView,
   selectedSequenceForGrid,
@@ -127,7 +126,7 @@ import { versionLabel, normalizeStatus, unwrapList } from '../lib/shape.js';
  * children for workspaces (→ projects), projects (→ sequences), and sequences
  * (→ shots). The tree is derived at render time by splicing these entries
  * into the top-level workspaces signal AND applying compareTreeNodes per the
- * tree sort signal (D-09).
+ * tree sort signal.
  */
 interface ChildrenCache {
   projects: Record<string, Project[]>;
@@ -143,11 +142,11 @@ const emptyChildren: ChildrenCache = {
 
 /**
  * compareTreeNodes expects `created_at: number` (engine integer ms epoch),
- * but dashboard entity types still declare `created_at?: string` (a v1.0
+ * but dashboard entity types still declare `created_at?: string` (a
  * type-drift artifact — the runtime value IS a number, but the dashboard
- * hadn't needed to read it before Phase 18). Cast at the comparator call
- * site rather than mutate the entity types or read raw rows; v1.3 candidate
- * for follow-up alignment of types/entities.ts with the wire shape.
+ * hadn't needed to read it before sorting landed). Cast at the comparator
+ * call site rather than mutate the entity types or read raw rows; deferred:
+ * align types/entities.ts with the wire shape.
  */
 function compareTreeNodesUnsafe<T extends { name: string; created_at?: unknown }>(
   a: T,
@@ -181,8 +180,8 @@ export function HomeView() {
   const [children, setChildren] = useState<ChildrenCache>(emptyChildren);
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
-  // Phase 21 / Plan 21-06 — hydrate moved to App.tsx boot scope (21-AUDIT.md
-  // §3 / §5 Bug 1). gridSort + treeSort signals are now hydrated once on App
+  // Sort hydration moved to App.tsx boot scope. gridSort + treeSort
+  // signals are now hydrated once on App
   // mount, BEFORE any view component mounts. This makes deep links like
   // `?treeSort=name-asc` work regardless of which view is active on first
   // paint (previously, on a shot-grid deep link, the tree-sort param was
@@ -259,7 +258,7 @@ export function HomeView() {
     };
   }, []);
 
-  // Phase 18 / Plan 18-05 Task 2 — paginated buffer load helper. Caller's
+  // Paginated buffer load helper. Caller's
   // INTENT is encoded in `replace`: page-1 useEffect always replaces; Load
   // more click handler always appends. Avoids guessing from gridCursor at
   // resolve time (which races with sort-change cursor reset).
@@ -334,14 +333,14 @@ export function HomeView() {
     gridSort.value = next; // triggers page-1 useEffect
     gridCursor.value = null; // explicit reset (defence in depth)
     persistGridSort(next); // localStorage + URL replaceState
-    // D-19 scroll-to-top: bring the grid back to the start of the new sort.
+    // Scroll-to-top: bring the grid back to the start of the new sort.
     if (mainScrollRef.current) {
       mainScrollRef.current.scrollTop = 0;
     }
   }
 
   // Tree sort onChange: persist + let the tree composition useMemo re-sort
-  // client-side. NO fetch — D-09 single tree-wide sort applies via
+  // client-side. NO fetch — the single tree-wide sort applies via
   // compareTreeNodes at all 4 hierarchy levels in the render path below.
   function handleTreeSortChange(next: HierarchySort): void {
     treeSort.value = next;
@@ -437,22 +436,20 @@ export function HomeView() {
     });
   }
 
-  // Phase 17 / Plan 17-05 — populate TreeShot.latestCompletedVersion for the
+  // Populate TreeShot.latestCompletedVersion for the
   // currently-selected shot from the in-memory versions signal. Other shots
   // (whose versions have not been loaded into the local cache) keep
-  // latestCompletedVersion undefined → SkeletonThumbnail fallback (D-14/D-15).
-  // This is the v1.2 conservative ship per Plan 17-05 Task 2 Step 3 — the
-  // "selected-shot-only" populate approach is documented in the plan as the
-  // safe minimum; cross-shot prefetch is deferred to v1.3.
+  // latestCompletedVersion undefined → SkeletonThumbnail fallback.
+  // The "selected-shot-only" populate approach is the deliberate
+  // conservative minimum; cross-shot prefetch is deferred.
   //
-  // Phase 18 / Plan 18-05 Task 2 (D-21): the new ORDER BY for fetchVersions
+  // The ORDER BY for fetchVersions
   // pins in-progress (NULL completed_at) to the top of page 1, then orders
   // completed by completed_at DESC. The first 'complete' row in versions.value
   // is therefore the latest-completed row (typical case). Edge case:
   // shot with >20 in-progress versions → page 1 may be all in-progress, so
   // no completed row is found and the derivation returns undefined →
-  // SkeletonThumbnail fallback in TreeSidebar. v1.3 prefetch fix per
-  // CONTEXT.md D-21 deferred.
+  // SkeletonThumbnail fallback in TreeSidebar. A prefetch fix is deferred.
   const selectedShotVersions = versions.value;
   const latestCompletedForSelectedShot = (() => {
     if (!selectedShotId.value) return undefined;
@@ -469,7 +466,7 @@ export function HomeView() {
 
   // Compose the nested tree shape TreeSidebar expects from the workspaces
   // signal + lazy-loaded children cache. Apply compareTreeNodes at every
-  // hierarchy level per D-09 — the same treeSort.value drives the entire
+  // hierarchy level — the same treeSort.value drives the entire
   // tree's order, NOT a per-level sort.
   const currentTreeSort = treeSort.value;
   const tree: TreeWorkspace[] = workspaces.value
@@ -502,7 +499,7 @@ export function HomeView() {
                         id: sh.id,
                         name: sh.name,
                         // Populate latestCompletedVersion ONLY for the selected
-                        // shot (D-15 happy path); all other shots fall back to
+                        // shot (happy path); all other shots fall back to
                         // SkeletonThumbnail.
                         latestCompletedVersion:
                           sh.id === selectedShotId.value
@@ -517,8 +514,8 @@ export function HomeView() {
     }));
 
   const versionsList = versions.value;
-  // Phase 21 / Plan 21-06 — selectedVersion + priorVersion derivation moved
-  // to <VersionDrawerHost/> (21-AUDIT.md §3 + §5 Bug 5). HomeView still
+  // selectedVersion + priorVersion derivation moved
+  // to <VersionDrawerHost/>. HomeView still
   // writes selectedVersionId via the VersionCard onSelect callback below;
   // the overlay reads that signal at App-scope.
 
@@ -552,7 +549,7 @@ export function HomeView() {
           }}
           expandedIds={expandedIds}
           onToggleExpand={toggleExpand}
-          // Phase 21 / D-01, D-02, D-05 — TreeSidebar grid-icon affordance
+          // TreeSidebar grid-icon affordance
           // wires to the shot-grid view state. Click flips activeView,
           // points selectedSequenceForGrid at the clicked sequence, and
           // mirrors both into the URL via replaceState. The active sequence
@@ -563,8 +560,7 @@ export function HomeView() {
             selectedSequenceForGrid.value = seqId;
             persistShotGridUrlState();
           }}
-          // Phase 21 / Plan 21-06 — Bug 7 fix (21-AUDIT.md §1 row 7,
-          // codex_review). Only surface aria-current="page" + accent fill
+          // Only surface aria-current="page" + accent fill
           // on the grid-icon when the user is ACTUALLY on the shot-grid
           // view. Previously this prop was unconditional, so navigating to
           // the grid and clicking the home button (back to home) left the
@@ -659,10 +655,10 @@ export function HomeView() {
           )}
         </div>
       </main>
-      {/* Phase 21 / Plan 21-06 — version-detail drawer render hoisted to
+      {/* Version-detail drawer render hoisted to
        *  App.tsx via <VersionDrawerHost/>. The selectedVersionId signal is
        *  the shared key; click handlers below still set it, but the overlay
-       *  itself mounts at App scope (21-AUDIT.md Bugs 2 + 5). */}
+       *  itself mounts at App scope. */}
     </div>
   );
 }

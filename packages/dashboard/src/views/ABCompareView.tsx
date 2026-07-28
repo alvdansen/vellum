@@ -1,27 +1,27 @@
 /**
- * Phase 22 / Plan 22-06 — ABCompareView.
+ * ABCompareView.
  *
- * Full-viewport modal for side-by-side version comparison (D-15, REV-03).
+ * Full-viewport modal for side-by-side version comparison.
  * Two thumbnails preload in PARALLEL via Promise.all([img.decode(),
  * img.decode()]) — both resolve at the same time so the panel doesn't
- * flash one thumbnail before the other (D-17). Below the thumbnails,
+ * flash one thumbnail before the other. Below the thumbnails,
  * MetadataDiff renders the diffVersionsAB response (summary + structured
- * changes from 22-03).
+ * changes).
  *
- * Pitfall 7 mitigation: `.decode()` is the primary preload path, but very
+ * Preload fallback: `.decode()` is the primary preload path, but very
  * old browsers / certain test environments don't support it (the spec was
  * Chrome-first). `preloadOne` falls back to a bare `.onload + .onerror`
  * Promise chain — wires BOTH so a 404 rejects instead of spinning forever.
  *
- * Close paths (3 — D-15):
+ * Close paths (3):
  *  - ESC keydown on document
  *  - Backdrop click (e.target === e.currentTarget)
  *  - Explicit close button
  *
- * z-30 backdrop + modal body — RESEARCH Q4 ladder. The right-rail
+ * z-30 backdrop + modal body — top of the z-index ladder. The right-rail
  * review/version drawer (z-10) and DiffDrawer (z-20) stay BENEATH this.
  *
- * Architecture-purity (D-WEBUI-31): only sibling dashboard imports.
+ * Architecture purity: only sibling dashboard imports.
  */
 
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
@@ -55,7 +55,7 @@ function preloadOne(url: string): Promise<void> {
   img.src = url;
   // .decode() is the modern preload path — resolves only when the image is
   // paint-ready. Fall back to a bare onload/onerror Promise when .decode is
-  // unavailable or rejects (Pitfall 7 — old browsers / certain test envs).
+  // unavailable or rejects (old browsers / certain test envs).
   return img.decode().catch(
     () =>
       new Promise<void>((resolve, reject) => {

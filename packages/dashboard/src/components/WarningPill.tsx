@@ -1,16 +1,16 @@
 /**
  * WarningPill — amber/yellow advisory badge.
  *
- * Phase 12 (DEMO-03) primitive for reproduce-lineage divergence indication.
+ * Primitive for reproduce-lineage divergence indication.
  * Distinct from StatusPill (which carries a closed status union); WarningPill
  * carries free-form copy with a warning intent.
  *
  * Pure component: props-in, no callbacks. Mirrors StatusPill's structural shape
  * (rounded-full, uppercase tracking, --color-bg text on saturated background)
  * but binds to --color-status-running (the existing amber token at theme.css:51)
- * to avoid introducing a new design token (CONTEXT.md "no new design tokens").
+ * to avoid introducing a new design token.
  *
- * SECURITY — T-5-06: dynamic content (label, ariaLabel) flows as JSX text
+ * SECURITY: dynamic content (label, ariaLabel) flows as JSX text
  * children — Preact auto-escapes. Caller passes hardcoded strings; no
  * user-controlled data reaches the pill.
  *

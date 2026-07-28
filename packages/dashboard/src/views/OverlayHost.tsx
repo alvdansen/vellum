@@ -1,13 +1,12 @@
 /**
- * OverlayHost — generalised right-rail overlay mount host (D-02 / RESEARCH
- * Pattern 4).
+ * OverlayHost — generalised right-rail overlay mount host.
  *
  * Reads the `activeOverlay` discriminator from state/review-panel.ts and
  * mounts EXACTLY ONE of:
- *  - `<ReviewPanelHostInternal/>` when activeOverlay='review' (Phase 22)
- *  - `<VersionDrawerHostInternal/>` when activeOverlay='version' (Phase 21)
+ *  - `<ReviewPanelHostInternal/>` when activeOverlay='review'
+ *  - `<VersionDrawerHostInternal/>` when activeOverlay='version'
  *
- * Mutex invariant (D-02): no two right-rail overlays mount simultaneously.
+ * Mutex invariant: no two right-rail overlays mount simultaneously.
  * The three exported helpers (openVersionDrawer / openReviewPanel /
  * closeOverlay) are the ONLY sanctioned mutation paths — they keep
  * activeOverlay and its companion signals (selectedVersionId,
@@ -16,15 +15,15 @@
  * Backward-compat shim: if `activeOverlay === null` but
  * `selectedVersionId !== null` (legacy direct-mutation callers — HomeView
  * still writes selectedVersionId directly in some paths), OverlayHost falls
- * back to rendering the version drawer. This preserves Phase 21 behavior
- * unchanged until those call sites migrate to `openVersionDrawer(id)`.
+ * back to rendering the version drawer. This preserves the pre-mutex
+ * behavior unchanged until those call sites migrate to `openVersionDrawer(id)`.
  *
  * Defensive guards: inconsistent state (e.g., activeOverlay='review' but
  * activeReviewShotId=null) renders null + console.warn. Never throws.
  *
- * Architecture-purity (D-WEBUI-31): only sibling and parent-relative imports.
+ * Architecture purity: only sibling and parent-relative imports.
  *
- * VersionDrawerHostInternal is the Phase 21 VersionDrawerHost component
+ * VersionDrawerHostInternal is the original VersionDrawerHost component
  * body, copied verbatim into this file so the public VersionDrawerHost
  * (now a re-export shim from views/VersionDrawerHost.ts) stays a one-line
  * pass-through to OverlayHost — keeping the cache + fetch logic in ONE
@@ -56,11 +55,11 @@ import {
 } from '../lib/copy.js';
 
 // ============================================================================
-// VersionDrawerHostInternal — Phase 21 VersionDrawerHost logic, verbatim.
+// VersionDrawerHostInternal — the original VersionDrawerHost logic, verbatim.
 // Lives here so the public VersionDrawerHost shim (re-exported from
 // views/VersionDrawerHost.ts) can stay a one-liner. Behavior unchanged:
 //  - Reads selectedVersionId; returns null when null
-//  - Cache hit via versions.value (Phase 5-10 flow)
+//  - Cache hit via versions.value (the HomeView list flow)
 //  - Cache miss → fetchVersion(id) + local cache by id; transparent render
 //    until resolved
 //  - Fetch failure → console.warn + clear selectedVersionId (graceful)
@@ -138,9 +137,8 @@ function VersionDrawerHostInternal(): JSX.Element | null {
 }
 
 // ============================================================================
-// ReviewPanelHostInternal — Phase 22 ReviewPanel mount + cache-miss fetch.
-// Replaces the 22-04 placeholder with the real composition. Fetches the
-// shot's versions + status history in parallel; renders a loading shell
+// ReviewPanelHostInternal — ReviewPanel mount + cache-miss fetch.
+// Fetches the shot's versions + status history in parallel; renders a loading shell
 // (aside with REVIEW_PANEL_LOADING_LABEL) until both resolve, then mounts
 // <ReviewPanel/>. SSE updates flow via shotGrid.value reads (header pill
 // keys on currentShot.status so it re-renders on every store mutation).

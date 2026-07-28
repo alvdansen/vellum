@@ -6,8 +6,8 @@ loadEnv();
  * vellum entry point.
  *
  * Dual-transport bootstrap:
- *   - stdio transport ALWAYS, long-lived (D-15)
- *   - Streamable HTTP on 127.0.0.1:<port> when --http is passed (D-16, T-03-03)
+ *   - stdio transport ALWAYS, long-lived
+ *   - Streamable HTTP on 127.0.0.1:<port> when --http is passed (loopback-only)
  *
  * Both transports expose the SAME 7 tools (workspace, project, sequence, shot,
  * generation, version, asset) against the SAME process-wide engine (so SQLite
@@ -24,31 +24,31 @@ loadEnv();
  *   same Engine / HierarchyRepo / VersionRepo / db, so state is process-wide
  *   consistent.
  *
- * Phase 2 additions:
- *   - `import 'dotenv/config'` on line 2 (Pitfall 2 — must precede every
+ * Generation-lifecycle wiring:
+ *   - `import 'dotenv/config'` on line 2 (must precede every
  *     relative import; module hoisting in Node ESM evaluates imports before
  *     top-level code).
  *   - Optional ComfyUIClient wiring from COMFYUI_API_KEY + COMFYUI_API_BASE env.
  *     When COMFYUI_API_KEY is absent, client is null; hierarchy tools still
  *     work; `generation submit` returns GENERATION_CREDENTIALS_MISSING on first
- *     call (D-GEN-10, D-GEN-14 — silent-if-missing preserves TRNS-04).
+ *     call (silent-if-missing keeps stdio framing clean).
  *   - engine.start() kicks the recovery poller for pending rows from prior
- *     runs before any transport accepts client traffic (D-GEN-29).
- *   - SIGINT/SIGTERM → engine.stop() → process.exit(0) (D-GEN-29 — abort all
+ *     runs before any transport accepts client traffic.
+ *   - SIGINT/SIGTERM → engine.stop() → process.exit(0) (abort all
  *     in-flight pollers gracefully).
- *   - Credential-presence stderr log at boot IF key is set. Format per D-GEN-12:
+ *   - Credential-presence stderr log at boot IF key is set. Exact format:
  *     `ComfyUI credentials loaded (key ****<last4>, base <base>)`.
  *
- * Deviation from literal D-GEN-12: CONTEXT.md says "on the first submit per
+ * Design note: the credential log could fire "on the first submit per
  * process", but the honest implementation logs at boot when the key is present.
  * Engine-side first-submit tracking would couple the engine to a logging
- * concern — violating architecture-purity (D-33). D-GEN-14 (silent if .env
- * missing) is preserved by the `if (apiKey)` branch; the presence-only intent
- * of D-GEN-12 is preserved by the exact format (last-4 only, never the key).
+ * concern — violating architecture-purity. Silence when .env is
+ * missing is preserved by the `if (apiKey)` branch; the presence-only intent
+ * is preserved by the exact format (last-4 only, never the key).
  *
- * Logging: stderr-only (D-21). stdout reserved for MCP JSON-RPC framing on stdio.
+ * Logging: stderr-only. stdout reserved for MCP JSON-RPC framing on stdio.
  * Credential hygiene: the KEY value is NEVER logged; only the last 4 chars +
- * the base URL (D-GEN-12). Extended stdio-hygiene test asserts no
+ * the base URL. Extended stdio-hygiene test asserts no
  * `COMFYUI_API_KEY=` substring ever reaches stdout/stderr.
  */
 
@@ -88,10 +88,10 @@ import {
   registerAsset,
 } from './tools/index.js';
 import { registerResources } from './tools/resources.js';
-// Phase 5 Plan 05-06: dashboard HTTP surface (D-WEBUI-01 / D-WEBUI-12).
+// Dashboard HTTP surface.
 // Dashboard REST + SSE + static share the same Hono app as the /mcp route;
 // mount order below is load-bearing — SSE before REST router, REST before
-// the /* static catch-all. See Plan 05-06 SUMMARY for the full rationale.
+// the /* static catch-all. See the mount-sequence comment in main() below.
 import { createDashboardRouter, typedErrorHandler, createWebhookRouter } from './http/index.js';
 import { createSseHandler } from './http/sse.js';
 import { createStaticHandler } from './http/static.js';
@@ -109,10 +109,10 @@ async function readVersion(): Promise<string> {
 }
 
 /**
- * Construct a fresh McpServer with the 7 Phase 1 + Phase 2 + Phase 3 + Phase 4
+ * Construct a fresh McpServer with the 7
  * tools registered against the supplied engine. Single source of tool identity —
  * both stdio and each HTTP request route through this factory, so transport
- * parity is guaranteed by construction (Pitfall #7). Zero transport-specific
+ * parity is guaranteed by construction. Zero transport-specific
  * branching inside.
  */
 function buildServer(engine: Engine, version: string): McpServer {
@@ -143,10 +143,10 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerGeneration(server, engine);
   registerVersion(server, engine);
   registerAsset(server, engine);
-  // Pivot Phase E — self-describing MCP resources (vellum://manual, /capabilities,
+  // Self-describing MCP resources (vellum://manual, /capabilities,
   // /output-contract). Zero tool slots; the idiomatic home for agent onboarding.
   registerResources(server, version);
-  // RT-09 / API-06: SDK's registerTool unconditionally merges
+  // SDK's registerTool unconditionally merges
   // `capabilities.tools.listChanged: true` into the server's capability set,
   // but we never emit `notifications/tools/list_changed`. Override back to
   // false AFTER all tools registered (must precede transport connect — the
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Db init — auto-creates if missing, applies WAL + schema (D-18, TRNS-04).
+  // Db init — auto-creates if missing, applies WAL + schema.
   // openDb() returns { db, sqlite } — always destructure. Passing the object
   // directly to HierarchyRepo crashes on first query (db.select undefined).
   //
@@ -198,12 +198,12 @@ async function main(): Promise<void> {
   const versionRepo = new VersionRepo(db);
   const provenanceRepo = new ProvenanceRepo(db);
 
-  // Optional ComfyUI client — built only if COMFYUI_API_KEY is set (D-GEN-10,
-  // D-GEN-14). Absent key ⇒ hierarchy tools work; `generation submit` surfaces
+  // Optional ComfyUI client — built only if COMFYUI_API_KEY is set.
+  // Absent key ⇒ hierarchy tools work; `generation submit` surfaces
   // GENERATION_CREDENTIALS_MISSING on first call.
   const apiKey = process.env.COMFYUI_API_KEY;
   const apiBase = envValue(process.env.COMFYUI_API_BASE) ?? DEFAULT_COMFYUI_API_BASE;
-  // IS-02: fail-fast on misconfigured base URL. Validates protocol, blocks
+  // Fail-fast on misconfigured base URL. Validates protocol, blocks
   // loopback / RFC1918 / link-local targets unless explicit env overrides are
   // set. Runs even when COMFYUI_API_KEY is absent so surprise misconfigs
   // surface immediately instead of on the first submit call.
@@ -216,9 +216,9 @@ async function main(): Promise<void> {
     ? new ComfyUIClient(apiKey, apiBase, { additionalAllowedHosts })
     : null;
 
-  // Credential presence log — last 4 ONLY (D-GEN-12). Format is exact per
-  // CONTEXT.md §Specifics. Emitted at boot when key is present; silent when
-  // absent (D-GEN-14). Engine never reads process.env — credentials flow
+  // Credential presence log — last 4 ONLY, never the key value.
+  // Emitted at boot when key is present; silent when
+  // absent. Engine never reads process.env — credentials flow
   // through the ComfyUI client constructor.
   if (apiKey) {
     const last4 = apiKey.slice(-4);
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
     const p = cfg.id === 'comfyui-cloud' && client ? client : createProvider(cfg);
     providers.set(cfg.id, p);
     if (cfg.id !== 'comfyui-cloud') {
-      // ComfyUI's presence was already logged above (D-GEN-12 format).
+      // ComfyUI's presence was already logged above (same last-4 format).
       console.error(
         `vellum: provider '${cfg.id}' configured (key ****${cfg.apiKey.slice(-4)}, base ${cfg.apiBase})`,
       );
@@ -255,28 +255,28 @@ async function main(): Promise<void> {
     );
   }
 
-  // C6: concurrency cap for the on-start recovery poller. Env override allows
+  // Concurrency cap for the on-start recovery poller. Env override allows
   // Pro tier users to raise the ceiling. Default (3) matches the Creator tier.
   const maxConcurrentPollersRaw = process.env.COMFYUI_MAX_CONCURRENT_POLLS;
   const maxConcurrentPollers = maxConcurrentPollersRaw
     ? Number.parseInt(maxConcurrentPollersRaw, 10)
     : undefined;
 
-  // Phase 14 — PROV-V-01 / PROV-V-02 / PROV-V-05 (D-CTX-2). Boot-time C2PA
+  // Boot-time C2PA
   // cert/key validation. Throws TypedError('C2PA_CONFIG_INVALID', ...) BEFORE
   // any Engine construction or tool registration when env vars are set but
   // any path is missing / unreadable / empty / OUTSIDE the allowlist root.
   // Returns null when both env vars are unset → signing is disabled silently.
-  // Concern #4 mitigation (path-traversal / arbitrary-file-disclosure): the
+  // Path-traversal / arbitrary-file-disclosure mitigation: the
   // helper realpath-resolves both paths and asserts they live inside the
   // allowlist root (cwd by default; VELLUM_C2PA_CERT_ROOT optional override).
-  // Concern #11 mitigation (native-binding-load resilience): server boot does
+  // Native-binding-load resilience: server boot does
   // NOT eagerly load c2pa-node here — the native module load is deferred to
-  // Plan 14-02's signer module on first sign attempt.
+  // the signer module's first sign attempt.
   const c2paConfig = loadC2paConfigFromEnv();
   if (c2paConfig) {
-    // Concern #4: log basenames ONLY, never the full resolved path.
-    // MR-01 fix: surface TSA URL choice (operator-controllable via
+    // Log basenames ONLY, never the full resolved path (path-leak hygiene).
+    // Surface TSA URL choice (operator-controllable via
     // VELLUM_C2PA_TSA_URL). When unset, the engine passes null to
     // loadSigner — c2pa-node v0.5.26's binding bug then surfaces as
     // status_reason='sign_call_failed' on every sign attempt. Operators
@@ -289,28 +289,28 @@ async function main(): Promise<void> {
     );
   }
 
-  // Phase 19 — SUM-01..06. Anthropic API key loading + boot validation.
+  // Anthropic API key loading + boot validation.
   // Throws TypedError('ANTHROPIC_CONFIG_INVALID', ...) BEFORE any Engine
   // construction or tool registration when env var is set but malformed.
   // Returns null when ANTHROPIC_API_KEY is unset → summary feature disabled
-  // silently (D-FB-2 graceful degradation; engine returns SummaryOutcome=
+  // silently (graceful degradation; engine returns SummaryOutcome=
   // fallback reason='api_key_missing' on every call).
   //
   // Boot does NOT eagerly load @anthropic-ai/sdk — the SDK module load is
-  // deferred to Plan 19-04's anthropic-client.ts on first user-facing call.
+  // deferred to anthropic-client.ts on first user-facing call.
   // This is the boot-resilience invariant verified by the architecture-purity
   // grep guard `src/server.ts has zero static imports from @anthropic-ai/sdk`.
   const anthropicConfig = loadAnthropicConfigFromEnv();
   if (anthropicConfig) {
     // Last-4 only in success log — same hygiene as the TypedError messages
-    // (D-PRIV-4 mirrors c2pa-config basename-only path discipline).
+    // (mirrors c2pa-config's basename-only path discipline).
     const last4 = anthropicConfig.apiKey.slice(-4);
     console.error(
       `vellum: AI summary enabled (Anthropic ****${last4}, model claude-haiku-4-5-20251001)`,
     );
   }
 
-  // Phase 14 Plan 14-05 — outputs root is configurable via VELLUM_OUTPUTS_DIR
+  // Outputs root is configurable via VELLUM_OUTPUTS_DIR
   // for ops + multi-tenant deployments. Tests rely on this to redirect outputs
   // to a temp dir. Mirrors the VELLUM_MODELS_DIR convention.
   //
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     // the gate rather than silently disabling a spend guard.
     requireApproval: isApprovalRequired(process.env.VELLUM_REQUIRE_APPROVAL),
     maxConcurrentPollers: Number.isFinite(maxConcurrentPollers) ? maxConcurrentPollers : undefined,
-    // Pivot Phase D — operator-supplied extra ingest hosts for registerExternalOutput
+    // Operator-supplied extra ingest hosts for registerExternalOutput
     // (additive to the built-in known provider delivery hosts). Comma-separated.
     ingestAllowedHosts: (process.env.VELLUM_INGEST_ALLOWED_HOSTS ?? '')
       .split(',')
@@ -364,28 +364,28 @@ async function main(): Promise<void> {
       process.env.VELLUM_SPEND_LIMIT_CURRENCY,
       process.env.VELLUM_SPEND_LIMIT_WINDOW_HOURS,
     ),
-    // Phase 13 — PROV-V-03 (D-CTX-2). When unset, every entry records
-    // 'models_dir_not_configured' per D-CTX-5. Production (ComfyUI Cloud)
+    // When unset, every model-fingerprint entry records
+    // 'models_dir_not_configured'. Production (ComfyUI Cloud)
     // ships with this unset; local-dev / self-host can populate hashes by
     // setting VELLUM_MODELS_DIR to the local checkpoints/loras root.
     modelsDir: envValue(process.env.VELLUM_MODELS_DIR) ?? null,
-    // Phase 14 — PROV-V-01 (D-CTX-2). NULL means signing is disabled
-    // (graceful degradation). Plan 14-02's signer wrapper is the SOLE
+    // NULL means signing is disabled
+    // (graceful degradation). The signer wrapper is the SOLE
     // consumer of the cert/key bytes — read lazily on first sign attempt.
     c2paConfig,
-    // Phase 19 — SUM-01..06. NULL means summarization is disabled
-    // (graceful degradation; D-FB-2). The summary/anthropic-client.ts
+    // NULL means summarization is disabled
+    // (graceful degradation). The summary/anthropic-client.ts
     // wrapper is the SOLE consumer of the API key — loaded lazily on
     // first Engine.summarizeVersion call.
     anthropicConfig,
   });
   const version = await readVersion();
 
-  // Recovery poller (D-GEN-29) — runs once at boot, drains any pending rows
+  // Recovery poller — runs once at boot, drains any pending rows
   // from prior runs. No-op if version table has no non-terminal rows.
   await engine.start();
 
-  // Shutdown handlers (D-GEN-29) — abort all AbortControllers in the engine,
+  // Shutdown handlers — abort all AbortControllers in the engine,
   // then exit 0. Stops the process cleanly even with in-flight pollers.
   const shutdown = async (signal: string): Promise<void> => {
     console.error(`vellum: ${signal} received — shutting down`);
@@ -403,19 +403,19 @@ async function main(): Promise<void> {
     void shutdown('SIGTERM');
   });
 
-  // Transport 1 — stdio, always on (D-15). One long-lived McpServer.
+  // Transport 1 — stdio, always on. One long-lived McpServer.
   const stdio = new StdioServerTransport();
   const stdioServer = buildServer(engine, version);
   await stdioServer.connect(stdio);
   console.error('vellum: stdio transport connected');
 
-  // Transport 2 — Streamable HTTP, opt-in via --http (D-16).
+  // Transport 2 — Streamable HTTP, opt-in via --http.
   // Per the MCP SDK stateless pattern, a fresh McpServer + transport is spawned
   // per request; all share the same engine/db for consistent state.
   if (args.http) {
     const port = args.port ?? 3000;
     const app = new Hono();
-    // SEC-03: Origin-header allowlist for DNS-rebinding / CSRF mitigation.
+    // Origin-header allowlist for DNS-rebinding / CSRF mitigation.
     // Non-browser MCP clients (Claude Desktop, Cursor, CLI) do not send
     // Origin — they are always allowed. Browser tabs always send Origin, so
     // any unfamiliar value is rejected with a 403 + actionable hint.
@@ -423,7 +423,7 @@ async function main(): Promise<void> {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    // RT-07 / API-07: wrong-verb requests to /mcp get a JSON-RPC-shaped 405
+    // Wrong-verb requests to /mcp get a JSON-RPC-shaped 405
     // instead of Hono's text/plain 404 default. Agents can parse the envelope
     // even on misuse.
     // DNS-rebinding guard, mounted BEFORE every other handler.
@@ -491,7 +491,7 @@ async function main(): Promise<void> {
       // response is consumed.
       const requestServer = buildServer(engine, version);
       const transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // stateless mode per STACK.md / mcp-hono-stateless
+        sessionIdGenerator: undefined, // stateless mode (mcp-hono-stateless pattern)
       });
       try {
         await requestServer.connect(transport);
@@ -505,14 +505,14 @@ async function main(): Promise<void> {
       }
     });
 
-    // Phase 5 Plan 05-06 dashboard mount sequence (D-WEBUI-12 mount order).
+    // Dashboard mount sequence.
     //
     // The order below is load-bearing:
     //   1. /mcp handlers (registered above) — existing MCP JSON-RPC surface.
     //   2. app.onError(typedErrorHandler) — must be registered BEFORE the
     //      dashboard routes so TypedError throws inside the router convert to
     //      the structured { error: { code, message } } JSON body with the
-    //      correct HTTP status (Plan 05-03).
+    //      correct HTTP status.
     //   3. /api/events (SSE) — MUST come before /api/* REST routes. Hono's
     //      trie matches the most specific route, so this ordering is actually
     //      insurance against future wildcard routes; today /api/events is
@@ -521,8 +521,8 @@ async function main(): Promise<void> {
     //   4. /api/* (dashboard REST) — mounted at ROOT, not at '/api', because
     //      dashboard-routes.ts registers its 18 routes with FULL /api/ paths
     //      (app.get('/api/workspaces'), etc.). Mounting at '/api' would
-    //      double-prefix to /api/api/workspaces — Rule 1 fix against the plan's
-    //      reference code. The test fixture (dashboard-routes.test.ts#57)
+    //      double-prefix to /api/api/workspaces.
+    //      The test fixture (dashboard-routes.test.ts#57)
     //      uses app.route('/', router) for the same reason.
     //   5. /* (static catch-all) — LAST. Serves Preact dashboard assets from
     //      packages/dashboard/dist/ or fallback HTML when unbuilt. Registered
@@ -535,18 +535,18 @@ async function main(): Promise<void> {
     // browser enforces via CORS.
     app.onError(typedErrorHandler);
     app.get('/api/events', createSseHandler(engine, httpAllowedOrigins));
-    // Pivot #3 — bearer-gated provider-webhook ingest (POST /webhooks/:provider →
+    // Bearer-gated provider-webhook ingest (POST /webhooks/:provider →
     // registerExternalOutput). Disabled unless VELLUM_INGEST_TOKEN is set. Mounted
     // before the static catch-all so /webhooks/* is not swallowed by serveStatic.
     app.route('/', createWebhookRouter(engine, { ingestToken: process.env.VELLUM_INGEST_TOKEN }));
     app.route('/', createDashboardRouter(engine));
     app.use('/*', createStaticHandler());
 
-    // NOTE: do not log request bodies here — future phases will carry ComfyUI
-    // keys in headers (T-03-04 reminder).
-    // Bind 127.0.0.1 explicitly (T-03-03) — no remote reachability until auth lands.
+    // NOTE: do not log request bodies here — future work may carry ComfyUI
+    // keys in headers (credential-leak hygiene).
+    // Bind 127.0.0.1 explicitly — no remote reachability until auth lands.
     //
-    // RT-04: attach a listeningListener so the "listening on …" log only fires
+    // Attach a listeningListener so the "listening on …" log only fires
     // on successful bind, AND subscribe to the error event so EADDRINUSE /
     // EACCES / ERR_SOCKET_BAD_PORT don't crash the stdio path with an
     // unhandled error. The process exits 1 with an actionable message.

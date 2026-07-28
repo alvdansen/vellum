@@ -1,9 +1,9 @@
 /**
- * Phase 18 / Plan 18-04 — Type mirror of server-side sort enums.
+ * Type mirror of server-side sort enums.
  *
  * D-WEBUI-31 architecture-purity: this dashboard package MUST NOT import
  * from src/store/. Types are duplicated here verbatim. The file-level
- * architecture-purity grep gate (verified by the verify step on this plan)
+ * architecture-purity grep gate
  * structurally enforces the no-server-import invariant.
  *
  * DUPLICATE OF src/store/sort.ts — keep in lockstep.
@@ -15,13 +15,13 @@
  * `versions` table has no `name` column (server-side falls back to
  * versions.id). The dashboard's GRID_SORT_OPTIONS (sortHelpers.ts) does
  * NOT expose `name` because the UI surface narrows to fields that are
- * actually meaningful for version rows (DEVIATION 1, this plan).
+ * actually meaningful for version rows (DEVIATION 1, sortHelpers.ts).
  *
- * SECURITY notes (Plan 18 RESEARCH §"Security Domain" T-18-01 / T-18-05):
+ * SECURITY notes:
  *   - The closed string-literal enums constrain the surface so user input
  *     can never reach a column reference.
  *   - parseSortValue (sortHelpers.ts) validates against these enums via
- *     ReadonlySet whitelists; D-16 graceful-fallback contract holds.
+ *     ReadonlySet whitelists; the graceful-fallback contract holds.
  */
 
 // Mirror — keep byte-equal with src/store/sort.ts:
@@ -39,13 +39,13 @@ export interface HierarchySort {
   dir: SortDirection;
 }
 
-/** SORT-01 grid default — Latest. Mirrors src/store/sort.ts:71. */
+/** Grid default — Latest. Mirrors src/store/sort.ts:71. */
 export const DEFAULT_VERSION_SORT: VersionSort = {
   field: 'completed_at',
   dir: 'desc',
 };
 
-/** SORT-04 tree default — A→Z. Mirrors src/store/sort.ts:74. */
+/** Tree default — A→Z. Mirrors src/store/sort.ts:74. */
 export const DEFAULT_HIERARCHY_SORT: HierarchySort = {
   field: 'name',
   dir: 'asc',

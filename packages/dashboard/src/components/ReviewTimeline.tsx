@@ -1,19 +1,19 @@
 /**
- * Phase 22 / Plan 22-05 — ReviewTimeline.
+ * ReviewTimeline.
  *
  * Unified, chronologically-interleaved feed of version events (created /
- * completed) and shot_status_events rows. D-04 lock: a single timeline,
+ * completed) and shot_status_events rows. Deliberately a single timeline,
  * not two parallel lists.
  *
- * Row shapes (D-04):
+ * Row shapes:
  *  - Version rows are CLICKABLE — clicking opens the version drawer via
- *    `openVersionDrawer(versionId)` (D-02 mutex with the review panel).
+ *    `openVersionDrawer(versionId)` (mutually exclusive with the review panel).
  *  - Status rows are NON-INTERACTIVE — display the ShotStatusPill, the
  *    changed_by attribution, the relative time, and the optional note.
  *
  * Empty state: REVIEW_HISTORY_EMPTY when entries.length === 0.
  *
- * Security (T-22-17): note + changed_by render as JSX text children —
+ * Security: note + changed_by render as JSX text children —
  * Preact auto-escape; no innerHTML.
  *
  * Pure presentational: props in, DOM out. Parent (ReviewPanel) merges
@@ -116,7 +116,7 @@ export function ReviewTimeline({
     setSelectionOrder({ first: null });
   }
 
-  // ESC exits compare-mode (UI-SPEC L455). Only attached when compareMode
+  // ESC exits compare-mode. Only attached when compareMode
   // is active so the listener has no effect when the timeline is in its
   // default state.
   useEffect(() => {

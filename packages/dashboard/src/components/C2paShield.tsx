@@ -1,22 +1,22 @@
 /**
- * Phase 17 / Plan 17-04 — Adobe Content Credentials "CR" mark SVG overlay.
+ * Adobe Content Credentials "CR" mark SVG overlay.
  *
- * Render contract (UI-SPEC §"<C2paShield/> API contract" lines 240-275):
- *   - Pure presentational SVG (no state, no click, no focus ring — D-11 LOCKED)
+ * Render contract:
+ *   - Pure presentational SVG (no state, no click, no focus ring — locked decision)
  *   - role='img' + aria-label + inner <title> (SR + native browser tooltip)
- *   - Fixed brand colors #FFFFFF body / #1A1A1A outline (D-08 — NOT theme-tokenized;
+ *   - Fixed brand colors #FFFFFF body / #1A1A1A outline (NOT theme-tokenized;
  *     the CR mark is a regulator-recognized brand element, tinting it would
  *     defeat its purpose as a recognizable signal of Content Credentials)
  *   - CSS drop-shadow halo for legibility on bright thumbnails (white sky,
  *     snow, blown highlights)
  *   - Default class h-5 w-5 (20×20 px); sm-variant callers pass h-3.5 w-3.5
- *   - viewBox 0 0 24 24 (matches lucide convention per UI-SPEC)
+ *   - viewBox 0 0 24 24 (matches the lucide convention)
  *
- * D-10 LOCKED: this component renders ONLY when c2paStatus.status === 'signed'.
+ * LOCKED: this component renders ONLY when c2paStatus.status === 'signed'.
  * The render-predicate gate lives at the parent <Thumbnail/> call site —
  * <C2paShield/> itself has no opinion on visibility.
  *
- * D-11 LOCKED: zero interactive state. No click handler, no hover state,
+ * LOCKED: zero interactive state. No click handler, no hover state,
  * no focus ring, no tabindex. Clicks bubble through to the parent VersionCard
  * <button> or TreeRow <div role="treeitem"> — which already exposes the full
  * C2PA state via the <C2paBadge/> text pill in VersionDrawer.
@@ -32,14 +32,14 @@
  * License:   Apache License, Version 2.0 (LICENSE-APACHE)
  *            https://github.com/contentauth/verify-site/blob/main/LICENSE-APACHE
  * Copyright: Copyright 2020 Adobe (per the verify-site LICENSE-APACHE header).
- * Verified:  2026-05-02 (Plan 17-04 Task 1 license-verification gate, outcome A —
- *            explicit Apache 2.0 license text discovered on the upstream repo).
+ * Verified:  2026-05-02 (license-verification gate — explicit Apache 2.0
+ *            license text discovered on the upstream repo).
  * Notes:     The CR mark is a first-party asset in the contentauth/verify-site
  *            repository, which is "distributed under the terms of the Apache
  *            License (Version 2.0)" (verify-site/README.md §License). The path
  *            bytes below preserve the Adobe-authored shape; the wrapping
  *            <g transform> rescales the original 25×24 coordinate space into
- *            the 24×24 viewBox required by UI-SPEC §"<C2paShield/> API contract".
+ *            the 24×24 viewBox this component's render contract requires.
  * ──────────────────────────────────────────────────────────────────────
  */
 
@@ -54,7 +54,7 @@ export interface C2paShieldProps {
   class?: string;
   /**
    * Optional title — sets BOTH `aria-label` AND inner `<title>` text content.
-   * Default: SIGNED_TOOLTIP ('Signed · Verified provenance' per D-11).
+   * Default: SIGNED_TOOLTIP ('Signed · Verified provenance').
    */
   title?: string;
 }
@@ -76,11 +76,11 @@ export function C2paShield({ class: className, title }: C2paShieldProps) {
        * Adobe Content Credentials "CR" mark — Apache 2.0 (Copyright 2020 Adobe).
        * Source path bytes from contentauth/verify-site (assets/svg/color/cr-icon-fill.svg).
        * Original viewBox is 0 0 25 24; we wrap in <g transform="scale(0.96 1)">
-       * to fit the UI-SPEC-required 0 0 24 24 viewBox without modifying the
+       * to fit the required 0 0 24 24 viewBox without modifying the
        * Adobe-authored path coordinates.
        */}
       <g transform="scale(0.96 1)">
-        {/* Shield outline — white body, dark outline (D-08 brand colors). */}
+        {/* Shield outline — white body, dark outline (fixed brand colors). */}
         <path
           d="M1.54 12C1.54 5.94696 6.44696 1.04 12.5 1.04C18.553 1.04 23.46 5.94696 23.46 12V22.96H12.5C6.44696 22.96 1.54 18.053 1.54 12Z"
           fill="#FFFFFF"

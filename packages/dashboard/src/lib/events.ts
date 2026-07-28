@@ -1,17 +1,17 @@
 // packages/dashboard/src/lib/events.ts
 //
 // SSE client for the dashboard — opens a single EventSource to /api/events
-// (D-WEBUI-03: single global stream per tab). Subscribers register typed
+// (single global stream per tab). Subscribers register typed
 // handlers via onSseEvent; the module holds a singleton EventSource +
 // per-type listener sets so start / stop is idempotent.
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. The EngineEventMap consumed here
 // is the dashboard-local duplicate at ../types/events.ts.
 //
-// Plan 05-08 Task 1 (GREEN). Consumers (Plan 05-10 ActiveGenerationsPanel,
-// etc.) call startSse() once at app init, register via onSseEvent('type', fn),
-// and cleanup with offSseEvent on unmount.
+// Consumers (ActiveGenerationsPanel, etc.) call startSse() once at app init,
+// register via onSseEvent('type', fn), and cleanup with offSseEvent on
+// unmount.
 
 import type { EngineEventMap } from '../types/events.js';
 
@@ -66,8 +66,8 @@ function attachDispatchFor<K extends keyof EngineEventMap>(type: K): void {
  * Start the SSE connection. Idempotent: calling startSse() twice is a no-op
  * while the first EventSource is still open.
  *
- * Per D-WEBUI-03 the default URL is '/api/events' (same-origin; Vite proxy
- * in dev). Callers override for tests.
+ * The default URL is '/api/events' (same-origin; Vite proxy in dev — one
+ * global stream per tab). Callers override for tests.
  */
 export function startSse(url: string = '/api/events'): void {
   if (es) return;

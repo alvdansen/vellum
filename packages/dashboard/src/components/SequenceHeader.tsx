@@ -1,20 +1,20 @@
 /**
- * SequenceHeader — collapsible header above the shot grid (D-15).
+ * SequenceHeader — collapsible header above the shot grid.
  *
  * Pure component: props-in, callbacks-out. Sequence name (20px/600 Inter
  * Tight) + chevron toggle button + aggregate count mini-pills row.
  *
- * D-14: aggregate counts are color-coded mini-pills, one per non-zero
+ * Pills: aggregate counts are color-coded mini-pills, one per non-zero
  *       status count, rendered in fixed ORDER (wip → pending-review →
- *       approved → on-hold → omit). The parent (ShotGridView, Wave 4)
+ *       approved → on-hold → omit). The parent (ShotGridView)
  *       computes the counts from the shotGrid signal and passes them in;
  *       SSE-driven status updates flow through that computed reactively.
- * D-15: chevron toggles aria-expanded (caller owns the boolean state);
+ * Toggle: chevron toggles aria-expanded (caller owns the boolean state);
  *       expanded ↔ ChevronDown, collapsed ↔ ChevronRight; open by default
  *       (caller responsibility); session-only state (no localStorage).
  *
- * Architecture-purity (D-WEBUI-31): zero server-tree imports. The
- * `lucide-preact` icons are already in TreeSidebar.tsx (Phase 17 precedent).
+ * Architecture-purity: zero server-tree imports. The
+ * `lucide-preact` icons are already in TreeSidebar.tsx (existing precedent).
  *
  * SECURITY: sequenceName renders as JSX text children (Preact auto-escapes).
  */
@@ -36,8 +36,8 @@ export interface SequenceHeaderProps {
 
 /**
  * Per-status mini-pill background + inverse-text classes. Uses the 5
- * --color-shot-status-* tokens introduced by Wave 1 (theme.css both themes)
- * — same vocabulary as <ShotStatusPill/> by design (D-14 token reuse).
+ * --color-shot-status-* tokens (theme.css, both themes)
+ * — same vocabulary as <ShotStatusPill/> by design (deliberate token reuse).
  */
 const STATUS_BG: Record<ShotStatus, string> = {
   wip: 'bg-[var(--color-shot-status-wip)] text-[var(--color-bg)]',
@@ -48,7 +48,7 @@ const STATUS_BG: Record<ShotStatus, string> = {
   omit: 'bg-[var(--color-shot-status-omit)] text-[var(--color-bg)]',
 };
 
-/** Fixed render order for the aggregate mini-pills (D-14 spec). */
+/** Fixed render order for the aggregate mini-pills. */
 const ORDER: ShotStatus[] = ['wip', 'pending-review', 'approved', 'on-hold', 'omit'];
 
 export function SequenceHeader({
@@ -78,7 +78,7 @@ export function SequenceHeader({
         </button>
         <h2
           class="text-xl font-semibold text-[var(--color-fg)]"
-          // font-display = Inter Tight per UI-SPEC Typography line 76.
+          // font-display = Inter Tight (the display type family).
           // Inline style is the cleanest way to opt into the display family
           // without polluting Tailwind utility classes.
           style={{ fontFamily: 'var(--font-display)', lineHeight: 1.2 }}
@@ -93,7 +93,7 @@ export function SequenceHeader({
       >
         {ORDER.map((status) => {
           const n = counts[status];
-          // D-14: zero counts are hidden from the row entirely (not rendered
+          // Zero counts are hidden from the row entirely (not rendered
           // as empty placeholders). The row collapses gracefully when every
           // count is zero (all five .map returns null).
           if (n === 0) return null;

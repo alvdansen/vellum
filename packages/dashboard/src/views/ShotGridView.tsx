@@ -1,27 +1,27 @@
 /**
- * ShotGridView — top-level shot grid surface (Phase 21 / Plan 21-04 Task T01).
+ * ShotGridView — top-level shot grid surface.
  *
  * Mount-time URL hydration + mount-time first fetch keyed on
  * `selectedSequenceForGrid`. SSE-driven status updates flow through the
  * shotGrid signal mutation in state/shot-grid.ts `onShotStatusChanged` — the
- * subscription itself lives in App.tsx (D-22 + RESEARCH "Anti-Patterns" line
- * 817), NOT inside this view, so status updates apply even when the user is
+ * subscription itself lives in App.tsx, NOT inside this view, so status
+ * updates apply even when the user is
  * on HomeView.
  *
- * Layout (D-10, REQ-04, D-15):
+ * Layout:
  *   - <ShotGridFilterBar/> — sticky top (position: sticky, top: 0)
  *   - <SequenceHeader/> — name + aggregate count mini-pills + chevron toggle
  *   - CSS Grid (inline-style `repeat(auto-fill, minmax(220px, 1fr))`, 16px gap)
  *     populated with <ShotGridCard/> instances keyed on shot.id
  *   - <LoadMoreButton/> footer when `next_cursor !== null`
  *
- * Filtering (REQ-03, D-07, D-08):
+ * Filtering:
  *   - Two orthogonal controls. `showOmitted` gates the dataset (omit hidden
  *     when false). `statusFilter` filters within the dataset (or 'all' shows
  *     every status that survives the omit gate). Server NEVER receives these
  *     as query params — all filtering is client-side over `shotGrid.value.shots`.
  *
- * Empty state copy (D-18, four branches):
+ * Empty state copy (four branches):
  *   1. zero shots in sequence       → SHOT_GRID_EMPTY_NO_SHOTS
  *   2. filter='all', showOmitted=false, dataset has shots but all are omit
  *      → SHOT_GRID_EMPTY_FILTER_ALL_NO_OMITTED_PREFIX + sequenceName + '.'
@@ -30,17 +30,17 @@
  *   4. specific status filter with no matches in sequence
  *      → SHOT_GRID_EMPTY_FILTER_PREFIX + status + "' in " + sequenceName + '.'
  *
- * Card click (D-04, D-19):
+ * Card click:
  *   - Sets `selectedVersionId.value = latest_completed_version.id` to open the
  *     VersionDrawer overlay. Does NOT mutate the HomeView shot-selection
  *     signal — HomeView's state is preserved across view switches.
  *
- * Architecture-purity (D-WEBUI-31): zero server-tree imports — only sibling
+ * Architecture purity: zero server-tree imports — only sibling
  * dashboard modules plus `preact/hooks`.
  *
- * SECURITY (T-5-06): sequence/shot names render as JSX text children (Preact
- * auto-escapes). All copy comes from `lib/copy.ts` constants — zero inline
- * user-facing literals.
+ * SECURITY (XSS hygiene): sequence/shot names render as JSX text children
+ * (Preact auto-escapes). All copy comes from `lib/copy.ts` constants — zero
+ * inline user-facing literals.
  */
 
 import { useEffect } from 'preact/hooks';
@@ -88,31 +88,31 @@ function mapFetchErrorToCopy(err: unknown): string {
 }
 
 export function ShotGridView() {
-  // Phase 21 / Plan 21-06 — `headerExpanded` is now a module-singleton signal
-  // in `state/shot-grid.ts`. It was a useState here in 21-04, but ShotGridView
+  // `headerExpanded` is a module-singleton signal
+  // in `state/shot-grid.ts`. It was a useState here originally, but ShotGridView
   // unmounts whenever activeView flips back to 'home' (App.tsx:105 mount
   // switch), which silently reset the user's collapse toggle to its default.
-  // D-15 says "session-only state (no localStorage)" — a module-singleton
+  // The contract is "session-only state (no localStorage)" — a module-singleton
   // signal lasts until full page reload, which matches that contract.
   //
-  // URL hydration was also called from this view's useEffect in 21-04; it now
+  // URL hydration was also called from this view's useEffect originally; it now
   // runs in App.tsx's boot useEffect (single boot scope, runs before view
-  // routing — see 21-AUDIT.md §5 Bug 1).
+  // routing).
 
   // Initial-page fetch effect, keyed on selectedSequenceForGrid.value. The
   // `alive` latch protects against late-arriving promises when the sequence
   // changes rapidly (the previous fetch's then-handler would otherwise
   // overwrite the newer shotGrid value).
   //
-  // Phase 21 / Plan 21-06 — Bugs 4 and 6 fix (21-AUDIT.md §1 rows 4, 6).
+  // Two regressions are guarded against here:
   //
-  // Bug 4: previously this effect awaited fetchShotGrid before touching
+  // Stale-data bleed: previously this effect awaited fetchShotGrid before touching
   // shotGrid.value, so a sequence change re-rendered the view with the
   // PREVIOUS sequence's shots still in shotGrid until the new fetch resolved.
   // Now we clear shotGrid.value AND gridLoadMoreError synchronously at the
   // top — the next paint is a clean loading state.
   //
-  // Bug 6: previously a fetch rejection only set gridLoadMoreError to the
+  // Blank error pane: previously a fetch rejection only set gridLoadMoreError to the
   // generic "Failed to load" copy, but that copy was wired through the
   // LoadMoreButton pill which only renders when shotGrid is non-null AND
   // has more pages. With shotGrid still null the entire pane was blank.
@@ -122,7 +122,7 @@ export function ShotGridView() {
   useEffect(() => {
     const seqId = selectedSequenceForGrid.value;
     if (!seqId) return;
-    // Bug 4 fix — clear stale grid + any stale error BEFORE awaiting so the
+    // Clear stale grid + any stale error BEFORE awaiting so the
     // user sees a clean loading state during the switch, not the prior
     // sequence's data bleeding through.
     shotGrid.value = null;
@@ -137,7 +137,7 @@ export function ShotGridView() {
       })
       .catch(() => {
         if (!alive) return;
-        // Bug 6 fix — full-pane error copy. We deliberately use the
+        // Full-pane error copy. We deliberately use the
         // SHOT_GRID_FETCH_ERROR constant (not mapFetchErrorToCopy) because
         // the error renders as the FULL pane state, not the inline pill.
         gridLoadMoreError.value = SHOT_GRID_FETCH_ERROR;
@@ -150,11 +150,10 @@ export function ShotGridView() {
   }, [selectedSequenceForGrid.value]);
 
   /**
-   * Load-more click handler (D-21 LoadMoreButton reuse). Appends to the
+   * Load-more click handler. Appends to the
    * existing buffer; preserves total_count + advances next_cursor.
    *
-   * Phase 21 / Plan 21-06 — Bug 3 BLOCKING race-condition fix
-   * (21-AUDIT.md §1 row 3, codex_challenge). Without a sequence-id guard
+   * Race-condition guard. Without a sequence-id guard
    * the following sequence corrupts data:
    *
    *   1. user on seq A clicks Load more → fetch A page-2 dispatched
@@ -179,7 +178,7 @@ export function ShotGridView() {
     gridLoadMoreError.value = null;
     fetchShotGrid(requestSeqId, { cursor, limit: 20 })
       .then((res) => {
-        // Bug 3 guard: drop late responses for a sequence the user has
+        // Race guard: drop late responses for a sequence the user has
         // navigated away from. Without this check, A's late page-2 would
         // overwrite B's freshly-loaded shotGrid.value.
         if (selectedSequenceForGrid.value !== requestSeqId) {
@@ -202,7 +201,7 @@ export function ShotGridView() {
         gridIsFetching.value = false;
       })
       .catch((err) => {
-        // Same Bug 3 guard on the failure path — a stale rejection must
+        // Same race guard on the failure path — a stale rejection must
         // not flash an error pill on the new sequence's grid.
         if (selectedSequenceForGrid.value !== requestSeqId) {
           gridIsFetching.value = false;
@@ -213,7 +212,7 @@ export function ShotGridView() {
       });
   }
 
-  // Client-side filter (REQ-03 + D-08):
+  // Client-side filter:
   //   - showOmitted=false gates omit shots out of the dataset entirely
   //   - statusFilter='all' shows everything that survives the omit gate
   //   - any other statusFilter restricts to matching shots
@@ -228,7 +227,7 @@ export function ShotGridView() {
   const hasAnyShots = allShots.length > 0;
   const hasAnyNonOmit = allShots.some((s) => s.status !== 'omit');
 
-  // Empty state copy selection (D-18, four branches):
+  // Empty state copy selection (four branches):
   //
   //   - 1: sequence has zero shots → SHOT_GRID_EMPTY_NO_SHOTS
   //   - 2: filter='all' + showOmitted=false but every shot is omit
@@ -253,7 +252,7 @@ export function ShotGridView() {
       // fall back to the same "no active shots" copy.
       emptyMessage = `${SHOT_GRID_EMPTY_FILTER_ALL_NO_OMITTED_PREFIX}${sequenceName}.`;
     } else if (statusFilter.value === 'omit' && !showOmitted.value) {
-      // 21-04 plan-checker FLAG: defensive branch — URL hydration could set
+      // Defensive branch — URL hydration could set
       // statusFilter='omit' while showOmitted=false. Surface a self-explanatory
       // copy that points the user at the Show omitted toggle.
       emptyMessage = SHOT_GRID_EMPTY_FILTER_OMIT_HIDDEN;
@@ -279,7 +278,7 @@ export function ShotGridView() {
         onToggleShowOmitted={() => {
           const next = !showOmitted.value;
           showOmitted.value = next;
-          // D-07: when turning OFF and currently filtering by omit, reset to
+          // When turning OFF and currently filtering by omit, reset to
           // 'all' so the user isn't left staring at an empty grid.
           if (!next && statusFilter.value === 'omit') {
             statusFilter.value = 'all';
@@ -303,7 +302,7 @@ export function ShotGridView() {
           {!shotGrid.value && gridIsFetching.value && (
             <EmptyState message={SHOT_GRID_LOADING_LABEL} />
           )}
-          {/* Phase 21 / Plan 21-06 — Bug 6 fix: full-pane error state when
+          {/* Full-pane error state when
            *  the initial fetch rejects (shotGrid still null, no fetch in
            *  flight, but gridLoadMoreError set). Renders the error copy plus
            *  a Retry button that re-triggers the fetch effect by re-writing
@@ -352,7 +351,7 @@ export function ShotGridView() {
                   key={shot.id}
                   shot={shot}
                   onSelect={(versionId) => {
-                    // D-04: open VersionDrawer via selectedVersionId; do NOT
+                    // Open VersionDrawer via selectedVersionId; do NOT
                     // mutate the HomeView shot-selection signal. HomeView
                     // keeps its prior selection across the view switch.
                     selectedVersionId.value = versionId;

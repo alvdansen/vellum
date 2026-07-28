@@ -1,10 +1,10 @@
 /**
- * Phase 22 / Plan 22-05 — mergeHistory pure utility.
+ * mergeHistory pure utility.
  *
  * Merges a shot's versions and status events into a single chronologically-
- * sorted timeline (newest-first) for the ReviewPanel timeline (D-04). The
+ * sorted timeline (newest-first) for the ReviewPanel timeline. The
  * dashboard treats version creation, version completion, and status
- * transitions as peer events in one feed (RESEARCH Example 4).
+ * transitions as peer events in one feed.
  *
  * Emission rules:
  *  - Every Version emits a `{ kind: 'version', event: 'created', at: created_at }` row.
@@ -15,7 +15,7 @@
  *
  * Sort: descending by `at` (newest first). Tiebreaker: status events win
  * (kind='status' sorts before kind='version' at the same `at`). This
- * matches D-04's "status changes are the headline; versions are auxiliary".
+ * matches the design rule: status changes are the headline; versions are auxiliary.
  *
  * Pure function: deterministic, no side effects, no I/O. Safe to call from
  * a render function (re-runs are cheap — versions/statusEvents arrays are
@@ -33,7 +33,8 @@ import type {
  * `completed_at: number | null` (epoch ms) and a numeric `created_at_ms`,
  * but the dashboard Version interface predates these fields. Treat the
  * extra fields as optional/unknown and read defensively at runtime so the
- * mergeHistory pure function stays type-safe without touching 22-02.
+ * mergeHistory pure function stays type-safe without widening the shared
+ * Version interface.
  */
 type VersionWithTimestamps = Version & {
   completed_at?: number | null;

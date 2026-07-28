@@ -1,10 +1,10 @@
 /**
- * Exponential backoff + sleep helpers for the recovery poller (D-GEN-24, D-GEN-28).
+ * Exponential backoff + sleep helpers for the recovery poller.
  * Pure: zero DB / network / MCP dependencies.
  */
 
 /**
- * Exponential backoff delay sequence per D-GEN-24: 2s, 4s, 8s, 16s, then cap at 30s.
+ * Exponential backoff delay sequence: 2s, 4s, 8s, 16s, then cap at 30s.
  * Reset semantics: a new iterator per job = reset.
  *
  * Usage:

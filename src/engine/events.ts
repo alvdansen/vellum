@@ -1,10 +1,10 @@
-// src/engine/events.ts — typed engine EventEmitter (Plan 05-02, D-WEBUI-29).
+// src/engine/events.ts — typed engine EventEmitter.
 //
 // Thin typed wrapper over Node's built-in EventEmitter. Zero new dependencies.
-// Exported type lets the SSE handler (Plan 05) and tests stay type-safe without
+// Exported type lets the SSE handler and tests stay type-safe without
 // coupling to EventEmitter internals.
 //
-// Architecture-purity invariants (D-WEBUI-31):
+// Architecture-purity invariants:
 //  - Zero MCP SDK imports (enforced by architecture-purity.test.ts substring grep).
 //  - Zero imports from hono or any HTTP layer.
 //  - Only imports: node:events (built-in).
@@ -12,7 +12,7 @@
 import { EventEmitter } from 'node:events';
 
 // ================================================================
-// Payload types (D-WEBUI-06)
+// Payload types
 // ================================================================
 
 /** version.status_changed — fires from markCompleted + recovery-poller transitions. */
@@ -25,13 +25,13 @@ export interface VersionStatusChangedPayload {
 }
 
 /**
- * shot.status_changed — fires from Engine.setShotStatus (STAT-04).
+ * shot.status_changed — fires from Engine.setShotStatus.
  *
  * Carries the previous and new shot production states plus the sequence_id
  * so SSE clients can filter to the currently-displayed sequence without an
  * additional shot lookup. `from_status` is null on the first-ever status set
  * for a shot whose history is empty (shots.status materialized default 'wip'
- * has not yet been recorded as an event row). T-5-02 analogue: the optional
+ * has not yet been recorded as an event row). Info-disclosure note: the optional
  * `note` is user-authored free text but is not PII at a higher trust level
  * than shot names themselves — supervisors author it for the team, and the
  * SSE stream is already gated by the same origin allowlist + auth that
@@ -68,7 +68,7 @@ export interface TagChangedPayload {
 /**
  * metadata.changed — fires from setMetadata / removeMetadata.
  *
- * **T-5-02 mitigation**: the `value` field is deliberately absent. Metadata
+ * **Info-disclosure mitigation**: the `value` field is deliberately absent. Metadata
  * values may contain sensitive or user-private data (artist name, internal
  * notes, render-farm credentials as a misuse case); SSE frames leave the
  * server process and land in every connected browser tab. Only the key + the
@@ -80,7 +80,7 @@ export interface MetadataChangedPayload {
   version_id: string;
   shot_id: string;
   key: string;
-  // NOTE: `value` MUST NOT be added here. T-5-02 info-disclosure guard.
+  // NOTE: `value` MUST NOT be added here. Info-disclosure guard — values may be sensitive.
   at: string;
 }
 
@@ -116,8 +116,7 @@ export interface EngineEventMap {
  * Plain EventEmitter methods remain available (inherited) for library-level
  * interop, but the typed emitEvent / onEvent / offEvent are the intended API.
  * Structural compatibility with EventEmitter is preserved — FakeEngine.events
- * (from Plan 05-01) narrows from EventEmitter to EngineEmitter in Task 2
- * without a runtime change.
+ * narrows from EventEmitter to EngineEmitter without a runtime change.
  */
 export class EngineEmitter extends EventEmitter {
   /** Type-safe emit — payload type is inferred from the event type key. */

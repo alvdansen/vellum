@@ -1,17 +1,17 @@
 // packages/dashboard/src/lib/api.ts
 //
 // Typed fetch wrappers for the 18 dashboard REST routes served by the
-// server-side dashboard-routes module (Plan 05-04). Same-origin (empty BASE)
+// server-side dashboard-routes module. Same-origin (empty BASE)
 // — the static handler and the API live on the same Node process in prod,
-// and Vite proxies /api -> http://127.0.0.1:3000 in dev (D-WEBUI-13).
+// and Vite proxies /api -> http://127.0.0.1:3000 in dev.
 //
 // Architecture-purity invariant (D-WEBUI-31): this file performs zero
 // server-tree relative-import traversals. Only imports: the dashboard-local
 // type barrel under ../types/* and dashboard-local sort utilities under ./sort*.
 //
-// Phase 18 / Plan 18-05 Task 1 — fetchVersions migrates to a paginated
-// response envelope (PaginatedVersionsResponse) and gains optional ?sort= +
-// ?cursor= query params. fetchProjects / fetchSequences / fetchShots gain
+// fetchVersions returns a paginated response envelope
+// (PaginatedVersionsResponse) and takes optional ?sort= +
+// ?cursor= query params. fetchProjects / fetchSequences / fetchShots take
 // optional ?sort= for the hierarchy tree's first-fetch lockstep with the
 // client-side compareTreeNodes re-sort.
 
@@ -24,12 +24,12 @@ import type {
 } from '../types/entities.js';
 import type { VersionSort, HierarchySort } from './sortTypes.js';
 import { serializeSortValue } from './sortHelpers.js';
-// Phase 21 / Plan 21-02 — D-13 wire shape for fetchShotGrid. The dashboard's
+// Wire shape for fetchShotGrid. The dashboard's
 // ShotGridView calls fetchShotGrid(seqId, { cursor, limit }) on mount and on
 // LoadMoreButton click; the engine builds thumbnail_url server-side so this
 // module never assembles URL strings.
 import type { ShotGridResponse } from '../types/shot-grid.js';
-// Phase 22 / Plan 22-02 — wire shapes for the 3 new review-and-approval
+// Wire shapes for the 3 review-and-approval
 // fetch helpers (setShotStatus, fetchShotStatusHistory, diffVersionsAB).
 import type {
   SetShotStatusBody,
@@ -50,7 +50,7 @@ const BASE = '';
 
 /**
  * Typed error thrown by `fetchJson` when the server returns a non-2xx response.
- * SC-3 (Phase 6 gap_closure WR-05): preserves the typed error envelope the
+ * Preserves the typed error envelope the
  * server emits via `typedErrorHandler` (src/http/error-middleware.ts) so UI
  * consumers can `instanceof DashboardApiError` and switch on `err.code`.
  *
@@ -76,14 +76,14 @@ export class DashboardApiError extends Error {
  * Fetch JSON from the dashboard API surface; throw `DashboardApiError` on
  * non-2xx with the typed envelope preserved when the server emitted one.
  *
- * Behavior matrix (SC-3 / 06-RESEARCH.md):
+ * Behavior matrix:
  *   - 2xx: parse and return as T.
  *   - non-2xx + JSON body matching `{ error: { code, message } }`:
  *       throw DashboardApiError(error.code, error.message, status, body)
  *   - non-2xx + non-JSON body (HTML 502 from a proxy, empty body, etc.):
  *       throw DashboardApiError('HTTP_ERROR', `HTTP <status>: <text>`, status)
  *
- * The try/catch around `res.json()` (06-RESEARCH.md §Pitfall 3) prevents a
+ * The try/catch around `res.json()` prevents a
  * SyntaxError from masking the original HTTP failure — without it, an HTML
  * 502 response would surface as an unhandled JSON parse error in the UI
  * instead of a typed DashboardApiError.
@@ -141,9 +141,9 @@ export function fetchWorkspace(id: string): Promise<Workspace> {
 /**
  * 3. GET /api/workspaces/:id/projects?sort=field:dir
  *
- * Phase 18 / Plan 18-05 Task 1 — optional `sort` parameter (omitted →
- * server-side default `name:asc` per src/store/sort.ts; Plan 18-03 wires
- * the `?sort=` Zod whitelist parser at the HTTP boundary).
+ * Optional `sort` parameter (omitted →
+ * server-side default `name:asc` per src/store/sort.ts; the HTTP boundary
+ * wires a `?sort=` Zod whitelist parser).
  */
 export function fetchProjects(
   workspaceId: string,
@@ -165,7 +165,7 @@ export function fetchProject(id: string): Promise<Project> {
 /**
  * 5. GET /api/projects/:id/sequences?sort=field:dir
  *
- * Phase 18 / Plan 18-05 Task 1 — symmetric with fetchProjects (see header).
+ * Symmetric with fetchProjects (see header).
  */
 export function fetchSequences(
   projectId: string,
@@ -187,7 +187,7 @@ export function fetchSequence(id: string): Promise<Sequence> {
 /**
  * 7. GET /api/sequences/:id/shots?sort=field:dir
  *
- * Phase 18 / Plan 18-05 Task 1 — symmetric with fetchProjects (see header).
+ * Symmetric with fetchProjects (see header).
  */
 export function fetchShots(
   sequenceId: string,
@@ -213,30 +213,29 @@ export function fetchShot(id: string): Promise<Shot> {
 /**
  * Parameters for GET /api/shots/:id/versions.
  *
- * Phase 18 / Plan 18-05 Task 1 — gains `sort` (VersionSort, serialized to
+ * Takes `sort` (VersionSort, serialized to
  * `?sort=field:dir` via serializeSortValue) + `cursor` (opaque base64url
- * string from a previous response's `next_cursor`). The pre-Phase-18
- * `offset` parameter is DROPPED — the server route now uses cursor
- * pagination per SORT-05 + D-22 (Plan 18-03 HTTP layer).
+ * string from a previous response's `next_cursor`). The route's earlier
+ * `offset` parameter is DROPPED — the server now uses cursor
+ * pagination.
  */
 export interface FetchVersionsParams {
-  /** Phase 18 SORT-02 — version-grid sort. When omitted, server defaults to Latest. */
+  /** Version-grid sort. When omitted, server defaults to Latest. */
   sort?: VersionSort;
-  /** Phase 18 SORT-05 — opaque cursor from a previous response's next_cursor; null/undefined = page 1. */
+  /** Opaque cursor from a previous response's next_cursor; null/undefined = page 1. */
   cursor?: string | null;
-  /** Page size. Default 20 per CLAUDE.md "Paginate all list queries" + D-18. */
+  /** Page size. Default 20 per CLAUDE.md "Paginate all list queries". */
   limit?: number;
   include_tags?: boolean;
   include_metadata?: boolean;
 }
 
 /**
- * Phase 18 / Plan 18-05 Task 1 — Response shape for GET /api/shots/:id/versions.
+ * Response shape for GET /api/shots/:id/versions.
  *
- * The pre-Phase-18 route returned a bare `Version[]`; the new route returns
+ * An earlier revision of the route returned a bare `Version[]`; it now returns
  * an envelope with cursor pagination + total_count. HomeView derives
- * `has_more` from `next_cursor !== null` rather than a server-emitted flag
- * (D-22 + UI-SPEC §"Sort Strip — pagination").
+ * `has_more` from `next_cursor !== null` rather than a server-emitted flag.
  */
 export interface PaginatedVersionsResponse {
   items: Version[];
@@ -249,8 +248,8 @@ export interface PaginatedVersionsResponse {
 /**
  * 9. GET /api/shots/:id/versions?sort=&cursor=&limit=&include_tags=&include_metadata=
  *
- * Phase 18 / Plan 18-05 Task 1 — migrated to PaginatedVersionsResponse return
- * shape. Server contract (Plan 18-03):
+ * Returns the PaginatedVersionsResponse envelope
+ * shape. Server contract:
  *   - Omitted `?sort=` → defaults to `completed_at:desc` with NULL pin to top
  *   - Omitted `?cursor=` → page 1 (no pagination state)
  *   - Malformed `?sort=` or `?cursor=` → 400 INVALID_INPUT envelope
@@ -279,7 +278,7 @@ export function fetchVersions(
 /** 10. GET /api/versions/:id */
 export function fetchVersion(id: string): Promise<Version> {
   // The server envelopes the response as `{ entity: Version, breadcrumb }`.
-  // First real consumer (VersionDrawerHost, Plan 21-06) infinite-looped on
+  // First real consumer (VersionDrawerHost) infinite-looped on
   // `v.id === undefined`; envelope unwrap restores the declared type.
   return fetchJson<{ entity: Version; breadcrumb?: unknown }>(
     `/api/versions/${encodeURIComponent(id)}`,
@@ -303,18 +302,18 @@ export function diffVersion(versionId: string, against: string): Promise<unknown
 /**
  * 13. Returns the URL string for the version's rendered output.
  * Does NOT fetch — callers pass the returned string directly to `<img src=...>`
- * or similar. Intentional URL helper per plan (D-WEBUI-26).
+ * or similar. Intentional URL helper.
  */
 export function getOutputUrl(versionId: string): string {
   return `${BASE}/api/versions/${encodeURIComponent(versionId)}/output`;
 }
 
 /**
- * Phase 17 / Plan 17-04 — returns the URL string for the version's
+ * Returns the URL string for the version's
  * thumbnail. Does NOT fetch — callers pass the returned string directly
  * to <img src=...>.
  *
- * Server route: GET /api/versions/:id/thumbnail (Phase 17 Plan 17-03).
+ * Server route: GET /api/versions/:id/thumbnail.
  * Returns ≤640×360 WebP cached on disk; supports If-None-Match conditional
  * GET (304 fast path); 503 + THUMBNAIL_FAILED envelope on derivation failure.
  *
@@ -333,7 +332,7 @@ export function getThumbnailUrl(versionId: string, filename?: string): string {
 }
 
 // ================================================================
-// Phase 14 Plan 04 Task 2 — C2PA signing-status surfacing
+// C2PA signing-status surfacing
 // ================================================================
 
 /**
@@ -351,13 +350,13 @@ export type C2paStatus =
   | { status: 'unknown' };
 
 /**
- * Phase 14 Plan 04 — fetch the C2PA signing status for a version's primary
+ * Fetch the C2PA signing status for a version's primary
  * output by issuing a HEAD request to /api/versions/:id/output and reading
  * the X-C2PA-Signing-Status response header. The HEAD is lightweight (no
  * body transfer); the engine NEVER signs at request time so this is a pure
  * read of the latest manifest_signed event.
  *
- * Header value mapping (from src/http/dashboard-routes.ts Plan 14-04 Task 1):
+ * Header value mapping (from src/http/dashboard-routes.ts):
  *   - 'signed'                                 -> { status: 'signed' }
  *   - 'unsigned:<reason>'                      -> { status: 'unsigned', reason }
  *   - 'unknown' OR missing OR fetch-throw      -> { status: 'unknown' }
@@ -394,7 +393,7 @@ export async function getC2paStatus(versionId: string): Promise<C2paStatus> {
 // Version mutations (14)
 // ================================================================
 
-/** Shape returned by POST /api/versions/:id/reproduce (per CONTEXT.md route catalog). */
+/** Shape returned by POST /api/versions/:id/reproduce. */
 export interface ReproduceVersionResponse {
   version_id: string;
   status: string;
@@ -415,20 +414,19 @@ export function reproduceVersion(id: string): Promise<ReproduceVersionResponse> 
 }
 
 // ================================================================
-// Phase 19 Plan 19-05 Task 2 — AI conversational summary helpers
+// AI conversational summary helpers
 // ================================================================
 
 /**
  * Discriminated response shape returned by getSummary + regenerateSummary.
- * Mirrors the Plan 19-05 SummaryState contract exposed through state/summaries.ts
- * (UI-SPEC SummarySection contract).
+ * Mirrors the SummaryState contract exposed through state/summaries.ts.
  *
  * NOTE: 'success' merges 'live' + 'cache_hit' SummaryOutcome variants — the
- * dashboard UI does NOT distinguish them visually (per UI-SPEC "discriminated
- * state union" decision). The server-side telemetry/log layer keeps the
+ * dashboard UI does NOT distinguish them visually (deliberate: one
+ * discriminated state union). The server-side telemetry/log layer keeps the
  * distinction; the dashboard treats both as "ready to render prose".
  *
- * Defence in depth (Phase 14 getC2paStatus precedent at lines 332-354): any
+ * Defence in depth (getC2paStatus precedent above): any
  * network error / parse failure / unexpected envelope shape collapses to
  * { state: 'error' } so the caller never has to handle thrown exceptions.
  */
@@ -457,7 +455,7 @@ export type SummaryFetchResponse =
  * Maps the server's SummaryOutcome envelope (cache_hit | live | fallback)
  * augmented with regenerate_available_at_ms into the dashboard's
  * SummaryFetchResponse. Defensive — collapses network errors / parse errors
- * / unexpected source values to { state: 'error' } per Phase 14 getC2paStatus
+ * / unexpected source values to { state: 'error' } per the getC2paStatus
  * precedent.
  *
  * NEVER throws to the caller — the dashboard signal layer relies on this
@@ -517,9 +515,9 @@ export async function regenerateSummary(
 
 /**
  * Map the server's SummaryOutcome envelope shape (with regenerate_available_at_ms
- * augmentation from Plan 19-05 routes) into the dashboard's
+ * augmentation from the summary routes) into the dashboard's
  * SummaryFetchResponse shape. Tolerates malformed responses by collapsing to
- * { state: 'error', message: ... } — defensive parsing per the Phase 14
+ * { state: 'error', message: ... } — defensive parsing per the
  * getC2paStatus precedent.
  */
 function mapSummaryEnvelope(data: unknown): SummaryFetchResponse {
@@ -627,19 +625,19 @@ export function getDashboardHome(): Promise<DashboardHome> {
   return fetchJson<DashboardHome>('/api/dashboard/home');
 }
 
-// ===== Phase 21 — shot grid fetch =====
+// ===== Shot grid fetch =====
 
 /**
- * Parameters for GET /api/sequences/:id/shot-grid (D-13).
+ * Parameters for GET /api/sequences/:id/shot-grid.
  *
- * Phase 21 narrows the surface deliberately (REQ-03 / D-08 / D-21 LOCKED):
+ * The surface is deliberately narrow (LOCKED):
  * the endpoint takes ONLY `cursor` + `limit` query params. Status filter
  * and Show-omitted gating are dashboard-side state mutations (see
  * `state/shot-grid.ts`), not server params. Sort is fixed `name ASC` for
- * Phase 21; Phase 24 POL-03 may introduce variability.
+ * now; a later polish pass may introduce variability.
  */
 export interface FetchShotGridParams {
-  /** Phase 21 GRID-04 — opaque cursor from a previous response's next_cursor;
+  /** Opaque cursor from a previous response's next_cursor;
    *  null/undefined = page 1. The `?? undefined` collapse mirrors fetchVersions. */
   cursor?: string | null;
   /** Default 20 per CLAUDE.md "Paginate all list queries". */
@@ -649,14 +647,14 @@ export interface FetchShotGridParams {
 /**
  * 19. GET /api/sequences/:id/shot-grid?cursor=&limit=
  *
- * Phase 21 / Plan 21-02 — denormalized shot grid surface backing
- * ShotGridView. Returns `{ sequence, shots[], next_cursor, total_count }`
- * per D-13; `latest_completed_version` is nested per row with a
+ * Denormalized shot grid surface backing
+ * ShotGridView. Returns `{ sequence, shots[], next_cursor, total_count }`;
+ * `latest_completed_version` is nested per row with a
  * server-built `thumbnail_url` (the dashboard never assembles URL strings).
  *
  * `cursor: null` is intentionally collapsed to undefined so qs() omits the
  * param from the URL — the server treats missing-cursor as page 1. Mirrors
- * the fetchVersions precedent at api.ts:237.
+ * the fetchVersions precedent above.
  *
  * Error envelopes (translated via fetchJson → DashboardApiError):
  *   - 400 INVALID_INPUT — malformed cursor or limit
@@ -667,7 +665,7 @@ export function fetchShotGrid(
   params?: FetchShotGridParams,
 ): Promise<ShotGridResponse> {
   const queryParams: Record<string, unknown> = {
-    // null collapses to undefined → qs() skips it (fetchVersions:237 precedent)
+    // null collapses to undefined → qs() skips it (fetchVersions precedent)
     cursor: params?.cursor ?? undefined,
     limit: params?.limit,
   };
@@ -676,16 +674,16 @@ export function fetchShotGrid(
   );
 }
 
-// ===== Phase 22 — review and approval =====
+// ===== Review and approval =====
 
 /**
  * 20. PATCH /api/shots/:id/status
  *
- * Phase 22 / Plan 22-02 — mutates shot status via the new HTTP route
- * defined in 22-01. The route's Zod whitelist gates `to_status` to the
- * closed SHOT_STATUSES set and coerces `note: null | ''` → DB IS NULL
- * (REV-04). Returns the updated shot status plus the freshly-fetched
- * 50-row history envelope for the unified review timeline (D-04).
+ * Mutates shot status via the shot-status HTTP route.
+ * The route's Zod whitelist gates `to_status` to the
+ * closed SHOT_STATUSES set and coerces `note: null | ''` → DB IS NULL.
+ * Returns the updated shot status plus the freshly-fetched
+ * 50-row history envelope for the unified review timeline.
  *
  * Mirrors `reproduceVersion(id)`'s mutation pattern verbatim — same
  * `Content-Type: application/json` + JSON.stringify body shape; only
@@ -712,9 +710,9 @@ export function setShotStatus(
 /**
  * 21. GET /api/shots/:id/status-history?limit=
  *
- * Phase 22 / Plan 22-02 — wraps engine.listShotStatusHistory via the new
- * HTTP route from 22-01 (RESEARCH Q1 closure). Used by ReviewPanel's
- * timeline (D-04) to fetch the append-only status event log alongside
+ * Wraps engine.listShotStatusHistory via its
+ * HTTP route. Used by ReviewPanel's
+ * timeline to fetch the append-only status event log alongside
  * version events. Default limit = 50 mirrors the server-side default.
  *
  * Error envelopes (translated via fetchJson → DashboardApiError):
@@ -733,9 +731,9 @@ export function fetchShotStatusHistory(
 /**
  * 22. GET /api/versions/:a/diff-with/:b
  *
- * Phase 22 / Plan 22-02 — cross-version diff helper for the A/B compare
- * modal (22-06). Pass-through to engine.diffVersions which already
- * accepts an arbitrary pair (RESEARCH Pitfall 2). Returns `unknown` so
+ * Cross-version diff helper for the A/B compare
+ * modal. Pass-through to engine.diffVersions which already
+ * accepts an arbitrary pair. Returns `unknown` so
  * the consumer (ABCompareView) narrows at use-site against the engine's
  * DiffResponseShape — mirrors the existing `diffVersion(versionId, against)`
  * return type to stay consistent.

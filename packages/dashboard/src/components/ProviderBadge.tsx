@@ -1,14 +1,15 @@
 /**
  * ProviderBadge — subtle pill showing which generation backend produced a version
- * ('comfyui-cloud' | 'replicate' | 'fal' | …), from versions.provider (pivot
- * enhancement #5). Informational metadata, NOT a status/warning: muted surface
+ * ('comfyui-cloud' | 'replicate' | 'fal' | …), from versions.provider.
+ * Informational metadata, NOT a status/warning: muted surface
  * styling (border + surface bg + muted fg) so it reads distinctly from
  * StatusPill/WarningPill. Renders nothing when provider is null/undefined
- * (legacy pre-pivot rows), so existing single-provider views are unchanged.
+ * (legacy rows created before multi-provider support), so existing
+ * single-provider views are unchanged.
  *
  * Pure component: props-in, no callbacks.
  *
- * SECURITY — T-5-06: `provider` is validated upstream to [A-Za-z0-9._-]{1,64}
+ * SECURITY: `provider` is validated upstream to [A-Za-z0-9._-]{1,64}
  * (MCP register + webhook route) and rendered as JSX text — Preact auto-escapes.
  * No dangerouslySetInnerHTML.
  *

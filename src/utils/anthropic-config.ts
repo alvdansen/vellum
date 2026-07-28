@@ -1,16 +1,16 @@
 /**
- * Phase 19 — SUM-06. Anthropic API key boot-validation.
+ * Anthropic API key boot-validation.
  *
  * Reads ANTHROPIC_API_KEY from env, validates format, and returns
  * { apiKey } OR null (summary feature disabled — graceful degradation
- * to deterministic-template fallback per D-FB-2).
+ * to the deterministic-template fallback).
  *
  * Throws TypedError('ANTHROPIC_CONFIG_INVALID', ...) when the env var is
  * SET but malformed (wrong prefix / too short). Throwing BEFORE any
- * Engine construction is the parity-with-Phase-10 MIGRATION_PENDING
- * pattern — fail-fast at boot, never mid-operation.
+ * Engine construction follows the same boot-time convention as the
+ * MIGRATION_PENDING typed error — fail-fast at boot, never mid-operation.
  *
- * Path/secret leak hygiene (D-PRIV-4): Error messages emit ONLY the
+ * Path/secret leak hygiene: Error messages emit ONLY the
  * last-4 of the API key (****abcd), never the full key. Mirrors
  * src/utils/c2pa-config.ts basename-only path discipline.
  *
@@ -29,10 +29,10 @@ export function loadAnthropicConfigFromEnv(
 ): AnthropicConfig | null {
   const apiKey = env.ANTHROPIC_API_KEY;
 
-  // Unset → feature disabled (D-FB-2 graceful degradation).
+  // Unset → feature disabled (graceful degradation).
   if (!apiKey || apiKey.trim().length === 0) return null;
 
-  // Validate format. last-4 ONLY in any error message (D-PRIV-4).
+  // Validate format. last-4 ONLY in any error message (secret-leak hygiene).
   if (!apiKey.startsWith('sk-ant-')) {
     throw new TypedError(
       'ANTHROPIC_CONFIG_INVALID',

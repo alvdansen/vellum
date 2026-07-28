@@ -1,7 +1,7 @@
 /**
  * ThemeToggle — dark/light switcher in the sidebar header.
  *
- * This component is self-contained per UI-SPEC.md D-WEBUI-16:
+ * This component is self-contained:
  *   - Reads `[data-theme]` from <html> on mount
  *   - Toggles between 'dark' and 'light'
  *   - Persists to localStorage['vellum:theme']
@@ -12,12 +12,11 @@
  * not a data-fetch or signal-subscription side effect.
  *
  * The SPA shell (index.html) applies the persisted theme BEFORE any render
- * runs (FOUC prevention, D-WEBUI-16). This component just handles the
+ * runs (FOUC prevention). This component just handles the
  * subsequent click-to-toggle interaction.
  *
- * SECURITY — T-5-06: localStorage value is only written to `data-theme`
- * attribute on document.documentElement, never rendered as HTML. Low risk
- * per plan threat register.
+ * SECURITY: localStorage value is only written to `data-theme`
+ * attribute on document.documentElement, never rendered as HTML. Low risk.
  */
 
 import { useState, useEffect } from 'preact/hooks';

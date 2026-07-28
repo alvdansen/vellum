@@ -7,7 +7,7 @@ import type {
   SeedChange,
 } from '../types/provenance.js';
 
-/** D-PROV-18: deterministic template-based summary. Pure. */
+/** Deterministic template-based summary. Pure. */
 const MAX_CHANGES = 6;
 const HARD_CAP = 400;
 

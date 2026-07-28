@@ -13,15 +13,15 @@ import {
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
 
-// Zod v4 discriminated-union inputs per D-05, D-24. Kept for handler-side
-// re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape
-// (RT-01). Create requires sequenceId (HIER-04) and applies the shot regex at
+// Zod v4 discriminated-union inputs. Kept for handler-side
+// re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape.
+// Create requires sequenceId and applies the shot regex at
 // the Zod boundary for early rejection. The engine ALSO enforces the regex
-// (D-07) so defence-in-depth holds even if input bypasses Zod.
+// so defence-in-depth holds even if input bypasses Zod.
 const CreateInput = z.object({
   action: z.literal('create'),
   sequenceId: z.string().min(1).max(MAX_ID_LENGTH),
-  // DM-01: .trim() normalizes leading/trailing whitespace. The regex enforces
+  // .trim() normalizes leading/trailing whitespace. The regex enforces
   // the exact format AFTER trim so `"  sh010  "` is accepted as `"sh010"`.
   // Message set to the error code so the handler's catch block can detect this
   // specific failure and emit INVALID_SHOT_FORMAT with the proper hint.
@@ -42,7 +42,7 @@ const GetInput = z.object({
   id: z.string().min(1).max(MAX_ID_LENGTH),
 }).strict();
 
-// Phase 20 / Plan 20-04 (STAT-05) — three new arms wired to the pipeline
+// Status arms wired to the pipeline
 // facade (Engine.setShotStatus / getShotStatus / listShotStatusHistory).
 // SHOT_STATUSES is the single source of truth for the valid status set
 // (defined in src/types/hierarchy.ts alongside the ShotStatus type).
@@ -85,14 +85,14 @@ const ShotInputSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * Register the `shot` MCP tool (D-01, D-02, HIER-04, HIER-05, D-07).
+ * Register the `shot` MCP tool.
  *
- * Thin Zod-validated delegate per D-33: one engine call per action, breadcrumb
+ * Thin Zod-validated delegate: one engine call per action, breadcrumb
  * injected via shapeCreateOrGet/shapeList, TypedError mapped via toolError.
  * Shot names are gated at BOTH the Zod boundary AND inside engine.createShot
  * so any bypass of the tool layer still fails closed.
  *
- * RT-01/RT-02: raw ZodRawShape exposed to MCP, discriminated union
+ * Raw ZodRawShape exposed to MCP, discriminated union
  * re-validated inside the handler so tools/list carries real properties AND
  * the handler's ZodError catch branch is reachable.
  */
@@ -103,11 +103,11 @@ export function registerShot(server: McpServer, engine: Engine) {
       title: 'Shot',
       description:
         "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get, set_status, get_status, list_status_history, pipeline_log. set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
-      // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
+      // Raw ZodRawShape: SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `ShotInputSchema.parse()` is the
-      // single source of truth for shape enforcement (RT-02).
+      // single source of truth for shape enforcement.
       inputSchema: z.object({
         action: z.enum([
           'create',
@@ -123,7 +123,7 @@ export function registerShot(server: McpServer, engine: Engine) {
         id: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
-        // Phase 20 — fields used by set_status (status/changed_by/note) and
+        // Fields used by set_status (status/changed_by/note) and
         // list_status_history (limit is shared with list above). All optional
         // at the raw layer; the discriminated-union ShotInputSchema enforces
         // per-arm shape inside the handler.
@@ -147,7 +147,7 @@ export function registerShot(server: McpServer, engine: Engine) {
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getShot(input.id)));
           case 'set_status':
-            // Phase 20 (STAT-05) — three new arms wire directly to the pipeline
+            // The status arms wire directly to the pipeline
             // facade. The engine throws SHOT_NOT_FOUND TypedError on missing
             // shot; the outer catch's `toolError(err)` arm propagates that
             // generically (no per-arm error handling needed).

@@ -2,10 +2,10 @@
  * main.tsx — Vite entry. Mounts <App /> into #app.
  *
  * Theme bootstrap: the SPA shell (index.html) already applies the persisted
- * theme BEFORE any render runs (FOUC prevention, D-WEBUI-16). This file only
+ * theme BEFORE any render runs (FOUC prevention). This file only
  * guards against the attribute being missing (e.g. in a minimal test harness
  * or if the inline script was stripped) by reading localStorage and falling
- * back to the 'dark' default per must-have contract.
+ * back to the 'dark' default.
  */
 
 import { render } from 'preact';

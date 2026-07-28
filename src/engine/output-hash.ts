@@ -1,8 +1,8 @@
-// Phase 12 — DEMO-03. Pure SHA-256 streaming hash utility for on-disk
-// version outputs. Engine-layer file with zero MCP-SDK imports, zero
-// SQLite-driver imports, zero ORM imports (architecture-purity guard).
+// Pure SHA-256 streaming hash utility for on-disk version outputs.
+// Engine-layer file with zero MCP-SDK imports, zero SQLite-driver
+// imports, zero ORM imports (architecture-purity guard).
 //
-// Path layout (D-WEBUI-26, locked Phase 5 dashboard work):
+// Path layout (locked; the dashboard depends on it):
 //   <outputsDir>/<versionId>/<filename>
 // Mirrors src/engine/output-downloader.ts:46-71 layout.
 
@@ -24,7 +24,7 @@ import * as path from 'node:path';
  * Uses createReadStream + createHash to handle large outputs (videos can be
  * 100+ MB) without buffering the full file in memory.
  *
- * Phase 12 WR-02 defense-in-depth: although `outputs_json` is always written
+ * Path-traversal defense-in-depth: although `outputs_json` is always written
  * by trusted server code (`buildOutputPath` at src/utils/outputs.ts already
  * rejects `..`, `/`, `\`, NUL on the write path), this engine-side hash
  * helper is a single trust boundary that may also be reached by future

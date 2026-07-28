@@ -1,7 +1,7 @@
 /*
  * Vellum Dashboard Theme (Tailwind v4)
  *
- * Implements 05-UI-SPEC.md:
+ * Design contract:
  *   - Dark theme default, light theme via [data-theme="light"] on <html> (D-WEBUI-16)
  *   - 2-weight typography: 400 (regular) + 600 (semibold) — no other weights
  *   - Inter (body) + Inter Tight (display) from @fontsource (offline-capable, D-WEBUI-20)
@@ -50,14 +50,14 @@
   --color-status-completed: #6ee7b7;
   --color-status-failed: #ff4444;
 
-  /* ===== Phase 21 — shot production-state pill colors (5 statuses). WCAG 2.1 AA against --color-bg. ===== */
+  /* ===== Shot production-state pill colors (5 statuses). WCAG 2.1 AA against --color-bg. ===== */
   --color-shot-status-wip:             #94a3b8;  /* slate-400 — in progress */
   --color-shot-status-pending-review:  #fbbf24;  /* amber-400 — pending action */
   --color-shot-status-approved:        #4ade80;  /* green-400 — terminal success */
   --color-shot-status-on-hold:         #60a5fa;  /* blue-400 — paused/blocked */
   --color-shot-status-omit:            #64748b;  /* slate-500 — dimmed/excluded */
 
-  /* ===== Phase 23 — sequence stats. WCAG 2.1 AA UI-component contrast vs --color-bg ≥ 3:1. ===== */
+  /* ===== Sequence stats. WCAG 2.1 AA UI-component contrast vs --color-bg ≥ 3:1. ===== */
   --color-shot-stale: #f97316;  /* orange-500 — DISTINCT from pending-review amber per D-08 */
 
   /* Layout fixed widths */
@@ -79,10 +79,10 @@
   --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* z-index ladder (documented per Phase 22 RESEARCH Q4):
+  /* z-index ladder:
    *   --z-drawer: 10  (VersionDrawer, ReviewPanel right-rail overlays)
-   *   --z-diff:   20  (DiffDrawer — Phase 12 two-column comparison)
-   *   --z-modal:  30  (ABCompareView backdrop + modal — added Phase 22)
+   *   --z-diff:   20  (DiffDrawer — two-column comparison)
+   *   --z-modal:  30  (ABCompareView backdrop + modal)
    * No functional tokens are added — z-index values are written as numeric
    * literals directly in component class strings (Tailwind v4 z-10 / z-20 /
    * z-30). This comment is the single source of truth for the ladder.
@@ -114,14 +114,14 @@
   --color-accent-secondary: #c94ac4;
   --color-destructive: #d73535;
 
-  /* ===== Phase 21 — light-theme shot status overrides ===== */
+  /* ===== Light-theme shot status overrides ===== */
   --color-shot-status-wip:             #64748b;
   --color-shot-status-pending-review:  #d97706;
   --color-shot-status-approved:        #16a34a;
   --color-shot-status-on-hold:         #2563eb;
   --color-shot-status-omit:            #94a3b8;
 
-  /* ===== Phase 23 — light-theme stale border (4.62:1 vs #fafafa per UI-SPEC L122). ===== */
+  /* ===== Light-theme stale border (4.62:1 vs #fafafa). ===== */
   --color-shot-stale: #b45309;  /* amber-700 — passes 4.62:1 vs #fafafa; distinct from pending-review #d97706 */
 }
 
@@ -138,7 +138,7 @@ body {
   line-height: 1.5;
 }
 
-/* tabular-nums on every numeric surface per UI-SPEC.md:
+/* tabular-nums on every numeric surface:
  *   version labels (v###), timestamps, elapsed timers, count badges */
 .num,
 td.num,

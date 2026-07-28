@@ -16,35 +16,35 @@ import type {
 import type { GenerationProvider } from '../providers/provider.js';
 
 /**
- * ComfyUI Cloud HTTP client (D-GEN-21).
+ * ComfyUI Cloud HTTP client.
  *
- * Zero MCP imports, zero DB imports — pure HTTP over native fetch. Wraps the
- * three Phase 2 endpoints: POST /api/prompt, GET /api/jobs/{id}, GET /api/view.
- * (Phase 7 D-EP-17 switched the status fetch from the singular
+ * Zero MCP imports, zero DB imports — pure HTTP over native fetch. Wraps
+ * three endpoints: POST /api/prompt, GET /api/jobs/{id}, GET /api/view.
+ * (The status fetch was switched from the singular
  * `/api/job/{id}/status` endpoint — dispatch-state-only, no outputs — to the
  * plural `/api/jobs/{id}` endpoint which returns the full execution record.)
  *
- * Auth: `X-API-Key: <apiKey>` on every request (D-GEN-21 specifics).
+ * Auth: `X-API-Key: <apiKey>` on every request.
  * Redirect safety: `redirect: 'manual'` on /api/view to validate signed-URL host
- * against an allowlist (D-GEN-22 + Pattern 4 SSRF defence). Signed-URL fetch
+ * against an allowlist (SSRF defence). Signed-URL fetch
  * drops the API key per ComfyUI Cloud docs.
  *
  * Error policy: every non-2xx path surfaces a TypedError with a useful hint;
  * 429 → COMFYUI_RATE_LIMITED with tier context; node_errors flattened via
- * extractFirstNodeError (D-GEN-27).
+ * extractFirstNodeError.
  */
 
 /**
  * Canonical ComfyUI Cloud base URL. Exported so server wiring and test
  * fixtures agree on one literal (no more scattered copies of the same host).
- * Per D-GEN-21; override with COMFYUI_API_BASE for self-hosted tenants.
+ * Override with COMFYUI_API_BASE for self-hosted tenants.
  *
- * @since 2026-04-24 (Phase 7, D-EP-06) — value confirmed by scripts/probe-comfy-endpoint.mts winner.
+ * @since 2026-04-24 — value confirmed by scripts/probe-comfy-endpoint.mts winner.
  */
 export const DEFAULT_COMFYUI_API_BASE = 'https://cloud.comfy.org';
 
 /**
- * Phase 7 D-EP-14: path used by both the first-submit healthcheck
+ * Path used by both the first-submit healthcheck
  * (ensureEndpointHealthy) and the sentinel test (endpoint-probe.test.ts).
  * Set by scripts/probe-comfy-endpoint.mts winner — a read-only GET endpoint
  * that returns 200 for authenticated requests.
@@ -54,12 +54,13 @@ export const DEFAULT_COMFYUI_API_BASE = 'https://cloud.comfy.org';
  * `/api/history` returns 401 "authentication method not allowed" with the
  * SAME X-API-Key that `/api/system_stats` accepts with 200. The healthcheck
  * path MUST be `/api/system_stats` specifically — do NOT switch to `/api/queue`
- * expecting it to work. See 07-01-SUMMARY.md probe matrix for evidence.
+ * expecting it to work. Evidence: the probe matrix produced by
+ * scripts/probe-comfy-endpoint.mts.
  */
 export const HEALTHCHECK_PATH = '/api/system_stats';
 
 /**
- * IS-03: hard cap on error-body reads (submit 4xx/5xx) so a misbehaving or
+ * Hard cap on error-body reads (submit 4xx/5xx) so a misbehaving or
  * hostile ComfyUI response cannot blow out memory while the client tries to
  * extract a node_errors JSON blob. 64 KiB is generous for a realistic error
  * payload and tight enough to block DoS.
@@ -67,7 +68,7 @@ export const HEALTHCHECK_PATH = '/api/system_stats';
 export const MAX_ERROR_BODY_BYTES = 64_000;
 
 /**
- * IS-03: default cap on per-file downloads. 500 MiB is larger than any
+ * Default cap on per-file downloads. 500 MiB is larger than any
  * plausible image or single-frame video from ComfyUI but small enough that
  * a runaway signed-URL does not fill disk. Callers (engine / tests) can
  * override via `maxBytes` on `downloadToPath`.
@@ -114,9 +115,9 @@ async function readTextWithLimit(res: Response, limit: number): Promise<string> 
 }
 
 /**
- * Phase 7 D-EP-16: translate ComfyUI Cloud's on-the-wire status strings to the
- * canonical `StatusResponse['status']` state machine used by the engine
- * (D-GEN-18). The Cloud's v0.82.0 API returns `'success'` / `'error'` for
+ * Translate ComfyUI Cloud's on-the-wire status strings to the
+ * canonical `StatusResponse['status']` state machine used by the engine.
+ * The Cloud's v0.82.0 API returns `'success'` / `'error'` for
  * terminal states — values that `StatusResponse` does not enumerate and that
  * the engine's `mapState()` (`src/engine/generation.ts:364`) silently collapses
  * to `'pending'`, causing the poll loop to spin until deadline.
@@ -156,7 +157,7 @@ export function normalizeCloudStatus(raw: unknown): StatusResponse['status'] {
 }
 
 /**
- * Phase 7 D-EP-17: flatten ComfyUI Cloud's `/api/jobs/{id}` nested outputs
+ * Flatten ComfyUI Cloud's `/api/jobs/{id}` nested outputs
  * shape into the engine-facing `ComfyOutput[]` flat list.
  *
  * Cloud's `outputs` field is a node-id-keyed map whose values are media-type
@@ -235,7 +236,7 @@ export interface ComfyUIClientOptions {
 }
 
 /**
- * Default allowlist for signed-URL redirect hosts (D-GEN-22).
+ * Default allowlist for signed-URL redirect hosts.
  * Keep permissive — ComfyUI Cloud signed URLs may land on any cloud object-store host.
  * Narrow after first live-smoke to the observed provider if needed.
  */
@@ -247,7 +248,7 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
 ];
 
 /**
- * IS-04: cap on persisted ComfyUI error messages. Truncates anything longer
+ * Cap on persisted ComfyUI error messages. Truncates anything longer
  * than this before it crosses the client boundary so downstream storage
  * (versions.error_message) never holds pathologically-large strings.
  * Single source of truth: src/providers/url-provider-shared.ts (shared by
@@ -255,16 +256,16 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
  */
 export { MAX_ERROR_MESSAGE_CHARS };
 
-// ComfyUIClient is the REFERENCE adapter for GenerationProvider (the pivot seam).
+// ComfyUIClient is the REFERENCE adapter for GenerationProvider (the provider-agnostic seam).
 // The `implements` clause makes it a compile-time error for this client to drift
 // from the contract the engine depends on. See src/providers/provider.ts.
 export class ComfyUIClient implements GenerationProvider {
-  /** GenerationProvider adapter id (pivot Phase B) — stamped onto versions.provider. */
+  /** GenerationProvider adapter id — stamped onto versions.provider. */
   readonly id = 'comfyui-cloud';
   readonly apiErrorCode = 'COMFYUI_API_ERROR' as const;
   private allowed: RegExp[];
   /**
-   * IS-01: admin-supplied allowed hosts are matched by EXACT or SUFFIX
+   * Admin-supplied allowed hosts are matched by EXACT or SUFFIX
    * string comparison, not regex. Using a regex over user input (even with
    * `.replace(/\./g, '\\.')`) still allows metacharacters (`|`, `+`, `*`, `[`)
    * through — an admin typo like `foo|.*` would broaden the allowlist to
@@ -289,7 +290,7 @@ export class ComfyUIClient implements GenerationProvider {
   private requestTimeoutMs: number;
 
   /**
-   * Phase 7 D-EP-07: first-submit healthcheck cache. `null` = never checked;
+   * First-submit healthcheck cache. `null` = never checked;
    * Promise = in-flight OR confirmed-success. Caching the Promise (not a boolean)
    * keeps concurrent first-submit callers race-safe — they all await the same
    * result. On failure, the IIFE resets this to `null` before re-throwing so a
@@ -299,7 +300,7 @@ export class ComfyUIClient implements GenerationProvider {
   private healthCheckResult: Promise<void> | null = null;
 
   /**
-   * IS-04: scrub the configured API key literal from any string before it
+   * Scrub the configured API key literal from any string before it
    * leaves the client boundary, then truncate to MAX_ERROR_MESSAGE_CHARS.
    *
    * Rationale: a ComfyUI error response could (rarely) echo back request
@@ -344,7 +345,7 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   /**
-   * Phase 7 D-EP-07: first-submit healthcheck.
+   * First-submit healthcheck.
    *
    * Cheap GET against HEALTHCHECK_PATH to confirm the configured base + key
    * combo is still live. Called lazily from submit() — result cached on the
@@ -365,7 +366,7 @@ export class ComfyUIClient implements GenerationProvider {
         res = await this.fetchImpl(url, {
           method: 'GET',
           headers: { 'X-API-Key': this.apiKey },
-          // D-EP-07: match submit()/status() redirect policy. Node's fetch
+          // Match submit()/status() redirect policy. Node's fetch
           // preserves X-API-Key across cross-origin redirects — a single 302
           // from a drifted or compromised base URL would exfiltrate the key.
           redirect: 'manual',
@@ -399,9 +400,9 @@ export class ComfyUIClient implements GenerationProvider {
     return this.healthCheckResult;
   }
 
-  /** POST /api/prompt — returns { prompt_id } (D-GEN-21). */
+  /** POST /api/prompt — returns { prompt_id }. */
   /**
-   * GenerationProvider.validateRequest (pivot Phase C). ComfyUI validates the
+   * GenerationProvider.validateRequest. ComfyUI validates the
    * node-graph API format — the same check the engine used to run inline, now
    * routed through the provider so non-ComfyUI backends validate their own shape.
    */
@@ -410,9 +411,9 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   async submit(workflowJson: Record<string, unknown>): Promise<SubmitResponse> {
-    // D-EP-07: first-submit healthcheck. Cached for process lifetime on success;
+    // First-submit healthcheck. Cached for process lifetime on success;
     // reset to null on failure so a later submit can retry after an .env edit.
-    // Throws COMFYUI_ENDPOINT_DRIFT (surfaces via tool envelope per D-GEN-41).
+    // Throws COMFYUI_ENDPOINT_DRIFT (surfaces via the tool error envelope).
     await this.ensureEndpointHealthy();
     // Partner / API nodes (GeminiImage2Node, Kling, Grok, ElevenLabs…) check
     // extra_data.api_key_comfy_org for the user's authentication. Without it
@@ -460,7 +461,7 @@ export class ComfyUIClient implements GenerationProvider {
       );
     }
     if (!res.ok) {
-      // IS-03: cap body read at MAX_ERROR_BODY_BYTES — a hostile or
+      // Cap body read at MAX_ERROR_BODY_BYTES — a hostile or
       // misbehaving upstream cannot exhaust memory via a multi-GB error body.
       const text = await readTextWithLimit(res, MAX_ERROR_BODY_BYTES);
       let parsed: unknown = null;
@@ -469,7 +470,7 @@ export class ComfyUIClient implements GenerationProvider {
       } catch {
         /* ignore — malformed or truncated JSON falls through to generic message */
       }
-      // DEMO-02: single helper handles node_errors + string + fallback.
+      // A single helper handles node_errors + string + fallback.
       // Pass the full parsed body so flattenComfyError covers the
       // {node_errors:...} case. flattenComfyError ALWAYS returns a non-null
       // string, so we treat the literal "ComfyUI reported failed" fallback as
@@ -480,7 +481,7 @@ export class ComfyUIClient implements GenerationProvider {
       // 'Node <id> (<class_type>): <msg>' assertion at client.test.ts:174 holds.
       const flat = flattenComfyError(parsed);
       const nodeMessage = flat === 'ComfyUI reported failed' ? null : flat;
-      // IS-04: scrub the API key (in case ComfyUI echoed a header) and
+      // Scrub the API key (in case ComfyUI echoed a header) and
       // truncate before the message leaves the client boundary.
       throw new TypedError(
         'COMFYUI_API_ERROR',
@@ -497,9 +498,9 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   /**
-   * GET /api/jobs/{id} — normalise to StatusResponse (D-GEN-21, D-EP-17).
+   * GET /api/jobs/{id} — normalise to StatusResponse.
    *
-   * Phase 7 D-EP-17: the singular `/api/job/{id}/status` endpoint returns only
+   * The singular `/api/job/{id}/status` endpoint returns only
    * dispatch-layer state (`status`, `assigned_inference`, `error_message`) and
    * omits the `outputs` field entirely, so the engine can never flip a version
    * to `completed`. The plural `/api/jobs/{id}` endpoint returns the full
@@ -540,7 +541,7 @@ export class ComfyUIClient implements GenerationProvider {
       );
     }
     const raw = (await res.json()) as Record<string, unknown>;
-    // D-EP-16: Cloud terminal strings arrive as either canonical ('completed' /
+    // Cloud terminal strings arrive as either canonical ('completed' /
     // 'failed' — plural /api/jobs shape) or legacy ('success' / 'error' —
     // singular /api/job shape, retained as defence in depth for intermediate
     // or undocumented states). normalizeCloudStatus collapses both to the
@@ -548,10 +549,10 @@ export class ComfyUIClient implements GenerationProvider {
     // poll loop keeps trying instead of prematurely advancing downstream state.
     const status = normalizeCloudStatus(raw.status);
     const progress = typeof raw.progress === 'number' ? raw.progress : undefined;
-    // D-EP-17: handle both the nested /api/jobs map and the flat legacy array
+    // Handle both the nested /api/jobs map and the flat legacy array
     // shape (used by existing unit-test mocks) via extractOutputs.
     const outputs = extractOutputs(raw.outputs);
-    // IS-04: scrub any echoed API key from the error blob before it leaves
+    // Scrub any echoed API key from the error blob before it leaves
     // the client boundary. The engine persists this verbatim into
     // versions.error_message, so scrubbing here prevents the key from
     // reaching disk / agent responses. Applied to both string and object
@@ -572,7 +573,7 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   /**
-   * IS-04: scrub the API key from an arbitrary status.error value. Strings
+   * Scrub the API key from an arbitrary status.error value. Strings
    * are scrub+truncated directly. Objects are serialised, scrubbed, re-parsed
    * (silently falls back to a redacted marker if the object is not JSON-safe).
    */
@@ -596,7 +597,7 @@ export class ComfyUIClient implements GenerationProvider {
 
   /**
    * GET /api/view — returns a streaming body + metadata after validating the
-   * 302 redirect target host against the allowlist (D-GEN-22, Pattern 4).
+   * 302 redirect target host against the allowlist (SSRF defence).
    * Caller is responsible for consuming the body stream.
    */
   async download(
@@ -676,7 +677,7 @@ export class ComfyUIClient implements GenerationProvider {
     // Signed URLs do NOT need auth headers (ComfyUI Cloud docs).
     // Explicitly pass no headers so the original request's X-API-Key does not leak.
     //
-    // C3: close SSRF bypass on this second hop. Without redirect:'manual',
+    // Close the SSRF bypass on this second hop. Without redirect:'manual',
     // Node's fetch silently follows up to 20 further redirects. An attacker
     // who can influence an allowlisted host's response (misconfigured bucket,
     // compromised tenant, typo'd URL) could chain 302 → http://169.254.169.254
@@ -710,9 +711,9 @@ export class ComfyUIClient implements GenerationProvider {
   /**
    * Wrapper over `download` that streams to disk atomically: writes to
    * `{destPath}.partial`, then `rename()` on success. On failure unlinks the
-   * partial and throws `TypedError('DOWNLOAD_FAILED', ...)`. (Pattern 5.)
+   * partial and throws `TypedError('DOWNLOAD_FAILED', ...)`.
    *
-   * IS-03: `maxBytes` caps the write length. If the stream exceeds the cap
+   * `maxBytes` caps the write length. If the stream exceeds the cap
    * mid-pipe, the pipeline is aborted, the partial file is unlinked, and a
    * typed error is thrown. Prevents a hostile allowlisted host from filling
    * disk via an unbounded signed-URL.
@@ -766,11 +767,11 @@ export class ComfyUIClient implements GenerationProvider {
   }
 
   /**
-   * Phase 3 (D-PROV-05, RESEARCH.md §D-PROV-05 Resolution): fetch the resolved
+   * Fetch the resolved
    * prompt blob for a completed job from the already-downloaded PNG output.
    *
    * Implementation: read PNG tEXt 'prompt' chunk from disk via fs.promises.readFile
-   * → extractTextChunk (Plan 01 output) → JSON.parse. Returns null if the file
+   * → extractTextChunk → JSON.parse. Returns null if the file
    * is not a PNG, if the tEXt 'prompt' chunk is missing, if the chunk payload
    * fails to JSON-parse, or if the parsed value is not a plain object. Never
    * throws — callers (GenerationEngine.downloadAndPersist) tolerate null by

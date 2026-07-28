@@ -1,17 +1,17 @@
 /**
  * MetadataDiff — pure display layer for version diff summaries.
  *
- * Extracted from DiffDrawer.tsx:101-108 (Phase 12) and extended to render
- * structured `changes` for ABCompareView (22-06) per D-16. Phase 12
- * DiffDrawer migrates to consume this component — when only `summary` is
+ * Extracted from DiffDrawer.tsx's summary paragraph and extended to render
+ * structured `changes` for ABCompareView. DiffDrawer migrates to
+ * consume this component — when only `summary` is
  * passed (no `changes`), the render is the same paragraph block as before
- * (backward-compatible refactor, no Phase 12 behavior change).
+ * (backward-compatible refactor, no behavior change for existing callers).
  *
- * RESEARCH Q2 — scope decision: this component renders BOTH the human-
+ * Scope decision: this component renders BOTH the human-
  * readable summary AND the structured changes (params / models / seed /
  * workflow / metadata buckets). The DiffChanges shape is dashboard-local
- * because api.ts:diffVersionsAB currently returns Promise<unknown> per
- * RESEARCH Pitfall 2 (engine signature unchanged); consumers (this
+ * because api.ts:diffVersionsAB currently returns Promise<unknown>
+ * (the engine signature is deliberately unchanged); consumers (this
  * component) narrow at use-site.
  */
 
@@ -30,12 +30,12 @@ export interface DiffChanges {
 }
 
 export interface MetadataDiffProps {
-  /** Human-readable one-line summary. Always rendered (Phase 12 surface). */
+  /** Human-readable one-line summary. Always rendered (the original DiffDrawer surface). */
   summary: string;
   /**
    * Optional structured diff buckets — rendered as a bullet list under the
    * summary when at least one bucket has content. When omitted entirely
-   * (Phase 12 DiffDrawer use), no list renders — same surface as before.
+   * (the DiffDrawer use), no list renders — same surface as before.
    */
   changes?: DiffChanges;
 }

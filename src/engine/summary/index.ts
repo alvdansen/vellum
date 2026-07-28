@@ -1,12 +1,12 @@
 /**
- * Phase 19 — SUM-01..06 Engine facade for the AI conversational summary feature.
+ * Engine facade for the AI conversational summary feature.
  *
- * Architecture-purity (Plan 01 grep guard): Imports limited to pure helpers
+ * Architecture-purity (grep-guard enforced): Imports limited to pure helpers
  * (sanitizer, validation, deterministic-template, template, circuit-breaker,
  * anthropic-client) + repos (versionRepo, provenanceRepo). NO direct
  * @anthropic-ai/sdk import — that lives in anthropic-client.ts only.
  *
- * Mirrors Phase 14 Engine.signOutput discriminated-outcome shape
+ * Mirrors the Engine.signOutput discriminated-outcome shape
  * (src/engine/pipeline.ts:1133-1395). Engine method NEVER throws to HTTP
  * layer for failure paths — every error path is a typed outcome variant.
  *
@@ -14,12 +14,12 @@
  *   1. Load version + completed event + model fingerprints + manifest_signed event + redact-state.
  *   2. Cache lookup (skipped when options.regenerate === true).
  *   3. Pre-flight gates → fallback paths (api_key_missing, circuit_open).
- *   3.5 BLOCKER #1 (revision-1): Resolve prompt_positive / prompt_negative via
- *       Phase 15 extractInputAssertion KSampler edge walk + parent_version_label
+ *   3.5 Resolve prompt_positive / prompt_negative via the
+ *       extractInputAssertion KSampler edge walk + parent_version_label
  *       via versionRepo.getVersion(parent).version_number.
  *   4. Sanitize + leak-scan defence-in-depth + assemble prompt input.
  *   5. Call Anthropic via lazy SDK + 1-retry-on-transient wrapper.
- *   6. Validate output (D-VAL-2 gates the cache write).
+ *   6. Validate output (validation gates the cache write).
  *   7. Append-only cache write — ONLY on validated live responses.
  *   8. Return SummaryOutcome.
  */
@@ -43,25 +43,24 @@ import { circuitBreaker } from './circuit-breaker.js';
 import { generateSummary, flattenAnthropicError } from './anthropic-client.js';
 import { logSummaryEvent } from './telemetry.js';
 
-// BLOCKER #1 (revision-1): wire Phase 15 KSampler edge walk for prompt resolution.
 // extractInputAssertion (src/engine/c2pa/ingredient-extractor.ts:310) lives in the
-// Phase 15 ingredient graph — it walks KSampler.positive / .negative edges to the
+// ingredient graph — it walks KSampler.positive / .negative edges to the
 // upstream CLIPTextEncode nodes and returns { prompt_positive, prompt_negative,
 // sampler, seed }. Cap = INPUT_PROMPT_MAX_CHARS (4096) is enforced by the helper.
 // We import here (not inside sanitizer.ts) to preserve the sanitizer's pure-helper
 // architecture-purity invariant — engine facade owns the resolver wiring.
 import { extractInputAssertion } from '../c2pa/ingredient-extractor.js';
 
-// Re-export for consumers (HTTP route in Plan 05, dashboard signal contract).
+// Re-export for consumers (the HTTP route and the dashboard signal contract).
 export { SUMMARY_TEMPLATE_VERSION, SUMMARY_MODEL_ID } from './template.js';
 
 /**
- * Discriminated outcome union mirroring Phase 14 Engine.signOutput shape.
+ * Discriminated outcome union mirroring the Engine.signOutput shape.
  * The dashboard branches on `source` to render success vs fallback UI.
  *
- * WARNING #10 (revision-1): pruned 'output_too_short' (folded into
+ * Deliberately pruned reasons: 'output_too_short' (folded into
  * validation_failed since the deterministic-template fallback always passes
- * validateSummary on the empty-content branch via Pitfall 8 surface) and
+ * validateSummary on the empty-content 'Pitfall 8' branch) and
  * 'manifest_sha256_unavailable' (the live path returns outcome='live'
  * without persistence when manifestSha256 is null — see step 8 below —
  * rather than emitting a fallback). Final union: 7 reasons.
@@ -87,22 +86,22 @@ export type SummaryOutcome =
       source: 'fallback';
       text: string;
       reason:
-        | 'api_key_missing'         // D-FB-2 — config null OR AuthenticationError (401)
-        | 'circuit_open'            // D-FB-3 — breaker tripped (pre-flight gate, never reaches mapErrToReason)
+        | 'api_key_missing'         // config null OR AuthenticationError (401)
+        | 'circuit_open'            // breaker tripped (pre-flight gate, never reaches mapErrToReason)
         | 'sdk_load_failed'         // TypedError('ANTHROPIC_SDK_LOAD_FAILED') — pre-flight detection
         | 'http_error'              // 4xx (excluding 401/403) + 5xx after retry exhausted
         | 'network_error'           // APIConnectionError after retry
-        | 'validation_failed'       // D-VAL-2 — regex miss / leak-scan failure / Pitfall 8 empty content
+        | 'validation_failed'       // regex miss / leak-scan failure / 'Pitfall 8' empty content
         | 'timeout';                // 10s per-call exceeded (APIConnectionTimeoutError)
     };
 
 /**
  * Repo interface narrowed to the surface summarizeVersion needs.
  *
- * BLOCKER #1 (revision-1): getVersion returns { id, version_number,
+ * getVersion returns { id, version_number,
  * parent_version_id } as the canonical structure (label is derived from
- * version_number at the use site via `v${pad}` formatting per Phase 3
- * PROJECT.md naming). This avoids forcing the Engine facade caller to
+ * version_number at the use site via `v${pad}` formatting per the
+ * PROJECT.md naming convention). This avoids forcing the Engine facade caller to
  * pre-compute a `label` field.
  */
 export interface SummarizeVersionDeps {
@@ -138,7 +137,7 @@ export interface SummarizeVersionDeps {
     ) => void;
   };
   anthropicConfig: { apiKey: string } | null;
-  /** Injectable for deterministic tests (Pitfall 6 + circuit-breaker contract). */
+  /** Injectable for deterministic tests (circuit-breaker timing contract). */
   clock: () => number;
 }
 
@@ -159,11 +158,11 @@ export async function summarizeVersion(
   deps: SummarizeVersionDeps,
   options: SummarizeVersionOptions = {},
 ): Promise<SummaryOutcome> {
-  // WARNING #5 (revision-1): performance.now() at function entry; threaded
+  // performance.now() at function entry; threaded
   // into every logSummaryEvent call site so cache_hit / live / fallback all
   // emit accurate duration_ms (cache_hit is sub-100ms; live is ~600ms;
   // fallback varies by reason — operational visibility relies on accurate
-  // timings per AI-SPEC §7 monitoring contract).
+  // timings).
   const startedAt = performance.now();
 
   // Step 1: Load version + provenance + model fingerprints + manifest_signed event.
@@ -214,8 +213,8 @@ export async function summarizeVersion(
 
   // Helper to build a fallback outcome with the deterministic template
   // content. Emits a telemetry event at the SAME call site so every fallback
-  // path is logged in full per AI-SPEC §7 (the diagnostic surface).
-  // WARNING #5 (revision-1): duration_ms threaded from startedAt at the
+  // path is logged in full (fallbacks are the diagnostic surface).
+  // duration_ms is threaded from startedAt at the
   // function entry above — not a hardcoded zero.
   const buildFallbackOutcome = (
     reason: Extract<SummaryOutcome, { source: 'fallback' }>['reason'],
@@ -254,7 +253,7 @@ export async function summarizeVersion(
       SUMMARY_MODEL_ID,
     );
     if (cached !== null) {
-      // AI-SPEC §7: cache_hit emits on 1% deterministic sample; sampling
+      // cache_hit emits on a 1% deterministic sample; sampling
       // logic owned by logSummaryEvent (shouldSampleCacheHit). duration_ms
       // is threaded from startedAt — cache hits are sub-100ms but the
       // value is still operationally useful for p99 latency tracking.
@@ -289,7 +288,7 @@ export async function summarizeVersion(
   if (version.parent_version_id) {
     const parent = deps.versionRepo.getVersion(version.parent_version_id);
     if (parent) {
-      // Phase 3 convention: zero-padded `v001` labels (PROJECT.md naming convention).
+      // Zero-padded `v001` labels (PROJECT.md naming convention).
       resolvedParentLabelForFallback = `v${String(parent.version_number).padStart(3, '0')}`;
     }
   }
@@ -302,8 +301,8 @@ export async function summarizeVersion(
     return buildFallbackOutcome('circuit_open');
   }
 
-  // Step 3.5 (BLOCKER #1 revision-1): Resolve user-authored prompt content via
-  // Phase 15 KSampler edge walk + parent label via versionRepo. These resolutions
+  // Step 3.5: Resolve user-authored prompt content via the
+  // KSampler edge walk + parent label via versionRepo. These resolutions
   // live in the engine facade (NOT the sanitizer) so the pure-helper architecture-
   // purity invariant is preserved (sanitizer.ts has zero engine imports).
   //
@@ -334,10 +333,10 @@ export async function summarizeVersion(
   // reuse the binding.
   const parentVersionLabel: string | null = resolvedParentLabelForFallback;
 
-  // Step 4: Sanitize (D-PRIV-1) + leak-scan defence-in-depth + assemble prompt input.
-  // BLOCKER #1: promptPositive / promptNegative / parentVersionLabel are now
+  // Step 4: Sanitize (allow-list) + leak-scan defence-in-depth + assemble prompt input.
+  // promptPositive / promptNegative / parentVersionLabel are
   // threaded from upstream resolvers (extractInputAssertion + versionRepo.getVersion)
-  // — no more hardcoded null silently breaking D-PRIV-2 + SUM-01.
+  // — never hardcoded null, which silently dropped the prompts from summaries.
   const sanitized = sanitizeProvenance({
     versionLabel,
     parentVersionLabel,
@@ -350,7 +349,7 @@ export async function summarizeVersion(
   });
 
   try {
-    assertNoApiKeyInPayload(sanitized); // D-PRIV-3 defence-in-depth
+    assertNoApiKeyInPayload(sanitized); // defence-in-depth leak scan
   } catch (err) {
     // Adversarial-review surface — log loudly via flattenAnthropicError, then fallback.
     console.error('vellum: sanitization leak-scan FAILED:', flattenAnthropicError(err));
@@ -374,7 +373,7 @@ export async function summarizeVersion(
       // ANTHROPIC_SDK_LOAD_FAILED) with message containing 'Pitfall 8'.
       // Disambiguate so the engine returns the correct fallback reason —
       // 'sdk_load_failed' for binding load failures, 'validation_failed' for
-      // empty-content responses (per WARNING #10 pruning rationale).
+      // empty-content responses.
       if (err.message.includes('Pitfall 8')) {
         return buildFallbackOutcome('validation_failed');
       }
@@ -383,13 +382,13 @@ export async function summarizeVersion(
     return buildFallbackOutcome(mapErrToReason(err));
   }
 
-  // Step 6: Validate output (D-VAL-2 — gates the cache write).
+  // Step 6: Validate output (validation gates the cache write).
   const validation = validateSummary(llmResult.text, models ?? [], isRedacted);
   if (!validation.ok) {
     return buildFallbackOutcome('validation_failed');
   }
 
-  // Step 6.5: Post-LLM API key leak scan (D-PRIV-3 defence-in-depth). Closes
+  // Step 6.5: Post-LLM API key leak scan (defence-in-depth). Closes
   // the smuggle path where the LLM response itself contains an API key
   // fragment (rare model misbehavior, adversarial prompt-injection, or
   // upstream provider regressions). Routes to validation_failed fallback so
@@ -415,7 +414,7 @@ export async function summarizeVersion(
       outcome: 'live',
     });
 
-    // AI-SPEC §7: live emits in full (cost-projection flywheel input).
+    // Live calls emit telemetry in full (cost-projection flywheel input).
     // duration_ms is threaded from startedAt for accurate p95/p99 tracking.
     logSummaryEvent({
       event: 'summary_generated',
@@ -441,7 +440,7 @@ export async function summarizeVersion(
   }
 
   // Step 8 (no manifest_sha256): live response but cache write blocked — return live without persistence.
-  // Per RESEARCH.md Open Question 3: skip cache write when manifest_sha256 is null;
+  // Deliberate: skip the cache write when manifest_sha256 is null;
   // every view of these edge cases is a fresh LLM call (acceptable cost).
   // Telemetry still emits — manifest_sha256 is null but the live call cost
   // is the same; cost-projection flywheel needs the metadata regardless.
@@ -470,13 +469,13 @@ export async function summarizeVersion(
 
 /**
  * Map an Anthropic API error to a SummaryOutcome.fallback reason. Uses the
- * SDK error class hierarchy (RESEARCH.md error class table) — caller has
+ * SDK error class hierarchy — caller has
  * already loaded the SDK (so `instanceof` checks would need the module
- * reference). For Plan 04 simplicity, use err.constructor.name string match
+ * reference). For simplicity, use err.constructor.name string match
  * as the discriminator. This is the documented contract (Anthropic class
  * names are stable across 0.95.x).
  *
- * WARNING #10 (revision-1): the 7-reason union handled by this function:
+ * The 7-reason union handled by this function:
  *   - 'api_key_missing'    AuthenticationError (401), PermissionDeniedError (403)
  *   - 'timeout'            APIConnectionTimeoutError, AbortError
  *   - 'network_error'      APIConnectionError (DNS / TCP), TypeError (fetch fail)

@@ -38,7 +38,7 @@ import type { LookupFn } from '../utils/private-address.js';
 import { renderNamingTemplate, type NamingContext } from './naming.js';
 import { comfyNeutralProvenance } from './comfy-neutral.js';
 
-/** Pivot Phase D — a registered output reported by public https URL. */
+/** A registered output reported by public https URL. */
 export interface UrlOutputEntry {
   url: string;
   filename?: string;
@@ -65,7 +65,7 @@ function isByteEntry(out: ExternalOutputEntry): out is ByteOutputEntry {
   return 'bytes' in out && out.bytes != null;
 }
 
-/** Pivot Phase D — inbound registration input (an external agent/webhook
+/** Inbound registration input (an external agent/webhook
  *  reporting a finished asset by URL, or direct bytes via multipart upload). */
 export interface RegisterExternalOutputInput {
   shotId: string;
@@ -101,7 +101,7 @@ function safeRegisteredFilename(provided: string | undefined, url: string, index
   return name;
 }
 
-const GENERATION_TIMEOUT_MS = 600_000; // D-GEN-25: 10 minutes
+const GENERATION_TIMEOUT_MS = 600_000; // 10 minutes
 
 /**
  * How long an identical request to the same shot is treated as a duplicate.
@@ -146,7 +146,7 @@ function providerFailureCode(provider: GenerationProvider): ErrorCode {
   return provider.apiErrorCode ?? 'PROVIDER_API_ERROR';
 }
 /**
- * D-GEN-36: per-file download retry schedule.
+ * Per-file download retry schedule.
  *
  * The download loop runs UP TO 3 ATTEMPTS with 2 SLEEPS between them:
  *   attempt 1 → fail → sleep 2s → attempt 2 → fail → sleep 4s → attempt 3 → give up
@@ -173,18 +173,18 @@ const DEFAULT_MAX_CONCURRENT_POLLERS = 3;
 const POLLER_BOOT_JITTER_MAX_MS = 800;
 
 /**
- * GenerationEngine — owns the version row lifecycle (D-GEN-15..D-GEN-20), the
- * ComfyUI handshake (D-GEN-21..D-GEN-27), download orchestration (D-GEN-32..37),
- * and the on-start recovery poller (D-GEN-28..D-GEN-31). Composed into Engine
+ * GenerationEngine — owns the version row lifecycle, the
+ * ComfyUI handshake, download orchestration,
+ * and the on-start recovery poller. Composed into Engine
  * facade (pipeline.ts) and exposed via `submitGeneration`, `getGenerationStatus`,
  * `start`, `stop`.
  *
  * Invariants:
- *  - Zero MCP SDK imports (D-33, architecture-purity guard).
- *  - Never holds a SQLite write txn across network I/O (Pitfall #6). Submit
+ *  - Zero MCP SDK imports (architecture-purity guard).
+ *  - Never holds a SQLite write txn across network I/O. Submit
  *    follows the two-phase insert → fetch → update pattern.
- *  - "completed" is only reached after every output file lands on disk (D-GEN-32).
- *  - `completed_at` is set at most once (D-GEN-20 — enforced by VersionRepo's
+ *  - "completed" is only reached after every output file lands on disk.
+ *  - `completed_at` is set at most once (enforced by VersionRepo's
  *    `WHERE completed_at IS NULL` guard on terminal UPDATEs).
  */
 export class GenerationEngine {
@@ -194,7 +194,7 @@ export class GenerationEngine {
   /** versionId → in-flight status check, so concurrent callers share one. */
   private statusMutex = new Map<string, Promise<{ entity: Version; breadcrumb: Breadcrumb }>>();
   private readonly maxConcurrentPollers: number;
-  // Pivot Phase D — inbound ingest trust boundary. Built-in known hosts plus any
+  // Inbound ingest trust boundary. Built-in known hosts plus any
   // operator additions (VELLUM_INGEST_ALLOWED_HOSTS). fetchImpl is test-injectable.
   private readonly ingestAllowedHosts: readonly string[];
   private readonly maxInFlightGenerations: number | null;
@@ -237,11 +237,11 @@ export class GenerationEngine {
        *  = unlimited (prior behaviour). */
       spendLimit?: SpendLimit | null;
     } = {},
-    /** Phase 13 — PROV-V-03. Optional fire-and-forget hook fired from
+    /** Model-fingerprinting: optional fire-and-forget hook fired from
      *  downloadAndPersist immediately AFTER writeCompletedEvent + markCompleted
      *  in the success branch only (failed-download branch never fires it).
      *  Synchronous: receiver MUST `void` any async work — must not delay the
-     *  generation hot path (criterion #4). Engine.pipeline binds this to
+     *  generation hot path. Engine.pipeline binds this to
      *  fingerprintModelsForVersion at construction time. */
     private fingerprintHook?: (versionId: string) => void,
   ) {
@@ -354,7 +354,7 @@ export class GenerationEngine {
   }
 
   /**
-   * Pivot Phase D — inbound registration. An external agent (or provider webhook)
+   * Inbound registration. An external agent (or provider webhook)
    * reports a finished asset by URL; we create a COMPLETED version stamped with the
    * reporting provider, ingest each output under the SSRF-guarded trust boundary,
    * and record neutral provenance. This is how "any output can speak to it" — it
@@ -569,11 +569,11 @@ export class GenerationEngine {
   }
 
   /**
-   * Two-phase submit (Pattern 2): shot-exists + format validation → insert row →
+   * Two-phase submit: shot-exists + format validation → insert row →
    * POST /api/prompt → setJobId. On ComfyUI failure, the row is transitioned to
    * `failed` with the matching code before rethrowing. Public signature preserved
-   * verbatim from Phase 2 (LANDMINE #1) — body delegates to submitInternal which
-   * is shared with reproduce/iterate.
+   * verbatim (external callers depend on it) — body delegates to submitInternal
+   * which is shared with reproduce/iterate.
    */
   async submitGeneration(
     shotId: string,
@@ -588,10 +588,11 @@ export class GenerationEngine {
   }
 
   /**
-   * Shared submit path — Phase 2 two-phase submit + Phase 3 provenance writes.
+   * Shared submit path — two-phase submit + provenance writes.
    * Called by submitGeneration (no lineage), reproduceVersion (lineage='reproduce'),
    * and iterateFromVersion (lineage='iterate'). The submitted provenance event is
-   * written BEFORE the HTTP POST so D-PROV-04 holds even when ComfyUI rejects.
+   * written BEFORE the HTTP POST so every submit attempt leaves a provenance
+   * record even when ComfyUI rejects.
    */
   private async submitInternal(args: {
     shotId: string;
@@ -621,11 +622,11 @@ export class GenerationEngine {
         `Verify the shot id with { tool: 'shot', action: 'get' }`,
       );
     }
-    // Pivot Phase C: validation is provider-routed. ComfyUI validates node-graph
+    // Validation is provider-routed. ComfyUI validates node-graph
     // format; other backends validate their own request shape.
     provider.validateRequest?.(args.workflowJson);
 
-    // SEC-02 byte cap, for EVERY provider.
+    // Request byte cap, for EVERY provider.
     //
     // The cap was documented as universal ("enforced in the engine-layer
     // workflow-format check so future REST adapters inherit the same guard")
@@ -645,7 +646,7 @@ export class GenerationEngine {
       );
     }
 
-    // D-PROV-33 (LANDMINE #8): lineage written at INSERT time, not via follow-up
+    // Lineage written at INSERT time, not via follow-up
     // UPDATE. A reader observing the row between INSERT and UPDATE would otherwise
     // briefly see `lineage_type: null` on a reproduce/iterate row.
     const lineage =
@@ -671,7 +672,7 @@ export class GenerationEngine {
       if (prior) throw duplicateSubmitError(prior);
     }
 
-    // Pivot Phase B: stamp the originating provider on the version row.
+    // Stamp the originating provider on the version row.
     const row = this.versions.insertVersion(
       args.shotId,
       args.notes,
@@ -680,7 +681,7 @@ export class GenerationEngine {
       fingerprint,
     );
 
-    // Submit-event provenance BEFORE HTTP so D-PROV-04 holds even if ComfyUI rejects.
+    // Submit-event provenance BEFORE HTTP so a record exists even if ComfyUI rejects.
     this.provenanceWriter.writeSubmitEvent(row.id, args.workflowJson);
 
     try {
@@ -789,10 +790,10 @@ export class GenerationEngine {
   }
 
   /**
-   * Fresh-fetch for non-terminal rows; cached for terminal rows (D-GEN-31).
-   * Enforces 10-minute timeout before network call (D-GEN-25). On `completed`
+   * Fresh-fetch for non-terminal rows; cached for terminal rows.
+   * Enforces 10-minute timeout before network call. On `completed`
    * from the remote, runs downloadAndPersist — only flips to `completed` after
-   * every output lands on disk (D-GEN-32).
+   * every output lands on disk.
    */
   private async getGenerationStatusInner(
     versionId: string,
@@ -801,12 +802,12 @@ export class GenerationEngine {
     if (!row) {
       throw new TypedError('VERSION_NOT_FOUND', `Version '${versionId}' not found`);
     }
-    // Terminal states: return cached — no API roundtrip (D-GEN-31).
+    // Terminal states: return cached — no API roundtrip.
     if (row.status === 'completed' || row.status === 'failed') {
       return { entity: row, breadcrumb: this.breadcrumb.resolve('version', row.id) };
     }
-    // Timeout check (D-GEN-25) — runs BEFORE any network call so a stuck backend
-    // cannot hold the row hostage. PROVIDER-AWARE (routing review): the engine
+    // Timeout check — runs BEFORE any network call so a stuck backend
+    // cannot hold the row hostage. PROVIDER-AWARE: the engine
     // default (10 min) was sized for image jobs; a long-running video backend
     // (BytePlus/Seedance) declares a larger generationTimeoutMs on its adapter.
     // Best-effort lookup only — an unconfigured provider falls back to the
@@ -853,7 +854,7 @@ export class GenerationEngine {
     if (mapped === 'completed') {
       await this.downloadAndPersist(row, remote.outputs ?? []);
     } else if (mapped === 'failed') {
-      // A FAILED or CANCELLED remote job. DEMO-02: flattenComfyError handles
+      // A FAILED or CANCELLED remote job. flattenComfyError handles
       // node_errors + string + fallback. PROVIDER-NEUTRAL: stamp the producing
       // provider's own failure code (a cancelled Replicate/FAL/BytePlus/Google
       // job no longer masquerades as COMFYUI_API_ERROR). The recovery poller
@@ -871,9 +872,9 @@ export class GenerationEngine {
   }
 
   /**
-   * Re-submit a completed version's resolved prompt blob verbatim (PROV-05).
-   * New version gets parent_version_id + lineage_type='reproduce' at INSERT
-   * (D-PROV-33). Warnings array flags drift-detection limits (D-PROV-28) —
+   * Re-submit a completed version's resolved prompt blob verbatim (reproduce).
+   * New version gets parent_version_id + lineage_type='reproduce' at INSERT.
+   * Warnings array flags drift-detection limits —
    * ALWAYS present (empty array permitted).
    */
   async reproduceVersion(
@@ -968,7 +969,7 @@ export class GenerationEngine {
       providerId: sourceProvider.id,
     });
 
-    // Phase 12 — DEMO-03 (D-CTX-5). Persist warnings on the new version row so
+    // Persist warnings on the new version row so
     // version.diff can read them at any time without re-deriving from a
     // partner-API response that may no longer exist. Empty arrays still
     // persisted as '[]' so the read path can distinguish "no warnings
@@ -983,7 +984,7 @@ export class GenerationEngine {
   }
 
   /**
-   * Pivot enhancement #2 — reproduce for 'request-replay' providers (URL backends
+   * Reproduce for 'request-replay' providers (URL backends
    * like Replicate that have no embedded prompt blob). The neutral reproduce is a
    * re-submit of the ORIGINAL request recorded on the submit event; submitInternal
    * re-runs the provider's validateRequest + stamps lineage='reproduce'. A
@@ -1034,10 +1035,10 @@ export class GenerationEngine {
   }
 
   /**
-   * Iterate from a source version with node-scoped overrides / seed shortcut (PROV-06).
-   * From 'completed' sources uses prompt_json (D-PROV-13); from 'failed' uses
-   * workflow_json (D-PROV-24). Rejects submitted/running (D-PROV-25). Merged blob
-   * re-validated via validateWorkflowFormat (D-PROV-23). Lineage set at INSERT.
+   * Iterate from a source version with node-scoped overrides / seed shortcut.
+   * From 'completed' sources uses prompt_json; from 'failed' uses
+   * workflow_json. Rejects submitted/running sources. Merged blob
+   * re-validated via validateWorkflowFormat. Lineage set at INSERT.
    */
   async iterateFromVersion(
     sourceVersionId: string,
@@ -1080,7 +1081,7 @@ export class GenerationEngine {
       }
       baseBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;
     } else if (source.status === 'failed') {
-      // D-PROV-24: iterate from failed uses authored workflow.
+      // Iterate from failed uses the authored workflow.
       const submitEvent = this.provenanceRepo.getSubmitEvent(sourceVersionId);
       if (!submitEvent || submitEvent.workflow_json == null) {
         throw new TypedError(
@@ -1091,7 +1092,7 @@ export class GenerationEngine {
       }
       baseBlob = JSON.parse(submitEvent.workflow_json) as Record<string, unknown>;
     } else {
-      // D-PROV-25: submitted/running → block.
+      // Submitted/running sources → block.
       throw new TypedError(
         'VERSION_NOT_COMPLETED',
         `Version '${sourceVersionId}' is in '${source.status}' — cannot iterate`,
@@ -1106,7 +1107,7 @@ export class GenerationEngine {
     if (overrides !== undefined) {
       mergedBlob = applyOverrides(mergedBlob, overrides);
     }
-    // D-PROV-23: merged blob must still be API-format-valid.
+    // Merged blob must still be API-format-valid.
     validateWorkflowFormat(mergedBlob);
 
     return this.submitInternal({
@@ -1122,7 +1123,7 @@ export class GenerationEngine {
     });
   }
 
-  /** Map ComfyUI status strings onto the Phase 2 state machine (D-GEN-18). */
+  /** Map ComfyUI status strings onto the version state machine. */
   private mapState(
     s: StatusResponse['status'],
   ): 'running' | 'completed' | 'failed' | 'pending' {
@@ -1133,10 +1134,10 @@ export class GenerationEngine {
   }
 
   /**
-   * Download every output to disk with a 3-attempt retry per file (D-GEN-36).
-   * Only flips the version to 'completed' after all files land (D-GEN-32). On
+   * Download every output to disk with a 3-attempt retry per file.
+   * Only flips the version to 'completed' after all files land. On
    * hopeless download, marks failed with DOWNLOAD_FAILED; previously-downloaded
-   * files remain as debug artefacts (D-GEN-36).
+   * files remain as debug artefacts.
    */
   private async downloadAndPersist(row: Version, outputs: ComfyOutput[]): Promise<void> {
     // Multi-provider routing: download via the provider that produced the row
@@ -1233,10 +1234,10 @@ export class GenerationEngine {
         this.versions.markFailedAtomic(row.id, 'DOWNLOAD_FAILED', msg, () =>
           this.provenanceWriter.writeFailedEvent(row.id, 'DOWNLOAD_FAILED', msg),
         );
-        return; // subsequent outputs intentionally left for debug/audit per D-GEN-36
+        return; // subsequent outputs intentionally left on disk for debug/audit
       }
     }
-    // D-PROV-05 / D-PROV-03: fetch the resolved prompt blob from the first
+    // Fetch the resolved prompt blob from the first
     // downloaded PNG output and emit the completed provenance event BEFORE
     // markCompleted. Null prompt_json is tolerated — PROVENANCE_UNAVAILABLE
     // surfaces later when the agent tries reproduce/iterate.
@@ -1248,7 +1249,7 @@ export class GenerationEngine {
     if (firstPngPath) {
       promptBlob = await provider.fetchResolvedPrompt(firstPngPath);
     }
-    // Pivot #2a — record neutral provenance for providers that describe it (URL
+    // Record neutral provenance for providers that describe it (URL
     // backends). Built from the ORIGINAL request on the submit event; ComfyUI omits
     // describeProvenance and keeps prompt_json as the source of truth (neutral null).
     // Best-effort: a corrupt/absent request never breaks the completion write.
@@ -1326,7 +1327,7 @@ export class GenerationEngine {
       );
       return;
     }
-    // Phase 13 — PROV-V-03 (criterion #4). Fire the fingerprint hook AFTER
+    // Model fingerprinting: fire the fingerprint hook AFTER
     // the synchronous completion writes return. The receiver
     // (Engine.fingerprintModelsForVersion via the bound callback in
     // pipeline.ts) wraps async work in `void X.catch(...)` so this call
@@ -1348,7 +1349,7 @@ export class GenerationEngine {
   }
 
   /**
-   * On-start recovery poller (D-GEN-28, D-GEN-29). For every pending row,
+   * On-start recovery poller. For every pending row,
    * spawns an independent async driver that uses createBackoffIterator delays.
    * One AbortController per row, stored in `pollers` for stop() teardown.
    *

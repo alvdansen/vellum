@@ -15,7 +15,7 @@ import { TypedError } from '../engine/errors.js';
 type Db = BetterSQLite3Database<typeof schema>;
 
 /**
- * Phase 14 fix MR-02: bound the manifest_signed event scan so a long-lived
+ * Bound the manifest_signed event scan so a long-lived
  * version with many signed/skipped retries can't push the lookup into O(N)
  * territory. The newest-first ORDER BY timestamp DESC means the latest
  * matching event is overwhelmingly within the first 1-2 rows; 50 is the
@@ -25,7 +25,7 @@ type Db = BetterSQLite3Database<typeof schema>;
 export const MANIFEST_SIGNED_LOOKUP_LIMIT = 50;
 
 /**
- * Phase 19 (SUM-05) — bound the summary_generated event scan analogously
+ * Bound the summary_generated event scan analogously
  * to MANIFEST_SIGNED_LOOKUP_LIMIT. The newest-first ORDER BY timestamp DESC
  * means the latest matching cache-key tuple lives near the head; 50 is
  * the pathological-budget ceiling. Exported for tests so a regression that
@@ -44,8 +44,8 @@ export const COST_RECORDED_LOOKUP_LIMIT = 50;
 
 /**
  * Detect SQLite unique-constraint violations. Duplicated verbatim from
- * version-repo.ts and hierarchy-repo.ts (see 02-PATTERNS.md — intentional
- * duplication keeps repo files independent with no cross-repo coupling).
+ * version-repo.ts and hierarchy-repo.ts — intentional
+ * duplication keeps repo files independent with no cross-repo coupling.
  */
 function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: string; message?: string } | null;
@@ -59,7 +59,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
- * Append-only provenance event store (D-PROV-01, D-PROV-03).
+ * Append-only provenance event store.
  *
  * Structural invariant: this class has NO update/delete methods. The
  * architecture-purity test enforces it with a source-text scan of this
@@ -76,34 +76,34 @@ export type ProvenanceCompletedPayload = {
   seed: number | null;
   models_json: string;
   outputs_json: string;
-  // Pivot Phase B/D — neutral, provider-agnostic provenance for backends with no
+  // Neutral, provider-agnostic provenance for backends with no
   // ComfyUI prompt graph (Replicate/FAL/…) and for externally-registered outputs.
   // Optional; omitted ⇒ NULL (legacy/ComfyUI completed events).
   generation_request_json?: string | null;
   generation_result_json?: string | null;
 };
 export type ProvenanceFailedPayload = { error_code: string; error_message: string };
-/** Phase 13 — PROV-V-03. Sibling event written by the background fingerprinter
+/** Sibling event written by the background fingerprinter
  *  AFTER the 'completed' event. Carries fingerprinted ModelRef[] (with
  *  `model_hash` populated on success or `model_hash_unavailable` on
  *  unreachable / unreadable). Append-only: never updates the original
  *  'completed' event. */
 export type ProvenanceModelsFingerprintedPayload = { models_json: string };
 
-/** Phase 14 — PROV-V-01. Sibling event written by Engine.signOutput AFTER
+/** Sibling event written by Engine.signOutput AFTER
  *  the 'completed' event + 'models_fingerprinted'. Carries the JSON-encoded
  *  ManifestSignedPayloadFields in a nullable manifest_signed_json column
- *  (migration 0006). Append-only: never updates earlier rows. v1.1 scope
- *  (Concern #2): NO `sidecar` field. */
+ *  (migration 0006). Append-only: never updates earlier rows. Deliberately
+ *  NO `sidecar` field. */
 export type ProvenanceManifestSignedRowPayload = {
   manifest_signed_json: string;
 };
 
-/** Phase 19 — SUM-05. Sibling event written by Engine.summarizeVersion AFTER
+/** Sibling event written by Engine.summarizeVersion AFTER
  *  a successful LIVE Anthropic call + validation pass. Carries the
  *  JSON-encoded SummaryGeneratedPayloadFields in a nullable
  *  summary_generated_json column (migration 0007). Append-only — fallback
- *  paths NEVER write a row (D-VAL-2). */
+ *  paths NEVER write a row. */
 export type ProvenanceSummaryGeneratedRowPayload = {
   summary_generated_json: string;
 };
@@ -136,7 +136,7 @@ export class ProvenanceRepo {
       workflow_json: payload.event_type === 'submitted' ? payload.workflow_json : null,
       prompt_json: payload.event_type === 'completed' ? payload.prompt_json : null,
       seed: payload.event_type === 'completed' ? payload.seed : null,
-      // Phase 13 — both 'completed' and 'models_fingerprinted' carry models_json.
+      // Both 'completed' and 'models_fingerprinted' carry models_json.
       // Discriminated-union narrowing keeps strict TS happy while letting the
       // sibling fingerprinted row reuse the existing models_json column.
       models_json:
@@ -146,15 +146,15 @@ export class ProvenanceRepo {
       outputs_json: payload.event_type === 'completed' ? payload.outputs_json : null,
       error_code: payload.event_type === 'failed' ? payload.error_code : null,
       error_message: payload.event_type === 'failed' ? payload.error_message : null,
-      // Phase 14 — PROV-V-01. The 'manifest_signed' event_type carries its
-      // payload in the new manifest_signed_json column (migration 0006).
+      // The 'manifest_signed' event_type carries its
+      // payload in the manifest_signed_json column (migration 0006).
       manifest_signed_json:
         payload.event_type === 'manifest_signed' ? payload.manifest_signed_json : null,
-      // Phase 19 — SUM-05. The 'summary_generated' event_type carries its
-      // payload in the new summary_generated_json column (migration 0007).
+      // The 'summary_generated' event_type carries its
+      // payload in the summary_generated_json column (migration 0007).
       summary_generated_json:
         payload.event_type === 'summary_generated' ? payload.summary_generated_json : null,
-      // Pivot Phase B/D — neutral provenance columns, populated only on 'completed'
+      // Neutral provenance columns, populated only on 'completed'
       // events that carry them (non-ComfyUI + externally-registered outputs).
       generation_request_json:
         payload.event_type === 'completed' ? (payload.generation_request_json ?? null) : null,
@@ -209,11 +209,11 @@ export class ProvenanceRepo {
     return rows[0] ?? null;
   }
 
-  /** Phase 13 — PROV-V-03. `appendModelsFingerprintedEvent` writes an
+  /** `appendModelsFingerprintedEvent` writes an
    *  append-only sibling event carrying the background-fingerprinted models.
    *  Caller (Engine.fingerprintModelsForVersion) guarantees idempotency by
    *  checking for an existing event first. The original 'completed' event
-   *  row stays byte-identical (T-13-07 mitigation). */
+   *  row stays byte-identical. */
   appendModelsFingerprintedEvent(versionId: string, models: ModelRef[]): ProvenanceEvent {
     return this.insertEvent(versionId, {
       event_type: 'models_fingerprinted',
@@ -221,12 +221,12 @@ export class ProvenanceRepo {
     });
   }
 
-  /** Phase 13 — PROV-V-03. `getLatestFingerprints` returns the latest
+  /** `getLatestFingerprints` returns the latest
    *  fingerprinted ModelRef[] for a version, falling back to the latest
    *  'completed' event's models_json when the fingerprinter has not yet run.
    *  Returns null when neither source yields a parseable array (legacy /
-   *  malformed / pre-Phase-13 rows). T-13-12 mitigation: catches JSON.parse
-   *  / non-array errors so downstream consumers (Phase 14 C2PA manifest) get
+   *  malformed / pre-fingerprinting rows). Catches JSON.parse
+   *  / non-array errors so downstream consumers (the C2PA manifest) get
    *  a clean null signal rather than a partially-parsed object. */
   getLatestFingerprints(versionId: string): ModelRef[] | null {
     const fingerprinted = this.db
@@ -249,14 +249,14 @@ export class ProvenanceRepo {
     }
   }
 
-  /** Phase 14 — PROV-V-01. `appendManifestSignedEvent` writes an
+  /** `appendManifestSignedEvent` writes an
    *  append-only sibling event carrying the outcome of an Engine.signOutput
-   *  call. Mirrors Phase 13's appendModelsFingerprintedEvent shape exactly.
-   *  Uses the new manifest_signed_json column (migration 0006). NEVER carries
+   *  call. Mirrors appendModelsFingerprintedEvent shape exactly.
+   *  Uses the manifest_signed_json column (migration 0006). NEVER carries
    *  key material — only the cert subject summary derived from the cert's
-   *  public DN (Plan 14-02 loadSigner with RFC4514-safe parser).
+   *  public DN (loadSigner's RFC4514-safe parser).
    *
-   *  v1.1 scope (Concern #2): NO `sidecar` field — c2pa-node v0.5.26 has no
+   *  Deliberately NO `sidecar` field — c2pa-node v0.5.26 has no
    *  sidecar API. EXR/PSD surface as signed=false / status_reason='unsupported_format'
    *  with the original file untouched on disk. */
   appendManifestSignedEvent(
@@ -270,20 +270,20 @@ export class ProvenanceRepo {
   }
 
   /**
-   * Phase 16 / Plan 16-02 (D-CTX-5) — sibling-row helper for redacted writes.
+   * Sibling-row helper for redacted writes.
    *
    * Behaviorally identical to appendManifestSignedEvent: serialises the payload
    * via JSON.stringify into manifest_signed_json. The DIFFERENCE is the
    * payload shape carries redacted=true + redacted_fields[]. Centralising
    * the helper lets test harnesses + Engine.redactManifestForVersion share
-   * one writer; pre-Phase-16 callers continue using appendManifestSignedEvent
+   * one writer; pre-existing callers continue using appendManifestSignedEvent
    * unchanged (additive surface, no migration).
    *
    * Append-only invariant: NEVER updates the original (un-redacted) row.
    * The redacted row is a SIBLING with later timestamp; getLatestManifestSignedEvent
    * returns the redacted row first (DESC by timestamp).
    *
-   * C-02 fix: the redacted=true GUARD runs BEFORE insertEvent. payload.redacted !== true
+   * The redacted=true GUARD runs BEFORE insertEvent. payload.redacted !== true
    * REJECTS pre-commit — the row is never inserted, the caller's atomic-write
    * disk overwrite has not corrupted append-only state.
    */
@@ -291,7 +291,7 @@ export class ProvenanceRepo {
     versionId: string,
     payload: ManifestSignedPayloadFields,
   ): ProvenanceEvent {
-    // Defensive (C-02): assert the caller actually flagged redacted=true.
+    // Defensive: assert the caller actually flagged redacted=true.
     // Guard runs BEFORE insertEvent so on misuse no row is committed.
     if (payload.redacted !== true) {
       throw new Error(
@@ -304,15 +304,15 @@ export class ProvenanceRepo {
     });
   }
 
-  /** Phase 14 — PROV-V-01. Returns the most recent manifest_signed event for
+  /** Returns the most recent manifest_signed event for
    *  a version+filename pair, or null. Used by Engine.signOutput's idempotency
-   *  guard (Concern #7) and by the HTTP layer's X-C2PA-Signing-Status header
-   *  (Plan 14-04). Filters in-memory rather than via JSON path expressions —
+   *  guard and by the HTTP layer's X-C2PA-Signing-Status header.
+   *  Filters in-memory rather than via JSON path expressions —
    *  the per-version event count is small (a handful of events per version),
    *  so a full scan-and-decode is cheap and avoids relying on SQLite's
    *  json_extract availability across builds.
    *
-   *  Phase 14 fix MR-02: bounded scan via LIMIT MANIFEST_SIGNED_LOOKUP_LIMIT.
+   *  Bounded scan via LIMIT MANIFEST_SIGNED_LOOKUP_LIMIT.
    *  The existing `idx_provenance_version_time` (version_id, timestamp) index
    *  covers the WHERE + ORDER BY, and SQLite walks the index in reverse for
    *  the DESC order. The newest-first ordering means the matching filename is
@@ -340,8 +340,8 @@ export class ProvenanceRepo {
         const parsed = JSON.parse(row.manifest_signed_json) as ManifestSignedPayloadFields;
         if (parsed.filename === filename) return parsed;
       } catch {
-        // Malformed payload — skip and keep walking newer-to-older. T-13-12
-        // mitigation parity: callers see a clean null signal rather than a
+        // Malformed payload — skip and keep walking newer-to-older, matching
+        // getLatestFingerprints: callers see a clean null signal rather than a
         // partially-parsed object.
         continue;
       }
@@ -350,15 +350,15 @@ export class ProvenanceRepo {
   }
 
   /**
-   * Phase 19 — SUM-05. appendSummaryGeneratedEvent writes an
+   * appendSummaryGeneratedEvent writes an
    * append-only sibling event carrying the verified-good Anthropic LLM
-   * output. Mirrors Phase 14's appendManifestSignedEvent shape exactly.
+   * output. Mirrors appendManifestSignedEvent shape exactly.
    *
    * Cache-key composite (manifest_sha256, template_version, model_id) lives
    * INSIDE the JSON payload — readers compose the lookup at the engine layer.
    *
    * NEVER carries raw API key material — the engine's flattenAnthropicError
-   * (Plan 19-04) + sanitizer multi-encoding leak scan (Plan 19-02) run BEFORE
+   * + the sanitizer's multi-encoding leak scan run BEFORE
    * this writer.
    */
   appendSummaryGeneratedEvent(
@@ -372,15 +372,15 @@ export class ProvenanceRepo {
   }
 
   /**
-   * Phase 19 — SUM-05. Bounded-scan composite-key lookup.
-   * LIMIT-50 + in-memory JSON filter mirrors getLatestManifestSignedEvent at
-   * lines 265-291 above. Returns the latest 'summary_generated' row for
+   * Bounded-scan composite-key lookup.
+   * LIMIT-50 + in-memory JSON filter mirrors getLatestManifestSignedEvent
+   * above. Returns the latest 'summary_generated' row for
    * (versionId, manifestSha256, templateVersion, modelId) — null when no
    * matching row exists within the bounded scan.
    *
-   * Cache-key invariant: Phase 16 redact mutates manifest_sha256, so a
+   * Cache-key invariant: redaction mutates manifest_sha256, so a
    * post-redact lookup misses the pre-redact cache row "for free" without
-   * explicit invalidation logic. Plan 19-04 composes the lookup tuple at the
+   * explicit invalidation logic. The lookup tuple is composed at the
    * engine boundary (manifest_sha256 from getLatestManifestSignedEvent;
    * template_version from src/engine/summary/template.ts; model_id from
    * SUMMARY_MODEL_ID).
@@ -431,7 +431,7 @@ export class ProvenanceRepo {
         }
         continue;
       } catch {
-        // Malformed payload — keep walking newer-to-older (T-13-12 parity).
+        // Malformed payload — keep walking newer-to-older (getLatestFingerprints parity).
         continue;
       }
     }

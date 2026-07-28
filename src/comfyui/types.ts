@@ -1,4 +1,4 @@
-// Pure type definitions for ComfyUI Cloud API shapes used in Phase 2.
+// Pure type definitions for ComfyUI Cloud API shapes.
 // ZERO imports — canonical type source for src/comfyui/**.
 
 export interface SubmitRequest {
@@ -8,7 +8,7 @@ export interface SubmitRequest {
 
 export interface SubmitResponse {
   prompt_id: string;
-  // other fields from ComfyUI ignored for Phase 2
+  // other fields from ComfyUI intentionally ignored
 }
 
 export interface ComfyOutput {

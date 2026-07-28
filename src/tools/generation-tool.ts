@@ -13,15 +13,15 @@ import {
 } from './shape.js';
 
 /**
- * D-GEN-04: submit input — action + shot_id + workflow_json + optional notes.
+ * Submit input — action + shot_id + workflow_json + optional notes.
  * workflow_json is typed as a plain record (any JSON object) because format
- * validation lives in the engine (D-GEN-23 — so future REST adapters inherit
+ * validation lives in the engine (so future REST adapters inherit
  * the same guard).
  */
 const SubmitInput = z.object({
   action: z.literal('submit'),
   shot_id: z.string().min(1).max(MAX_ID_LENGTH),
-  // SEC-02: cap node count at the tool boundary. Byte-size cap is enforced
+  // Cap node count at the tool boundary. Byte-size cap is enforced
   // in the engine-layer workflow-format check so future REST adapters inherit
   // the same guard.
   workflow_json: z
@@ -41,8 +41,8 @@ const SubmitInput = z.object({
 }).strict();
 
 /**
- * D-GEN-06: status input — action + version_id (the stable handle returned
- * from submit). No job_id lookup path in Phase 2.
+ * Status input — action + version_id (the stable handle returned
+ * from submit). No job_id lookup path.
  */
 const StatusInput = z.object({
   action: z.literal('status'),
@@ -50,9 +50,10 @@ const StatusInput = z.object({
 }).strict();
 
 /**
- * D-PROV-12: reproduce input — action + source version_id + optional notes.
+ * Reproduce input — action + source version_id + optional notes.
  * Response is shaped as the existing submitted entity envelope PLUS the
- * ALWAYS-PRESENT `reproduction_warnings: string[]` field (D-PROV-28 honesty).
+ * ALWAYS-PRESENT `reproduction_warnings: string[]` field (honest disclosure
+ * of replay limits).
  */
 const ReproduceInput = z.object({
   action: z.literal('reproduce'),
@@ -61,9 +62,9 @@ const ReproduceInput = z.object({
 }).strict();
 
 /**
- * D-PROV-13, D-PROV-21: iterate input — action + source version_id +
+ * Iterate input — action + source version_id +
  * node-scoped overrides (deep-merged at the inputs level by the engine)
- * + optional seed convenience shortcut (D-PROV-22 — resolved to KSampler.inputs.seed
+ * + optional seed convenience shortcut (resolved to KSampler.inputs.seed
  * by the engine; 0/>1 KSampler surfaces as ITERATE_INVALID_PATCH).
  *
  * NOT a JSON Patch. The overrides shape is `Record<nodeId, { inputs?, class_type? }>`.
@@ -86,7 +87,7 @@ const IterateInput = z.object({
 }).strict();
 
 /**
- * Pivot Phase D — register input. An external agent or provider webhook reports a
+ * Register input. An external agent or provider webhook reports a
  * finished asset (produced OUTSIDE this server — ComfyUI, Replicate, FAL, Scenario,
  * Layer, or a sibling Claude Code workflow) into a shot. Each output is a public
  * https URL fetched under the ingest trust boundary (host allowlist + size cap).
@@ -190,28 +191,29 @@ const GenerationInputSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * Render the version entity for tool responses — adds `version_label` (D-GEN-17).
+ * Render the version entity for tool responses — adds `version_label`.
  * Surfaces progress/error as stable shape keys so the agent sees a predictable
- * payload even when the engine stored null (D-GEN-07).
+ * payload even when the engine stored null.
  *
- * IAC-01: parse `outputs_json` into a typed `outputs: StoredOutput[]` and drop
- * the stringified column from the response. CLAUDE.md explicitly forbids raw
- * JSON dumps to agents — the agent should see typed data, not a column name.
+ * Parse `outputs_json` into a typed `outputs: StoredOutput[]` and drop
+ * the stringified column from the response. Raw JSON dumps to agents are
+ * forbidden — the agent should see typed data, not a column name.
  * Malformed JSON is logged and surfaced as an empty array so an agent never
  * sees the tool crash on corrupt persistence.
  *
- * IAC-02: the canonical error alias is `error` (parsed from
+ * The canonical error alias is `error` (parsed from
  * entity.error_message). `error_message` is destructured out of the spread so
  * the response carries exactly one error field. Drift is no longer possible.
  */
 function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb }) {
   const { entity, breadcrumb } = result;
-  // IAC-02: destructure error_message and outputs_json OUT of the spread so
+  // Destructure error_message and outputs_json OUT of the spread so
   // they do not leak through into the response.
   const { error_message, outputs_json, ...rest } = entity;
 
-  // IAC-01: parse outputs_json → typed array. Malformed JSON is logged to
-  // stderr (never stdout — D-21) and surfaces as an empty array.
+  // Parse outputs_json → typed array. Malformed JSON is logged to
+  // stderr (never stdout — stdout is the MCP transport) and surfaces as an
+  // empty array.
   let outputs: StoredOutput[] = [];
   if (outputs_json != null && outputs_json.length > 0) {
     try {
@@ -234,7 +236,7 @@ function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb })
   const shaped = {
     ...rest,
     version_label: versionLabel(entity.version_number),
-    // Phase 2 stable shape: progress is not persisted yet (D-GEN-07); null for now.
+    // Stable shape: progress is not persisted yet; null for now.
     progress: null as number | null,
     error: error_message ?? null,
     outputs,
@@ -247,12 +249,12 @@ function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb })
 }
 
 /**
- * Register the `generation` MCP tool (D-GEN-01, D-GEN-02, GEN-01..GEN-03, GEN-05, GEN-06).
+ * Register the `generation` MCP tool.
  *
- * Thin Zod-validated delegate (D-33). Actions: submit, status. Breadcrumb
- * injected on every response (D-22 Phase 1 invariant, extended to version leaf).
+ * Thin Zod-validated delegate. Actions: submit, status. Breadcrumb
+ * injected on every response (envelope invariant, extended to version leaf).
  *
- * RT-01/RT-02: raw ZodRawShape exposed to MCP, discriminated union
+ * Raw ZodRawShape exposed to MCP, discriminated union
  * re-validated inside the handler so tools/list carries real properties AND
  * the handler's ZodError catch branch is reachable.
  *
@@ -261,8 +263,8 @@ function shapeVersionEntity(result: { entity: Version; breadcrumb: Breadcrumb })
  *    with the engine's own format validation).
  *  - Engine-thrown TypedError (INVALID_WORKFLOW_FORMAT, SHOT_NOT_FOUND,
  *    COMFYUI_CREDENTIALS_MISSING, VERSION_NOT_FOUND, COMFYUI_API_ERROR, ...)
- *    → flows through toolError unchanged (D-28).
- *  - Anything else → toolError re-wraps as INVALID_INPUT (D-13, D-32).
+ *    → flows through toolError unchanged.
+ *  - Anything else → toolError re-wraps as INVALID_INPUT.
  */
 /**
  * Shape a proposal for tool responses: parse request_json into a typed
@@ -309,11 +311,11 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         "Dual error model: submit/status/reproduce/iterate return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, and the producing provider's upstream code — COMFYUI_API_ERROR / REPLICATE_API_ERROR / FAL_API_ERROR / BYTEPLUS_API_ERROR / GOOGLE_API_ERROR, or the neutral PROVIDER_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found, version-not-completed, reproduce-blocked, iterate-invalid-patch). " +
         "reproduce replays what Vellum originally submitted: for comfyui-cloud that is the resolved prompt blob verbatim (byte-identical replay of the graph); for other providers it re-submits the recorded request parameters, and identical output is not guaranteed. Either way it returns a new version with lineage_type='reproduce' plus an always-present reproduction_warnings: string[] array disclosing any such limits (empty when none apply). " +
         "iterate is node-graph surgery (it needs a ComfyUI-produced source): it loads the source version's prompt_json (or workflow_json for failed sources), applies node-scoped overrides { '<nodeId>': { inputs?, class_type? } } and/or an optional seed shortcut (valid only when exactly one KSampler is present), re-validates the merged blob, and submits as a new version with lineage_type='iterate'.",
-      // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
+      // Raw ZodRawShape: SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `GenerationInputSchema.parse()` is the
-      // single source of truth for shape enforcement (RT-02).
+      // single source of truth for shape enforcement.
       inputSchema: z.object({
         action: z.enum(['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals', 'record_cost']),
         shot_id: z.string().optional(),
@@ -328,7 +330,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
           }),
         ).optional(),
         seed: z.number().int().optional(),
-        // Pivot Phase D — register (inbound output ingestion).
+        // register (inbound output ingestion).
         provider: z.string().optional(),
         outputs: z
           .array(
@@ -381,7 +383,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
             );
           case 'reproduce': {
             const result = await engine.reproduceVersion(input.version_id, input.notes);
-            // D-PROV-12 / D-PROV-28: reproduction_warnings is ALWAYS on the response.
+            // reproduction_warnings is ALWAYS on the response.
             // The spread precedes reproduction_warnings so the entity/breadcrumb
             // envelope stays at the top level exactly as submit/status return it.
             return toolOk({
@@ -476,7 +478,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
             });
           }
           case 'register':
-            // Pivot Phase D — inbound registration of an externally-produced output.
+            // Inbound registration of an externally-produced output.
             return toolOk(
               shapeVersionEntity(
                 await engine.registerExternalOutput({

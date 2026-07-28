@@ -33,8 +33,8 @@ function assertComparable(a: DiffSnapshot, b: DiffSnapshot): void {
     );
   }
   const notReady = (s: DiffSnapshot): boolean => {
-    // D-PROV-19: submitted/running has no usable blob; completed and failed both have at least workflow_json.
-    // Pivot #2a: a URL-provider version's neutral param bag is also diff-ready provenance.
+    // submitted/running has no usable blob; completed and failed both have at least workflow_json.
+    // A URL-provider version's neutral param bag is also diff-ready provenance.
     if (s.status === 'submitted' || s.status === 'running') return true;
     return s.workflow_json === null && s.prompt_json === null && s.neutral_params == null;
   };
@@ -132,9 +132,9 @@ function diffModels(a: ModelRef[] | null, b: ModelRef[] | null): ModelChange[] {
   for (const [nodeId, bRef] of bMap) {
     const aRef = aMap.get(nodeId);
     if (!aRef) continue; // added — surfaced via structural diff
-    // Phase 13: also fire on hash_unavailable transitions ("v1 had hash,
+    // Also fire on hash_unavailable transitions ("v1 had hash,
     // v2 unavailable" or "v1 unavailable, v2 hashed"). These are
-    // meaningful auditability signals — Phase 14's C2PA manifest cares.
+    // meaningful auditability signals — the C2PA manifest cares.
     const changed =
       aRef.model_name !== bRef.model_name ||
       aRef.model_hash !== bRef.model_hash ||
@@ -182,12 +182,12 @@ function diffMetadata(a: DiffSnapshot, b: DiffSnapshot): MetadataChange[] {
 }
 
 /**
- * D-PROV-15: structured + summarised diff. Pure, zero-IO.
- * Pre-conditions (D-PROV-19, D-PROV-20) throw TypedError with actionable hints.
+ * Structured + summarised diff. Pure, zero-IO.
+ * Pre-conditions throw TypedError with actionable hints.
  */
 export function diffVersions(input: DiffInput): DiffResponse {
   assertComparable(input.a, input.b);
-  // Routing (pivot #2a + #d). A ComfyUI version carries a resolved node graph
+  // Routing. A ComfyUI version carries a resolved node graph
   // (prompt_json, or workflow_json for a failed source); a URL-provider version
   // is params-only (a neutral bag from generation_result_json, no graph). A
   // completed ComfyUI version ALSO carries a derived neutral bag now (comfy-
@@ -233,7 +233,7 @@ export function diffVersions(input: DiffInput): DiffResponse {
 }
 
 /**
- * Pivot #2a — cross-provider diff for URL-provider versions. Compares the neutral
+ * Cross-provider diff for URL-provider versions. Compares the neutral
  * param bags ({ model_id, params }) via the provider-agnostic diffParams and maps
  * each leaf change into the ParamChange envelope (node_id '(request)', class_type
  * 'neutral', field = dot-path). Model/seed/workflow-structure are ComfyUI-graph
@@ -259,7 +259,7 @@ function diffNeutralVersions(a: DiffSnapshot, b: DiffSnapshot): DiffResponse {
 }
 
 /**
- * Phase 12 — DEMO-03 (D-CTX-4). Pure helper assembling the
+ * Pure helper assembling the
  * reproduction_divergence field from already-resolved hashes + warnings.
  * Pure: no I/O, no disk reads, no DB reads. The Engine facade is
  * responsible for resolving the inputs (computeOutputSha256 + reading
@@ -278,7 +278,7 @@ function diffNeutralVersions(a: DiffSnapshot, b: DiffSnapshot): DiffResponse {
  *   - either hash is null (output missing — cannot compare bytes), or
  *   - hashes are equal.
  *
- * D-CTX-4 / criterion #4: a reproduce-lineage version whose bytes ARE
+ * A reproduce-lineage version whose bytes ARE
  * bit-identical to its parent AND has no warnings yields null here, so
  * the dashboard renders no pill + no comparison block.
  */

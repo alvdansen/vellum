@@ -1,5 +1,5 @@
 /**
- * Phase 17 — copy strings exported as named-export constants for verbatim
+ * Copy strings exported as named-export constants for verbatim
  * consumption by dashboard components.
  *
  * Centralizing copy strings here gives screen-reader users, designers, and
@@ -7,23 +7,22 @@
  * constants directly (no inline literals); tests assert verbatim equality
  * against the constant names.
  *
- * UI-SPEC §"Copywriting Contract" (lines 330-345) — Phase 17 introduces
- * 3 new copy strings; SIGNED_TOOLTIP + PREVIEW_UNAVAILABLE_PREFIX land here
- * as exported constants. The third string ('Output for ${label}') is a
+ * SIGNED_TOOLTIP + PREVIEW_UNAVAILABLE_PREFIX land here as exported
+ * constants. The related 'Output for ${label}' string is a
  * parameterized template at the call site — it remains a JSX literal in
  * Thumbnail.tsx because the version label varies per render.
  *
- * No emojis, no Unicode escapes — Phase 17 strings use literal characters
+ * No emojis, no Unicode escapes — copy strings use literal characters
  * (the middle dot in SIGNED_TOOLTIP is U+00B7 'MIDDLE DOT', the same
  * character used by the existing C2paBadge tone).
  */
 
 // ================================================================
-// Phase 17 / Plan 17-04 — copy strings (UI-SPEC §"Copywriting Contract")
+// C2PA shield + thumbnail fallback copy
 // ================================================================
 
 /**
- * C2PA shield tooltip — verbatim D-11 contract.
+ * C2PA shield tooltip — locked verbatim copy.
  *
  * Surfaces in two places per <C2paShield/> render:
  *   1. `aria-label` on the <svg> element (screen-reader announcement)
@@ -40,15 +39,14 @@ export const SIGNED_TOOLTIP = 'Signed · Verified provenance';
  *
  * The full alt becomes `${PREVIEW_UNAVAILABLE_PREFIX}${version.label}` —
  * e.g., `Preview unavailable for v003`. Mirrors the existing OUTPUT_UNAVAILABLE
- * error copy from Phase 5 (`Preview unavailable`); adds the version label so
- * screen-reader users have a referent. Matches D-07 unified-skeleton-on-failure
+ * error copy (`Preview unavailable`); adds the version label so
+ * screen-reader users have a referent. Matches the unified-skeleton-on-failure rule
  * by giving SR equivalent semantic info to what sighted users see.
  */
 export const PREVIEW_UNAVAILABLE_PREFIX = 'Preview unavailable for ';
 
 // ================================================================
-// Phase 18 / Plan 18-04 — sort-strip + dropdown + load-more copy
-// (UI-SPEC §"Copywriting Contract" lines 480-545)
+// Sort-strip + dropdown + load-more copy
 // ================================================================
 
 /**
@@ -90,7 +88,7 @@ export const LOAD_MORE_RETRY_LABEL = 'Retry';
  * <LoadMoreButton/> error-state copy prefix for HTTP / server failures —
  * e.g., a 4xx/5xx envelope from /api/shots/:id/versions?cursor=… The full
  * pill copy becomes `${LOAD_MORE_ERROR_PREFIX_FAILED} · Retry` with
- * U+00B7 middle dot (matches Phase 17 SIGNED_TOOLTIP separator tone).
+ * U+00B7 middle dot (matches the SIGNED_TOOLTIP separator tone).
  */
 export const LOAD_MORE_ERROR_PREFIX_FAILED = 'Failed to load';
 
@@ -111,8 +109,7 @@ export const VERSIONS_LOAD_FAILED_SUFFIX = ' — versions did not load.';
 export const VERSIONS_LOAD_RETRY = 'Retry';
 
 // ================================================================
-// Phase 19 / Plan 19-06 — AI conversational summary copy
-// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+// AI conversational summary copy (verbatim named-constant exports)
 // ================================================================
 
 /** Section heading rendered above the summary card body. */
@@ -120,16 +117,16 @@ export const SUMMARY_HEADING = 'SUMMARY';
 
 /**
  * Existing PROVENANCE heading — preserved verbatim when the standalone
- * Provenance section is wrapped in a <details> disclosure (SUM-07). Kept as
+ * Provenance section is wrapped in a <details> disclosure. Kept as
  * a named constant so future planners have one source of truth for the label.
  */
 export const PROVENANCE_HEADING = 'PROVENANCE';
 
 /**
- * Disclosure toggle text — matches REQUIREMENTS.md SUM-07 verbatim.
+ * Disclosure toggle text — locked verbatim copy.
  *
- * The literal string flows from REQUIREMENTS.md SUM-07 acceptance criterion
- * ("Show provenance details") through UI-SPEC §"Copywriting Contract" → here.
+ * The literal string ("Show provenance details") is an accepted
+ * requirement phrase and must not drift.
  */
 export const SUMMARY_DISCLOSURE_TOGGLE = 'Show provenance details';
 
@@ -138,16 +135,16 @@ export const REGENERATE_BUTTON_LABEL = 'Regenerate';
 
 /**
  * Regenerate button label during a fetch (initial mount OR active regenerate).
- * Uses U+2026 horizontal-ellipsis verbatim — matches the Phase 18
+ * Uses U+2026 horizontal-ellipsis verbatim — matches the
  * LOAD_MORE_LOADING_LABEL tone.
  */
 export const REGENERATE_BUTTON_FETCHING = 'Regenerating…';
 
-/** Visible label inside the WarningPill for the SUM-06 fallback marker. */
+/** Visible label inside the WarningPill for the summary-fallback marker. */
 export const WARNING_PILL_FALLBACK_LABEL = 'AI summary unavailable';
 
 /**
- * Long-form ARIA label for the WarningPill — full SUM-06 disclosure for
+ * Long-form ARIA label for the WarningPill — full fallback disclosure for
  * screen-reader users (sighted users see only the WARNING_PILL_FALLBACK_LABEL).
  */
 export const WARNING_PILL_FALLBACK_ARIA =
@@ -160,17 +157,15 @@ export const WARNING_PILL_FALLBACK_ARIA =
 export const SUMMARY_ERROR_FALLBACK = '(AI summary unavailable; please retry.)';
 
 /**
- * First-use disclosure — D-PRIV-2 informed-consent surface. Renders as a
+ * First-use disclosure — informed-consent surface. Renders as a
  * muted note ABOVE the first-ever summary body; auto-dismissed on first
- * Regenerate click or first explicit dismissal (per UI-SPEC interaction
- * contract).
+ * Regenerate click or first explicit dismissal.
  */
 export const SUMMARY_FIRST_USE_DISCLOSURE = 'AI summary uses your prompt text';
 
 /**
  * localStorage key for "user has dismissed first-use disclosure". Namespaced
  * (`vellum:`) to avoid cross-app collisions on shared origins.
- * D-PRIV-2 + UI-SPEC.
  */
 export const SUMMARY_FIRST_USE_LOCALSTORAGE_KEY =
   'vellum:summary:first-use-acked';
@@ -193,16 +188,15 @@ export function regenerateButtonCooldownLabel(cooldownSeconds: number): string {
 }
 
 // ================================================================
-// Phase 21 — shot grid copy
-// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+// Shot grid copy (verbatim named-constant exports)
 //
-// All Phase 21 surfaces — filter bar, sequence header, shot card, time
+// All shot-grid surfaces — filter bar, sequence header, shot card, time
 // helper, empty/loading/error states, TreeSidebar grid icon, header
 // home button — import from this block. Zero inline string literals in
 // component files (architectural rule).
 // ================================================================
 
-// ---------- Filter bar (D-11, UI-SPEC lines 173-185) ----------
+// ---------- Filter bar ----------
 
 /** Filter bar prefix label rendered with `.label-uppercase` utility. */
 export const FILTER_BAR_STATUS_LABEL = 'Status';
@@ -215,7 +209,7 @@ export const FILTER_PILL_WIP = 'wip';
 export const FILTER_PILL_PENDING_REVIEW = 'pending-review';
 export const FILTER_PILL_APPROVED = 'approved';
 export const FILTER_PILL_ON_HOLD = 'on-hold';
-/** Only appears in the bar when `showOmitted === true` (D-07). */
+/** Only appears in the bar when `showOmitted === true`. */
 export const FILTER_PILL_OMIT = 'omit';
 
 /** "Show omitted" toggle visible label. Native <button role="switch" aria-checked>. */
@@ -224,7 +218,7 @@ export const SHOW_OMITTED_TOGGLE_LABEL = 'Show omitted';
 /** "Show omitted" toggle ARIA label — full-sentence verb form for SR users. */
 export const SHOW_OMITTED_TOGGLE_ARIA = 'Toggle omitted shots';
 
-// ---------- Sequence header (D-15, UI-SPEC lines 191-194) ----------
+// ---------- Sequence header ----------
 
 /** Sequence header chevron `aria-label` prefix when expanded. Caller concatenates sequence name. */
 export const SEQUENCE_HEADER_TOGGLE_ARIA_PREFIX_OPEN = 'Collapse ';
@@ -235,7 +229,7 @@ export const SEQUENCE_HEADER_TOGGLE_ARIA_PREFIX_CLOSED = 'Expand ';
 /** Aggregate counts mini-pill row region label prefix. Caller concatenates sequence name. */
 export const AGGREGATE_COUNTS_REGION_LABEL_PREFIX = 'Status counts for ';
 
-// ---------- Shot grid card (D-19, UI-SPEC lines 200-204) ----------
+// ---------- Shot grid card ----------
 
 /** ShotGridCard button `aria-label` prefix. Caller concatenates shot name. */
 export const SHOT_CARD_OPEN_ARIA_PREFIX = 'Open version drawer for ';
@@ -246,13 +240,13 @@ export const SHOT_CARD_VERSION_COUNT_SINGULAR = '1 version';
 /** Version-count plural suffix. Caller renders `${n}${SUFFIX}` when n !== 1. */
 export const SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX = ' versions';
 
-/** Copy shown when a shot has zero versions (D-19 disables click in this branch). */
+/** Copy shown when a shot has zero versions (click is disabled in this branch). */
 export const SHOT_CARD_NO_VERSIONS = 'No versions yet';
 
 /** Last-updated prefix — caller concatenates with `formatRelativeTime(epoch)`. */
 export const SHOT_CARD_LAST_UPDATED_PREFIX = 'Updated ';
 
-// ---------- Time helper (UI-SPEC lines 208-216) ----------
+// ---------- Time helper ----------
 
 /** Relative-time bucket: < 60s. Bare constant, no suffix. */
 export const TIME_JUST_NOW = 'just now';
@@ -269,10 +263,10 @@ export const TIME_DAYS_SUFFIX = 'd ago';
 /** Relative-time bucket: 1–3 weeks. */
 export const TIME_WEEKS_SUFFIX = 'w ago';
 
-/** Relative-time bucket: 1+ months (approx 30-day buckets, UI-SPEC-accepted). */
+/** Relative-time bucket: 1+ months (approx 30-day buckets — accepted imprecision). */
 export const TIME_MONTHS_SUFFIX = 'mo ago';
 
-// ---------- Empty / loading / error states (D-18, UI-SPEC lines 218-231) ----------
+// ---------- Empty / loading / error states ----------
 
 /** Empty state — brand-new database, zero workspaces. The first thing a
  *  first-run user sees, so it says what to do, not just what is missing. */
@@ -304,14 +298,14 @@ export const SHOT_GRID_FETCH_ERROR_PREFIX = 'Failed to load shots';
  * LOAD_MORE_RETRY_LABEL ('Retry') and re-runs the fetch effect via a
  * sequence-id re-trigger.
  *
- * Phase 21 / Plan 21-06 — added for Bug 6 (21-AUDIT.md): without this
- * full-pane copy, an initial-fetch failure left ShotGridView rendering a
- * blank pane (shotGrid===null + gridIsFetching===false matched no branch).
+ * Added after an audit found that without this full-pane copy, an
+ * initial-fetch failure left ShotGridView rendering a blank pane
+ * (shotGrid===null + gridIsFetching===false matched no branch).
  */
 export const SHOT_GRID_FETCH_ERROR =
   "Couldn't load shots. Try refreshing the page.";
 
-// ---------- TreeSidebar grid-icon affordance (D-02, D-05) ----------
+// ---------- TreeSidebar grid-icon affordance ----------
 
 /** Grid-icon button `aria-label` prefix. Caller concatenates sequence name. */
 export const TREE_GRID_ICON_ARIA_PREFIX = 'Open shots for ';
@@ -319,16 +313,15 @@ export const TREE_GRID_ICON_ARIA_PREFIX = 'Open shots for ';
 /** Grid-icon button ARIA suffix when active (`aria-current="page"`). */
 export const TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX = ' (current)';
 
-// ---------- Header home button (D-03) ----------
+// ---------- Header home button ----------
 
 /** Home button `aria-label`. Surfaces when activeView === 'shot-grid'. */
 export const HEADER_HOME_ARIA_LABEL = 'Back to home view';
 
 // ================================================================
-// Phase 22 — review and approval copy
-// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+// Review and approval copy (verbatim named-constant exports)
 //
-// All Phase 22 surfaces — ReviewPanel, StatusChangePopover, ABCompareView,
+// All review-and-approval surfaces — ReviewPanel, StatusChangePopover, ABCompareView,
 // QuickApproveButton, ReviewActionBar, ReviewTimeline — import from this
 // block. Zero inline string literals in component files (architectural rule).
 // ================================================================
@@ -341,7 +334,7 @@ export const REVIEW_ACTION_HOLD_LABEL = 'Hold';
 export const REVIEW_ACTION_OMIT_LABEL = 'Omit';
 export const REVIEW_ACTION_RESTORE_LABEL = 'Restore Shot';
 
-// ---------- Action bar aria-labels (5 — D-08 ARIA discipline) ----------
+// ---------- Action bar aria-labels (one per action) ----------
 
 export const REVIEW_ACTION_APPROVE_ARIA = 'Approve this shot';
 export const REVIEW_ACTION_RETAKE_ARIA = 'Request retake of this shot';
@@ -357,7 +350,7 @@ export const REVIEW_ACTION_HOLD_PENDING = 'Holding…';
 export const REVIEW_ACTION_OMIT_PENDING = 'Omitting…';
 export const REVIEW_ACTION_RESTORE_PENDING = 'Restoring…';
 
-// ---------- Confirmation popover prompts (LOCKED D-08 — prompt is the only differentiator) ----------
+// ---------- Confirmation popover prompts (LOCKED — the prompt is the only differentiator) ----------
 
 export const REVIEW_APPROVE_PROMPT = 'Approve this shot?';
 export const REVIEW_RETAKE_PROMPT = 'Request retake?';
@@ -375,11 +368,11 @@ export const POPOVER_NOTE_LABEL = 'Note (optional)';
 /** Composed at render: `${POPOVER_DIALOG_ARIA_LABEL_PREFIX}${promptText}`. */
 export const POPOVER_DIALOG_ARIA_LABEL_PREFIX = 'Confirm status change: ';
 
-// ---------- Quick-approve hover affordance on ShotGridCard (D-10) ----------
+// ---------- Quick-approve hover affordance on ShotGridCard ----------
 
 /** Composed: `${REVIEW_QUICK_APPROVE_ARIA_PREFIX}${shotName}`. */
 export const REVIEW_QUICK_APPROVE_ARIA_PREFIX = 'Quick approve ';
-/** Verbatim <WarningPill/> label per D-12. U+2014 em-dash. */
+/** Verbatim <WarningPill/> label. U+2014 em-dash. */
 export const REVIEW_QUICK_APPROVE_FAIL_LABEL = 'Approve failed — retry';
 export const REVIEW_QUICK_APPROVE_FAIL_ARIA =
   'Quick approve failed; click to retry';
@@ -394,7 +387,7 @@ export const REVIEW_SECTION_HISTORY = 'HISTORY';
 export const REVIEW_HISTORY_EMPTY =
   'No history yet. Status changes and versions will appear here.';
 
-// ---------- Timeline row attribution (unified version + status events, D-04) ----------
+// ---------- Timeline row attribution (unified version + status events) ----------
 
 export const TIMELINE_CHANGED_BY_PREFIX = 'by ';
 export const TIMELINE_VERSION_CREATED_PREFIX = 'Version ';
@@ -407,13 +400,13 @@ export const TIMELINE_STATUS_CHANGED_PREFIX = 'Status → ';
 export const TIMELINE_VERSION_ROW_ARIA_PREFIX = 'Open version ';
 export const TIMELINE_VERSION_ROW_ARIA_SUFFIX = ' in version drawer';
 /**
- * Verbatim string persisted to `shot_status_events.note` on REV-05 Restore
- * (D-09 lock — Restore popover has no textarea; route writes this constant).
+ * Verbatim string persisted to `shot_status_events.note` on Restore
+ * (locked: the Restore popover has no textarea; the route writes this constant).
  * Also rendered verbatim in the timeline row's note slot for the Restore event.
  */
 export const RESTORE_NOTE_SYSTEM_TEXT = 'Restored from omit';
 
-// ---------- Compare mode (D-14 — entry CTA + selection state) ----------
+// ---------- Compare mode (entry CTA + selection state) ----------
 
 /** Uses U+2026 ellipsis ("opens a sub-flow" UX tone). */
 export const COMPARE_MODE_ENTER_LABEL = 'Compare versions…';
@@ -426,7 +419,7 @@ export const COMPARE_MODE_CANCEL_LABEL = 'Cancel compare';
 export const COMPARE_MODE_CHECKBOX_ARIA_PREFIX = 'Select version ';
 export const COMPARE_MODE_HINT = 'Pick 2 versions';
 
-// ---------- A/B compare view modal (D-15, D-23) ----------
+// ---------- A/B compare view modal ----------
 
 export const COMPARE_MODAL_TITLE_PREFIX = 'Compare ';
 export const COMPARE_MODAL_TITLE_INFIX = ' vs ';
@@ -451,10 +444,9 @@ export const REVIEW_HISTORY_FETCH_ERROR =
 export const REVIEW_PANEL_LOADING_LABEL = 'Loading review panel…';
 
 // ================================================================
-// Phase 23 — production stats copy
-// (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)
+// Production stats copy (verbatim named-constant exports)
 //
-// All Phase 23 surfaces — <ProgressBar/>, the new stats subrow inside
+// All production-stats surfaces — <ProgressBar/>, the new stats subrow inside
 // <SequenceHeader/>, and the new stale aria-suffix on <ShotGridCard/> —
 // import from this block. Zero inline string literals in component files
 // (architectural rule).
@@ -473,7 +465,7 @@ export const STATS_APPROVED_LABEL_SUFFIX = '% approved';
 /**
  * Singular/plural pair (English: "1 awaiting review" / "3 awaiting review" —
  * verb-noun phrasing, both forms identical). Kept as TWO constants for
- * future i18n and to mirror Phase 21 SHOT_CARD_VERSION_COUNT_SINGULAR /
+ * future i18n and to mirror the SHOT_CARD_VERSION_COUNT_SINGULAR /
  * SHOT_CARD_VERSION_COUNT_PLURAL_SUFFIX precedent.
  */
 export const STATS_BACKLOG_CALLOUT_SINGULAR = 'awaiting review';
@@ -485,7 +477,7 @@ export const STATS_BACKLOG_CALLOUT_ARIA_PREFIX = 'Pending review backlog: ';
 // ---------- Inline stale count ----------
 
 /**
- * Singular/plural pair (English: "1 stale" / "3 stale" — terse v1.3 form;
+ * Singular/plural pair (English: "1 stale" / "3 stale" — deliberately terse;
  * both forms identical). Kept as TWO constants for future i18n.
  */
 export const STATS_STALE_INLINE_SINGULAR = 'stale';
@@ -502,8 +494,7 @@ export const STATS_STALE_INLINE_ARIA_PREFIX = 'Stale shots: ';
  *   → "Open version drawer for SH_020 — stale".
  *
  * Codepoints: space (0x20) + em-dash (U+2014) + space (0x20) + "stale".
- * The em-dash discipline matches Phase 22 REVIEW_QUICK_APPROVE_FAIL_LABEL
- * and UI-SPEC §"Copywriting Contract" line 230 verbatim.
+ * The em-dash discipline matches REVIEW_QUICK_APPROVE_FAIL_LABEL.
  */
 export const SHOT_CARD_STALE_ARIA_SUFFIX = ' — stale';
 

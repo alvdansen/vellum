@@ -1,6 +1,5 @@
-// Pure type definitions for Phase 3 provenance, diff, and iterate.
+// Pure type definitions for provenance, diff, and iterate.
 // ZERO imports — canonical type source consumed by engine, store, and tools.
-// Refs: D-PROV-02 (ProvenanceEvent), D-PROV-15 (DiffResponse), D-PROV-33 (LineageType).
 
 export type ProvenanceEventType =
   | 'submitted'
@@ -8,7 +7,7 @@ export type ProvenanceEventType =
   | 'failed'
   | 'models_fingerprinted'
   | 'manifest_signed'
-  | 'summary_generated'    // Phase 19 — SUM-05
+  | 'summary_generated'    // LLM summary sibling event
   | 'cost_recorded';       // Cost actuals — log every call + cost
 export type LineageType = 'reproduce' | 'iterate';
 
@@ -29,28 +28,28 @@ export type CostRecordedPayloadFields = {
 };
 
 /**
- * Phase 14 — PROV-V-01 (D-CTX-7). Sibling event written by Engine.signOutput
+ * Sibling event written by Engine.signOutput
  * AFTER the 'completed' event + after 'models_fingerprinted'. Carries the
  * outcome of the signing attempt. NEVER carries key material — only the
- * cert subject summary derived from the cert's public DN (Plan 14-02
- * loadSigner with RFC4514-safe parser per Concern #10).
+ * cert subject summary derived from the cert's public DN (loadSigner
+ * uses an RFC4514-safe parser).
  *
- * v1.1 scope (Concern #2): NO `sidecar` field — c2pa-node v0.5.26 has no
+ * Scope note: NO `sidecar` field — c2pa-node v0.5.26 has no
  * sidecar API. EXR/PSD surface as signed=false / status_reason='unsupported_format'
- * with the original file untouched on disk. v1.2 deferred items in
- * REQUIREMENTS.md cover cryptographic-sidecar support pending c2pa-node API
+ * with the original file untouched on disk. Deferred:
+ * cryptographic-sidecar support pending c2pa-node API
  * additions OR direct c2pa-rs FFI binding.
  *
  * Append-only: ProvenanceRepo's `appendManifestSignedEvent` INSERTs a new
  * row; it never updates the original 'completed' or 'models_fingerprinted'
- * rows. T-14-09 mitigation parity with T-13-07.
+ * rows.
  */
 export type ManifestSignedPayloadFields = {
   /** Output filename (basename only — outputs may have multiple files per version). */
   filename: string;
   /** MIME type that was signed (image/png, video/mp4, image/tiff, etc.). Empty when signing skipped. */
   format: string;
-  /** True when signing succeeded; false when signer was disabled, format unsupported, or signing threw (D-CTX-9 graceful-fail). */
+  /** True when signing succeeded; false when signer was disabled, format unsupported, or signing threw (graceful-fail). */
   signed: boolean;
   /** Short DN summary (CN/O) from the cert. NEVER public-key bytes, NEVER private-key bytes. Empty when signed=false. */
   cert_subject_summary: string;
@@ -60,10 +59,10 @@ export type ManifestSignedPayloadFields = {
    *  'signing_disabled' | 'unsupported_format' | 'sign_call_failed' |
    *  'cert_load_failed' | 'asset_too_large_for_buffer_api' | 'native_binding_unavailable'. */
   status_reason: string;
-  /** Detected SigningAlgorithm (Plan 14-02 Concern #1). Empty when signed=false. */
+  /** Detected SigningAlgorithm. Empty when signed=false. */
   algorithm: string;
   /**
-   * Phase 15 (D-CTX-5) — additive. SHA-256 hex digest of the SIGNED ASSET
+   * Additive. SHA-256 hex digest of the SIGNED ASSET
    * BYTES. Used as the parentOf hash when a downstream child version
    * reads this row to populate its own parentOf ingredient.
    *
@@ -74,18 +73,18 @@ export type ManifestSignedPayloadFields = {
    * bytes; the manifest_sha256 we record here is for our internal
    * audit + parent lookup only.
    *
-   * NULL when signed=false. Pre-Phase-15 rows always read undefined
-   * (TS-optional). Plan 15-03 populates this on success paths.
+   * NULL when signed=false. Rows predating this field always read
+   * undefined (TS-optional). Populated on success paths.
    */
   manifest_sha256?: string | null;
   /**
-   * Phase 15 (D-CTX-5) — additive ingredient summary so audits can
+   * Additive ingredient summary so audits can
    * reconstruct what the manifest emitted without parsing the full
-   * bytes. Pre-Phase-15 rows read undefined.
+   * bytes. Rows predating this field read undefined.
    *
    * unavailable_count = parent_count + component_count − reachable_count;
    * a non-zero value means at least one ingredient surfaced as a
-   * vellum.unavailable_ingredient assertion (ROADMAP criterion #5).
+   * vellum.unavailable_ingredient assertion.
    */
   ingredients_summary?: {
     parent_count: 0 | 1;
@@ -94,21 +93,21 @@ export type ManifestSignedPayloadFields = {
     unavailable_count: number;
   };
   /**
-   * Phase 16 / Plan 16-02 (D-CTX-5) — additive, non-breaking. When TRUE,
+   * Additive, non-breaking. When TRUE,
    * this manifest_signed event row carries the OUTCOME of a redaction
    * call (Engine.redactManifestForVersion). The original (un-redacted)
    * event row is BYTE-IDENTICAL — the redacted row is a SIBLING
-   * (append-only invariant per D-CTX-5). Pre-Phase-16 rows always read
-   * undefined here. Tools surface this via Plan 16-04's
+   * (append-only invariant). Rows predating redaction always read
+   * undefined here. Tools surface this via the
    * version.redact_manifest envelope.
    */
   redacted?: boolean;
   /**
-   * Phase 16 / Plan 16-02 — list of redaction-policy paths actually
+   * List of redaction-policy paths actually
    * applied. Excludes paths that surfaced as `not_found:<path>` (those
-   * surface in Plan 16-04's tool envelope as a separate `not_found`
+   * surface in the tool envelope as a separate `not_found`
    * field). Empty array iff redacted=true is impossible (no-op redactions
-   * are rejected at the helper boundary — Test 11 covers).
+   * are rejected at the helper boundary).
    */
   redacted_fields?: string[];
 };
@@ -118,10 +117,10 @@ export type ProvenanceManifestSignedPayload = {
 } & ManifestSignedPayloadFields;
 
 /**
- * Phase 19 — SUM-05. Sibling event written by Engine.summarizeVersion AFTER
+ * Sibling event written by Engine.summarizeVersion AFTER
  * a successful LIVE call (cache miss + Anthropic success + validation pass).
  *
- * Cache key: (manifest_sha256, template_version, model_id). Phase 16 redact
+ * Cache key: (manifest_sha256, template_version, model_id). Redaction
  * mutates manifest_sha256 — free invalidation without explicit logic.
  *
  * NEVER carries the prompt text or the response text inside log emissions.
@@ -129,7 +128,7 @@ export type ProvenanceManifestSignedPayload = {
  * leak scan applies BEFORE INSERT to assert no API key fragments leaked.
  *
  * Append-only: ProvenanceRepo.appendSummaryGeneratedEvent INSERTs a new row;
- * fallback paths NEVER write a row (D-VAL-2). Regenerate paths bypass the
+ * fallback paths NEVER write a row. Regenerate paths bypass the
  * cache lookup but still INSERT a new sibling row on success —
  * getLatestSummaryGeneratedEvent returns the newer row.
  */
@@ -148,7 +147,7 @@ export type SummaryGeneratedPayloadFields = {
   prompt_tokens: number;
   /** Anthropic response.usage.output_tokens — observability only. */
   completion_tokens: number;
-  /** ALWAYS 'live' — fallback paths do NOT write rows (D-VAL-2). */
+  /** ALWAYS 'live' — fallback paths do NOT write rows. */
   outcome: 'live';
 };
 
@@ -156,12 +155,12 @@ export type ProvenanceSummaryGeneratedPayload = {
   event_type: 'summary_generated';
 } & SummaryGeneratedPayloadFields;
 
-/** D-PROV-02 + Phase 13: one row per (version, event). Append-only — repo
- *  has no UPDATE/DELETE. Phase 13 adds the 'models_fingerprinted' event
- *  carrying populated SHA-256 fingerprints in models_json (sibling row to
+/** One row per (version, event). Append-only — repo
+ *  has no UPDATE/DELETE. The 'models_fingerprinted' event
+ *  carries populated SHA-256 fingerprints in models_json (sibling row to
  *  the original 'completed' event — append-only invariant preserved). */
 export interface ProvenanceEvent {
-  id: string;                     // nanoid with 'prov_' prefix (D-11 pattern)
+  id: string;                     // nanoid with 'prov_' prefix
   version_id: string;
   event_type: ProvenanceEventType;
   workflow_json: string | null;   // populated on 'submitted'
@@ -171,19 +170,19 @@ export interface ProvenanceEvent {
   outputs_json: string | null;    // populated on 'completed' — mirrors versions.outputs_json at event time
   error_code: string | null;      // populated on 'failed'
   error_message: string | null;   // populated on 'failed'
-  /** Phase 14 — PROV-V-01. Populated on 'manifest_signed' rows ONLY; carries
-   *  the JSON-encoded ManifestSignedPayloadFields. Pre-Phase-14 rows always
+  /** Populated on 'manifest_signed' rows ONLY; carries
+   *  the JSON-encoded ManifestSignedPayloadFields. Older rows always
    *  read NULL here (migration 0006 added the column as nullable). */
   manifest_signed_json: string | null;
-  /** Phase 19 — SUM-05. Populated on 'summary_generated' rows ONLY; carries
-   *  the JSON-encoded SummaryGeneratedPayloadFields. Pre-Phase-19 rows always
+  /** Populated on 'summary_generated' rows ONLY; carries
+   *  the JSON-encoded SummaryGeneratedPayloadFields. Older rows always
    *  read NULL here (migration 0007 added the column as nullable). */
   summary_generated_json: string | null;
   /** Cost actuals — populated on 'cost_recorded' rows ONLY; carries the
    *  JSON-encoded CostRecordedPayloadFields. Pre-migration rows read NULL
    *  (0011_cost_actuals.sql added the column as nullable). */
   cost_recorded_json?: string | null;
-  // Pivot Phase B additions. Neutral analogs of workflow_json / prompt_json for
+  // Neutral analogs of workflow_json / prompt_json for
   // non-ComfyUI backends. generation_result_json carries a serialized
   // NeutralProvenance (src/providers/provenance.ts). Optional in the TS view
   // (additive/dual-read): DB rows post-migration carry them (value-or-null),
@@ -193,26 +192,26 @@ export interface ProvenanceEvent {
   timestamp: number;              // epoch ms
 }
 
-/** D-PROV-06 + Phase 13 (D-CTX-1): one entry per ComfyUI loader node.
+/** One entry per ComfyUI loader node.
  *  Exactly one of `model_hash` / `model_hash_unavailable` is non-null
- *  after Phase 13 fingerprinting completes; both null means
+ *  after fingerprinting completes; both null means
  *  fingerprint-pending (background path has not yet run). Pure extraction
  *  in src/engine/provenance.ts emits both as null. */
 export interface ModelRef {
   node_id: string;
   class_type: string;
   model_name: string;
-  model_hash: string | null;             // populated by Phase 13 fingerprinter on success
-  model_hash_unavailable: string | null; // populated by Phase 13 fingerprinter when bytes unreadable; reason codes per D-CTX-5
+  model_hash: string | null;             // populated by the fingerprinter on success
+  model_hash_unavailable: string | null; // populated by the fingerprinter when bytes unreadable; carries a reason code
 }
 
-/** D-PROV-13: per-node override payload for generation.iterate. */
+/** Per-node override payload for generation.iterate. */
 export interface IterateOverride {
   inputs?: Record<string, unknown>;
   class_type?: string;
 }
 
-/** D-PROV-15: full diff response (shape mirrored verbatim into tool envelope). */
+/** Full diff response (shape mirrored verbatim into tool envelope). */
 export interface ParamChange {
   node_id: string;
   class_type: string;
@@ -224,8 +223,8 @@ export interface ParamChange {
 export interface ModelChange {
   node_id: string;
   class_type: string;
-  /** D-PROV-15 + Phase 13 (D-CTX-1): full pre-state of the model entry.
-   *  After Phase 13, exactly one of `hash` / `hash_unavailable` is non-null
+  /** Full pre-state of the model entry.
+   *  Exactly one of `hash` / `hash_unavailable` is non-null
    *  on each side once the background fingerprinter has run; both null is
    *  the legacy / fingerprint-pending state. */
   before: { name: string; hash: string | null; hash_unavailable: string | null };
@@ -257,10 +256,10 @@ export interface DiffChanges {
   metadata: MetadataChange[];
 }
 
-/** Phase 12 — DEMO-03 (D-CTX-4). Shape of `reproduction_divergence` attached
+/** Shape of `reproduction_divergence` attached
  *  to the diff envelope when B is a reproduce-lineage version. NULL when:
  *  (a) B is not reproduce-lineage,
- *  (b) bytes match AND no partner-API warnings persisted (criterion #4).
+ *  (b) bytes match AND no partner-API warnings persisted.
  *  Anything non-null means at least one divergence signal fired and the
  *  dashboard MUST surface the pill + (when both outputs present) the
  *  side-by-side comparison block. */
@@ -274,7 +273,7 @@ export interface ReproductionDivergence {
 export interface DiffResponse {
   summary: string;
   changes: DiffChanges;
-  /** Phase 12 — DEMO-03 (D-CTX-4). The `reproduction_divergence` field is
+  /** The `reproduction_divergence` field is
    *  optional and only populated when B is a reproduce-lineage version.
    *  NULL `reproduction_divergence` means "no divergence detected" or
    *  "B is not a reproduce-lineage version". */
@@ -294,10 +293,10 @@ export interface DiffSnapshot {
   models_json: ModelRef[] | null;
   seed: number | null;
   output_count: number;
-  /** Pivot #2a — the neutral, comparable param bag for URL-provider versions,
+  /** The neutral, comparable param bag for URL-provider versions,
    *  built from the completed event's generation_result_json as { model_id, params }.
-   *  Null for ComfyUI versions (which diff via the prompt graph) and for pre-#2a
-   *  rows. When present on either side, version.diff compares via diffParams. */
+   *  Null for ComfyUI versions (which diff via the prompt graph) and for rows
+   *  predating it. When present on either side, version.diff compares via diffParams. */
   neutral_params?: Record<string, unknown> | null;
 }
 

@@ -2,22 +2,22 @@
  * ShotGridFilterBar — sticky top bar with status pills + Show omitted toggle.
  *
  * Pure component: props-in, callbacks-out. No fetch, no signal reads, no state
- * mutations. Parent (ShotGridView, Wave 4) passes statusFilter + showOmitted
+ * mutations. Parent (ShotGridView) passes statusFilter + showOmitted
  * + callbacks and owns the "reset to 'all' when toggling off omit while
- * filter==='omit'" logic (D-07).
+ * filter==='omit'" logic.
  *
- * D-07: pill order = All | wip | pending-review | approved | on-hold [| omit]
+ * Pills: pill order = All | wip | pending-review | approved | on-hold [| omit]
  *       The omit pill is rendered ONLY when showOmitted === true. Its
  *       visibility is controlled SOLELY by the showOmitted prop — clicking
  *       a pill does NOT toggle visibility.
- * D-08: 'All' resets the status filter within the current dataset; the
+ * Reset: 'All' resets the status filter within the current dataset; the
  *       dataset is gated orthogonally by the Show omitted toggle.
- * D-10: position: sticky; top: 0; z-index: 10 above the grid cards (below
+ * Layout: position: sticky; top: 0; z-index: 10 above the grid cards (below
  *       VersionDrawer overlay).
- * D-11: active pill = bg-[var(--color-accent)] + text-[var(--color-bg)]
+ * Styling: active pill = bg-[var(--color-accent)] + text-[var(--color-bg)]
  *       (filled); inactive = border + text-[var(--color-fg-muted)] (outlined).
  *
- * Architecture-purity (D-WEBUI-31): zero server-tree imports.
+ * Architecture-purity: zero server-tree imports.
  *
  * SECURITY: no user-provided strings flow into innerHTML — pill labels come
  * from the locked copy constants below; Preact auto-escapes text children.
@@ -67,7 +67,7 @@ export function ShotGridFilterBar({
   onChangeStatusFilter,
   onToggleShowOmitted,
 }: ShotGridFilterBarProps) {
-  // D-07: build the pill array dynamically. The omit pill appears as the
+  // Build the pill array dynamically. The omit pill appears as the
   // 6th option ONLY when showOmitted === true.
   const pills: PillSpec[] = [
     { value: 'all', label: FILTER_PILL_ALL },

@@ -1,25 +1,25 @@
-// Phase 17 / Plan 17-01 Task 2 — image thumbnail derivation (sole sharp importer).
+// Image thumbnail derivation (sole sharp importer).
 //
-// **D-23 architecture-purity invariant:**
+// **Sole-importer architecture-purity invariant:**
 //   This file is the SOLE importer of `sharp` across src/. Other modules
 //   MUST call into this file's exports rather than import sharp directly.
 //   Allowed-set assertion at src/__tests__/architecture-purity.test.ts.
 //
-// **Lazy + monotonic fail (D-26):**
+// **Lazy + monotonic fail:**
 //   `await import('sharp')` is deferred to the first call site. On native-
 //   binding load failure, cachedSharpFailed is set and ALL subsequent calls
-//   return null without re-attempting the import. The Plan 17-03 facade
+//   return null without re-attempting the import. The engine facade
 //   converts a null return into a `.thumb.failed` sentinel + structured
 //   warning log; the UI degrades to a skeleton.
 //
-// **Sharp tuning (PITFALL B + F):**
+// **Sharp tuning:**
 //   - sharp.concurrency(2)  — bounds concurrent libvips threads
 //   - sharp.cache(false)    — disables libvips operation cache (server context)
 //   Set ONCE on first successful module load.
 //
-// **Atomic write (D-22):**
-//   sharp's .toFile(tempPath) writes via the cache.writeAtomic helper from
-//   Task 1: temp+rename via nanoid(8) suffix; partial cleaned up on writer
+// **Atomic write:**
+//   sharp's .toFile(tempPath) writes via the cache.writeAtomic helper:
+//   temp+rename via nanoid(8) suffix; partial cleaned up on writer
 //   error or rename error.
 
 import { mkdir } from 'node:fs/promises';
@@ -27,7 +27,7 @@ import { dirname } from 'node:path';
 import { TypedError } from '../errors.js';
 import { writeAtomic } from './cache.js';
 
-// ─── Lazy native-binding load + monotonic fail (D-26) ─────────────────────
+// ─── Lazy native-binding load + monotonic fail ────────────────────────────
 
 // sharp's package.json declares `"main": "lib/index.js"` and the type
 // definition uses `export = sharp` (CommonJS-style). With our tsconfig's
@@ -57,11 +57,11 @@ let sharpLoad: Promise<SharpDefaultExport | null> | null = null;
  * Lazy-load sharp on first call site. Subsequent calls reuse the cached
  * module. On load failure, cachedSharpFailed is set and the failure is
  * monotonic — subsequent calls return null without re-attempting the
- * dynamic import (D-26).
+ * dynamic import.
  *
  * On the FIRST successful load only:
- *   - sharp.concurrency(2)  — PITFALL B (stampede mitigation)
- *   - sharp.cache(false)    — PITFALL F (server-context libvips cache disable)
+ *   - sharp.concurrency(2)  — stampede mitigation
+ *   - sharp.cache(false)    — server-context libvips cache disable
  *
  * Returns the sharp default export (a callable factory: `sharp(input)` →
  * Sharp pipeline) on success, null on monotonic fail.
@@ -113,12 +113,12 @@ export function __resetSharpStateForTests(): void {
  *      'THUMBNAIL_FAILED' with reason='native_binding_unavailable'.
  *   2. mkdir destPath's parent (recursive — idempotent).
  *   3. writeAtomic(destPath, async (tempPath) => sharp(source)
- *        .resize(640, 360, { fit:'inside', withoutEnlargement:true })  // D-04
- *        .webp({ quality: 80 })                                        // D-03
+ *        .resize(640, 360, { fit:'inside', withoutEnlargement:true })
+ *        .webp({ quality: 80 })
  *        .toFile(tempPath)).
  *
  * On any sharp failure (decode error, libvips throw, etc.), rethrow as
- * TypedError 'THUMBNAIL_FAILED' with reason='sharp_failed'. The Plan 17-03
+ * TypedError 'THUMBNAIL_FAILED' with reason='sharp_failed'. The engine
  * facade catches and writes a `.thumb.failed` sentinel.
  *
  * Atomic-write invariant: no `.partial` file survives either a successful
@@ -162,8 +162,8 @@ export async function generateImageThumbnail(
  * BT.601 luma = 0.299*R.mean + 0.587*G.mean + 0.114*B.mean. For grayscale
  * sources (channels.length < 3), returns the single-channel mean.
  *
- * Used by Plan 17-02 video-thumbnail.ts to detect black-frame fade-ins
- * (D-29) and fall back to a 1.0s seek when luma < 16/255.
+ * Used by video-thumbnail.ts to detect black-frame fade-ins
+ * and fall back to a 1.0s seek when luma < 16/255.
  *
  * Throws TypedError 'THUMBNAIL_FAILED' with reason='sharp_failed' on
  * stats() failure or when the native binding is unavailable.
@@ -198,15 +198,15 @@ export async function getImageBrightness(imagePath: string): Promise<number> {
 }
 
 /**
- * Plan 17-02 consumer surface — returns the cached sharp instance (or null
+ * video-thumbnail.ts consumer surface — returns the cached sharp instance (or null
  * on monotonic fail). Lets video-thumbnail.ts re-encode its ffmpeg-extracted
- * PNG to WebP without duplicating the lazy import (preserves D-23 sole-
+ * PNG to WebP without duplicating the lazy import (preserves the sole-
  * importer invariant — video-thumbnail.ts calls this helper, NEVER imports
  * sharp directly).
  *
  * Production code other than video-thumbnail.ts SHOULD use generateImageThumbnail
- * or getImageBrightness directly. This helper is exposed because the Plan
- * 17-02 video pipeline needs to chain a custom sharp call (`.webp({quality:80})
+ * or getImageBrightness directly. This helper is exposed because the
+ * video pipeline needs to chain a custom sharp call (`.webp({quality:80})
  * .toFile(...)`) on an in-memory or temp-file PNG.
  */
 export async function getSharpForVideoReencode(): Promise<SharpDefaultExport | null> {

@@ -17,7 +17,7 @@
  * never drops the source text. This is deliberately NOT a general CommonMark
  * implementation; it is a projection renderer for one known producer.
  *
- * SECURITY — T-5-06: every text fragment reaches the DOM as a JSX text child
+ * SECURITY — XSS: every text fragment reaches the DOM as a JSX text child
  * (Preact auto-escapes) or as a <code>/<pre> text child. No raw HTML.
  */
 
