@@ -57,8 +57,8 @@ the lineage start without referencing a parent. Voice register: a Supervisor
 on Frame.io would describe this as "first iterate of the dragon-eye shot" —
 not "the AI generated the first version" or "this image shows a dragon eye"
 (both of those slip into describing pixels, which the SYSTEM_PROMPT explicitly
-forbids). The model name "flux1-dev" appears verbatim per D-VAL-1 case-sensitive
-gate. The seed appears as "seed 12345" (concrete integer) rather than "with a
+forbids). The model name "flux1-dev" appears verbatim to satisfy the case-sensitive
+model-name gate. The seed appears as "seed 12345" (concrete integer) rather than "with a
 specific seed" (vague). The prompt_positive content "cinematic dragon eye" is
 mentioned as workflow context ("from the cinematic dragon prompt") rather than
 quoted directly — quoting the prompt risks describing the image rather than
@@ -83,7 +83,7 @@ the project hierarchy, not a continuous-improvement step. The phrase "this is
 where the lineage starts" replaces what a less-careful summary would render
 as "this is the original" or "the first version" — both technically correct
 but flatter. "Lineage starts" anchors the C2PA-signed parentOf chain that
-Phase 14-15 lock in the manifest; downstream iterates will reference v001 as
+the signing pipeline locks into the manifest; downstream iterates will reference v001 as
 parent_version_label. Banned-lexicon check: zero "stunning"/"vibrant"/"delve"
 slop. Tense check: present tense throughout — no "was generated" or "had been
 created". Audience check: a peer Supervisor reviewing this on Frame.io would
@@ -106,13 +106,13 @@ this exact phrasing.
   <redacted>false</redacted>
 </provenance>
 <example_notes>
-This is the VOICE FINGERPRINT example — it matches the ROADMAP.md target
+This is the VOICE FINGERPRINT example — it matches the project's canonical target
 sentence verbatim (or very nearly so). Iterate-lineage versions reference
 the parent ("v002") AND the key creative delta. Notice the structure:
 [version label] is [creative delta], generated with [model + additional]
 at [seed], [delta description tied to parent]. The phrase "swapping the
 wide-angle env map for an HDRI from the parent shot v002" mentions parent
-v002 by name (D-VAL-1 lineage gate satisfied). The model "flux1-dev"
+v002 by name (parent-lineage gate satisfied). The model "flux1-dev"
 appears verbatim. The LoRA "cinematic_fantasy" appears verbatim with role
 ("plus the cinematic_fantasy LoRA"). The prompt_positive content ("tight
 close-up", "HDRI") is woven into the delta description WITHOUT image
@@ -124,11 +124,11 @@ add reviewer signal at this voice register. Word count: 35 — peer-comment
 length, not paragraph.
 
 Lineage-direction discipline (CRITICAL — this is the highest-impact silent
-failure mode per AI-SPEC §1b "Inverted iterate-lineage relationship"). The
+failure mode: an inverted iterate-lineage relationship). The
 phrase "from the parent shot v002" preserves the direction: v003.parent = v002.
 A jailbroken or temperature-drift response that flips this to "v002 is a
 refinement of v003" inverts the lineage and breaks the artist's mental model
-of why v003 exists. The SUM-02 verbatim model-name validation does NOT catch
+of why v003 exists. The verbatim model-name validation does NOT catch
 this inversion (both versions appear in the summary), so the few-shot example
 must lock the direction by example. Notice the preposition "from" — "FROM
 the parent shot v002" makes v002 the source and v003 the destination
@@ -166,28 +166,28 @@ review (LoRA names are tracked in project bibles).
   <redacted>true</redacted>
 </provenance>
 <example_notes>
-This is a REDACTED version (redacted = true). D-VAL-3 mandates that the
+This is a REDACTED version (redacted = true). Validation mandates that the
 summary contain a redaction marker — one of "redacted", "partial", or
 "redaction" (case-insensitive). The phrase "Some prompt fields were redacted"
 satisfies this gate explicitly. The model name "sd_xl_base_1.0.safetensors"
-includes the file extension verbatim — this is intentional. Phase 13 model
-fingerprints capture filenames (not display names) and D-VAL-1 is
+includes the file extension verbatim — this is intentional. Model
+fingerprints capture filenames (not display names) and name validation is
 case-sensitive, so paraphrasing as "SDXL Base 1.0" would fail validation.
 The summary mentions parent v004 to preserve lineage context even when the
 prompt is redacted. The phrase "check the C2PA-signed manifest for the full
-lineage" is a deliberate handoff to Phase 14's audit trail — when the
+lineage" is a deliberate handoff to the C2PA audit trail — when the
 visible workflow is redacted, the cryptographic manifest is the canonical
 record. Voice register stays peer-comment: a Supervisor noting that some
 fields are NDA-redacted but the workflow lineage still resolves through
 the C2PA chain. Banned-lexicon check: zero "stunning"/"vibrant"/"delve"
 slop. Word count: 33.
 
-NDA / studio confidentiality discipline (LOAD-BEARING per AI-SPEC §1b
-"Soft norms"). Creative production routinely operates under client/studio NDAs:
-project codenames, character IP names, plot details, client identity. Phase 16
-redaction is the existing primitive that protects this; Phase 19 must compose
-with it. Two defensive layers operate here. Layer 1 (architectural): the
-D-PRIV-1 allow-list ensures only whitelisted fields ever leave the box —
+NDA / studio confidentiality discipline (a LOAD-BEARING
+soft norm). Creative production routinely operates under client/studio NDAs:
+project codenames, character IP names, plot details, client identity. Manifest
+redaction is the existing primitive that protects this; the summary layer must
+compose with it. Two defensive layers operate here. Layer 1 (architectural): the
+field allow-list ensures only whitelisted fields ever leave the box —
 the prompt_positive field renders as "(redacted)" upstream so no surviving
 NDA-protected text reaches the LLM. Layer 2 (prose): the summary surfaces
 the FACT of redaction so a downstream Supervisor reading the Frame.io
@@ -197,7 +197,7 @@ reviewer what the prompt WOULD have told them about (creative direction)
 without leaking what the prompt CONTAINED. The handoff sentence "check the
 C2PA-signed manifest for the full lineage" routes the reviewer to the
 authoritative cryptographic source: the manifest's redacted_assertions
-preserve the FACT that redaction occurred (per Phase 16 vellum.redacted
+preserve the FACT that redaction occurred (per the vellum.redacted
 vendor assertion) without echoing the redacted content. Voice fingerprint
 check: a studio pipeline TD reviewing this for a studio's C2PA prototyping
 pipeline would accept this phrasing — it surfaces redaction without leaking,
@@ -206,7 +206,7 @@ this summary WOULD NOT do: paraphrase the redacted prompt ("a dragon scene"
 when the redacted prompt was "Project_Dragon character design"); claim the
 prompt content is unavailable when it's specifically REDACTED (different
 NDA semantics); or omit the redaction marker entirely (which would fail
-D-VAL-3's redaction-mode regex and trigger the deterministic-template
+the redaction-mode validation regex and trigger the deterministic-template
 fallback). Banned-lexicon check: "Some prompt fields were redacted" is
 neutral disclosure language — not "this fascinating image was generated
 with privileged information" (slop) or "the prompt content is unavailable"
@@ -228,7 +228,7 @@ with privileged information" (slop) or "the prompt content is unavailable"
   <redacted>false</redacted>
 </provenance>
 <example_notes>
-This is a MULTI-LORA composition (3 LoRAs stacked). D-VAL-1 requires that
+This is a MULTI-LORA composition (3 LoRAs stacked). Validation requires that
 at least ONE model name appear verbatim — the base model "flux1-dev" satisfies
 this gate. However a Supervisor reviewing this version would call out the
 LoRA STACK because that is the load-bearing creative choice for this iterate.
@@ -246,8 +246,8 @@ prompt context, not from AI-register filler. Word count: 41 — slightly
 longer than the others because the LoRA list eats word budget; still within
 the 25-50-word peer-comment range.
 
-LoRA-fidelity discipline (HIGH-IMPACT per AI-SPEC §1b "Hallucinated or
-dropped LoRAs"). LoRAs ARE the creative-decision surface for generative asset
+LoRA-fidelity discipline (HIGH-IMPACT: hallucinated or
+dropped LoRAs are a known silent-failure mode). LoRAs ARE the creative-decision surface for generative asset
 work — they encode style transfer, character lock, lighting register, etc.
 A Supervisor reviewing this version needs to know which LoRAs are stacked
 and in what order so they can compare to the project bible's approved LoRA
@@ -255,7 +255,7 @@ list and to sister versions in the same shot. Three failure modes the
 example must defend against. Mode 1: invented LoRAs — the LLM reads "moody
 atmospheric" in the prompt_positive and hallucinates a "noir_style" LoRA that
 wasn't applied. The verbatim list "cinematic_fantasy, detail_boost,
-noir_mood" enumerated in the summary blocks this; the SUM-02 verbatim regex
+noir_mood" enumerated in the summary blocks this; the verbatim model-name regex
 gate catches it post-hoc. Mode 2: dropped LoRAs — the LLM trims the 3-LoRA
 stack to mention only the first ("flux1-dev plus cinematic_fantasy LoRA")
 because two more eats word budget. The summary explicitly names all three
@@ -309,7 +309,7 @@ Canny-edge is a different creative tool than depth-based or pose-based
 ControlNets and the distinction matters to a Supervisor reviewing the shot.
 The prompt_positive phrase "structured composition matching reference" is
 echoed in the summary's "lock the composition" — workflow language, not
-image-pixel language. Phase 15's ingredient graph (extractComponentIngredients
+image-pixel language. The ingredient graph (extractComponentIngredients
 in src/engine/c2pa/ingredient-extractor.ts) surfaces ControlNet preprocessors
 as components with role 'control'; that role is what the system prompt
 should signal to the LLM via ingredient_summary_counts. Banned-lexicon
@@ -334,7 +334,7 @@ parent's free-form sample" is a peer-supervisor delta annotation — it
 tells the reviewer that v009 was sampled without ControlNet (free-form,
 prompt-only sampling) and v010 added structural locking. This is a
 LOAD-BEARING creative-direction shift; a junior artist seeing it framed
-this way learns the workflow vocabulary. Phase 15's ingredient graph
+this way learns the workflow vocabulary. The ingredient graph
 specifically tracks ControlNet preprocessors with role 'control' in the
 componentOf assertion (src/engine/c2pa/ingredient-extractor.ts), so the
 manifest verifies the ControlNet was structurally applied (not just

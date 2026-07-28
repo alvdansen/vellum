@@ -37,7 +37,7 @@
 
 import { FEW_SHOT_EXAMPLES } from './templates/few-shot-examples.js';
 
-export const SUMMARY_TEMPLATE_VERSION = '1.0.0' as const;
+export const SUMMARY_TEMPLATE_VERSION = '1.0.1' as const;
 export const SUMMARY_MODEL_ID = 'claude-haiku-4-5-20251001' as const;
 export const SUMMARY_MAX_TOKENS = 180;
 export const SUMMARY_TEMPERATURE = 0.7;
