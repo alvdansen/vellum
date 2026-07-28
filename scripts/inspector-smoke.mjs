@@ -8,6 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -197,22 +198,60 @@ async function runStdio() {
   }
 }
 
+/**
+ * Pick a free ephemeral port by asking the OS for one (listen on port 0,
+ * read the assigned port, close). Anything squatting a hardcoded port —
+ * a previous smoke run, another dev server, a FOREIGN server that would
+ * fake a green run — cannot collide with a kernel-assigned free port.
+ */
+function getFreePort() {
+  return new Promise((resolvePort, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close((err) => (err ? reject(err) : resolvePort(port)));
+    });
+  });
+}
+
 // ─────── Run HTTP client ───────
 async function runHttp() {
   const tmpDir = mkdtempSync(join(tmpdir(), 'vfx-smoke-http-'));
   const dbPath = join(tmpDir, 'smoke.db');
-  const port = 3097;
+  const port = await getFreePort();
 
   const child = spawn('npx', ['tsx', 'src/server.ts', '--http', '--port', String(port), '--db', dbPath], {
     cwd: process.cwd(),
     stdio: ['ignore', 'ignore', 'pipe'],
   });
-  // Drain stderr so it doesn't block
-  child.stderr.on('data', () => {});
+  // Capture stderr so a failure can show WHY the child died instead of a
+  // bare timeout / raw SDK stack trace.
+  let childStderr = '';
+  child.stderr.on('data', (chunk) => { childStderr += chunk; });
+  let exited = null; // { code, signal } once the child exits
+  child.on('exit', (code, signal) => { exited = { code, signal }; });
 
-  // Wait for the server to be listening
+  const failStartup = (reason) => {
+    console.error(ansi.red(`\nHTTP smoke: ${reason}`));
+    if (childStderr.trim()) {
+      console.error(ansi.bold('── server stderr ──'));
+      console.error(childStderr.trimEnd());
+    } else {
+      console.error(ansi.dim('(server produced no stderr)'));
+    }
+    child.kill('SIGKILL');
+    rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error(reason);
+  };
+
+  // Wait for the server to be listening — and fail LOUDLY the moment the
+  // child exits before readiness (bad flag, port bind failure, tsx crash).
   let ready = false;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60 && !ready; i++) {
+    if (exited !== null) {
+      failStartup(`server exited before readiness (code=${exited.code}, signal=${exited.signal})`);
+    }
     try {
       const res = await fetch(`http://127.0.0.1:${port}/healthz`, { method: 'GET' });
       if (res.status === 404 || res.status === 405 || res.ok) { ready = true; break; }
@@ -222,29 +261,23 @@ async function runHttp() {
     await new Promise((r) => setTimeout(r, 150));
   }
   if (!ready) {
-    // fallback: try the MCP endpoint directly
-    for (let i = 0; i < 20; i++) {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-        if (res) { ready = true; break; }
-      } catch {}
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  }
-  if (!ready) {
-    console.log(ansi.red('HTTP server did not come up in time'));
-    child.kill();
-    rmSync(tmpDir, { recursive: true, force: true });
-    throw new Error('HTTP server start timeout');
+    failStartup(`server did not come up on 127.0.0.1:${port} within the startup timeout`);
   }
 
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
   const client = new Client({ name: 'smoke-client', version: '0.0.1' });
-  await client.connect(transport);
   try {
+    await client.connect(transport);
     await runToolSuite(client, 'STREAMABLE HTTP transport (127.0.0.1:' + port + '/mcp)');
+  } catch (err) {
+    // Surface the server's own words alongside the client-side error.
+    if (childStderr.trim()) {
+      console.error(ansi.bold('\n── server stderr ──'));
+      console.error(childStderr.trimEnd());
+    }
+    throw err;
   } finally {
-    await client.close();
+    await client.close().catch(() => {});
     child.kill('SIGTERM');
     // Give it a moment to shut down
     await new Promise((r) => setTimeout(r, 200));
