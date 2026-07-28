@@ -208,8 +208,8 @@ describe('version verify_manifest — Zod validation', () => {
     // The description says EITHER {version_id} OR {manifest_bytes_base64,
     // format}. Before the arms were .strict(), the union quietly took the
     // version_id arm and DROPPED the bytes form — the caller had no way to
-    // know half their input was ignored. Now the ambiguity fails closed with
-    // the surplus keys named.
+    // know half their input was ignored. Now the ambiguity fails closed
+    // with a message that names the either/or contract plainly.
     const res = await server.registeredHandler!({
       action: 'verify_manifest',
       version_id: 'ver_doesnt_exist',
@@ -218,8 +218,8 @@ describe('version verify_manifest — Zod validation', () => {
     });
     expect(res.isError).toBe(true);
     expect((res.structuredContent as { code: string }).code).toBe('INVALID_INPUT');
-    expect((res.structuredContent as { message: string }).message).toMatch(
-      /manifest_bytes_base64|version_id/,
+    expect((res.structuredContent as { message: string }).message).toBe(
+      'verify_manifest takes exactly one form: {version_id} OR {manifest_bytes_base64, format}',
     );
   });
 

@@ -549,6 +549,22 @@ export function registerVersion(server: McpServer, engine: Engine) {
     },
     async (rawInput) => {
       try {
+        // verify_manifest is an EITHER/OR contract: {version_id} OR
+        // {manifest_bytes_base64, format}. When BOTH forms arrive, the
+        // strict union arms reject with "Unrecognized fields" — technically
+        // true, but it misframes an ambiguity as a typo. Name it plainly
+        // before Zod sees the input.
+        if (
+          rawInput.action === 'verify_manifest' &&
+          rawInput.version_id !== undefined &&
+          rawInput.manifest_bytes_base64 !== undefined
+        ) {
+          throw new TypedError(
+            'INVALID_INPUT',
+            'verify_manifest takes exactly one form: {version_id} OR {manifest_bytes_base64, format}',
+            'Send version_id alone to verify a stored version, or manifest_bytes_base64 + format alone to verify raw bytes — never both.',
+          );
+        }
         const input = VersionInputSchema.parse(rawInput);
         switch (input.action) {
           case 'get': {
