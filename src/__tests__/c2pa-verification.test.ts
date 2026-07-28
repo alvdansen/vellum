@@ -11,7 +11,8 @@
  *  1. The signed output contains a valid C2PA manifest (active_manifest is
  *     non-null after c2pa.read).
  *  2. The manifest contains a `c2pa.actions` assertion with `c2pa.created`
- *     as the first action and ComfyUI as the softwareAgent.
+ *     as the first action and Vellum as the softwareAgent (the producing
+ *     provider rides along as an action parameter).
  *  3. **Concern #8** — the manifest contains a `c2pa.hash.data` (or
  *     `c2pa.hash.bmff` for MP4) assertion AND `validation_status` is empty
  *     after filtering acceptable codes (signingCredential.untrusted is
@@ -584,17 +585,26 @@ describe.skipIf(!haveOpenssl)('C2PA verification — D-CTX-4 manifest contract (
     await ctx.cleanup();
   });
 
-  it('Test 11 — softwareAgent.name === "ComfyUI"', async () => {
+  it('Test 11 — softwareAgent is Vellum; the producing provider is a parameter', async () => {
+    // Read out of REAL signed bytes: the agent must be the signer (Vellum),
+    // never the backend — the prior hardcoded "ComfyUI" was a
+    // cryptographically bound false statement on non-ComfyUI output.
     const store = await readManifestFromBuffer(signedPng, 'image/png');
     const assertions = (store!.active_manifest!.assertions ?? []) as Array<{
       label?: string;
-      data?: { actions?: Array<{ softwareAgent?: { name?: string } }> };
+      data?: {
+        actions?: Array<{
+          softwareAgent?: { name?: string };
+          parameters?: { provider?: string };
+        }>;
+      };
     }>;
     const actions = assertions.find((a) =>
       a.label === 'c2pa.actions' || (a.label && a.label.startsWith('c2pa.actions')),
     );
     const created = actions!.data?.actions?.[0];
-    expect(created?.softwareAgent?.name).toBe('ComfyUI');
+    expect(created?.softwareAgent?.name).toBe('Vellum');
+    expect(created?.parameters?.provider).toBeTruthy();
   });
 
   it('Test 12 — digitalSourceType === IPTC trainedAlgorithmicMedia', async () => {

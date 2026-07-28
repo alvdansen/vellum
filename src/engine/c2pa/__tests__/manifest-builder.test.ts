@@ -26,9 +26,10 @@ import type {
  *
  * Pure-function unit tests. Asserts the buildManifestDefinition output is a
  * c2pa-node-compatible ManifestBuilder input, contains exactly the
- * c2pa.created assertion, names ComfyUI as the softwareAgent, and surfaces
- * the primary model in parameters.description with NO absolute filesystem
- * paths (T-14-05 mitigation).
+ * c2pa.created assertion, names Vellum as the softwareAgent (with the
+ * producing provider as an action parameter), and surfaces the primary
+ * model in parameters.description with NO absolute filesystem paths
+ * (T-14-05 mitigation).
  */
 
 const SAMPLE_MODEL_WITH_HASH: PrimaryModel = {
@@ -46,7 +47,7 @@ const BASE_OPTS: BuildManifestOptions = {
   versionId: 'ver_abc123',
   mimeType: 'image/png',
   primaryModel: SAMPLE_MODEL_WITH_HASH,
-  comfyuiVersion: '0.4.2',
+  provider: 'comfyui-cloud',
   appVersion: '0.1.0',
 };
 
@@ -100,16 +101,22 @@ describe('buildManifestDefinition — D-CTX-4 c2pa.created shape', () => {
     );
   });
 
-  it('Test 6: softwareAgent.name is exactly `ComfyUI`', () => {
+  it('Test 6: softwareAgent is Vellum, never the provider', () => {
+    // An earlier revision signed `softwareAgent: "ComfyUI"` into every
+    // manifest, including Replicate/FAL/Google output — a cryptographically
+    // bound false statement. The agent is the tool that signs (Vellum, at
+    // the app version); the producing backend is an action parameter.
     const def = buildManifestDefinition(BASE_OPTS);
-    expect(pickCreatedAction(def).data.actions[0]?.softwareAgent.name).toBe('ComfyUI');
+    const action = pickCreatedAction(def).data.actions[0];
+    expect(action?.softwareAgent.name).toBe('Vellum');
+    expect(action?.softwareAgent.version).toBe(BASE_OPTS.appVersion);
   });
 
-  it('Test 7: softwareAgent.version equals supplied comfyuiVersion or null', () => {
-    const def = buildManifestDefinition({ ...BASE_OPTS, comfyuiVersion: '0.4.2' });
-    expect(pickCreatedAction(def).data.actions[0]?.softwareAgent.version).toBe('0.4.2');
-    const nullDef = buildManifestDefinition({ ...BASE_OPTS, comfyuiVersion: null });
-    expect(pickCreatedAction(nullDef).data.actions[0]?.softwareAgent.version).toBe(null);
+  it('Test 7: the producing provider is an action parameter, `unknown` when unstamped', () => {
+    const def = buildManifestDefinition({ ...BASE_OPTS, provider: 'replicate' });
+    expect(pickCreatedAction(def).data.actions[0]?.parameters.provider).toBe('replicate');
+    const nullDef = buildManifestDefinition({ ...BASE_OPTS, provider: null });
+    expect(pickCreatedAction(nullDef).data.actions[0]?.parameters.provider).toBe('unknown');
   });
 });
 
@@ -189,16 +196,16 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
       versionId: 'ver_abc',
       mimeType: 'image/png',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     };
     // Runtime assertion: object spreads cleanly; no implicit fields the
     // interface gained that we forgot.
     expect(Object.keys(opts).sort()).toEqual([
       'appVersion',
-      'comfyuiVersion',
       'mimeType',
       'primaryModel',
+      'provider',
       'versionId',
     ]);
   });
@@ -312,8 +319,8 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
           {
             action: 'c2pa.created',
             digitalSourceType: 'http://example/sourcetype',
-            softwareAgent: { name: 'ComfyUI', version: null },
-            parameters: { description: 'model=test' },
+            softwareAgent: { name: 'Vellum', version: '1.1.0' },
+            parameters: { description: 'model=test', provider: 'comfyui-cloud' },
           },
         ],
       },
@@ -346,7 +353,7 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
       versionId: 'ver_v002',
       mimeType: 'image/png',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
       ingredients: { parentOf: parent, componentOf: components, inputTo },
       ingredientAssetRefs: refs,
@@ -374,8 +381,8 @@ describe('Plan 15-02 Task 1 — additive types compile + match expected shapes',
               {
                 action: 'c2pa.created',
                 digitalSourceType: 'http://example/sourcetype',
-                softwareAgent: { name: 'ComfyUI', version: null },
-                parameters: { description: 'model=test' },
+                softwareAgent: { name: 'Vellum', version: '1.1.0' },
+                parameters: { description: 'model=test', provider: 'comfyui-cloud' },
               },
             ],
           },
@@ -475,7 +482,7 @@ function buildOptsWithIngredients(overrides: {
     versionId: 'ver_v002',
     mimeType: 'image/png',
     primaryModel: SAMPLE_MODEL_WITH_HASH,
-    comfyuiVersion: '0.4.2',
+    provider: 'comfyui-cloud',
     appVersion: '0.1.0',
     ingredients: {
       parentOf: overrides.parentOf === undefined ? null : overrides.parentOf,
@@ -510,7 +517,7 @@ describe('Plan 15-02 Task 2 — c2pa.created assertion is unchanged in shape', (
     expect(first?.label).toBe('c2pa.actions');
     if (first?.label !== 'c2pa.actions') throw new Error('expected c2pa.actions');
     expect(first.data.actions[0]?.action).toBe('c2pa.created');
-    expect(first.data.actions[0]?.softwareAgent.name).toBe('ComfyUI');
+    expect(first.data.actions[0]?.softwareAgent.name).toBe('Vellum');
     expect(first.data.actions[0]?.parameters.description).toBe(
       'model=sd_xl_1.0.safetensors; hash=abc123def456',
     );

@@ -55,10 +55,15 @@ export interface BuildManifestOptions {
    */
   primaryModel: PrimaryModel | null;
   /**
-   * ComfyUI server version captured from `/api/system_stats` at submit time.
-   * NULL when not yet captured (rare). Mirrored into `softwareAgent.version`.
+   * The backend that produced this version (`comfyui-cloud`, `replicate`,
+   * `fal`, …), read from the version row. NULL when the row predates
+   * provider stamping. Emitted as an action parameter — NOT as the
+   * softwareAgent, which is Vellum itself: an earlier revision hardcoded
+   * `softwareAgent: "ComfyUI"` into every signed manifest, a
+   * cryptographically bound false statement for the four non-ComfyUI
+   * backends.
    */
-  comfyuiVersion: string | null;
+  provider: string | null;
   /** Local app version (read from package.json by the caller). */
   appVersion: string;
 }
@@ -123,7 +128,7 @@ export interface CreatedActionAssertion {
       action: 'c2pa.created';
       digitalSourceType: string;
       softwareAgent: { name: string; version: string | null };
-      parameters: { description: string };
+      parameters: { description: string; provider: string };
     }>;
   };
 }
@@ -328,8 +333,8 @@ export function buildManifestDefinition(opts: BuildManifestOptions): ManifestDef
             {
               action: 'c2pa.created',
               digitalSourceType: IPTC_TRAINED_ALGORITHMIC_MEDIA,
-              softwareAgent: { name: 'ComfyUI', version: opts.comfyuiVersion },
-              parameters: { description },
+              softwareAgent: { name: 'Vellum', version: opts.appVersion },
+              parameters: { description, provider: opts.provider ?? 'unknown' },
             },
           ],
         },
@@ -392,8 +397,8 @@ export function buildManifestWithIngredients(
           {
             action: 'c2pa.created',
             digitalSourceType: IPTC_TRAINED_ALGORITHMIC_MEDIA,
-            softwareAgent: { name: 'ComfyUI', version: opts.comfyuiVersion },
-            parameters: { description },
+            softwareAgent: { name: 'Vellum', version: opts.appVersion },
+            parameters: { description, provider: opts.provider ?? 'unknown' },
           },
         ],
       },

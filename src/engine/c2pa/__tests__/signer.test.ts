@@ -340,7 +340,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       versionId: 'ver_test1',
       mimeType: 'image/png',
       primaryModel: { name: 'sd_xl.safetensors', hash: 'abc123' },
-      comfyuiVersion: '0.4.2',
+      provider: 'comfyui-cloud',
       appVersion: '0.1.0',
     });
     const signed = await signEmbedBuffer(TINY_PNG, 'image/png', def, signer);
@@ -355,7 +355,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       versionId: 'ver_test2',
       mimeType: 'image/png',
       primaryModel: { name: 'sd_xl.safetensors', hash: 'abc123' },
-      comfyuiVersion: '0.4.2',
+      provider: 'comfyui-cloud',
       appVersion: '0.1.0',
     });
     const signed = await signEmbedBuffer(TINY_PNG, 'image/png', def, signer);
@@ -385,7 +385,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       versionId: 'ver_test3',
       mimeType: 'video/mp4',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     });
     await expect(
@@ -402,7 +402,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       versionId: 'ver_test4',
       mimeType: 'image/png',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     });
     // Pass garbage bytes claiming to be PNG — c2pa-node sign() will reject.
@@ -459,7 +459,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       versionId: 'ver_mp4',
       mimeType: 'video/mp4',
       primaryModel: { name: 'video.safetensors', hash: 'mp4hash' },
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     });
     try {
@@ -494,7 +494,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       versionId: 'ver_mp4r',
       mimeType: 'video/mp4',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     });
     try {
@@ -525,7 +525,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       versionId: 'ver_tiff',
       mimeType: 'image/tiff',
       primaryModel: null,
-      comfyuiVersion: null,
+      provider: null,
       appVersion: '0.1.0',
     });
     try {

@@ -55,7 +55,7 @@ function buildResult(opts: {
     versionId: opts.versionId,
     mimeType: opts.mimeType,
     primaryModel: { name: 'sd_xl.safetensors', hash: 'abc123' },
-    comfyuiVersion: '0.4.2',
+    provider: 'comfyui-cloud',
     appVersion: '0.1.0',
   });
   return { definition, ingredientSpecs: opts.ingredientSpecs };
@@ -327,7 +327,7 @@ describe('signEmbedFileWithIngredients — file-API entry point', () => {
         versionId: 'ver_sfile',
         mimeType: 'video/mp4',
         primaryModel: { name: 'video.safetensors', hash: 'h' },
-        comfyuiVersion: '0.4.2',
+        provider: 'comfyui-cloud',
         appVersion: '0.1.0',
       }),
       ingredientSpecs: [],
