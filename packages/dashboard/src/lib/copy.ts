@@ -101,6 +101,15 @@ export const LOAD_MORE_ERROR_PREFIX_FAILED = 'Failed to load';
  */
 export const LOAD_MORE_ERROR_PREFIX_NETWORK = 'Network error';
 
+/** Version pane — page 1 in flight with nothing buffered yet. */
+export const VERSIONS_LOADING = 'Loading versions…';
+
+/** Version pane — page 1 failed with nothing buffered. Caller prepends the
+ *  mapped error prefix; a Retry button accompanies it. Deliberately NOT
+ *  "No versions yet": a fetch failure is not evidence of an empty history. */
+export const VERSIONS_LOAD_FAILED_SUFFIX = ' — versions did not load.';
+export const VERSIONS_LOAD_RETRY = 'Retry';
+
 // ================================================================
 // Phase 19 / Plan 19-06 — AI conversational summary copy
 // (UI-SPEC §"Copywriting Contract" — verbatim named-constant exports)

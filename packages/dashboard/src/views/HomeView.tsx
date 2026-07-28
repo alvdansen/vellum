@@ -81,6 +81,9 @@ import {
   SORT_TREE_ARIA_LABEL,
   LOAD_MORE_ERROR_PREFIX_FAILED,
   LOAD_MORE_ERROR_PREFIX_NETWORK,
+  VERSIONS_LOADING,
+  VERSIONS_LOAD_FAILED_SUFFIX,
+  VERSIONS_LOAD_RETRY,
 } from '../lib/copy.js';
 import {
   workspaces,
@@ -274,6 +277,12 @@ export function HomeView() {
       limit: 20,
     })
       .then((response) => {
+        // Race guard — same pattern as ShotGridView.loadMore: a response
+        // dispatched for shot A (or sort X) must not land after the user has
+        // moved to shot B (or sort Y), or A's rows, cursor and total_count
+        // get attributed to B. The stale response is dropped; B's own fetch
+        // is already in flight from the page-1 effect.
+        if (selectedShotId.value !== args.shotId || gridSort.value !== args.sort) return;
         if (args.replace) {
           versions.value = response.items;
         } else {
@@ -284,12 +293,13 @@ export function HomeView() {
         gridIsFetching.value = false;
       })
       .catch((err) => {
+        if (selectedShotId.value !== args.shotId || gridSort.value !== args.sort) return;
         gridLoadMoreError.value = mapFetchErrorToCopy(err);
         gridIsFetching.value = false;
-        // On page-1 failure, leave versions.value at whatever it was (may be
-        // [] from prior shot change). The error pill renders only when
-        // versions.value is non-empty AND gridCursor.value is non-null —
-        // for a complete-failure-on-page-1, the empty state still shows.
+        // On page-1 failure versions.value is [] (the effect clears it on
+        // shot switch), so the pane renders the error branch with a Retry —
+        // not "No versions yet", which would be a provenance tool asserting
+        // there is no history because a fetch failed.
       });
   }
 
@@ -305,6 +315,11 @@ export function HomeView() {
       return;
     }
     gridCursor.value = null; // page-1 reset (defence in depth)
+    // Clear the previous shot's rows immediately — otherwise they sit on
+    // screen under the new shot's header until page 1 resolves, and on a
+    // page-1 failure they'd sit there forever.
+    versions.value = [];
+    gridLoadMoreError.value = null;
     void loadVersionsPage({
       shotId,
       sort: gridSort.value,
@@ -581,6 +596,36 @@ export function HomeView() {
         >
           {!selectedShotId.value ? (
             <EmptyState message="Select a shot to view versions" />
+          ) : gridLoadMoreError.value && versionsList.length === 0 ? (
+            // Page-1 failure with nothing buffered. Never "No versions yet"
+            // here — a fetch failure is not evidence of an empty history.
+            <div
+              role="alert"
+              class="flex flex-col items-center justify-center gap-3 py-16 text-[var(--color-fg-muted)]"
+            >
+              <span class="text-sm">
+                {gridLoadMoreError.value}
+                {VERSIONS_LOAD_FAILED_SUFFIX}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const shotId = selectedShotId.value;
+                  if (!shotId) return;
+                  void loadVersionsPage({
+                    shotId,
+                    sort: gridSort.value,
+                    cursor: null,
+                    replace: true,
+                  });
+                }}
+                class="h-10 px-4 py-2 text-sm rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:bg-[var(--color-surface-alt)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+              >
+                {VERSIONS_LOAD_RETRY}
+              </button>
+            </div>
+          ) : gridIsFetching.value && versionsList.length === 0 ? (
+            <EmptyState message={VERSIONS_LOADING} />
           ) : versionsList.length === 0 ? (
             <EmptyState message="No versions yet" />
           ) : (
