@@ -1,7 +1,7 @@
 /**
  * Type mirror of server-side sort enums.
  *
- * D-WEBUI-31 architecture-purity: this dashboard package MUST NOT import
+ * Architecture-purity: this dashboard package MUST NOT import
  * from src/store/. Types are duplicated here verbatim. The file-level
  * architecture-purity grep gate
  * structurally enforces the no-server-import invariant.

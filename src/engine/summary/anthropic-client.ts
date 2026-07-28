@@ -131,7 +131,7 @@ async function invokeAnthropic(
     },
   );
 
-  // Pitfall 8 — never index content[0] blindly; SDK may return tool_use or other blocks.
+  // Never index content[0] blindly; SDK may return tool_use or other blocks.
   const textBlock = message.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text') {
     throw new TypedError(

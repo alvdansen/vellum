@@ -2,7 +2,7 @@
  * Dashboard signal map for per-version
  * AI conversational summary state (SUM-01..06).
  *
- * Architecture-purity (D-WEBUI-31): this file performs zero
+ * Architecture-purity: this file performs zero
  * server-tree relative-import traversals. The dashboard speaks to the engine
  * ONLY via lib/api.ts over HTTP — same trust boundary as the
  * getC2paStatus and thumbnail fetches.

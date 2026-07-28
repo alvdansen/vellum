@@ -12,7 +12,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
 
-// Zod v4 discriminated-union inputs per D-05, D-24. Kept for handler-side
+// Zod v4 discriminated-union inputs. Kept for handler-side
 // re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape
 // (RT-01). Create requires workspaceId (HIER-02); list accepts optional filter.
 const CreateInput = z.object({
@@ -55,9 +55,9 @@ const ProjectInputSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * Register the `project` MCP tool (D-01, D-02, HIER-02).
+ * Register the `project` MCP tool (HIER-02).
  *
- * Thin Zod-validated delegate per D-33: one engine call per action, breadcrumb
+ * Thin Zod-validated delegate: one engine call per action, breadcrumb
  * injected via shapeCreateOrGet/shapeList, TypedError mapped via toolError.
  *
  * RT-01/RT-02: raw ZodRawShape exposed to MCP, discriminated union

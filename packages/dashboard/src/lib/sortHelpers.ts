@@ -9,7 +9,7 @@
  *   - compareTreeNodes — client-side tree re-sort comparator
  *   - GRID_SORT_OPTIONS / TREE_SORT_OPTIONS — UI dropdown configurations
  *
- * Architecture-purity (D-WEBUI-31): zero imports from src/. Types come from
+ * Architecture-purity: zero imports from src/. Types come from
  * the local mirror at './sortTypes.js'.
  *
  * DEVIATION 1 (lockstep with DEVIATION 2 in src/store/sort.ts):

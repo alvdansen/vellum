@@ -3,7 +3,7 @@
 // @preact/signals-backed store for the versions list under the selected
 // shot, plus the currently-open version-detail drawer target.
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. Uses dashboard-local entity DTOs
 // from ../types/entities.ts and dashboard-local sort types from ../lib/sortTypes.ts.
 //
@@ -43,7 +43,7 @@ export const gridSort = signal<VersionSort>(DEFAULT_VERSION_SORT);
 /**
  * SORT-05: opaque base64url cursor for the next page. null on page 1 OR last
  * page. Set from the most-recent fetchVersions response's next_cursor field;
- * cleared to null on shot change or sort change (cursor reset per D-19).
+ * cleared to null on shot change or sort change (cursor reset).
  */
 export const gridCursor = signal<string | null>(null);
 

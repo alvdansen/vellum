@@ -4,7 +4,7 @@
 // Tracks the currently-loaded workspaces list plus the "selected path" —
 // one ID per hierarchy level so the sidebar can highlight the open chain.
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. Uses dashboard-local entity DTOs
 // from ../types/entities.ts and dashboard-local sort types from ../lib/sortTypes.ts.
 //
@@ -12,7 +12,7 @@
 // signal is default-null / empty; view components hydrate
 // them via api.ts fetches on mount or on node expansion.
 //
-// treeSort signal: the D-09 single
+// treeSort signal: the single
 // tree-wide sort applies to ALL hierarchy levels uniformly (workspaces,
 // projects, sequences, shots within their parent's children array). The
 // dashboard re-sorts client-side via compareTreeNodes (sortHelpers.ts) so
@@ -45,7 +45,7 @@ export const selectedShotId = signal<string | null>(null);
 // ============================================================================
 
 /**
- * SORT-04: current sort applied to the tree (D-09 single tree-wide sort,
+ * SORT-04: current sort applied to the tree (single tree-wide sort,
  * NOT per-level). Default = A→Z. HomeView's tree composition useMemo reads
  * this and applies compareTreeNodes() at all 4 hierarchy levels client-side,
  * so toggling fires zero new fetches.

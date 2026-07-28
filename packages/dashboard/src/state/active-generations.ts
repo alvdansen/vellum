@@ -5,7 +5,7 @@
 // will wire via onSseEvent('version.created', onVersionCreated) +
 // onSseEvent('version.status_changed', onVersionStatusChanged).
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. Uses dashboard-local payload types
 // from ../types/events.ts.
 

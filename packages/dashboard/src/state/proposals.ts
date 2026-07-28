@@ -4,7 +4,7 @@
  *
  * Module pattern mirrors state/shot-grid.ts: module-
  * singleton signals + a load helper + decide handlers, zero src/ traversals
- * for architecture-purity (D-WEBUI-31). SSE is NOT wired for proposals (there
+ * for architecture-purity. SSE is NOT wired for proposals (there
  * is no proposal SSE channel today); the panel refreshes explicitly after each
  * decide and on mount / filter change.
  *

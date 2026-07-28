@@ -15,7 +15,7 @@ type StructuredContent = { [key: string]: unknown };
  *
  * Zod's own message is safe to surface: these are schema-authored strings
  * ("Too small: expected number to be >=1"), not driver output. toolError still
- * refuses to interpolate anything it has not typed (D-13, D-32).
+ * refuses to interpolate anything it has not typed.
  */
 export function zodInputError(err: z.ZodError): TypedError {
   let first = err.issues[0];
@@ -60,7 +60,7 @@ export function zodInputError(err: z.ZodError): TypedError {
 }
 
 /**
- * Wrap a successful engine result into the MCP dual-form response (D-25).
+ * Wrap a successful engine result into the MCP dual-form response.
  *
  * Contract: `JSON.parse(content[0].text)` must deep-equal `structuredContent`.
  * Clients that understand `structuredContent` use it directly; older clients fall
@@ -74,15 +74,15 @@ export function toolOk(structured: StructuredContent) {
 }
 
 /**
- * Map an error thrown at the tool boundary into an MCP error response (D-28).
+ * Map an error thrown at the tool boundary into an MCP error response.
  *
  * Behavior:
  *  - `TypedError` → `{ isError: true, structuredContent: { code, message, hint? } }`.
- *    The `hint` key is only present when `err.hint` is truthy (D-31).
+ *    The `hint` key is only present when `err.hint` is truthy.
  *  - Anything else (`Error`, plain object, string, SQLite driver error, Zod
  *    failure) → defence-in-depth re-wrap as a generic `INVALID_INPUT` payload.
- *    The raw error is logged to stderr (D-21) but NEVER interpolated into the
- *    response body (D-13, D-32). No `SQLITE_CONSTRAINT_*` or Zod stack shape ever
+ *    The raw error is logged to stderr but NEVER interpolated into the
+ *    response body. No `SQLITE_CONSTRAINT_*` or Zod stack shape ever
  *    reaches the agent.
  */
 export function toolError(err: unknown) {
@@ -102,7 +102,7 @@ export function toolError(err: unknown) {
   }
 
   // Defence-in-depth: never leak raw Zod / SQLite / Error shape to the agent.
-  // stderr is the only logging channel for the stdio transport (D-21).
+  // stderr is the only logging channel for the stdio transport.
   console.error('[envelope] Unwrapped error at tool boundary:', err);
   const fallback = {
     code: 'INVALID_INPUT' as const,

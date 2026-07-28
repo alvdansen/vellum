@@ -60,7 +60,7 @@ export { SUMMARY_TEMPLATE_VERSION, SUMMARY_MODEL_ID } from './template.js';
  *
  * Deliberately pruned reasons: 'output_too_short' (folded into
  * validation_failed since the deterministic-template fallback always passes
- * validateSummary on the empty-content 'Pitfall 8' branch) and
+ * validateSummary on the empty-content sentinel branch) and
  * 'manifest_sha256_unavailable' (the live path returns outcome='live'
  * without persistence when manifestSha256 is null — see step 8 below —
  * rather than emitting a fallback). Final union: 7 reasons.
@@ -91,7 +91,7 @@ export type SummaryOutcome =
         | 'sdk_load_failed'         // TypedError('ANTHROPIC_SDK_LOAD_FAILED') — pre-flight detection
         | 'http_error'              // 4xx (excluding 401/403) + 5xx after retry exhausted
         | 'network_error'           // APIConnectionError after retry
-        | 'validation_failed'       // regex miss / leak-scan failure / 'Pitfall 8' empty content
+        | 'validation_failed'       // regex miss / leak-scan failure / empty-content sentinel
         | 'timeout';                // 10s per-call exceeded (APIConnectionTimeoutError)
     };
 
@@ -369,8 +369,8 @@ export async function summarizeVersion(
     circuitBreaker.recordFailure(deps.clock);
     // Map error to fallback reason. Use TypedError narrowing first; then SDK class hierarchy.
     if (err instanceof TypedError && err.code === 'ANTHROPIC_SDK_LOAD_FAILED') {
-      // The Pitfall 8 empty/non-text-block path also surfaces as TypedError(
-      // ANTHROPIC_SDK_LOAD_FAILED) with message containing 'Pitfall 8'.
+      // The empty/non-text-block path also surfaces as TypedError(
+      // ANTHROPIC_SDK_LOAD_FAILED) whose message contains the sentinel matched below.
       // Disambiguate so the engine returns the correct fallback reason —
       // 'sdk_load_failed' for binding load failures, 'validation_failed' for
       // empty-content responses.

@@ -3,7 +3,7 @@
 // Dashboard-local entity types. Mirrors the REST response shapes from
 // src/http/dashboard-routes.ts — plain DTOs the UI renders.
 //
-// Duplicated per D-WEBUI-31 (no server imports under packages/dashboard/src/**).
+// Duplicated deliberately (no server imports under packages/dashboard/src/**).
 // These types are intentionally minimal: only the fields the dashboard reads.
 // They are not a full mirror of every DB column.
 

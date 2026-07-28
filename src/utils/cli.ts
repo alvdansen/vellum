@@ -1,18 +1,18 @@
 /**
- * Hand-rolled CLI parser for vellum (D-19).
+ * Hand-rolled CLI parser for vellum.
  *
  * Exhaustive 5-flag set: --http, --port <N>, --db <path>, --help, --version.
  * Supports both space-separated and `=` forms for --port and --db.
  * Unknown flags exit with code 2 and a pointer to --help.
  *
  * Pure module:
- *  - No MCP SDK imports (D-33 — utils layer is pure)
+ *  - No MCP SDK imports (utils layer is pure)
  *  - No environment variables consulted BY THE PARSER itself. (The wider
  *    server boot path does read several — COMFYUI_API_KEY, COMFYUI_API_BASE,
  *    COMFYUI_ALLOWED_REDIRECT_HOSTS, COMFYUI_MAX_CONCURRENT_POLLS,
  *    HTTP_ALLOWED_ORIGINS — but those are consulted inside src/server.ts, not
  *    here.)
- *  - All output goes to stderr (D-21 — stdout reserved for JSON-RPC on stdio)
+ *  - All output goes to stderr (stdout reserved for JSON-RPC on stdio)
  */
 
 export interface CliArgs {

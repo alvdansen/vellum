@@ -1,12 +1,12 @@
 // packages/dashboard/src/types/events.ts
 //
-// Dashboard-local copy of the engine event map (D-WEBUI-31, architecture purity).
+// Dashboard-local copy of the engine event map (architecture purity).
 // Duplicated in pure TypeScript so no file under packages/dashboard/src/** imports
 // from the server tree. Must stay in sync with the server-side EngineEventMap
-// in spirit (the set of event names is frozen by D-WEBUI-06); the field shape
+// in spirit (the set of event names is frozen); the field shape
 // here is the contract the dashboard renders against.
 //
-// Info-disclosure mitigation (T-5-02): MetadataChangedPayload deliberately has NO `value` field.
+// Info-disclosure mitigation: MetadataChangedPayload deliberately has NO `value` field.
 // Metadata values may contain sensitive data; the SSE stream carries only the key
 // + action + entity id. Components that need the current value re-fetch the
 // version via GET /api/versions/:id.
@@ -37,13 +37,13 @@ export interface TagChangedPayload {
 /**
  * metadata.changed — a metadata key changed on some entity.
  *
- * T-5-02 guard: this payload intentionally has NO `value` field. Never add one
+ * Info-disclosure guard: this payload intentionally has NO `value` field. Never add one
  * without revisiting the info-disclosure threat model.
  */
 export interface MetadataChangedPayload {
   entityId: string;
   key: string;
-  // NOTE: no `value` field (T-5-02).
+  // NOTE: no `value` field (info-disclosure guard).
 }
 
 /** hierarchy.created — a workspace/project/sequence/shot was created. */
@@ -60,7 +60,7 @@ export interface HierarchyCreatedPayload {
  * Wire shape is camelCase per src/http/sse.ts:135-148 toDashboardPayload case.
  * `note` coerces null → undefined (optional field) at the adapter; never null on the wire.
  *
- * The 5-value status union is inline-duplicated here per D-WEBUI-31 architecture-
+ * The 5-value status union is inline-duplicated here per the architecture-
  * purity (dashboard does NOT import from src/types/hierarchy.js). It MUST match
  * the server-side SHOT_STATUSES constant exactly; misalignment surfaces at compile
  * time in any consumer that subscribes via onSseEvent('shot.status_changed', ...).
@@ -79,7 +79,7 @@ export interface ShotStatusChangedPayload {
 }
 
 /**
- * EngineEventMap — the SSE event types the dashboard listens for (D-WEBUI-06).
+ * EngineEventMap — the SSE event types the dashboard listens for.
  * Keys are the literal `event` strings on the wire; values are the parsed JSON
  * payload shapes the dashboard renders.
  *

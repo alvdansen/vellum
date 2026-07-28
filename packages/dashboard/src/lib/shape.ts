@@ -5,7 +5,7 @@
 // props shape the view primitives expect (VersionCardVersion with `label`
 // + StatusPill Status union).
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. Only imports from the dashboard-
 // local type barrel under types/*.
 
@@ -15,7 +15,7 @@ import type { Status } from '../components/StatusPill.js';
 /**
  * Zero-padded version label from a Version's version_number (e.g. 1 → "v001").
  * Mirrors the server-side `versionLabel()` helper used by the MCP tool layer
- * — kept here inline per D-WEBUI-31 (no server import). If the entity does
+ * — kept here inline (no server import). If the entity does
  * not have a version_number we fall back to the entity id.
  */
 export function versionLabel(v: Pick<Version, 'id' | 'version_number'>): string {

@@ -5,7 +5,7 @@
 // — the static handler and the API live on the same Node process in prod,
 // and Vite proxies /api -> http://127.0.0.1:3000 in dev.
 //
-// Architecture-purity invariant (D-WEBUI-31): this file performs zero
+// Architecture-purity invariant: this file performs zero
 // server-tree relative-import traversals. Only imports: the dashboard-local
 // type barrel under ../types/* and dashboard-local sort utilities under ./sort*.
 //

@@ -7,7 +7,7 @@
 //   - POST /api/proposals/:id/approve   (body { note? })
 //   - POST /api/proposals/:id/reject    (body { note? })
 //
-// Architecture-purity (D-WEBUI-31): zero imports from src/. `Proposal` is a
+// Architecture-purity: zero imports from src/. `Proposal` is a
 // hand-mirror of the ProposalRepo row shape (proposal-repo.ts:22) — it MUST
 // stay in lockstep with that row. `request_json` is deliberately typed as a
 // raw `string` here (verbatim over the wire); the dashboard parses it at the

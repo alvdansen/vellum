@@ -1,5 +1,5 @@
 /**
- * Review panel + A/B compare modal signal bag (D-18).
+ * Review panel + A/B compare modal signal bag.
  *
  * Per-domain signal module: declares the 6 module-singleton signals the
  * review surface keys on. Module pattern mirrors state/shot-grid.ts
@@ -13,10 +13,10 @@
  *  - Review-panel state is NEVER mirrored into the URL.
  *    Reload returns to the default view; overlays are session-local.
  *
- * Architecture-purity (D-WEBUI-31): no server-tree imports;
+ * Architecture-purity: no server-tree imports;
  * ReviewAction is sibling-imported from ./types/review-panel.js.
  *
- * D-02 mutex invariant: `activeOverlay` is the single source of truth for
+ * Mutex invariant: `activeOverlay` is the single source of truth for
  * which right-rail overlay is mounted. OverlayHost (views/OverlayHost.tsx)
  * is the only consumer that branches on it; the three exported helpers
  * `openVersionDrawer / openReviewPanel / closeOverlay` are the only
@@ -27,7 +27,7 @@ import { signal } from '@preact/signals';
 import type { ReviewAction } from '../types/review-panel.js';
 
 /**
- * D-02 mutex discriminator — selects which right-rail overlay is mounted.
+ * Mutex discriminator — selects which right-rail overlay is mounted.
  *
  * `null` = no overlay open. `'version'` = VersionDrawer mounted (existing
  * surface; the companion signal is `selectedVersionId` in
@@ -50,7 +50,7 @@ export const activeOverlay = signal<'review' | 'version' | null>(null);
 export const activeReviewShotId = signal<string | null>(null);
 
 /**
- * D-14 compare-mode selection — the two version ids the user has checked
+ * Compare-mode selection — the two version ids the user has checked
  * for A/B comparison. Both null when compare mode is inactive; either field
  * non-null means the user is mid-selection. When BOTH non-null, the
  * `COMPARE_MODE_CTA_LABEL` "Compare" CTA enables, and clicking it flips
@@ -58,7 +58,7 @@ export const activeReviewShotId = signal<string | null>(null);
  *
  * Shape `{ a, b }` (not a tuple) lets test mutations target each side
  * independently without re-creating the whole record. LRU caching of the
- * thumbnail Image() objects across (a, b) tuples is D-14's secondary
+ * thumbnail Image() objects across (a, b) tuples is the secondary
  * decision and lives inside ReviewTimeline, NOT here.
  */
 export const compareSelection = signal<{
@@ -67,7 +67,7 @@ export const compareSelection = signal<{
 }>({ a: null, b: null });
 
 /**
- * D-15 A/B compare modal visibility. Independent of `activeOverlay` — the
+ * A/B compare modal visibility. Independent of `activeOverlay` — the
  * modal renders OVER any open right-rail overlay (Pitfall: never mutex with
  * the version/review drawers; the modal IS the z-30 layer above them).
  *
@@ -79,7 +79,7 @@ export const compareSelection = signal<{
 export const compareModalOpen = signal<boolean>(false);
 
 /**
- * REV-02 + D-12 — currently in-flight review action (the verb the user
+ * REV-02 — currently in-flight review action (the verb the user
  * just clicked, before the PATCH resolves). Non-null marks the originating
  * ActionButton as `aria-busy` and disables siblings. Null when no action
  * is pending (ready to accept the next click).
@@ -90,7 +90,7 @@ export const compareModalOpen = signal<boolean>(false);
 export const actionInFlight = signal<ReviewAction | null>(null);
 
 /**
- * REV-02 + D-12 — quick-approve PATCH failure message. Non-null surfaces
+ * REV-02 — quick-approve PATCH failure message. Non-null surfaces
  * the inline `<WarningPill/>` ("Approve failed — retry") next to the
  * grid card's status pill. Click dismissal clears it; a successful retry
  * also clears it. NEVER persisted; lives only for the session.

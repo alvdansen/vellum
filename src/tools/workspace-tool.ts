@@ -12,7 +12,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
 
-// Zod v4 discriminated-union inputs per D-05, D-24. Kept for handler-side
+// Zod v4 discriminated-union inputs. Kept for handler-side
 // re-validation so TypeScript narrowing + exhaustiveness + action-specific
 // field requirements survive; the SDK sees the raw ZodRawShape below and
 // publishes a non-empty JSON schema in tools/list (RT-01).
@@ -47,9 +47,9 @@ const WorkspaceInputSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * Register the `workspace` MCP tool (D-01, D-02).
+ * Register the `workspace` MCP tool.
  *
- * Thin Zod-validated delegate per D-33: one engine call per action, breadcrumb
+ * Thin Zod-validated delegate: one engine call per action, breadcrumb
  * injected via shapeCreateOrGet/shapeList, TypedError mapped via toolError.
  * No business logic, no repo access.
  *

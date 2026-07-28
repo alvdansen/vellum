@@ -2,9 +2,9 @@
  * Vellum Dashboard Theme (Tailwind v4)
  *
  * Design contract:
- *   - Dark theme default, light theme via [data-theme="light"] on <html> (D-WEBUI-16)
+ *   - Dark theme default, light theme via [data-theme="light"] on <html>
  *   - 2-weight typography: 400 (regular) + 600 (semibold) — no other weights
- *   - Inter (body) + Inter Tight (display) from @fontsource (offline-capable, D-WEBUI-20)
+ *   - Inter (body) + Inter Tight (display) from @fontsource (offline-capable)
  *   - tabular-nums on every numeric surface (timestamps, version labels, counts)
  *   - ComfyUI-native palette (60/30/10 split: #202020 canvas, #353535 surface, #B39DDB accent)
  *
@@ -14,7 +14,7 @@
 
 @import "tailwindcss";
 
-/* Self-hosted Inter (offline-capable per D-WEBUI-20).
+/* Self-hosted Inter (offline-capable).
  * Import exactly weights 400 + 600 — no 500 dead weight. */
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/600.css";
@@ -58,7 +58,7 @@
   --color-shot-status-omit:            #64748b;  /* slate-500 — dimmed/excluded */
 
   /* ===== Sequence stats. WCAG 2.1 AA UI-component contrast vs --color-bg ≥ 3:1. ===== */
-  --color-shot-stale: #f97316;  /* orange-500 — DISTINCT from pending-review amber per D-08 */
+  --color-shot-stale: #f97316;  /* orange-500 — DISTINCT from pending-review amber by design */
 
   /* Layout fixed widths */
   --sidebar-width: 280px;
