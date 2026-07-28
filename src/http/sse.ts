@@ -43,7 +43,11 @@ import type {
   ShotStatusChangedPayload,
 } from '../engine/events.js';
 
-// The 6 event types the dashboard subscribes to (D-WEBUI-06, STAT-04).
+// Every engine event type is forwarded to the SSE stream. The dashboard
+// currently consumes four of them (version.created, version.status_changed,
+// shot.status_changed in App.tsx; hierarchy.created in HomeView) — tag and
+// metadata changes are forwarded but unrouted client-side because their
+// payloads carry no version reference to route by.
 // Declared as a `const` tuple so the subscribe/cleanup loops below get exact
 // key-level typing against EngineEventMap — adding a seventh event type
 // would fail the `satisfies` check until this list is updated.

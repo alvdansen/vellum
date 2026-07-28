@@ -109,6 +109,8 @@ import type {
   Sequence,
   Shot,
 } from '../types/entities.js';
+import { onSseEvent, offSseEvent } from '../lib/events.js';
+import type { HierarchyCreatedPayload } from '../types/events.js';
 import type {
   SortField,
   HierarchySortField,
@@ -197,6 +199,60 @@ export function HomeView() {
       });
     return () => {
       alive = false;
+    };
+  }, []);
+
+  // hierarchy.created — an entity created over MCP (or from another tab)
+  // appears in the tree without a reload. The affected level is refetched
+  // and overwritten unconditionally: no staleness check against the local
+  // cache, because the cache is exactly what just went stale. A parent that
+  // was never hydrated gets its list prefetched a moment early, which is
+  // harmless. Fetch errors are swallowed the same way the mount hydration
+  // swallows them — the next expand retries.
+  useEffect(() => {
+    const onHierarchyCreated = (payload: HierarchyCreatedPayload): void => {
+      if (payload.entityType === 'workspace') {
+        fetchWorkspaces()
+          .then((raw) => {
+            workspaces.value = unwrapList<Workspace>(raw);
+          })
+          .catch(() => {});
+        return;
+      }
+      const parentId = payload.parentId;
+      if (!parentId) return;
+      if (payload.entityType === 'project') {
+        fetchProjects(parentId, treeSort.value)
+          .then((raw) =>
+            setChildren((prev) => ({
+              ...prev,
+              projects: { ...prev.projects, [parentId]: unwrapList<Project>(raw) },
+            })),
+          )
+          .catch(() => {});
+      } else if (payload.entityType === 'sequence') {
+        fetchSequences(parentId, treeSort.value)
+          .then((raw) =>
+            setChildren((prev) => ({
+              ...prev,
+              sequences: { ...prev.sequences, [parentId]: unwrapList<Sequence>(raw) },
+            })),
+          )
+          .catch(() => {});
+      } else {
+        fetchShots(parentId, treeSort.value)
+          .then((raw) =>
+            setChildren((prev) => ({
+              ...prev,
+              shots: { ...prev.shots, [parentId]: unwrapList<Shot>(raw) },
+            })),
+          )
+          .catch(() => {});
+      }
+    };
+    onSseEvent('hierarchy.created', onHierarchyCreated);
+    return () => {
+      offSseEvent('hierarchy.created', onHierarchyCreated);
     };
   }, []);
 
