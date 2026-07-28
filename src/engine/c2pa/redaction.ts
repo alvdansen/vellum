@@ -145,7 +145,7 @@ export function applyRedactionPolicy(
 /**
  * Pure helper: build a fresh ManifestDefinition wrapping the redacted JSON.
  * The redaction call site (integration helper, Task 2) uses this to produce
- * the input to signer.signEmbedBufferWithIngredients. The result intentionally
+ * the input to signer.signEmbedBuffer. The result intentionally
  * matches the BuildManifestResult shape EXCEPT that ingredientSpecs is empty
  * — D-PLAN-2-3 ingredient pass-through is handled at the integration layer
  * by reading the parent manifest's c2pa-node ingredient graph and threading
@@ -409,8 +409,8 @@ function redactValue(v: unknown): unknown {
 // Integration helper — uses native binding (lazy import).
 // ──────────────────────────────────────────────────────────────────────────
 // This section uses `await import('c2pa-node')` (lazy) to read the parent
-// manifest JSON, then routes through signEmbedBufferWithIngredients /
-// signEmbedFileWithIngredients to re-sign with the same cert.
+// manifest JSON, then routes through signEmbedBuffer / signEmbedFile to
+// re-sign with the same cert.
 
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -420,10 +420,7 @@ import type { VersionRepo } from '../../store/version-repo.js';
 import type { ManifestSignedPayloadFields } from '../../types/provenance.js';
 import type { LoadedSigner } from './signer.js';
 import { routeFormat } from './format-router.js';
-import {
-  signEmbedBufferWithIngredients,
-  signEmbedFileWithIngredients,
-} from './signer.js';
+import { signEmbedBuffer, signEmbedFile } from './signer.js';
 import type { BuildManifestResult, IngredientSpec } from './manifest-builder.js';
 
 /** Function-shape of the per-version mutex acquire (compound key versionId+filename).
@@ -722,7 +719,7 @@ export async function redactManifestForVersionImpl(
     // Re-sign via the format-router dispatch (mirror Engine.signOutput).
     let redactedBytes: Buffer;
     if (route.mode === 'embed-buffer') {
-      redactedBytes = await signEmbedBufferWithIngredients(
+      redactedBytes = await signEmbedBuffer(
         parentBytes,
         route.mimeType,
         buildResult,
@@ -738,7 +735,7 @@ export async function redactManifestForVersionImpl(
       const destPath = path.join(tmp, `dest${path.extname(filename)}`);
       try {
         await writeFile(srcPath, parentBytes);
-        await signEmbedFileWithIngredients(
+        await signEmbedFile(
           srcPath,
           destPath,
           route.mimeType,

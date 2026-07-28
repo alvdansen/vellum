@@ -29,7 +29,6 @@
 import { readFile } from 'node:fs/promises';
 import { X509Certificate } from 'node:crypto';
 import { TypedError } from '../errors.js';
-import type { ManifestDefinition } from './manifest-builder.js';
 import type { BuildManifestResult, IngredientSpec } from './manifest-builder.js';
 
 // c2pa-node native binding — loaded lazily (Concern #11).
@@ -322,78 +321,6 @@ function unescapeRfc4514(s: string): string {
   return s.replace(/\\([,=+;<>"\\])/g, '$1');
 }
 
-/**
- * Sign + embed manifest into a buffer asset (JPEG / PNG only).
- *
- * Throws `TypedError('C2PA_SIGNING_FAILED', ...)` on:
- *   - unsupported MIME type (caller passed video/mp4, etc.)
- *   - c2pa-node sign() rejection (corrupted asset, network failure on TSA, etc.)
- *
- * Plan 14-03's engine hook catches this as a graceful-fail per D-CTX-9 —
- * download path returns original bytes + `X-C2PA-Signing-Status: failed:<reason>`.
- */
-export async function signEmbedBuffer(
-  buffer: Buffer,
-  mimeType: string,
-  manifestDef: ManifestDefinition,
-  signer: LoadedSigner,
-): Promise<Buffer> {
-  if (!BUFFER_API_MIMETYPES.has(mimeType)) {
-    throw new TypedError(
-      'C2PA_SIGNING_FAILED',
-      `Buffer-API signing not supported for ${mimeType} — use signEmbedFile instead`,
-      'c2pa-node v0.5.x supports buffer signing only for image/jpeg + image/png. MP4/WebP/TIFF must use the file-path API.',
-    );
-  }
-  const c2paNode = await ensureC2paNode();
-  try {
-    const result = await signer.c2pa.sign({
-      asset: { buffer, mimeType },
-      manifest: new c2paNode.ManifestBuilder(manifestDef as never),
-      thumbnail: false,
-    });
-    return result.signedAsset.buffer;
-  } catch (err) {
-    if (err instanceof TypedError) throw err;
-    throw new TypedError(
-      'C2PA_SIGNING_FAILED',
-      `c2pa-node sign() rejected the asset: ${(err as Error).message}`,
-      'Caller should degrade gracefully (return original bytes) per D-CTX-9.',
-    );
-  }
-}
-
-/**
- * Sign + embed manifest into a file asset (MP4 / WebP / TIFF / JPEG / PNG file form).
- *
- * Writes signed bytes to `destPath`. If `srcPath === destPath` the original
- * file is OVERWRITTEN. Caller is responsible for choosing the right path.
- */
-export async function signEmbedFile(
-  srcPath: string,
-  destPath: string,
-  mimeType: string,
-  manifestDef: ManifestDefinition,
-  signer: LoadedSigner,
-): Promise<void> {
-  const c2paNode = await ensureC2paNode();
-  try {
-    await signer.c2pa.sign({
-      asset: { path: srcPath, mimeType },
-      manifest: new c2paNode.ManifestBuilder(manifestDef as never),
-      thumbnail: false,
-      options: { outputPath: destPath },
-    });
-  } catch (err) {
-    if (err instanceof TypedError) throw err;
-    throw new TypedError(
-      'C2PA_SIGNING_FAILED',
-      `c2pa-node sign() (file API) rejected the asset: ${(err as Error).message}`,
-      'Caller should degrade gracefully (skip + log) per D-CTX-9.',
-    );
-  }
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // Phase 15 / Plan 15-03 — ingredient-aware signers.
 // ──────────────────────────────────────────────────────────────────────────
@@ -423,10 +350,14 @@ export async function signEmbedFile(
  * trail lives in definition.assertions as vellum.unavailable_ingredient
  * (emitted by buildManifestWithIngredients in Plan 15-02).
  *
- * Throws TypedError('C2PA_SIGNING_FAILED', ...) on signer rejection — same
- * contract as signEmbedBuffer.
+ * Throws `TypedError('C2PA_SIGNING_FAILED', ...)` on:
+ *   - unsupported MIME type (caller passed video/mp4, etc.)
+ *   - c2pa-node sign() rejection (corrupted asset, network failure on TSA, etc.)
+ *
+ * The engine hook catches this as a graceful-fail per D-CTX-9 — the caller
+ * keeps the original bytes.
  */
-export async function signEmbedBufferWithIngredients(
+export async function signEmbedBuffer(
   buffer: Buffer,
   mimeType: string,
   result: BuildManifestResult,
@@ -435,7 +366,7 @@ export async function signEmbedBufferWithIngredients(
   if (!BUFFER_API_MIMETYPES.has(mimeType)) {
     throw new TypedError(
       'C2PA_SIGNING_FAILED',
-      `Buffer-API signing not supported for ${mimeType} — use signEmbedFileWithIngredients instead`,
+      `Buffer-API signing not supported for ${mimeType} — use signEmbedFile instead`,
       'The native binding v0.5.x supports buffer signing only for image/jpeg + image/png. MP4/WebP/TIFF must use the file-path API.',
     );
   }
@@ -464,9 +395,10 @@ export async function signEmbedBufferWithIngredients(
  * JPEG / PNG file form), threading IngredientSpec[] through the native
  * binding's createIngredient + manifestBuilder.addIngredient API before sign.
  *
- * Writes signed bytes to destPath. Same call-site contract as signEmbedFile.
+ * Writes signed bytes to destPath. If `srcPath === destPath` the original
+ * file is OVERWRITTEN. Caller is responsible for choosing the right path.
  */
-export async function signEmbedFileWithIngredients(
+export async function signEmbedFile(
   srcPath: string,
   destPath: string,
   mimeType: string,

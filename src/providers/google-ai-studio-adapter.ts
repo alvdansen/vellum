@@ -39,6 +39,7 @@ import { nanoid } from 'nanoid';
 import { TypedError } from '../engine/errors.js';
 import { PROVIDER_INLINE_GENERATION_TIMEOUT_MS, timeoutSignal } from '../utils/http-timeout.js';
 import { streamToPath } from '../utils/stream-to-path.js';
+import { scrubSecret } from './url-provider-shared.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
 import type { NeutralProvenance } from './provenance.js';
 import type { SubmitResponse, StatusResponse, ComfyOutput } from '../comfyui/types.js';
@@ -50,7 +51,6 @@ export const DEFAULT_GOOGLE_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 export const INLINE_OUTPUT_URL = 'inline:base64';
 /** Sweep staged job dirs older than this on each submit (orphan-download cleanup). */
 const STAGE_TTL_MS = 2 * 60 * 60 * 1000;
-const MAX_ERROR_MESSAGE_CHARS = 1_000;
 /** Reject a response whose Content-Length declares more than this before reading it. */
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024;
 
@@ -175,11 +175,7 @@ export class GoogleAIStudioAdapter implements GenerationProvider {
 
   /** Never let the API key leak into an error surfaced to an agent/log. */
   private scrub(s: string): string {
-    let out = s;
-    if (this.apiKey && this.apiKey.length >= 4) out = out.replaceAll(this.apiKey, '[redacted]');
-    return out.length > MAX_ERROR_MESSAGE_CHARS
-      ? out.slice(0, MAX_ERROR_MESSAGE_CHARS) + '...[truncated]'
-      : out;
+    return scrubSecret(s, this.apiKey);
   }
 
   /** GenerationProvider.validateRequest — need a `prompt` string OR a `contents` array. */

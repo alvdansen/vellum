@@ -39,15 +39,13 @@ export {
 
 export {
   loadSigner,
-  signEmbedBuffer,
-  signEmbedFile,
   isC2paNodeAvailable,
   // Phase 15 / Plan 15-03 — ingredient-aware entry points. Drive the native
   // binding's createIngredient + manifestBuilder.addIngredient for each spec
   // before sign. Architecture-purity preserved: signer.ts is STILL the only
   // file in src/ that imports the native binding.
-  signEmbedBufferWithIngredients,
-  signEmbedFileWithIngredients,
+  signEmbedBuffer,
+  signEmbedFile,
   type LoadedSigner,
 } from './signer.js';
 
@@ -69,11 +67,6 @@ export {
   type ComponentIngredient,
   type InputAssertion,
 } from './ingredient-extractor.js';
-
-// Phase 15 / Plan 15-01 — streaming SHA-256 helper for component image bytes.
-// Mirrors src/engine/output-hash.ts; impure (filesystem read) but
-// architecture-pure (no MCP / native-binding / SQLite / ORM imports).
-export { hashComponentBytes, type HashOutcome } from './ingredient-hasher.js';
 
 // Phase 16 / Plan 16-01 — PROV-V-07 agent-surface primitives. Pure-async
 // reader (exporter.ts) + lazy-binding verifier (verifier.ts). Engine facade

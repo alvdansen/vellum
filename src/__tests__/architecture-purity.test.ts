@@ -307,23 +307,6 @@ describe('architecture purity', () => {
     expect(grepCount('drizzle-orm', 'src/engine/c2pa/ingredient-extractor.ts')).toBe(0);
   });
 
-  it('src/engine/c2pa/ingredient-hasher.ts is pure (zero c2pa-node imports)', () => {
-    try {
-      const out = execFileSync(
-        'grep',
-        ['-E', "from[[:space:]]*['\"]c2pa-node", 'src/engine/c2pa/ingredient-hasher.ts'],
-        { encoding: 'utf8' },
-      );
-      expect(out.trim(), `c2pa-node import in ingredient-hasher.ts:\n${out}`).toBe('');
-    } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status !== 1) throw err;
-    }
-    expect(grepCount('@modelcontextprotocol/sdk', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
-    expect(grepCount('better-sqlite3', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
-    expect(grepCount('drizzle-orm', 'src/engine/c2pa/ingredient-hasher.ts')).toBe(0);
-  });
-
   // ================================================================
   // Phase 16 / Plan 16-01 — file-level purity locks for exporter.ts +
   // verifier.ts (PROV-V-07). exporter.ts has ZERO c2pa-node imports

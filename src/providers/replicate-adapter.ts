@@ -29,6 +29,7 @@ import {
   extractHttpsOutputs,
   guardedStreamDownload,
   resolveAllowedHosts,
+  scrubSecret,
 } from './url-provider-shared.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
 import type { NeutralProvenance } from './provenance.js';
@@ -39,7 +40,6 @@ export const DEFAULT_REPLICATE_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
 // Replicate serves prediction outputs from replicate.delivery (+ the API host).
 const DEFAULT_REPLICATE_OUTPUT_HOSTS = ['replicate.delivery', 'replicate.com'];
-const MAX_ERROR_MESSAGE_CHARS = 1_000;
 
 export interface ReplicateAdapterOptions {
   fetchImpl?: typeof fetch;
@@ -128,11 +128,7 @@ export class ReplicateAdapter implements GenerationProvider {
 
   /** Never let the API token leak into an error surfaced to an agent/log. */
   private scrub(s: string): string {
-    let out = s;
-    if (this.apiKey && this.apiKey.length >= 4) out = out.replaceAll(this.apiKey, '[redacted]');
-    return out.length > MAX_ERROR_MESSAGE_CHARS
-      ? out.slice(0, MAX_ERROR_MESSAGE_CHARS) + '...[truncated]'
-      : out;
+    return scrubSecret(s, this.apiKey);
   }
 
   /** GenerationProvider.validateRequest — Replicate needs { version, input }. */

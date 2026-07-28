@@ -46,13 +46,10 @@ import {
   routeFormat,
   // Phase 15 WR-02 — supported-MIME helper for ingredient asset refs.
   getMimeForExtensionOrNull,
+  // Phase 15 / Plan 15-03 — ingredient-aware signers.
   signEmbedBuffer,
   signEmbedFile,
-  // Phase 15 / Plan 15-03 — ingredient-aware signers.
-  signEmbedBufferWithIngredients,
-  signEmbedFileWithIngredients,
   type LoadedSigner,
-  type ManifestDefinition,
   type PrimaryModel,
   type BuildManifestResult,
   type IngredientAssetRef,
@@ -1017,9 +1014,9 @@ export class Engine {
    * 21-PATTERNS.md §10 for the rationale and 21-RESEARCH.md Example 1 for
    * the verbatim facade body).
    *
-   * The repo's `status` field is null-coalesced to 'wip' at the repo layer
-   * (shot-status-repo:getCurrentStatus inheritance); the facade does NOT
-   * re-coalesce. Shots with zero completed versions surface as
+   * The repo's `status` field comes through 'wip'-defaulted (shots.status
+   * column default, materialized by shot-status-repo:insertStatusEvent);
+   * the facade does NOT re-coalesce. Shots with zero completed versions surface as
    * `latest_completed_version: null` (D-19 / Phase 17 SkeletonThumbnail
    * fallback path).
    *
@@ -1465,8 +1462,8 @@ export class Engine {
         warnings = [];
       }
     }
-    const parentFilename = this.firstStoredFilename(parentVersionId);
-    const reproductionFilename = this.firstStoredFilename(reproductionVersionId);
+    const parentFilename = this.getStoredFilenameForVersion(parentVersionId);
+    const reproductionFilename = this.getStoredFilenameForVersion(reproductionVersionId);
     // Phase 12 WR-01: graceful degradation. computeOutputSha256 returns null
     // for the ENOENT (missing file) case but re-throws other I/O errors —
     // EACCES (permission flipped mid-flight), EISDIR (a directory exists at
@@ -1499,20 +1496,6 @@ export class Engine {
     const parentHash = await safeHash(parentVersionId, parentFilename);
     const reproductionHash = await safeHash(reproductionVersionId, reproductionFilename);
     return buildReproductionDivergence({ warnings, parentHash, reproductionHash });
-  }
-
-  /** Internal: read outputs_json on a version row and return the first stored
-   *  filename, or null if outputs_json is empty/malformed. Mirrors the
-   *  filename-extraction in pipeline.ts:369-384 (download-on-completion path). */
-  private firstStoredFilename(versionId: string): string | null {
-    const v = this.versionRepo.getVersion(versionId);
-    if (!v?.outputs_json) return null;
-    try {
-      const parsed = JSON.parse(v.outputs_json) as Array<{ filename?: string }>;
-      return Array.isArray(parsed) ? parsed[0]?.filename ?? null : null;
-    } catch {
-      return null;
-    }
   }
 
   /** Internal helper: assemble a DiffSnapshot for a single version. */
@@ -2102,7 +2085,7 @@ export class Engine {
           });
           return { signed: null, signedToPath: null };
         }
-        const signedBytes = await signEmbedBufferWithIngredients(
+        const signedBytes = await signEmbedBuffer(
           bytes,
           route.mimeType,
           manifestForSigning,
@@ -2123,13 +2106,13 @@ export class Engine {
         return { signed: signedBytes, signedToPath: null };
       }
       // mode === 'embed-file' — MP4 / WebP / TIFF. Drive c2pa-node's file API
-      // via signViaTempFilesWithIngredients which manages the temp dir +
+      // via signViaTempFiles which manages the temp dir +
       // 0700/0600 modes + nanoid-suffixed unique partial paths (Concerns #5
       // and #9). The filename's extension MUST be preserved on the temp paths
       // so c2pa-rs selects the correct asset handler (BMFF for .mp4, RIFF for
       // .webp, TIFF for .tif/.tiff). Without the extension, c2pa-rs silently
       // emits unsigned output (a Rule 1 silent-failure bug discovered Plan 14-05).
-      const result = await this.signViaTempFilesWithIngredients(
+      const result = await this.signViaTempFiles(
         versionId,
         input,
         filename,
@@ -2386,72 +2369,6 @@ export class Engine {
   }
 
   /**
-   * Concern #5 + #9 — temp file orchestration for the file-API signing path.
-   *
-   *   Layout:  <outputsDir>/.tmp-c2pa/<versionId>/{src,dest}-<nanoid8>
-   *   Modes:   dir 0700, files 0600 (POSIX-only — Windows ignores mode bits)
-   *   Unique:  nanoid(8) suffix per call avoids concurrent-writer collision
-   *   Cleanup: try/finally unlinks the SRC temp regardless. The DEST temp is
-   *            either consumed (read into Buffer for the bytes-input path) OR
-   *            handed to the caller via signedToPath (filePath-input path);
-   *            in the latter case the caller must rename + unlink it.
-   *
-   * Two branches:
-   *   - bytes input:    write src temp from bytes -> signEmbedFile(src, dest)
-   *                      -> read dest into Buffer -> return { signed }
-   *   - filePath input: skip src temp (caller's path is the src) -> signEmbedFile
-   *                      (caller's path, dest temp) -> return { signedToPath: dest }
-   */
-  private async signViaTempFiles(
-    versionId: string,
-    input: { bytes: Buffer } | { filePath: string },
-    filename: string,
-    mimeType: string,
-    manifestDef: ManifestDefinition,
-    signer: LoadedSigner,
-  ): Promise<{ signed: Buffer | null; signedToPath: string | null }> {
-    const tmpRoot = nodepath.join(this.outputRoot, '.tmp-c2pa', versionId);
-    await mkdir(tmpRoot, { mode: 0o700, recursive: true });
-    const suffix = nanoid(8);
-    // Preserve the original file extension on temp paths so c2pa-rs's asset
-    // handler selection (BMFF / RIFF / TIFF) succeeds. nodepath.extname
-    // returns '' if no extension; in that case the temp paths inherit no
-    // extension, matching the format-router's 'unknown-extension' route
-    // which never reaches this helper.
-    const ext = nodepath.extname(filename);
-    const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}${ext}`);
-    const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}${ext}`);
-    let usedSrcTemp = false;
-    try {
-      if ('bytes' in input) {
-        await writeFile(srcTempPath, input.bytes, { mode: 0o600 });
-        usedSrcTemp = true;
-        await signEmbedFile(srcTempPath, destTempPath, mimeType, manifestDef, signer);
-        const signedBytes = await readFile(destTempPath);
-        return { signed: signedBytes, signedToPath: null };
-      }
-      // filePath input — skip src temp; sign caller's file directly.
-      await signEmbedFile(input.filePath, destTempPath, mimeType, manifestDef, signer);
-      return { signed: null, signedToPath: destTempPath };
-    } finally {
-      // Concern #5 — unconditional src cleanup. force:true makes the unlink
-      // a no-op when the file does not exist (e.g., write threw before we
-      // got here, or filePath input branch never wrote a src temp).
-      if (usedSrcTemp) {
-        await rm(srcTempPath, { force: true });
-      }
-      // For the bytes-input branch, dest was already read into Buffer —
-      // unlink it so the temp dir stays clean.
-      if ('bytes' in input) {
-        await rm(destTempPath, { force: true });
-      }
-      // For the filePath branch, dest is handed back to the caller; do NOT
-      // unlink here. The caller (output-downloader.signFileInPlace) renames
-      // it into place + unlinks any leftover.
-    }
-  }
-
-  /**
    * Concern #6 — pre-stat / size-cap helper. For bytes input this is a
    * trivial pass-through. For filePath input we read the bytes (the
    * embed-buffer path requires bytes; the embed-file path streams via
@@ -2573,7 +2490,7 @@ export class Engine {
     // (We rely on c2pa-rs's broader format support for ingredient assets;
     // the buffer-API constraint applies only to the SIGNING asset.)
     for (const c of componentOf) {
-      // Defensive — same path-traversal guard as hashComponentBytes.
+      // Defensive — same path-traversal guard shape as output-hash.ts.
       const fname = c.input_filename;
       if (
         fname.length === 0 ||
@@ -2622,13 +2539,12 @@ export class Engine {
   }
 
   /**
-   * Phase 15 / B3 — extract a parent's first stored filename from its
-   * outputs_json. StoredOutput shape (src/comfyui/types.ts):
+   * Extract a version's first stored filename from its outputs_json.
+   * StoredOutput shape (src/comfyui/types.ts):
    * { filename, path, url, content_type, size_bytes }. parsed[0]?.filename
-   * is the canonical primary output filename. Mirrors the lineage-tree
-   * filename helper at ~line 692 of this file (firstStoredFilename, now
-   * promoted to a separately-named accessor for the Phase 15 ingredient
-   * resolution path so the Plan 15-03 grep gate locks it explicitly).
+   * is the canonical primary output filename. Single source of truth —
+   * used by both the reproduction-divergence path and the Phase 15
+   * ingredient resolution path.
    *
    * Marked private but reachable via the typed-cast escape hatch the
    * Phase 14 c2paConfig wiring tests already use (see
@@ -2639,22 +2555,35 @@ export class Engine {
     const v = this.versionRepo.getVersion(versionId);
     if (!v?.outputs_json) return null;
     try {
-      const parsed = JSON.parse(v.outputs_json) as Array<{ filename?: string }>;
+      const parsed = JSON.parse(v.outputs_json) as Array<{ filename?: unknown }>;
       if (!Array.isArray(parsed)) return null;
-      return parsed[0]?.filename ?? null;
+      // Guard the type, not just presence — a numeric filename in a
+      // hand-edited outputs_json must not be returned as a string.
+      return typeof parsed[0]?.filename === 'string' ? parsed[0].filename : null;
     } catch {
       return null;
     }
   }
 
   /**
-   * Phase 15 — mirror of signViaTempFiles for the ingredients-aware embed-file
-   * branch. Same try/finally cleanup. Same temp dir + 0700/0600 modes +
-   * nanoid-suffixed partial paths. Differs only in calling
-   * signEmbedFileWithIngredients (which threads BuildManifestResult through
-   * the createIngredient + addIngredient API) instead of signEmbedFile.
+   * Concern #5 + #9 — temp file orchestration for the ingredients-aware
+   * file-API signing path.
+   *
+   *   Layout:  <outputsDir>/.tmp-c2pa/<versionId>/{src,dest}-<nanoid8>
+   *   Modes:   dir 0700, files 0600 (POSIX-only — Windows ignores mode bits)
+   *   Unique:  nanoid(8) suffix per call avoids concurrent-writer collision
+   *   Cleanup: try/finally unlinks the SRC temp regardless. The DEST temp is
+   *            either consumed (read into Buffer for the bytes-input path) OR
+   *            handed to the caller via signedToPath (filePath-input path);
+   *            in the latter case the caller must rename + unlink it.
+   *
+   * Two branches:
+   *   - bytes input:    write src temp from bytes -> signEmbedFile(src, dest)
+   *                      -> read dest into Buffer -> return { signed }
+   *   - filePath input: skip src temp (caller's path is the src) -> signEmbedFile
+   *                      (caller's path, dest temp) -> return { signedToPath: dest }
    */
-  private async signViaTempFilesWithIngredients(
+  private async signViaTempFiles(
     versionId: string,
     input: { bytes: Buffer } | { filePath: string },
     filename: string,
@@ -2665,6 +2594,11 @@ export class Engine {
     const tmpRoot = nodepath.join(this.outputRoot, '.tmp-c2pa', versionId);
     await mkdir(tmpRoot, { mode: 0o700, recursive: true });
     const suffix = nanoid(8);
+    // Preserve the original file extension on temp paths so c2pa-rs's asset
+    // handler selection (BMFF / RIFF / TIFF) succeeds. nodepath.extname
+    // returns '' if no extension; in that case the temp paths inherit no
+    // extension, matching the format-router's 'unknown-extension' route
+    // which never reaches this helper.
     const ext = nodepath.extname(filename);
     const srcTempPath = nodepath.join(tmpRoot, `src-${suffix}${ext}`);
     const destTempPath = nodepath.join(tmpRoot, `dest-${suffix}${ext}`);
@@ -2673,20 +2607,28 @@ export class Engine {
       if ('bytes' in input) {
         await writeFile(srcTempPath, input.bytes, { mode: 0o600 });
         usedSrcTemp = true;
-        await signEmbedFileWithIngredients(srcTempPath, destTempPath, mimeType, result, signer);
+        await signEmbedFile(srcTempPath, destTempPath, mimeType, result, signer);
         const signedBytes = await readFile(destTempPath);
         return { signed: signedBytes, signedToPath: null };
       }
       // filePath input — skip src temp; sign caller's file directly.
-      await signEmbedFileWithIngredients(input.filePath, destTempPath, mimeType, result, signer);
+      await signEmbedFile(input.filePath, destTempPath, mimeType, result, signer);
       return { signed: null, signedToPath: destTempPath };
     } finally {
+      // Concern #5 — unconditional src cleanup. force:true makes the unlink
+      // a no-op when the file does not exist (e.g., write threw before we
+      // got here, or filePath input branch never wrote a src temp).
       if (usedSrcTemp) {
         await rm(srcTempPath, { force: true });
       }
+      // For the bytes-input branch, dest was already read into Buffer —
+      // unlink it so the temp dir stays clean.
       if ('bytes' in input) {
         await rm(destTempPath, { force: true });
       }
+      // For the filePath branch, dest is handed back to the caller; do NOT
+      // unlink here. The caller (output-downloader.signFileInPlace) renames
+      // it into place + unlinks any leftover.
     }
   }
 

@@ -28,6 +28,7 @@ import {
   extractHttpsOutputs,
   guardedStreamDownload,
   resolveAllowedHosts,
+  scrubSecret,
 } from './url-provider-shared.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
 import type { NeutralProvenance } from './provenance.js';
@@ -38,7 +39,6 @@ export const DEFAULT_FAL_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
 // FAL serves outputs from fal.media (+ regional subdomains) and fal.run/fal.ai.
 const DEFAULT_FAL_OUTPUT_HOSTS = ['fal.media', 'fal.run', 'fal.ai'];
-const MAX_ERROR_MESSAGE_CHARS = 1_000;
 const JOB_ID_SEP = '::';
 // Model path: dashed segments separated by '/', e.g. fal-ai/flux/dev. No '..'.
 const MODEL_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
@@ -107,9 +107,7 @@ export class FalAdapter implements GenerationProvider {
 
   /** Never let the FAL key leak into an error surfaced to an agent/log. */
   private scrub(s: string): string {
-    let out = s;
-    if (this.apiKey && this.apiKey.length >= 4) out = out.replaceAll(this.apiKey, '[redacted]');
-    return out.length > MAX_ERROR_MESSAGE_CHARS ? out.slice(0, MAX_ERROR_MESSAGE_CHARS) + '...[truncated]' : out;
+    return scrubSecret(s, this.apiKey);
   }
 
   /** GenerationProvider.validateRequest — FAL needs { model, input }. */

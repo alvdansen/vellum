@@ -377,14 +377,23 @@ describe('Phase 19 telemetry — multi-encoding API-key leak scan (D-PRIV-3)', (
     expect(refusalLines.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('Test 16b — telemetry.ts source code includes all 4 multi-encoding fragments (defence-in-depth code grep)', () => {
+  it('Test 16b — telemetry scan constructs all 4 multi-encoding fragments (defence-in-depth code grep)', () => {
     // The runtime UTF-16LE / UTF-16BE smuggle path is narrow because
     // JSON.stringify normalizes high-bit bytes. The defence-in-depth contract
-    // is that the helper's source code STILL constructs all 4 fragments —
-    // catching any future serialization path that bypasses JSON.stringify.
+    // is that the scan STILL constructs all 4 fragments — catching any future
+    // serialization path that bypasses JSON.stringify. The fragment list now
+    // lives in ONE place (sanitizer.apiKeyFragments); telemetry.ts must
+    // delegate to it, and the helper's source must build all 4 encodings.
     const fs = require('node:fs') as typeof import('node:fs');
-    const src = fs.readFileSync(
+    const telemetrySrc = fs.readFileSync(
       resolve('src/engine/summary/telemetry.ts'),
+      'utf8',
+    );
+    // telemetry.ts delegates to the single source of truth.
+    expect(/import\s*\{[^}]*apiKeyFragments[^}]*\}\s*from\s*'\.\/sanitizer\.js'/.test(telemetrySrc)).toBe(true);
+    expect(telemetrySrc.includes('apiKeyFragments(apiKey)')).toBe(true);
+    const src = fs.readFileSync(
+      resolve('src/engine/summary/sanitizer.ts'),
       'utf8',
     );
     expect(src.includes("Buffer.from(apiKey, 'utf16le').toString('binary')")).toBe(true);

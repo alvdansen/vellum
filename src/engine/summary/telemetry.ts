@@ -28,6 +28,7 @@
  */
 
 import { flattenAnthropicError } from './anthropic-client.js';
+import { apiKeyFragments } from './sanitizer.js';
 
 export type SummaryTelemetryEvent = {
   event: 'summary_generated';
@@ -142,13 +143,7 @@ export function logSummaryEvent(
   const payload = JSON.stringify(event);
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   if (apiKey.length > 0) {
-    const fragments = [
-      apiKey, // UTF-8 / ASCII
-      Buffer.from(apiKey, 'utf16le').toString('binary'), // UTF-16LE
-      Buffer.from(apiKey, 'utf16le').swap16().toString('binary'), // UTF-16BE
-      Buffer.from(apiKey).toString('base64'), // base64
-    ];
-    for (const frag of fragments) {
+    for (const frag of apiKeyFragments(apiKey)) {
       if (frag.length === 0) continue;
       if (payload.includes(frag)) {
         console.error('vellum: [summary-telemetry] EMIT REFUSED — API key fragment in payload');

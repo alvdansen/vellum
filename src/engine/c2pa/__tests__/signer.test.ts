@@ -343,7 +343,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       provider: 'comfyui-cloud',
       appVersion: '0.1.0',
     });
-    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', def, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', { definition: def, ingredientSpecs: [] }, signer);
     expect(Buffer.isBuffer(signed)).toBe(true);
     expect(signed.length).toBeGreaterThan(TINY_PNG.length); // manifest adds bytes
     expect(signed.equals(TINY_PNG)).toBe(false);
@@ -358,7 +358,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       provider: 'comfyui-cloud',
       appVersion: '0.1.0',
     });
-    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', def, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', { definition: def, ingredientSpecs: [] }, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     expect(read).not.toBeNull();
     expect(read?.active_manifest).not.toBeNull();
@@ -389,7 +389,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
       appVersion: '0.1.0',
     });
     await expect(
-      signEmbedBuffer(TINY_PNG, 'video/mp4', def, signer),
+      signEmbedBuffer(TINY_PNG, 'video/mp4', { definition: def, ingredientSpecs: [] }, signer),
     ).rejects.toMatchObject({
       code: 'C2PA_SIGNING_FAILED',
       message: expect.stringContaining('Buffer-API signing not supported for video/mp4'),
@@ -408,7 +408,7 @@ describe('signEmbedBuffer — sign + read round-trip (PNG)', () => {
     // Pass garbage bytes claiming to be PNG — c2pa-node sign() will reject.
     const garbage = Buffer.from('NOT A PNG');
     await expect(
-      signEmbedBuffer(garbage, 'image/png', def, signer),
+      signEmbedBuffer(garbage, 'image/png', { definition: def, ingredientSpecs: [] }, signer),
     ).rejects.toMatchObject({
       code: 'C2PA_SIGNING_FAILED',
     });
@@ -463,7 +463,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       appVersion: '0.1.0',
     });
     try {
-      await signEmbedFile(srcPath, destPath, 'video/mp4', def, signer);
+      await signEmbedFile(srcPath, destPath, 'video/mp4', { definition: def, ingredientSpecs: [] }, signer);
       expect(existsSync(destPath)).toBe(true);
       const dst = readFileSync(destPath);
       expect(dst.length).toBeGreaterThan(0);
@@ -498,7 +498,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       appVersion: '0.1.0',
     });
     try {
-      await signEmbedFile(srcPath, destPath, 'video/mp4', def, signer);
+      await signEmbedFile(srcPath, destPath, 'video/mp4', { definition: def, ingredientSpecs: [] }, signer);
       const read = await signer.c2pa.read({ path: destPath, mimeType: 'video/mp4' });
       expect(read).not.toBeNull();
       expect(read?.active_manifest).not.toBeNull();
@@ -529,7 +529,7 @@ describe('signEmbedFile — sign + read round-trip (file API)', () => {
       appVersion: '0.1.0',
     });
     try {
-      await signEmbedFile(srcPath, destPath, 'image/tiff', def, signer);
+      await signEmbedFile(srcPath, destPath, 'image/tiff', { definition: def, ingredientSpecs: [] }, signer);
       expect(existsSync(destPath)).toBe(true);
       const dst = readFileSync(destPath);
       expect(dst.length).toBeGreaterThan(0);

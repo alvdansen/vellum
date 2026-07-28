@@ -29,6 +29,7 @@ import {
   extractHttpsOutputs,
   guardedStreamDownload,
   resolveAllowedHosts,
+  scrubSecret,
 } from './url-provider-shared.js';
 import type { GenerationProvider, DownloadToPathResult } from './provider.js';
 import type { NeutralProvenance } from './provenance.js';
@@ -43,7 +44,6 @@ export const DEFAULT_BYTEPLUS_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024;
 // host — if ModelArk delivers from a domain outside this set, extend it via
 // BYTEPLUS_ALLOWED_OUTPUT_HOSTS rather than editing this default.
 const DEFAULT_BYTEPLUS_OUTPUT_HOSTS = ['bytepluses.com', 'volces.com', 'byteplusapi.com'];
-const MAX_ERROR_MESSAGE_CHARS = 1_000;
 const TASKS_PATH = '/contents/generations/tasks';
 
 interface ByteplusTaskResponse {
@@ -133,9 +133,7 @@ export class ByteplusAdapter implements GenerationProvider {
 
   /** Never let the ARK API key leak into an error surfaced to an agent/log. */
   private scrub(s: string): string {
-    let out = s;
-    if (this.apiKey && this.apiKey.length >= 4) out = out.replaceAll(this.apiKey, '[redacted]');
-    return out.length > MAX_ERROR_MESSAGE_CHARS ? out.slice(0, MAX_ERROR_MESSAGE_CHARS) + '...[truncated]' : out;
+    return scrubSecret(s, this.apiKey);
   }
 
   /** GenerationProvider.validateRequest — ModelArk needs { model, content[] }. */

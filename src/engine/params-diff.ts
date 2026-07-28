@@ -92,24 +92,3 @@ export function diffParams(
   walk(before ?? {}, after ?? {}, '', changes);
   return { changes, identical: changes.length === 0 };
 }
-
-/**
- * One-line human summary of a params diff (for agent-facing envelopes).
- * e.g. "3 params changed: seed 42→99, steps 20→30, +guidance".
- */
-export function summarizeParamsDiff(result: ParamsDiffResult): string {
-  if (result.identical) return 'No parameter changes.';
-  const parts = result.changes.map((c) => {
-    if (c.kind === 'added') return `+${c.path}`;
-    if (c.kind === 'removed') return `-${c.path}`;
-    return `${c.path} ${formatLeaf(c.before)}→${formatLeaf(c.after)}`;
-  });
-  return `${result.changes.length} parameter change${result.changes.length === 1 ? '' : 's'}: ${parts.join(', ')}`;
-}
-
-function formatLeaf(v: unknown): string {
-  if (typeof v === 'string') return v.length > 24 ? `"${v.slice(0, 24)}…"` : `"${v}"`;
-  if (v === null) return 'null';
-  if (typeof v === 'object') return Array.isArray(v) ? `[${v.length}]` : '{…}';
-  return String(v);
-}

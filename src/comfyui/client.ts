@@ -4,6 +4,7 @@ import { PROVIDER_CONTROL_TIMEOUT_MS, timeoutSignal } from '../utils/http-timeou
 import { flattenComfyError, validateWorkflowFormat } from './format.js';
 import { extractTextChunk } from './png-metadata.js';
 import { streamToPath, resolveDownloadIdleTimeoutMs } from '../utils/stream-to-path.js';
+import { scrubSecret, MAX_ERROR_MESSAGE_CHARS } from '../providers/url-provider-shared.js';
 import { assertPublicHostname, type LookupFn } from '../utils/private-address.js';
 import { isPrivateHost } from '../utils/validate-base-url.js';
 import type {
@@ -249,8 +250,10 @@ const DEFAULT_ALLOWED_HOST_PATTERNS: RegExp[] = [
  * IS-04: cap on persisted ComfyUI error messages. Truncates anything longer
  * than this before it crosses the client boundary so downstream storage
  * (versions.error_message) never holds pathologically-large strings.
+ * Single source of truth: src/providers/url-provider-shared.ts (shared by
+ * every provider adapter); re-exported here for back-compat.
  */
-export const MAX_ERROR_MESSAGE_CHARS = 1_000;
+export { MAX_ERROR_MESSAGE_CHARS };
 
 // ComfyUIClient is the REFERENCE adapter for GenerationProvider (the pivot seam).
 // The `implements` clause makes it a compile-time error for this client to drift
@@ -307,17 +310,7 @@ export class ComfyUIClient implements GenerationProvider {
    * the key into engine code.
    */
   private scrubAndTruncate(s: string): string {
-    let out = s;
-    // Defensive: only scrub if the key is a non-empty non-placeholder string.
-    if (this.apiKey && this.apiKey.length >= 4) {
-      // Replace every occurrence, including within bearer/apikey prefixes.
-      // String.replaceAll is available in Node 15+ (we're on Node 25).
-      out = out.replaceAll(this.apiKey, '[redacted]');
-    }
-    if (out.length > MAX_ERROR_MESSAGE_CHARS) {
-      out = out.slice(0, MAX_ERROR_MESSAGE_CHARS) + `...[truncated]`;
-    }
-    return out;
+    return scrubSecret(s, this.apiKey);
   }
 
   constructor(

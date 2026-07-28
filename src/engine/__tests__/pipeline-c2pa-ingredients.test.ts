@@ -487,11 +487,9 @@ describe('Plan 15-03 — Engine.signOutput ingredient integration', () => {
     expect(countManifestSignedEventsFor(ctx, versionId, 'out.png')).toBe(1);
   });
 
-  it('Test E10: architecture-purity — ingredient files have zero c2pa-node imports', () => {
+  it('Test E10: architecture-purity — ingredient extractor has zero c2pa-node imports', () => {
     const extractor = readFileSync('src/engine/c2pa/ingredient-extractor.ts', 'utf8');
-    const hasher = readFileSync('src/engine/c2pa/ingredient-hasher.ts', 'utf8');
     expect(/from\s+['"]c2pa-node/.test(extractor)).toBe(false);
-    expect(/from\s+['"]c2pa-node/.test(hasher)).toBe(false);
   });
 
   it('Test E11 (WR-02 regression): component with unrecognized extension → vellum.unavailable_ingredient (NOT crash via octet-stream)', async () => {

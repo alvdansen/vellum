@@ -26,6 +26,38 @@ export const MAX_OUTPUT_WALK_DEPTH = 32;
 export const MAX_OUTPUT_URLS = 512;
 
 /**
+ * IS-04: cap on persisted provider error messages. Truncates anything longer
+ * than this before it crosses the adapter boundary so downstream storage
+ * (versions.error_message) never holds pathologically-large strings.
+ */
+export const MAX_ERROR_MESSAGE_CHARS = 1_000;
+
+/**
+ * IS-04: scrub a provider API key literal from any string before it leaves
+ * the adapter boundary, then truncate to `maxChars`.
+ *
+ * Rationale: a provider error response could (rarely) echo back request
+ * headers — including the auth header. That blob flows into
+ * TypedError.message, and then through markFailed into versions.error_message
+ * where an agent can read it back with a status call. Stripping the key at
+ * the adapter boundary is the narrowest fix that doesn't require plumbing
+ * the key into engine code.
+ *
+ * Defensive: only scrubs when the key is a non-empty non-placeholder string
+ * (length >= 4). Single source of truth for all five adapters
+ * (comfyui/replicate/fal/byteplus/google).
+ */
+export function scrubSecret(
+  s: string,
+  apiKey: string,
+  maxChars: number = MAX_ERROR_MESSAGE_CHARS,
+): string {
+  let out = s;
+  if (apiKey && apiKey.length >= 4) out = out.replaceAll(apiKey, '[redacted]');
+  return out.length > maxChars ? out.slice(0, maxChars) + '...[truncated]' : out;
+}
+
+/**
  * Derive a safe on-disk basename from an output URL; fall back to `<prefix>_<i>`.
  * Strips non-conservative filename chars, then collapses any run of 2+ dots to a
  * single dot so a delivery-URL basename like 'frame..001.png' can never carry a

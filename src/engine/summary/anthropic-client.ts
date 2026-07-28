@@ -24,6 +24,7 @@
 // at src/__tests__/c2pa-redaction-e2e.test.ts:76-92.
 
 import { TypedError } from '../errors.js';
+import { apiKeyFragments } from './sanitizer.js';
 
 // Type-only import is allowed (erased at compile; no runtime load).
 // Runtime load happens inside ensureAnthropicSdk via dynamic import.
@@ -163,10 +164,9 @@ function sleep(ms: number): Promise<void> {
 /**
  * Strip API key from any error string in 4 encodings (D-PRIV-3 + D-PRIV-4).
  *
- * Mirrors the multi-encoding leak scan precedent at
- * src/__tests__/c2pa-redaction-e2e.test.ts:76-92. Phase 14 docstring discipline
- * permits verbatim duplication when the helper hasn't been promoted to
- * src/utils/leak-scan.ts.
+ * The fragment list is the shared apiKeyFragments helper from sanitizer.ts
+ * (single source of truth for the 4-encoding scan; mirrors the precedent at
+ * src/__tests__/c2pa-redaction-e2e.test.ts:76-92).
  *
  * The Anthropic SDK auto-redacts auth headers in error messages, but
  * historical 0.x versions have leaked partial keys via debug-mode message
@@ -178,13 +178,7 @@ export function flattenAnthropicError(err: unknown): string {
   let raw = err instanceof Error ? err.message : String(err);
 
   if (apiKey.length > 0) {
-    const fragments = [
-      apiKey,                                                       // UTF-8 / ASCII
-      Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
-      Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
-      Buffer.from(apiKey).toString('base64'),                       // base64
-    ];
-    for (const frag of fragments) {
+    for (const frag of apiKeyFragments(apiKey)) {
       if (frag.length === 0) continue;
       while (raw.includes(frag)) raw = raw.replaceAll(frag, '<REDACTED>');
     }

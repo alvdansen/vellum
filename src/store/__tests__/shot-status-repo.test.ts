@@ -6,7 +6,6 @@ import * as shotStatusRepo from '../shot-status-repo.js';
 import {
   insertStatusEvent,
   getStatusHistory,
-  getCurrentStatus,
   STALE_SHOT_DAYS,
   type ShotStatusEvent,
 } from '../shot-status-repo.js';
@@ -28,6 +27,10 @@ import type * as schema from '../schema.js';
 describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () => {
   let db: BetterSQLite3Database<typeof schema>;
   let shotId: string;
+
+  /** STAT-03 read pattern — latest event's to_status, 'wip'-defaulted. */
+  const currentStatus = (d: BetterSQLite3Database<typeof schema>, id: string) =>
+    getStatusHistory(d, id, 1)[0]?.to_status ?? 'wip';
 
   beforeEach(() => {
     const test = makeInMemoryDb();
@@ -106,7 +109,7 @@ describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () =
     const history = getStatusHistory(db, shotId);
     expect(history.map((e) => e.id)).toEqual([...written].reverse().map((e) => e.id));
     expect(history[0]!.to_status).toBe('approved');
-    expect(getCurrentStatus(db, shotId)).toBe('approved');
+    expect(currentStatus(db, shotId)).toBe('approved');
   });
 
   test('getStatusHistory respects the limit parameter', async () => {
@@ -134,26 +137,26 @@ describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () =
     expect(Array.isArray(history)).toBe(true);
   });
 
-  test('getCurrentStatus null-coalesces to "wip" for shot with zero history (STAT-03)', () => {
-    const status = getCurrentStatus(db, shotId);
+  test('current-status read null-coalesces to "wip" for shot with zero history (STAT-03)', () => {
+    const status = currentStatus(db, shotId);
     expect(status).toBe('wip');
-    // CRITICAL: never returns null
+    // CRITICAL: never null
     expect(status).not.toBeNull();
   });
 
-  test('getCurrentStatus returns latest to_status after one event', () => {
+  test('current-status read returns latest to_status after one event', () => {
     insertStatusEvent(db, shotId, 'wip', 'on-hold', 'user');
-    const status = getCurrentStatus(db, shotId);
+    const status = currentStatus(db, shotId);
     expect(status).toBe('on-hold');
   });
 
-  test('getCurrentStatus returns latest to_status across multiple events', async () => {
+  test('current-status read returns latest to_status across multiple events', async () => {
     insertStatusEvent(db, shotId, 'wip', 'pending-review', 'user');
     await new Promise((r) => setTimeout(r, 5));
     insertStatusEvent(db, shotId, 'pending-review', 'approved', 'supervisor');
     await new Promise((r) => setTimeout(r, 5));
     insertStatusEvent(db, shotId, 'approved', 'omit', 'lead');
-    const status = getCurrentStatus(db, shotId);
+    const status = currentStatus(db, shotId);
     expect(status).toBe('omit');
   });
 
@@ -234,19 +237,19 @@ describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () =
     const siblingShot = db.select().from(shots).where(eq(shots.id, sibling.id)).get();
     expect(siblingShot?.status).toBe('wip');
     expect(getStatusHistory(db, sibling.id)).toEqual([]);
-    expect(getCurrentStatus(db, sibling.id)).toBe('wip');
+    expect(currentStatus(db, sibling.id)).toBe('wip');
 
     // And the original shot's writes are intact.
-    expect(getCurrentStatus(db, shotId)).toBe('approved');
+    expect(currentStatus(db, shotId)).toBe('approved');
   });
 
-  test('getCurrentStatus null-coalesce path: no events → "wip" even when shots.status default fires', () => {
-    // STAT-03 contract: the repo function null-coalesces based on the event
+  test('current-status null-coalesce path: no events → "wip" even when shots.status default fires', () => {
+    // STAT-03 contract: the read pattern null-coalesces based on the event
     // history, not by reading shots.status directly. Verify that the empty-
     // history path returns 'wip' regardless of what shots.status holds.
     // (shots.status is set by Plan 01's migration default — and by createShot
     // — so this overlaps; the explicit assertion documents the invariant.)
-    const status = getCurrentStatus(db, shotId);
+    const status = currentStatus(db, shotId);
     expect(status).toBe('wip');
     // Verify history is genuinely empty (defensive).
     expect(getStatusHistory(db, shotId)).toEqual([]);

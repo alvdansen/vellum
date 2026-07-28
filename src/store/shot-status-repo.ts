@@ -22,9 +22,10 @@ type Db = BetterSQLite3Database<typeof schema>;
  * writes BOTH inside a single sync transaction so partial writes are
  * impossible.
  *
- * Null-coalesce invariant: getCurrentStatus returns 'wip' for shots with
- * zero history rows (pre-migration shots or never-transitioned shots) — it
- * never returns null.
+ * Null-coalesce invariant: the current status of a shot with zero history
+ * rows (pre-migration shots or never-transitioned shots) is 'wip' — the
+ * shots.status column default; readers of getStatusHistory apply the same
+ * 'wip' default when the history is empty.
  */
 
 /**
@@ -123,8 +124,9 @@ export function countStatusEvents(db: Db, shotId: string): number {
  * write order (id is a nanoid — random, not sortable). Mirrors
  * getLatestCostRecorded in src/store/provenance-repo.ts.
  *
- * Returns an empty array (NOT null) when no rows exist — callers handle
- * the 'wip' default via getCurrentStatus, not via null-checks here.
+ * Returns an empty array (NOT null) when no rows exist — callers apply
+ * the 'wip' default themselves (history[0]?.to_status ?? 'wip'), not via
+ * null-checks here.
  */
 export function getStatusHistory(
   db: Db,
@@ -138,22 +140,6 @@ export function getStatusHistory(
     .orderBy(desc(shotStatusEvents.created_at), sql`rowid desc`)
     .limit(limit)
     .all() as ShotStatusEvent[];
-}
-
-/**
- * STAT-03 — return the current shot status, null-coalesced to 'wip' when
- * the shot has zero history rows (pre-migration shots, or shots that have
- * never been transitioned out of the default).
- *
- * CRITICAL invariant: this function NEVER returns null. The nullish-
- * coalescing operator on `history[0]?.to_status` collapses both "no
- * rows" and "to_status column was null" (the latter is structurally
- * impossible — schema declares notNull — but the operator is the belt-
- * and-suspenders guard that callers can rely on).
- */
-export function getCurrentStatus(db: Db, shotId: string): ShotStatus {
-  const history = getStatusHistory(db, shotId, 1);
-  return (history[0]?.to_status as ShotStatus) ?? 'wip';
 }
 
 // ===== Phase 21 — listShotsForGrid (GRID-04 single-query, window-function CTE) =====

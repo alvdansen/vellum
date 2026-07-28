@@ -12,8 +12,8 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   loadSigner,
-  signEmbedBufferWithIngredients,
-  signEmbedFileWithIngredients,
+  signEmbedBuffer,
+  signEmbedFile,
   __resetC2paNodeStateForTests,
 } from '../signer.js';
 import { buildManifestDefinition } from '../manifest-builder.js';
@@ -61,7 +61,7 @@ function buildResult(opts: {
   return { definition, ingredientSpecs: opts.ingredientSpecs };
 }
 
-describe('signEmbedBufferWithIngredients — Test S1: no-ingredients backward-compat', () => {
+describe('signEmbedBuffer — Test S1: no-ingredients backward-compat', () => {
   it('Test S1: empty ingredientSpecs round-trips with Manifest.ingredients empty', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     const result = buildResult({
@@ -69,7 +69,7 @@ describe('signEmbedBufferWithIngredients — Test S1: no-ingredients backward-co
       mimeType: 'image/png',
       ingredientSpecs: [],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     expect(Buffer.isBuffer(signed)).toBe(true);
     expect(signed.length).toBeGreaterThan(TINY_PNG.length);
     // Round-trip via createC2pa().read.
@@ -80,7 +80,7 @@ describe('signEmbedBufferWithIngredients — Test S1: no-ingredients backward-co
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S2: one parentOf via file asset', () => {
+describe('signEmbedBuffer — Test S2: one parentOf via file asset', () => {
   it('Test S2: parentOf spec lands in Manifest.ingredients[] with relationship=parentOf', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     // Write parent fixture to a temp file path (the parentOf assetRef is 'file').
@@ -99,7 +99,7 @@ describe('signEmbedBufferWithIngredients — Test S2: one parentOf via file asse
         },
       ],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     const ingredients = (read?.active_manifest?.ingredients ?? []) as Array<{
       relationship?: string;
@@ -120,7 +120,7 @@ describe('signEmbedBufferWithIngredients — Test S2: one parentOf via file asse
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S3: one componentOf via file asset', () => {
+describe('signEmbedBuffer — Test S3: one componentOf via file asset', () => {
   it('Test S3: componentOf spec lands in Manifest.ingredients[] with relationship componentOf', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), 'c2pa-s3-'));
@@ -143,7 +143,7 @@ describe('signEmbedBufferWithIngredients — Test S3: one componentOf via file a
         },
       ],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     const ingredients = (read?.active_manifest?.ingredients ?? []) as Array<{
       relationship?: string;
@@ -154,7 +154,7 @@ describe('signEmbedBufferWithIngredients — Test S3: one componentOf via file a
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S4: parent + component reachable', () => {
+describe('signEmbedBuffer — Test S4: parent + component reachable', () => {
   it('Test S4: two reachable specs (distinct bytes) produce two ingredients[] entries', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), 'c2pa-s4-'));
@@ -183,7 +183,7 @@ describe('signEmbedBufferWithIngredients — Test S4: parent + component reachab
         },
       ],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     const ingredients = (read?.active_manifest?.ingredients ?? []) as Array<{
       relationship?: string;
@@ -205,7 +205,7 @@ describe('signEmbedBufferWithIngredients — Test S4: parent + component reachab
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S5: unavailable spec skipped at signer', () => {
+describe('signEmbedBuffer — Test S5: unavailable spec skipped at signer', () => {
   it('Test S5: assetRef.kind=unavailable → skipped; reachable still produces an ingredient', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), 'c2pa-s5-'));
@@ -232,7 +232,7 @@ describe('signEmbedBufferWithIngredients — Test S5: unavailable spec skipped a
         },
       ],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     const ingredients = (read?.active_manifest?.ingredients ?? []) as Array<{
       relationship?: string;
@@ -244,7 +244,7 @@ describe('signEmbedBufferWithIngredients — Test S5: unavailable spec skipped a
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S6: Relationship enum import works at runtime', () => {
+describe('signEmbedBuffer — Test S6: Relationship enum import works at runtime', () => {
   it('Test S6: enum import resolves — both ParentOf and ComponentOf reachable', async () => {
     // Sanity test for the enum import path. Imports are dynamic via ensureC2paNode,
     // so this exercises the runtime resolution. If the import path were wrong,
@@ -252,18 +252,18 @@ describe('signEmbedBufferWithIngredients — Test S6: Relationship enum import w
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     expect(signer.c2pa).toBeDefined();
     // ParentOf + ComponentOf are checked indirectly via Tests S2/S3 — those tests
-    // pass only if the enum mapping inside signEmbedBufferWithIngredients works.
+    // pass only if the enum mapping inside signEmbedBuffer works.
     const result = buildResult({
       versionId: 'ver_s6',
       mimeType: 'image/png',
       ingredientSpecs: [],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     expect(Buffer.isBuffer(signed)).toBe(true);
   });
 });
 
-describe('signEmbedBufferWithIngredients — Test S7: createIngredient labeled hash binding', () => {
+describe('signEmbedBuffer — Test S7: createIngredient labeled hash binding', () => {
   it('Test S7: ingredient passes cryptographic-binding validation (clean validation_status)', async () => {
     const signer = await loadSigner(BUNDLED_CERT_PATH, BUNDLED_KEY_PATH);
     const tempDir = mkdtempSync(join(tmpdir(), 'c2pa-s7-'));
@@ -281,7 +281,7 @@ describe('signEmbedBufferWithIngredients — Test S7: createIngredient labeled h
         },
       ],
     });
-    const signed = await signEmbedBufferWithIngredients(TINY_PNG, 'image/png', result, signer);
+    const signed = await signEmbedBuffer(TINY_PNG, 'image/png', result, signer);
     const read = await signer.c2pa.read({ buffer: signed, mimeType: 'image/png' });
     const ingredients = (read?.active_manifest?.ingredients ?? []) as Array<{
       relationship?: string;
@@ -298,7 +298,7 @@ describe('signEmbedBufferWithIngredients — Test S7: createIngredient labeled h
   });
 });
 
-describe('signEmbedFileWithIngredients — file-API entry point', () => {
+describe('signEmbedFile — file-API entry point', () => {
   /**
    * Reuse the tiny MP4 fixture pattern from signer.test.ts; if ffmpeg is
    * unavailable, the test skips trivially.
@@ -310,7 +310,7 @@ describe('signEmbedFileWithIngredients — file-API entry point', () => {
     return null;
   }
 
-  it('Test SFile: signEmbedFileWithIngredients writes signed bytes to destPath', async () => {
+  it('Test SFile: signEmbedFile writes signed bytes to destPath', async () => {
     const srcMp4 = maybeMakeTinyMp4();
     if (!srcMp4) {
       console.warn('Test SFile skipped — tiny.mp4 fixture not present (signer.test.ts ffmpeg-gen)');
@@ -321,7 +321,7 @@ describe('signEmbedFileWithIngredients — file-API entry point', () => {
     const srcPath = join(tempDir, 'tiny.mp4');
     const destPath = join(tempDir, 'tiny-signed.mp4');
     writeFileSync(srcPath, srcMp4);
-    // Empty ingredients → backward-compat with signEmbedFile.
+    // Empty ingredientSpecs → the plain no-ingredients signing path.
     const result: BuildManifestResult = {
       definition: buildManifestDefinition({
         versionId: 'ver_sfile',
@@ -332,7 +332,7 @@ describe('signEmbedFileWithIngredients — file-API entry point', () => {
       }),
       ingredientSpecs: [],
     };
-    await signEmbedFileWithIngredients(srcPath, destPath, 'video/mp4', result, signer);
+    await signEmbedFile(srcPath, destPath, 'video/mp4', result, signer);
     expect(existsSync(destPath)).toBe(true);
     const destBytes = readFileSync(destPath);
     expect(destBytes.length).toBeGreaterThan(srcMp4.length);

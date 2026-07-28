@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { diffParams, summarizeParamsDiff } from '../params-diff.js';
+import { diffParams } from '../params-diff.js';
 
 describe('diffParams', () => {
   test('identical bags produce no changes', () => {
@@ -47,25 +47,5 @@ describe('diffParams', () => {
     expect(diffParams({}, {}).identical).toBe(true);
     // @ts-expect-error — defensive: null coerces to {}
     expect(diffParams(null, { a: 1 }).changes[0]).toMatchObject({ path: 'a', kind: 'added' });
-  });
-});
-
-describe('summarizeParamsDiff', () => {
-  test('summarizes an empty diff', () => {
-    expect(summarizeParamsDiff(diffParams({ a: 1 }, { a: 1 }))).toBe('No parameter changes.');
-  });
-
-  test('summarizes changed/added/removed with counts', () => {
-    const s = summarizeParamsDiff(diffParams({ seed: 42, drop: 1 }, { seed: 99, add: 2 }));
-    expect(s).toMatch(/3 parameter changes/);
-    expect(s).toContain('seed 42→99');
-    expect(s).toContain('+add');
-    expect(s).toContain('-drop');
-  });
-
-  test('truncates long string leaves', () => {
-    const long = 'x'.repeat(50);
-    const s = summarizeParamsDiff(diffParams({ p: 'short' }, { p: long }));
-    expect(s).toContain('…');
   });
 });

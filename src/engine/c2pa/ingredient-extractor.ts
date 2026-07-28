@@ -250,8 +250,9 @@ export function extractParentIngredient(
  * When the upstream is not a recognised filename-bearing node, the entry
  * is silently skipped (no canonical filename).
  *
- * Pure: zero I/O. Hashes are NOT computed here — Plan 15-03's engine
- * integration calls hashComponentBytes per ingredient.
+ * Pure: zero I/O. Hashes are NOT computed here — the engine integration
+ * resolves each ingredient to a file asset ref and the native binding's
+ * createIngredient streams the bytes to compute its own labeled hash.
  */
 export function extractComponentIngredients(
   promptBlob: Record<string, unknown>,

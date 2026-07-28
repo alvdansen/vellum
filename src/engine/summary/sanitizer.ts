@@ -144,6 +144,23 @@ export function sanitizeProvenance(input: SanitizeProvenanceInput): SanitizedPro
 }
 
 /**
+ * D-PRIV-3 — the 4-encoding fragment list every leak scan checks for:
+ * UTF-8/ASCII, UTF-16LE, UTF-16BE (binary views), and base64. Single source
+ * of truth shared by this module's guards, telemetry.ts, and
+ * anthropic-client.ts (all three live in the same purity domain). Mirrors
+ * the Phase 16 multi-encoding precedent at
+ * src/__tests__/c2pa-redaction-e2e.test.ts:76-92.
+ */
+export function apiKeyFragments(apiKey: string): string[] {
+  return [
+    apiKey,                                                       // UTF-8 / ASCII
+    Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
+    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
+    Buffer.from(apiKey).toString('base64'),                       // base64
+  ];
+}
+
+/**
  * Defence-in-depth (D-PRIV-3): multi-encoding leak scan on the OUTBOUND payload.
  * Mirrors the Phase 16 multi-encoding helper at
  * src/__tests__/c2pa-redaction-e2e.test.ts:76-92 verbatim.
@@ -183,12 +200,7 @@ export function assertNoApiKeyInPayload(payload: SanitizedProvenance): void {
   ];
   const haystackBinary = stringFields.join('|');
 
-  const fragments = [
-    apiKey,                                                       // UTF-8 / ASCII
-    Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
-    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
-    Buffer.from(apiKey).toString('base64'),                       // base64
-  ];
+  const fragments = apiKeyFragments(apiKey);
 
   for (const frag of fragments) {
     if (frag.length === 0) continue;
@@ -219,12 +231,7 @@ export function assertNoApiKeyInString(text: string): void {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   if (apiKey.length === 0) return;
 
-  const fragments = [
-    apiKey,                                                       // UTF-8 / ASCII
-    Buffer.from(apiKey, 'utf16le').toString('binary'),            // UTF-16LE
-    Buffer.from(apiKey, 'utf16le').swap16().toString('binary'),   // UTF-16BE
-    Buffer.from(apiKey).toString('base64'),                       // base64
-  ];
+  const fragments = apiKeyFragments(apiKey);
 
   for (const frag of fragments) {
     if (frag.length === 0) continue;
