@@ -29,6 +29,21 @@ describe('MarkdownView', () => {
     expect(container.querySelector('code')?.textContent).toBe('code');
   });
 
+  it('leaves intraword underscores alone (error codes, output filenames)', () => {
+    // The renderer's staple diet is pipeline logs full of snake_case — a
+    // naive italic pass rendered REPLICATE_API_ERROR as REPLICATE<em>API</em>ERROR.
+    const { container } = render(
+      <MarkdownView
+        markdown={'REPLICATE_API_ERROR on SEQ020_BG_WIDE and __dunder__ but _real emphasis_ works'}
+      />,
+    );
+    expect(container.textContent).toContain('REPLICATE_API_ERROR');
+    expect(container.textContent).toContain('SEQ020_BG_WIDE');
+    expect(container.textContent).toContain('__dunder__');
+    const ems = [...container.querySelectorAll('em')].map((e) => e.textContent);
+    expect(ems).toEqual(['real emphasis']);
+  });
+
   it('renders a table, un-escaping \\| in cells', () => {
     const md = [
       '| When | Note |',

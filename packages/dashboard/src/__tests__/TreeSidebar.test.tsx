@@ -92,6 +92,8 @@ describe('TreeSidebar', () => {
       />,
     );
     expect(screen.queryAllByRole('treeitem')).toHaveLength(0);
+    // First-run guidance, not a blank rail (the quickstart's first screen).
+    expect(screen.getByText(/No workspaces yet/)).toBeTruthy();
   });
 
   it('renders the workspace name when the list has one entry', () => {

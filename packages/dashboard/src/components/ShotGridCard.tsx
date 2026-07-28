@@ -100,7 +100,9 @@ export function ShotGridCard({
             size="card"
           />
         ) : (
-          <SkeletonThumbnail width={220} height={124} />
+          <div class="aspect-video w-full overflow-hidden rounded">
+            <SkeletonThumbnail fill />
+          </div>
         )}
       </button>
 

@@ -62,9 +62,16 @@ function splitBy(
 }
 
 function parseItalic(text: string, keys: KeyCounter): (string | VNode)[] {
+  // Underscore emphasis is NOT recognized intraword (CommonMark's own rule,
+  // and the reason it matters here: this renderer displays pipeline logs and
+  // error text full of REPLICATE_API_ERROR / SEQ020_BG_WIDE, which a naive
+  // /_(...)_/ turned into REPLICATE<em>API</em>ERROR two inches from a
+  // sidebar spelling the same name correctly). The lookarounds require a
+  // non-word boundary on both sides; \w includes underscore, so `__x__`
+  // stays literal too.
   return splitBy(
     text,
-    /_([^_]+)_/,
+    /(?<![\w])_([^_]+)_(?![\w])/,
     (inner, key) => <em key={key}>{inner}</em>,
     (s) => [s],
     keys,

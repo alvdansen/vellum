@@ -265,6 +265,11 @@ export const TIME_MONTHS_SUFFIX = 'mo ago';
 
 // ---------- Empty / loading / error states (D-18, UI-SPEC lines 218-231) ----------
 
+/** Empty state — brand-new database, zero workspaces. The first thing a
+ *  first-run user sees, so it says what to do, not just what is missing. */
+export const TREE_EMPTY_NO_WORKSPACES =
+  'No workspaces yet — ask your MCP client to create one.';
+
 /** Empty state — sequence has zero shots. */
 export const SHOT_GRID_EMPTY_NO_SHOTS =
   'No shots in this sequence yet. Shots are created via the MCP agent.';

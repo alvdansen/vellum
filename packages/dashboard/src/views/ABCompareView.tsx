@@ -202,7 +202,9 @@ export function ABCompareView({
                     size="card"
                   />
                 ) : (
-                  <SkeletonThumbnail width={640} height={360} />
+                  <div class="aspect-video w-full overflow-hidden rounded">
+                    <SkeletonThumbnail fill />
+                  </div>
                 )}
               </div>
               <div>
@@ -219,7 +221,9 @@ export function ABCompareView({
                     size="card"
                   />
                 ) : (
-                  <SkeletonThumbnail width={640} height={360} />
+                  <div class="aspect-video w-full overflow-hidden rounded">
+                    <SkeletonThumbnail fill />
+                  </div>
                 )}
               </div>
             </div>

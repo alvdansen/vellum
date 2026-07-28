@@ -50,7 +50,9 @@ import type { VNode } from 'preact';
 import { ChevronRight, ChevronDown, LayoutGrid } from 'lucide-preact';
 import { Thumbnail } from './Thumbnail.js';
 import { SkeletonThumbnail } from './SkeletonThumbnail.js';
+import { EmptyState } from './EmptyState.js';
 import {
+  TREE_EMPTY_NO_WORKSPACES,
   TREE_GRID_ICON_ARIA_PREFIX,
   TREE_GRID_ICON_ACTIVE_ARIA_SUFFIX,
 } from '../lib/copy.js';
@@ -130,18 +132,22 @@ export function TreeSidebar({
       aria-label="Project hierarchy"
       style={{ width: 'var(--sidebar-width)' }}
     >
-      {workspaces.map((ws) => (
-        <WorkspaceNode
-          key={ws.id}
-          workspace={ws}
-          selectedShotId={selectedShotId}
-          onSelectShot={onSelectShot}
-          expandedIds={expandedIds}
-          onToggleExpand={onToggleExpand}
-          onOpenGrid={onOpenGrid}
-          currentGridSequenceId={currentGridSequenceId}
-        />
-      ))}
+      {workspaces.length === 0 ? (
+        <EmptyState message={TREE_EMPTY_NO_WORKSPACES} />
+      ) : (
+        workspaces.map((ws) => (
+          <WorkspaceNode
+            key={ws.id}
+            workspace={ws}
+            selectedShotId={selectedShotId}
+            onSelectShot={onSelectShot}
+            expandedIds={expandedIds}
+            onToggleExpand={onToggleExpand}
+            onOpenGrid={onOpenGrid}
+            currentGridSequenceId={currentGridSequenceId}
+          />
+        ))
+      )}
     </nav>
   );
 }

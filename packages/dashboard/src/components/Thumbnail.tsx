@@ -134,9 +134,10 @@ export function Thumbnail({
 
   // Skeleton render path — D-07 unified treatment for queued/running/failed
   // AND browser-onerror fallback (no broken image icons; same shimmer).
+  // The wrapper dictates the shape (aspect-video, fluid for cards / 80px for
+  // sm); the skeleton fills it, so it tracks the same footprint the real
+  // <img> will occupy at every viewport width.
   if (showSkeleton) {
-    const skelW = size === 'sm' ? 80 : 640;
-    const skelH = size === 'sm' ? 45 : 360;
     return (
       <div
         class={`${wrapperClass}${className ? ` ${className}` : ''}`}
@@ -146,7 +147,7 @@ export function Thumbnail({
           imgError ? `${PREVIEW_UNAVAILABLE_PREFIX}${version.label}` : undefined
         }
       >
-        <SkeletonThumbnail width={skelW} height={skelH} />
+        <SkeletonThumbnail fill />
       </div>
     );
   }
