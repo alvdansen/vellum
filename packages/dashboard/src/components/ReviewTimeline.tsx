@@ -38,6 +38,8 @@ import {
   TIMELINE_VERSION_CREATED_SUFFIX,
   TIMELINE_VERSION_COMPLETED_PREFIX,
   TIMELINE_VERSION_COMPLETED_SUFFIX,
+  TIMELINE_VERSION_FAILED_PREFIX,
+  TIMELINE_VERSION_FAILED_SUFFIX,
   TIMELINE_STATUS_CHANGED_PREFIX,
   TIMELINE_VERSION_ROW_ARIA_PREFIX,
   TIMELINE_VERSION_ROW_ARIA_SUFFIX,
@@ -70,11 +72,12 @@ export function ReviewTimeline({
     first: 'a' | 'b' | null;
   }>({ first: null });
 
-  // Eligible versions for compare = completed events only (D-14: only
-  // completed versions are comparable; created-only rows can't have a
-  // diff yet).
+  // Eligible versions for compare = ended attempts (completed OR failed).
+  // Failed takes carry full diffable provenance — comparing the failed
+  // params against the take that worked is a legitimate use. Created-only
+  // rows can't have a diff yet.
   const versionIds = entries
-    .filter((e) => e.kind === 'version' && e.event === 'completed')
+    .filter((e) => e.kind === 'version' && (e.event === 'completed' || e.event === 'failed'))
     .map((e) => (e as Extract<ShotHistoryEntry, { kind: 'version' }>).version.id);
   const canEnterCompareMode = versionIds.length >= 2;
 
@@ -193,13 +196,17 @@ export function ReviewTimeline({
               const prefix =
                 entry.event === 'created'
                   ? TIMELINE_VERSION_CREATED_PREFIX
-                  : TIMELINE_VERSION_COMPLETED_PREFIX;
+                  : entry.event === 'failed'
+                    ? TIMELINE_VERSION_FAILED_PREFIX
+                    : TIMELINE_VERSION_COMPLETED_PREFIX;
               const suffix =
                 entry.event === 'created'
                   ? TIMELINE_VERSION_CREATED_SUFFIX
-                  : TIMELINE_VERSION_COMPLETED_SUFFIX;
+                  : entry.event === 'failed'
+                    ? TIMELINE_VERSION_FAILED_SUFFIX
+                    : TIMELINE_VERSION_COMPLETED_SUFFIX;
               const isCompareable =
-                compareMode && entry.event === 'completed';
+                compareMode && (entry.event === 'completed' || entry.event === 'failed');
               const isChecked =
                 sel.a === entry.version.id || sel.b === entry.version.id;
               return (

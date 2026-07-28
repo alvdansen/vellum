@@ -62,7 +62,7 @@ export type ShotHistoryEntry =
   | {
       kind: 'version';
       version: Version;
-      event: 'created' | 'completed';
+      event: 'created' | 'completed' | 'failed';
       at: number;
     }
   | {

@@ -459,7 +459,12 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
             ) : null}
             {completedAt ? (
               <li class="flex justify-between gap-2">
-                <span class="text-[var(--color-fg-muted)]">Completed</span>
+                {/* completed_at is stamped on failure too (end of attempt);
+                    labelling a failed take "Completed" next to its red
+                    FAILED pill contradicted the record it sits beside. */}
+                <span class="text-[var(--color-fg-muted)]">
+                  {status === 'failed' ? 'Failed' : 'Completed'}
+                </span>
                 <span class="timestamp">{formatTimestamp(completedAt)}</span>
               </li>
             ) : null}

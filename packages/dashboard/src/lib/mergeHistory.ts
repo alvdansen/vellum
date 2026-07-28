@@ -8,7 +8,9 @@
  *
  * Emission rules:
  *  - Every Version emits a `{ kind: 'version', event: 'created', at: created_at }` row.
- *  - Every Version with `completed_at` non-null also emits a `{ event: 'completed', at: completed_at }` row.
+ *  - Every Version with `completed_at` non-null also emits an end-of-attempt
+ *    row at completed_at: `event: 'failed'` when the version's status is
+ *    failed, `event: 'completed'` otherwise.
  *  - Every ShotStatusEvent emits a `{ kind: 'status', event }` row at event.created_at.
  *
  * Sort: descending by `at` (newest first). Tiebreaker: status events win
@@ -60,7 +62,12 @@ export function mergeHistory(
       entries.push({ kind: 'version', version: v, event: 'created', at: createdAt });
     }
     if (typeof v.completed_at === 'number') {
-      entries.push({ kind: 'version', version: v, event: 'completed', at: v.completed_at });
+      // The engine stamps completed_at on FAILURE too (it marks "the attempt
+      // ended", not "it worked"). Rendering that as `completed` made a failed
+      // take read "Version v001 completed" in the same viewport as its red
+      // FAILED pill — a provenance feed asserting the opposite of the record.
+      const ended = v.status === 'failed' ? 'failed' : 'completed';
+      entries.push({ kind: 'version', version: v, event: ended, at: v.completed_at });
     }
   }
 
