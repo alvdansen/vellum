@@ -468,8 +468,11 @@ describe('version redact_manifest — invariants', () => {
   it('Test 20 — registerTool inputSchema action enum lists all 7 actions including redact_manifest', () => {
     registerVersion(server as never, stack.engine);
     expect(server.registeredInputSchema).not.toBeNull();
+    // inputSchema is a constructed ZodObject (passthrough at the SDK layer so
+    // unknown keys reach the handler's strict union); fields live on .shape.
+    const shape = (server.registeredInputSchema as unknown as z.ZodObject<z.ZodRawShape>).shape;
     // ZodEnum exposes parse — every supported literal must succeed.
-    const actionSchema = server.registeredInputSchema!.action as unknown as z.ZodType<string>;
+    const actionSchema = shape.action as unknown as z.ZodType<string>;
     expect(() => actionSchema.parse('get')).not.toThrow();
     expect(() => actionSchema.parse('list')).not.toThrow();
     expect(() => actionSchema.parse('diff')).not.toThrow();
@@ -480,8 +483,8 @@ describe('version redact_manifest — invariants', () => {
     // Unknown action MUST reject (sanity).
     expect(() => actionSchema.parse('not_a_real_action')).toThrow();
     // Field redaction_policy is present in the inputSchema (optional at the
-    // ZodRawShape layer; the inner z.union arm requires it).
-    expect(server.registeredInputSchema!.redaction_policy).toBeDefined();
+    // SDK layer; the inner z.union arm requires it).
+    expect(shape.redaction_policy).toBeDefined();
   });
 });
 

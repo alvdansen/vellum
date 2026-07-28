@@ -203,18 +203,24 @@ describe('version verify_manifest — Zod validation', () => {
     expect((res.structuredContent as { code: string }).code).toBe('INVALID_INPUT');
   });
 
-  it('Test 8 — both version_id AND bytes: union resolves first matching arm (version_id wins)', async () => {
+  it('Test 8 — both version_id AND bytes forms together are rejected as ambiguous', async () => {
     registerVersion(server as never, stack.engine);
-    // version_id arm appears first in the union → matches first; bytes form is ignored.
+    // The description says EITHER {version_id} OR {manifest_bytes_base64,
+    // format}. Before the arms were .strict(), the union quietly took the
+    // version_id arm and DROPPED the bytes form — the caller had no way to
+    // know half their input was ignored. Now the ambiguity fails closed with
+    // the surplus keys named.
     const res = await server.registeredHandler!({
       action: 'verify_manifest',
       version_id: 'ver_doesnt_exist',
       manifest_bytes_base64: 'AAAA',
       format: 'image/png',
     });
-    // version-id arm took: VERSION_NOT_FOUND.
     expect(res.isError).toBe(true);
-    expect((res.structuredContent as { code: string }).code).toBe('VERSION_NOT_FOUND');
+    expect((res.structuredContent as { code: string }).code).toBe('INVALID_INPUT');
+    expect((res.structuredContent as { message: string }).message).toMatch(
+      /manifest_bytes_base64|version_id/,
+    );
   });
 
   it('Test 9 — base64 too large rejects with INVALID_INPUT (max(MAX_VERIFY_BYTES_BASE64))', async () => {
@@ -600,10 +606,13 @@ describe('version export_manifest + verify_manifest — invariants', () => {
   it('Test 25 — registerTool inputSchema action enum lists all 6 actions', () => {
     registerVersion(server as never, stack.engine);
     expect(server.registeredInputSchema).not.toBeNull();
-    // The inputSchema.action is a Zod enum at this point — invoke its parse to
-    // verify the literal set. Cast through unknown so we don't depend on Zod's
-    // internal ZodEnum generic shape.
-    const actionSchema = server.registeredInputSchema!.action as unknown as z.ZodType<string>;
+    // inputSchema is a constructed ZodObject (passthrough at the SDK layer so
+    // unknown keys reach the handler's strict union); fields live on .shape.
+    // The shape's action is a Zod enum — invoke its parse to verify the
+    // literal set. Cast through unknown so we don't depend on Zod's internal
+    // ZodEnum generic shape.
+    const actionSchema = (server.registeredInputSchema as unknown as z.ZodObject<z.ZodRawShape>)
+      .shape.action as unknown as z.ZodType<string>;
     // ZodEnum exposes its options via .options on the def.
     // We resolve via parse — every supported literal must succeed.
     expect(() => actionSchema.parse('get')).not.toThrow();

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
-import { toolOk, toolError } from './envelope.js';
+import { toolOk, toolError, zodInputError } from './envelope.js';
 import { versionLabel as _versionLabel } from '../utils/outputs.js';
 import {
   MAX_ID_LENGTH,
@@ -69,26 +69,26 @@ const AddTagInput = z.object({
   action: z.literal('add_tag'),
   version_id: VersionIdZ,
   tag: TagZ,
-});
+}).strict();
 
 const RemoveTagInput = z.object({
   action: z.literal('remove_tag'),
   version_id: VersionIdZ,
   tag: TagZ,
-});
+}).strict();
 
 const SetMetadataInput = z.object({
   action: z.literal('set_metadata'),
   version_id: VersionIdZ,
   key: KeyZ,
   value: ValueZ,
-});
+}).strict();
 
 const RemoveMetadataInput = z.object({
   action: z.literal('remove_metadata'),
   version_id: VersionIdZ,
   key: KeyZ,
-});
+}).strict();
 
 const QueryInput = AssetQueryBody.extend({ action: z.literal('query') });
 
@@ -217,7 +217,7 @@ export function registerAsset(server: McpServer, engine: Engine): void {
       // Every field is .optional() at this layer so the SDK's pre-handler
       // validation never short-circuits — the handler's AssetInputSchema.parse()
       // is the single source of truth for shape enforcement (RT-02).
-      inputSchema: {
+      inputSchema: z.object({
         action: z.enum([
           'add_tag',
           'remove_tag',
@@ -244,7 +244,7 @@ export function registerAsset(server: McpServer, engine: Engine): void {
         status: z.enum(['submitted', 'running', 'completed', 'failed']).optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
-      },
+      }).passthrough(),
     },
     async (rawInput) => {
       try {
@@ -322,11 +322,7 @@ export function registerAsset(server: McpServer, engine: Engine): void {
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
-          const first = err.issues[0];
-          const path = first.path.join('.');
-          return toolError(
-            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
-          );
+          return toolError(zodInputError(err));
         }
         return toolError(err);
       }

@@ -47,6 +47,10 @@ const scopeAndPaging = {
   offset: z.number().int().min(0).default(0),
 };
 
+// Every body is .strict(): an unrecognized key is rejected instead of
+// silently dropped, because the drop is a scope bug — `{sequenceId: X}`
+// (the hierarchy tools' spelling) used to be ignored here and the query
+// quietly returned every project's rows.
 /** `asset.query` body (no `action` — the tool layer adds that). */
 export const AssetQueryBody = z.object({
   ...scopeAndPaging,
@@ -59,10 +63,10 @@ export const AssetQueryBody = z.object({
   date_from: z.number().int().nonnegative().optional(),
   date_to: z.number().int().nonnegative().optional(),
   status: StatusZ.optional(),
-});
+}).strict();
 
 /** `asset.list_tags` body. */
-export const ListTagsBody = z.object({ ...scopeAndPaging });
+export const ListTagsBody = z.object({ ...scopeAndPaging }).strict();
 
 /** `asset.list_metadata_keys` body. */
-export const ListMetadataKeysBody = z.object({ ...scopeAndPaging });
+export const ListMetadataKeysBody = z.object({ ...scopeAndPaging }).strict();

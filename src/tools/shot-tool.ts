@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
 import { SHOT_NAME_REGEX, SHOT_STATUSES } from '../types/hierarchy.js';
-import { toolOk, toolError } from './envelope.js';
+import { toolOk, toolError, zodInputError } from './envelope.js';
 import {
   shapeCreateOrGet,
   shapeList,
@@ -30,17 +30,17 @@ const CreateInput = z.object({
     .trim()
     .max(MAX_NAME_LENGTH)
     .regex(SHOT_NAME_REGEX, 'INVALID_SHOT_FORMAT'),
-});
+}).strict();
 const ListInput = z.object({
   action: z.literal('list'),
   sequenceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
-});
+}).strict();
 const GetInput = z.object({
   action: z.literal('get'),
   id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 // Phase 20 / Plan 20-04 (STAT-05) — three new arms wired to the pipeline
 // facade (Engine.setShotStatus / getShotStatus / listShotStatusHistory).
@@ -54,25 +54,25 @@ const SetStatusInput = z.object({
   status: ShotStatusEnum,
   changed_by: z.string().max(100).optional(),
   note: z.string().max(500).optional(),
-});
+}).strict();
 
 const GetStatusInput = z.object({
   action: z.literal('get_status'),
   id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 const ListStatusHistoryInput = z.object({
   action: z.literal('list_status_history'),
   id: z.string().min(1).max(MAX_ID_LENGTH),
   limit: z.number().int().min(1).max(50).default(20),
-});
+}).strict();
 
 // Render the shot's pipeline log (markdown) from append-only
 // provenance. Read-only projection; no state change.
 const PipelineLogInput = z.object({
   action: z.literal('pipeline_log'),
   id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 const ShotInputSchema = z.discriminatedUnion('action', [
   CreateInput,
@@ -108,7 +108,7 @@ export function registerShot(server: McpServer, engine: Engine) {
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `ShotInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
-      inputSchema: {
+      inputSchema: z.object({
         action: z.enum([
           'create',
           'list',
@@ -130,7 +130,7 @@ export function registerShot(server: McpServer, engine: Engine) {
         status: z.string().optional(),
         changed_by: z.string().optional(),
         note: z.string().optional(),
-      },
+      }).passthrough(),
     },
     async (rawInput) => {
       try {
@@ -175,11 +175,9 @@ export function registerShot(server: McpServer, engine: Engine) {
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
-          const first = err.issues[0];
-          const path = first.path.join('.');
           // Detect the shot-regex failure by the sentinel message and re-map
           // to the precise typed code with the actionable hint.
-          if (first.message === 'INVALID_SHOT_FORMAT') {
+          if (err.issues[0]?.message === 'INVALID_SHOT_FORMAT') {
             return toolError(
               new TypedError(
                 'INVALID_SHOT_FORMAT',
@@ -188,9 +186,7 @@ export function registerShot(server: McpServer, engine: Engine) {
               ),
             );
           }
-          return toolError(
-            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
-          );
+          return toolError(zodInputError(err));
         }
         return toolError(err);
       }

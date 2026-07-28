@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
-import { toolOk, toolError } from './envelope.js';
+import { toolOk, toolError, zodInputError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import type { Version, Breadcrumb } from '../types/hierarchy.js';
 import type { StoredOutput } from '../comfyui/types.js';
@@ -38,7 +38,7 @@ const SubmitInput = z.object({
   // earlier one may be in flight or may have been charged without returning a
   // job id. Set this when you genuinely want another take of the same prompt.
   allow_duplicate: z.boolean().optional(),
-});
+}).strict();
 
 /**
  * D-GEN-06: status input — action + version_id (the stable handle returned
@@ -47,7 +47,7 @@ const SubmitInput = z.object({
 const StatusInput = z.object({
   action: z.literal('status'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 /**
  * D-PROV-12: reproduce input — action + source version_id + optional notes.
@@ -58,7 +58,7 @@ const ReproduceInput = z.object({
   action: z.literal('reproduce'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 /**
  * D-PROV-13, D-PROV-21: iterate input — action + source version_id +
@@ -83,7 +83,7 @@ const IterateInput = z.object({
   ).optional(),
   seed: z.number().int().optional(),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 /**
  * Pivot Phase D — register input. An external agent or provider webhook reports a
@@ -98,7 +98,7 @@ const CostActualInput = z.object({
   amount: z.number().nonnegative(),
   currency: z.string().min(1).max(32),
   note: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 const RegisterInput = z.object({
   action: z.literal('register'),
@@ -119,7 +119,7 @@ const RegisterInput = z.object({
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
   // Cost actuals — record the actual spend for this external take at register time.
   cost_actual: CostActualInput.optional(),
-});
+}).strict();
 
 /** Cost actuals — record the ACTUAL spend for an existing take (append-only). */
 const RecordCostInput = z.object({
@@ -128,7 +128,7 @@ const RecordCostInput = z.object({
   amount: z.number().nonnegative(),
   currency: z.string().min(1).max(32),
   note: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 /**
  * Approval gate (no silent credit spend) — propose records the FULL
@@ -154,19 +154,19 @@ const ProposeInput = z.object({
   provider: z.string().min(1).max(64).optional(),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
   cost_estimate: z.string().max(200).optional(),
-});
+}).strict();
 
 const ApproveInput = z.object({
   action: z.literal('approve'),
   proposal_id: z.string().min(1).max(MAX_ID_LENGTH),
   note: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 const RejectInput = z.object({
   action: z.literal('reject'),
   proposal_id: z.string().min(1).max(MAX_ID_LENGTH),
   note: z.string().max(MAX_NOTES_LENGTH).optional(),
-});
+}).strict();
 
 const ListProposalsInput = z.object({
   action: z.literal('list_proposals'),
@@ -174,7 +174,7 @@ const ListProposalsInput = z.object({
   status: z.enum(['proposed', 'approved', 'rejected']).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
-});
+}).strict();
 
 const GenerationInputSchema = z.discriminatedUnion('action', [
   SubmitInput,
@@ -314,7 +314,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `GenerationInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
-      inputSchema: {
+      inputSchema: z.object({
         action: z.enum(['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals', 'record_cost']),
         shot_id: z.string().optional(),
         workflow_json: z.record(z.string(), z.unknown()).optional(),
@@ -355,7 +355,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         cost_actual: z
           .object({ amount: z.number(), currency: z.string(), note: z.string().optional() })
           .optional(),
-      },
+      }).passthrough(),
     },
     async (rawInput) => {
       try {
@@ -522,11 +522,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
-          const first = err.issues[0];
-          const path = first.path.join('.');
-          return toolError(
-            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
-          );
+          return toolError(zodInputError(err));
         }
         return toolError(err);
       }

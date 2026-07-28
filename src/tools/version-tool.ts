@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
 import { decodeVersionCursor, type VersionCursor } from '../store/sort.js';
-import { toolOk, toolError } from './envelope.js';
+import { toolOk, toolError, zodInputError } from './envelope.js';
 import { versionLabel } from '../utils/outputs.js';
 import {
   shapeList,
@@ -24,7 +24,7 @@ import type { ProvenanceEvent, DiffResponse } from '../types/provenance.js';
 const GetInput = z.object({
   action: z.literal('get'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 /**
  * D-PROV-09: `version list` — paginated list of versions for a shot, ordered
@@ -45,7 +45,7 @@ const ListInput = z.object({
   // item. The `get` action is always-hydrated (D-ASST-19) — no such flag there.
   include_tags: z.boolean().default(false),
   include_metadata: z.boolean().default(false),
-});
+}).strict();
 
 /**
  * D-PROV-11: `version diff` — two-version comparison. Cross-shot constraint
@@ -56,7 +56,7 @@ const DiffInput = z.object({
   action: z.literal('diff'),
   version_a: z.string().min(1).max(MAX_ID_LENGTH),
   version_b: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 /**
  * D-PROV-10: `version provenance` — full chronological event history. Heavy
@@ -65,7 +65,7 @@ const DiffInput = z.object({
 const ProvenanceInput = z.object({
   action: z.literal('provenance'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 /**
  * Phase 16 / Plan 16-03 (D-PLAN-3-5 + C-05 hardening): max base64-encoded
@@ -88,7 +88,7 @@ const MAX_VERIFY_BYTES_BASE64 = 100 * 1024 * 1024; // 100 MB
 const ExportManifestInput = z.object({
   action: z.literal('export_manifest'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 /**
  * Phase 16 / Plan 16-03 (D-CTX-4 + D-PLAN-3-2) — `verify_manifest` input.
@@ -111,13 +111,13 @@ const ExportManifestInput = z.object({
 const VerifyManifestByVersionInput = z.object({
   action: z.literal('verify_manifest'),
   version_id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 const VerifyManifestByBytesInput = z.object({
   action: z.literal('verify_manifest'),
   manifest_bytes_base64: z.string().min(1).max(MAX_VERIFY_BYTES_BASE64),
   format: z.string().min(1).max(64),
-});
+}).strict();
 
 /**
  * Phase 16 / Plan 16-04 (D-PLAN-4-3) — max policy entries (mirror engine
@@ -170,7 +170,7 @@ const RedactManifestInput = z.object({
       MAX_REDACTION_POLICY_ENTRIES,
       `redaction_policy may not exceed ${MAX_REDACTION_POLICY_ENTRIES} entries`,
     ),
-});
+}).strict();
 
 /**
  * Phase 16 / Plan 16-03 — top-level version input.
@@ -509,7 +509,7 @@ export function registerVersion(server: McpServer, engine: Engine) {
         'All responses include breadcrumb + breadcrumb_text per D-22.',
       // RT-01: every field is .optional() at the ZodRawShape layer; the
       // discriminated union re-validates inside the handler (RT-02).
-      inputSchema: {
+      inputSchema: z.object({
         action: z.enum([
           'get', 'list', 'diff', 'provenance',
           // Phase 16 / Plan 16-03 (D-CTX-4) — two new actions; tools/list
@@ -541,7 +541,7 @@ export function registerVersion(server: McpServer, engine: Engine) {
         // Phase 16 / Plan 16-04 — redact_manifest policy. Optional at this
         // layer; the inner RedactManifestInput arm requires it.
         redaction_policy: z.array(z.string()).optional(),
-      },
+      }).passthrough(),
     },
     async (rawInput) => {
       try {
@@ -651,11 +651,7 @@ export function registerVersion(server: McpServer, engine: Engine) {
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
-          const first = err.issues[0];
-          const path = first.path.join('.');
-          return toolError(
-            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
-          );
+          return toolError(zodInputError(err));
         }
         return toolError(err);
       }

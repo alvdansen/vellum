@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Engine } from '../engine/pipeline.js';
 import { TypedError } from '../engine/errors.js';
-import { toolOk, toolError } from './envelope.js';
+import { toolOk, toolError, zodInputError } from './envelope.js';
 import {
   shapeCreateOrGet,
   shapeList,
@@ -29,16 +29,16 @@ const CreateInput = z.object({
     .refine((s) => !s.includes(' > '), {
       message: 'name cannot contain " > " (breadcrumb separator)',
     }),
-});
+}).strict();
 const ListInput = z.object({
   action: z.literal('list'),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
-});
+}).strict();
 const GetInput = z.object({
   action: z.literal('get'),
   id: z.string().min(1).max(MAX_ID_LENGTH),
-});
+}).strict();
 
 const WorkspaceInputSchema = z.discriminatedUnion('action', [
   CreateInput,
@@ -72,13 +72,13 @@ export function registerWorkspace(server: McpServer, engine: Engine) {
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `WorkspaceInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
-      inputSchema: {
+      inputSchema: z.object({
         action: z.enum(['create', 'list', 'get']),
         name: z.string().optional(),
         id: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
-      },
+      }).passthrough(),
     },
     async (rawInput) => {
       try {
@@ -100,11 +100,7 @@ export function registerWorkspace(server: McpServer, engine: Engine) {
         }
       } catch (err) {
         if (err instanceof z.ZodError) {
-          const first = err.issues[0];
-          const path = first.path.join('.');
-          return toolError(
-            new TypedError('INVALID_INPUT', `Invalid input at 'input.${path}'`),
-          );
+          return toolError(zodInputError(err));
         }
         return toolError(err);
       }
