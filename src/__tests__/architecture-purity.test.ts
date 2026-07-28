@@ -763,11 +763,13 @@ describe('architecture purity', () => {
     // file reaches the provenance table just as easily — the file-scoped
     // version of this guard was bypassed exactly that way during
     // verification. Raw SQL is scanned store-wide by table name; the ORM
-    // builders are scanned by builder-plus-table ('.update(provenance').
+    // builders are scanned by builder-plus-table-name.
     expect(grepCount('UPDATE provenance', 'src/store')).toBe(0);
     expect(grepCount('DELETE FROM provenance', 'src/store')).toBe(0);
-    expect(grepCount('.update(provenance', 'src')).toBe(0);
-    expect(grepCount('.delete(provenance', 'src')).toBe(0);
+    // Pattern split so this file's own source doesn't match the scan
+    // (same trick the MCP-import guards use for the package sentinel).
+    expect(grepCount('.update(' + 'provenance', 'src')).toBe(0);
+    expect(grepCount('.delete(' + 'provenance', 'src')).toBe(0);
     // And the repo file itself never uses ANY mutation builder.
     expect(grepCount('.update(', 'src/store/provenance-repo.ts')).toBe(0);
     expect(grepCount('.delete(', 'src/store/provenance-repo.ts')).toBe(0);
