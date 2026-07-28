@@ -132,6 +132,19 @@ describe('Engine.setShotStatus / getShotStatus / listShotStatusHistory (STAT-04)
       .toThrowTypedError('SHOT_NOT_FOUND');
   });
 
+  test('listShotStatusHistory total is the true event count, not the page size', () => {
+    // 30 transitions, page of 5. `total` used to be history.length — the
+    // page size — so agents and the dashboard saw { total: 5 } and had no
+    // way to know 25 more events existed.
+    const cycle: Array<'pending-review' | 'wip'> = ['pending-review', 'wip'];
+    for (let i = 0; i < 30; i++) {
+      engine.setShotStatus(shotId, cycle[i % 2]!, 'user', `t${i}`);
+    }
+    const page = engine.listShotStatusHistory(shotId, 5);
+    expect(page.history).toHaveLength(5);
+    expect(page.total).toBe(30);
+  });
+
   test('listShotStatusHistory returns { shotId, history, total } newest-first', async () => {
     engine.setShotStatus(shotId, 'pending-review', 'alice', 'r1');
     await sleep(2); // ensure distinct created_at for ordering assertion
@@ -152,7 +165,8 @@ describe('Engine.setShotStatus / getShotStatus / listShotStatusHistory (STAT-04)
     await sleep(2);
     engine.setShotStatus(shotId, 'on-hold', 'c');
     const list = engine.listShotStatusHistory(shotId, 2);
-    expect(list.total).toBe(2);
+    // total reports the TRUE count (3), independent of the page size (2).
+    expect(list.total).toBe(3);
     expect(list.history).toHaveLength(2);
     // newest-first — on-hold then approved
     expect(list.history[0].to_status).toBe('on-hold');

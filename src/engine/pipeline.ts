@@ -90,6 +90,7 @@ import {
 import {
   insertStatusEvent,
   getStatusHistory,
+  countStatusEvents,
   type ShotStatusEvent,
   // Phase 21 / Plan 21-02 — GRID-04 denormalized shot grid reader. The repo
   // does the single-pass window-function CTE join (shots + latest-completed
@@ -901,7 +902,9 @@ export class Engine {
       );
     }
     const history = getStatusHistory(this.db, shotId, limit);
-    return { shotId, history, total: history.length };
+    // total is the TRUE event count, not the page size — an agent reading
+    // { total: 5 } over a 30-event shot had no way to know 25 more existed.
+    return { shotId, history, total: countStatusEvents(this.db, shotId) };
   }
 
   /**

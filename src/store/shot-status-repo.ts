@@ -94,6 +94,21 @@ export function insertStatusEvent(
 }
 
 /**
+ * True event count for a shot — the pagination denominator. Callers used
+ * to report history.length (the PAGE size) as the total, so an agent
+ * reading { total: 5 } over a 30-event shot had no way to know 25 more
+ * existed.
+ */
+export function countStatusEvents(db: Db, shotId: string): number {
+  const row = db
+    .select({ n: sql<number>`count(*)` })
+    .from(shotStatusEvents)
+    .where(eq(shotStatusEvents.shot_id, shotId))
+    .get();
+  return row?.n ?? 0;
+}
+
+/**
  * STAT-03 — return up to `limit` shot status events for a shot, ordered
  * newest-first. Uses idx_shot_status_events_shot_time (Plan 01) — the
  * (shot_id, created_at) covering index lets SQLite walk the index in

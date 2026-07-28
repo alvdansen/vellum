@@ -765,6 +765,23 @@ describe('architecture purity', () => {
     ).toBe(0);
   });
 
+  // The same guard for the table the product's whole pitch rests on. The
+  // older prototype-name blocklist in provenance-repo.test.ts checks that
+  // seven KNOWN method names are absent — a mutator under any other name
+  // (`amendEvent` issuing `UPDATE provenance ...`) sailed past it with the
+  // full suite green, which was demonstrated during the pre-release audit.
+  // This is a source-text scan, so the mutation is caught regardless of
+  // what the method is called: raw SQL by table name, and the Drizzle
+  // update/delete builders by call syntax (provenance-repo.ts only ever
+  // touches the provenance table, so any .update(/.delete( in the file is
+  // a violation by construction).
+  it('provenance is never UPDATE-d or DELETE-d in src/store/provenance-repo.ts', () => {
+    expect(grepCount('UPDATE provenance', 'src/store/provenance-repo.ts')).toBe(0);
+    expect(grepCount('DELETE.*provenance', 'src/store/provenance-repo.ts')).toBe(0);
+    expect(grepCount('.update(', 'src/store/provenance-repo.ts')).toBe(0);
+    expect(grepCount('.delete(', 'src/store/provenance-repo.ts')).toBe(0);
+  });
+
   // Phase 20 — file-level purity lock for shot-status-repo.ts. The
   // directory-level src/store/ guard at line 38 already covers this
   // transitively; the file-level assertion fires in isolation if

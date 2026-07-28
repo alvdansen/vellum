@@ -61,11 +61,14 @@ function isUniqueViolation(err: unknown): boolean {
 /**
  * Append-only provenance event store (D-PROV-01, D-PROV-03).
  *
- * Structural invariant: this class has NO update/delete methods. That is
- * the enforcement of D-PROV-01 — the architecture-purity test asserts
- * `db.update(` and `db.delete(` do not appear in this file. Do not add
- * them. Events for a version form an ordered audit log; states are
- * separate rows, never mutations.
+ * Structural invariant: this class has NO update/delete methods. The
+ * architecture-purity test enforces it with a source-text scan of this
+ * file for the Drizzle mutation builders and for raw UPDATE/DELETE SQL
+ * naming the provenance table — a scan, not a method-name blocklist,
+ * because a mutator under a novel name walked past the old blocklist
+ * with the whole suite green. Do not add mutation paths under any name.
+ * Events for a version form an ordered audit log; states are separate
+ * rows, never mutations.
  */
 export type ProvenanceSubmittedPayload = { workflow_json: string };
 export type ProvenanceCompletedPayload = {
