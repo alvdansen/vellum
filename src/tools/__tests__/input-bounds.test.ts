@@ -114,10 +114,10 @@ describe('input bounds (SEC-01, API-05)', () => {
       },
     });
     expect(res.isError).toBe(true);
-    // Fails because client is null (COMFYUI_CREDENTIALS_MISSING), not because
-    // of the input bound — proves the bound accepted MAX_NOTES_LENGTH chars.
+    // Fails because no provider is configured (GENERATION_CREDENTIALS_MISSING),
+    // not because of the input bound — proves the bound accepted MAX_NOTES_LENGTH chars.
     expect((res.structuredContent as { code?: string }).code).toBe(
-      'COMFYUI_CREDENTIALS_MISSING',
+      'GENERATION_CREDENTIALS_MISSING',
     );
     await client.close();
   });

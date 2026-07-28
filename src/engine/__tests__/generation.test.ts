@@ -146,7 +146,7 @@ describe('GenerationEngine.submitGeneration', () => {
     expect(all).toHaveLength(1);
   });
 
-  test('missing client throws COMFYUI_CREDENTIALS_MISSING with hint', async () => {
+  test('missing client throws provider-neutral GENERATION_CREDENTIALS_MISSING with hint', async () => {
     // Build a fresh engine with null client.
     const { db } = makeInMemoryDb();
     const h = new HierarchyRepo(db);
@@ -160,8 +160,9 @@ describe('GenerationEngine.submitGeneration', () => {
     const s = h.createSequence(p.id, 'sq010');
     const sh = h.createShot(s.id, 'sh010');
     await expect(e.submitGeneration(sh.id, API_WORKFLOW)).rejects.toMatchObject({
-      code: 'COMFYUI_CREDENTIALS_MISSING',
-      hint: expect.stringContaining('.env'),
+      code: 'GENERATION_CREDENTIALS_MISSING',
+      // Provider-neutral: the hint names every provider credential, not just ComfyUI's.
+      hint: expect.stringContaining('GOOGLE_AI_STUDIO_API_KEY'),
     });
   });
 });

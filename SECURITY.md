@@ -37,7 +37,7 @@ all arrive from an LLM that may itself be operating on untrusted input.
 Every outbound fetch of a URL Vellum did not fully choose itself passes:
 
 - **https only** — no plaintext, no `file:`, no `data:`. The single exception
-  is a self-hosted ComfyUI: if you point `COMFYUI_API_BASE` at a plaintext or
+  is a self-hosted ComfyUI-Cloud-compatible endpoint: if you point `COMFYUI_API_BASE` at a plaintext or
   private-network instance (which requires setting
   `COMFYUI_API_BASE_ALLOW_HTTP` / `COMFYUI_API_BASE_ALLOW_PRIVATE`), that exact
   origin — same scheme, host and port — may serve its own outputs. Nothing else

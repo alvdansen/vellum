@@ -278,7 +278,7 @@ export class GenerationEngine {
         throw new TypedError(
           'GENERATION_CREDENTIALS_MISSING',
           `No generation provider is configured — cannot ${context}`,
-          'Configure a provider (e.g. COMFYUI_API_KEY, REPLICATE_API_TOKEN, FAL_KEY) in .env. See .env.example.',
+          'Configure a provider in .env: COMFYUI_API_KEY, REPLICATE_API_TOKEN, FAL_KEY, BYTEPLUS_API_KEY, or GOOGLE_AI_STUDIO_API_KEY. See .env.example.',
         );
       }
       return this.client;
@@ -607,16 +607,10 @@ export class GenerationEngine {
      *  of it anyway). */
     allowDuplicate?: boolean;
   }): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
-    // Back-compat: the historical no-provider-at-all error (single-provider era)
-    // keeps its code+message; a NAMED but unconfigured provider throws
-    // PROVIDER_MISCONFIGURED from resolveProvider.
-    if (!this.client && args.providerId == null) {
-      throw new TypedError(
-        'COMFYUI_CREDENTIALS_MISSING',
-        'COMFYUI_API_KEY is not set — generation is unavailable',
-        'Set COMFYUI_API_KEY in .env at the repo root. See .env.example.',
-      );
-    }
+    // No provider configured at all → the provider-neutral
+    // GENERATION_CREDENTIALS_MISSING from resolveProvider (this server is
+    // provider-agnostic; a NAMED but unconfigured provider throws
+    // PROVIDER_MISCONFIGURED from the same place).
     const provider = this.resolveProvider(args.providerId, 'submit a generation');
     // Fail-fast: shot existence + format. No DB writes until both succeed.
     const shot = this.hierarchy.getShot(args.shotId);
@@ -906,7 +900,7 @@ export class GenerationEngine {
       throw new TypedError(
         'REPRODUCE_BLOCKED',
         `Version '${sourceVersionId}' has no completed provenance row`,
-        `Source predates Phase 3 provenance capture or crashed before completion. Source status: '${source.status}'.`,
+        `No completion provenance was recorded for this version (it was created before provenance capture existed, or crashed before completion). Source status: '${source.status}'. diff, provenance, and download still work for it; submit a fresh generation to get a reproducible take.`,
       );
     }
 
@@ -931,7 +925,7 @@ export class GenerationEngine {
       throw new TypedError(
         'PROVENANCE_UNAVAILABLE',
         `Version '${sourceVersionId}' has no resolved prompt blob (likely non-PNG output)`,
-        `Reproduce needs the resolved prompt JSON. Use { tool: 'generation', action: 'iterate' } with explicit overrides instead.`,
+        `Reproduce needs the resolved prompt JSON, which was never captured for this version. diff, provenance, and download remain available; re-register the asset or submit it natively through Vellum to get a reproducible take.`,
       );
     }
 
@@ -1081,7 +1075,7 @@ export class GenerationEngine {
         throw new TypedError(
           'PROVENANCE_UNAVAILABLE',
           `Version '${sourceVersionId}' has no resolved prompt blob`,
-          `Source predates Phase 3 or used a non-PNG output format. Iterate not available.`,
+          `The resolved prompt was never captured for this version (created before provenance capture existed, or a non-PNG output format). diff, provenance, and download remain available; submit a fresh generation through Vellum to get an iterable take.`,
         );
       }
       baseBlob = JSON.parse(completedEvent.prompt_json) as Record<string, unknown>;

@@ -6,6 +6,18 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { registerResources } from '../resources.js';
 import { ReplicateAdapter } from '../../providers/replicate-adapter.js';
+import { makeInMemoryDb } from '../../test-utils/fixtures.js';
+import { HierarchyRepo } from '../../store/hierarchy-repo.js';
+import { VersionRepo } from '../../store/version-repo.js';
+import { ProvenanceRepo } from '../../store/provenance-repo.js';
+import { Engine } from '../../engine/pipeline.js';
+import { registerWorkspace } from '../workspace-tool.js';
+import { registerProject } from '../project-tool.js';
+import { registerSequence } from '../sequence-tool.js';
+import { registerShot } from '../shot-tool.js';
+import { registerGeneration } from '../generation-tool.js';
+import { registerVersion } from '../version-tool.js';
+import { registerAsset } from '../asset-tool.js';
 
 /** Narrow the text|blob resource-content union to the text form we always emit. */
 function textContent(res: { contents: Array<unknown> }): { text: string; mimeType?: string } {
@@ -138,21 +150,67 @@ describe('the self-describing resources tell the truth about pagination', () => 
     expect(doc).toMatch(/offset/i);
   });
 
-  it('every action named as cursor-paginated is a real registered action', async () => {
-    // Guards the reverse failure: a stale exception list pointing at an action
-    // that no longer exists is its own kind of lie.
-    const client = await connect();
-    const doc = JSON.parse(
-      textContent(await client.readResource({ uri: 'vellum://capabilities' })).text,
-    ) as {
-      tools: Array<{ name: string; actions: string[] }>;
-      limits: { cursor_paginated_actions?: string[] };
-    };
-    for (const entry of doc.limits.cursor_paginated_actions ?? []) {
-      const [toolName, actionName] = entry.split('.');
-      const tool = doc.tools.find((t) => t.name === toolName);
-      expect(tool, `tool ${toolName} from ${entry}`).toBeDefined();
-      expect(tool!.actions, `action ${entry}`).toContain(actionName);
+  it('capabilities TOOL_SURFACE matches the REAL tool registry action-for-action (no drift)', async () => {
+    // Regression guard: vellum://capabilities is hand-maintained prose an agent
+    // learns the surface from, and it once understated the registry by 8
+    // actions. Spin up the REAL registrations over InMemoryTransport, read the
+    // published `action` enum of every tool from tools/list, and assert SET
+    // EQUALITY against the capabilities doc — the doc can never drift from the
+    // registry again, in either direction (missing action OR stale action).
+    const { db } = makeInMemoryDb();
+    const repo = new HierarchyRepo(db);
+    const versions = new VersionRepo(db);
+    const provenanceRepo = new ProvenanceRepo(db);
+    const engine = new Engine(db, repo, versions, provenanceRepo, null);
+    const server = new McpServer({ name: 'vellum', version: '9.9.9' });
+    registerWorkspace(server, engine);
+    registerProject(server, engine);
+    registerSequence(server, engine);
+    registerShot(server, engine);
+    registerGeneration(server, engine);
+    registerVersion(server, engine);
+    registerAsset(server, engine);
+    registerResources(server, '9.9.9');
+    const [clientTx, serverTx] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await server.connect(serverTx);
+    await client.connect(clientTx);
+    try {
+      const { tools } = await client.listTools();
+      const doc = JSON.parse(
+        textContent(await client.readResource({ uri: 'vellum://capabilities' })).text,
+      ) as {
+        tools: Array<{ name: string; actions: string[] }>;
+        limits: { cursor_paginated_actions?: string[] };
+      };
+      // Same tool set on both sides.
+      expect(doc.tools.map((t) => t.name).sort()).toEqual(tools.map((t) => t.name).sort());
+      // Per-tool SET equality between the published action enum and the doc.
+      for (const tool of tools) {
+        const published = (
+          tool.inputSchema as { properties?: { action?: { enum?: string[] } } }
+        ).properties?.action?.enum;
+        expect(published, `tool ${tool.name} publishes an action enum`).toBeDefined();
+        const documented = doc.tools.find((t) => t.name === tool.name);
+        expect(documented, `capabilities documents tool ${tool.name}`).toBeDefined();
+        expect([...documented!.actions].sort(), `actions of ${tool.name}`).toEqual(
+          [...published!].sort(),
+        );
+      }
+      // Guards the reverse failure too: a stale cursor-pagination exception
+      // pointing at an action that no longer exists is its own kind of lie.
+      for (const entry of doc.limits.cursor_paginated_actions ?? []) {
+        const [toolName, actionName] = entry.split('.');
+        const tool = tools.find((t) => t.name === toolName);
+        expect(tool, `tool ${toolName} from ${entry}`).toBeDefined();
+        const published = (
+          tool!.inputSchema as { properties?: { action?: { enum?: string[] } } }
+        ).properties?.action?.enum;
+        expect(published, `action ${entry}`).toContain(actionName);
+      }
+    } finally {
+      await client.close();
+      await engine.stop();
     }
   });
 });

@@ -314,7 +314,7 @@ describe('generation tool — submit error paths', () => {
     expect((res.structuredContent as { code: string }).code).toBe('SHOT_NOT_FOUND');
   });
 
-  it('missing credentials scenario → COMFYUI_CREDENTIALS_MISSING', async () => {
+  it('missing credentials scenario → provider-neutral GENERATION_CREDENTIALS_MISSING', async () => {
     // Rebuild stack with a null client.
     const { db } = makeInMemoryDb();
     const repo = new HierarchyRepo(db);
@@ -335,7 +335,7 @@ describe('generation tool — submit error paths', () => {
       );
       expect(res.isError).toBe(true);
       const p = res.structuredContent as { code: string; hint: string };
-      expect(p.code).toBe('COMFYUI_CREDENTIALS_MISSING');
+      expect(p.code).toBe('GENERATION_CREDENTIALS_MISSING');
       expect(p.hint).toContain('.env.example');
     } finally {
       await engine.stop();
@@ -530,7 +530,7 @@ describe('generation tool — registration smoke', () => {
     expect(Object.keys(registered)).toContain('generation');
   });
 
-  it('tool description contains "ComfyUI API-format" and "\'Dev Mode > Save (API Format)\'" (D-GEN-08)', async () => {
+  it('tool description is provider-aware and scopes the byte-identical claim honestly (D-GEN-08)', async () => {
     const { engine } = stack;
     const server = new McpServer({ name: 'test-server', version: '0.0.0' });
     registerGeneration(server, engine);
@@ -540,8 +540,16 @@ describe('generation tool — registration smoke', () => {
       }
     )._registeredTools;
     const desc = registered['generation']?.description ?? '';
+    // Provider-aware submit: ComfyUI's format requirement is scoped to
+    // comfyui-cloud, not stated as the universal input shape.
+    expect(desc).toContain('configured provider');
     expect(desc).toContain('ComfyUI API-format');
     expect(desc).toContain("'Dev Mode > Save (API Format)'");
+    // Honesty: byte-identical replay is claimed only for the resolved graph
+    // (comfyui-cloud); other providers replay parameters with warnings.
+    expect(desc).toContain('byte-identical replay of the graph');
+    expect(desc).toContain('re-submits the recorded request parameters');
+    expect(desc).toContain('reproduction_warnings');
   });
 });
 

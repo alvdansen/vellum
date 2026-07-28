@@ -58,6 +58,7 @@ const CONFLICT_CODES = new Set<string>([
 // non-ComfyUI provider codes fell through to 500).
 const BAD_GATEWAY_CODES = new Set<string>([
   'COMFYUI_CREDENTIALS_MISSING',
+  'GENERATION_CREDENTIALS_MISSING',
   'COMFYUI_RATE_LIMITED',
   'GENERATION_TIMEOUT',
   'DOWNLOAD_FAILED',

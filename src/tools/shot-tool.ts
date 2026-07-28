@@ -102,7 +102,7 @@ export function registerShot(server: McpServer, engine: Engine) {
     {
       title: 'Shot',
       description:
-        "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get, set_status, get_status, list_status_history, pipeline_log. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
+        "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get, set_status, get_status, list_status_history, pipeline_log. set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never

@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Provider-agnostic production tracking + provenance for AI asset generation, surfaced as MCP tools.</strong><br/>
-  <em>Workspace → project → sequence → shot → version. Append-only provenance. An approval gate in front of paid calls. Reproduce or iterate from any version.</em>
+  <em>Workspace → project → sequence → shot → version. Append-only provenance. An approval gate in front of paid calls. Replay what Vellum submitted — byte-identical for ComfyUI graphs, parameter replay elsewhere.</em>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ Vellum is the neutral layer between any generator and any downstream workflow. I
 
 Vellum is an [MCP](https://modelcontextprotocol.io) server that exposes seven coarse-grained tools (under the 12-tool MCP cap), runs over **stdio** and **Streamable HTTP** at once, and ships with a Preact dashboard served from the same process. Any MCP client — Claude Desktop, Claude Code, Cursor, MCP Inspector — gets the same surface and can learn it cold from the self-describing `vellum://capabilities` and `vellum://output-contract` resources.
 
-A generation flows **outbound** (submit and poll any configured provider) or **inbound** (an agent or provider webhook registers a finished asset by URL). Either way it lands as an immutable, versioned record you can diff, reproduce, or iterate from — and, when the approval gate is on, only after a human signs off on the spend.
+A generation flows **outbound** (submit and poll any configured provider) or **inbound** (an agent or provider webhook registers a finished asset by URL). Either way it lands as an immutable, versioned record you can diff and trace — and, for takes Vellum itself submitted, reproduce (byte-identical for ComfyUI graphs, parameter replay elsewhere) or iterate from (graph surgery, so it needs a ComfyUI-produced source); externally-registered takes carry diff + provenance only. When the approval gate is on, none of it spends credits until a human signs off.
 
 ### The seven tools
 
@@ -91,8 +91,8 @@ Every generation captures its full provenance:
 You can:
 
 - **`version diff`** any two versions — including across provider families (a ComfyUI graph vs. a Replicate URL run) via a neutral params comparison
-- **`generation reproduce`** any version — re-submits the exact stored request, with an honest "not byte-identical" note when a URL backend replays params rather than a resolved graph
-- **`generation iterate`** from any version with scoped overrides and an optional new seed, tracking the parent
+- **`generation reproduce`** any version Vellum itself submitted — replays the stored request (byte-identical for a ComfyUI resolved graph; parameter replay for URL backends, with an honest "not byte-identical" warning). Externally-registered takes are diff-and-provenance only
+- **`generation iterate`** from any ComfyUI-produced version with scoped overrides and an optional new seed, tracking the parent — iterate is node-graph surgery, so params-based and externally-registered sources are out of scope
 - **`version export_manifest` / `verify_manifest`** — signed C2PA manifests with AI-disclosure, an ingredient/lineage graph, and value redaction that preserves the *fact* of redaction
 
 Provenance is **immutable by construction**. The `ProvenanceRepo` exposes only inserts and reads — no setters, no deletes. Prototype-assertion tests fail the build if anyone ever adds one.
@@ -139,7 +139,7 @@ cd vellum
 npm install
 ```
 
-Node 20.9–25 required — `better-sqlite3` is a native module and does not build on 26 yet. The SQLite database (`vellum.db`) auto-creates on first start.
+Node 20.9–25 required — `better-sqlite3` is a native module and has no prebuilt binary for Node 26 yet, so it compiles from source and needs a C++ toolchain. The SQLite database (`vellum.db`) auto-creates on first start.
 
 ### 2. Configure a provider (optional)
 
@@ -158,7 +158,7 @@ Hierarchy, provenance, and `generation register` (inbound) work with **no** prov
 npm run smoke
 ```
 
-Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) over stdio through **56 wire-level assertions** — full hierarchy walk, breadcrumbs at every level, error envelopes, shot-format validation, pagination, get-by-id round-trips. Green here means the entire MCP transport + tool registration + engine wiring works end-to-end.
+Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) through **28 wire-level assertions over BOTH transports — stdio and Streamable HTTP — 56 checks in all** — full hierarchy walk, breadcrumbs at every level, error envelopes, shot-format validation, pagination, get-by-id round-trips. Green here means the entire MCP transport + tool registration + engine wiring works end-to-end.
 
 ### 4. Full test suite
 
@@ -167,7 +167,7 @@ npm test                              # server suite — 2496 tests
 cd packages/dashboard && npx vitest run   # dashboard suite — 534 tests
 ```
 
-The suite covers hierarchy CRUD, provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
+The suite covers hierarchy create/read (there is no update or delete), provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
 
 ### 5. Live, with the dashboard
 
@@ -222,7 +222,7 @@ explicit about where a client writes when you run more than one.
 npm run start:http
 ```
 
-The MCP endpoint is `POST http://127.0.0.1:3000/mcp` (loopback by default). Dashboard, REST API, and SSE share the same Hono app — one port, no separate dev server.
+The MCP endpoint is `POST http://127.0.0.1:3000/mcp` (loopback only — the bind is hardcoded to 127.0.0.1 with no override). Dashboard, REST API, and SSE share the same Hono app — one port, no separate dev server.
 
 ## Project structure
 

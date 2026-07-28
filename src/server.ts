@@ -30,7 +30,7 @@ loadEnv();
  *     top-level code).
  *   - Optional ComfyUIClient wiring from COMFYUI_API_KEY + COMFYUI_API_BASE env.
  *     When COMFYUI_API_KEY is absent, client is null; hierarchy tools still
- *     work; `generation submit` returns COMFYUI_CREDENTIALS_MISSING on first
+ *     work; `generation submit` returns GENERATION_CREDENTIALS_MISSING on first
  *     call (D-GEN-10, D-GEN-14 — silent-if-missing preserves TRNS-04).
  *   - engine.start() kicks the recovery poller for pending rows from prior
  *     runs before any transport accepts client traffic (D-GEN-29).
@@ -122,12 +122,13 @@ function buildServer(engine: Engine, version: string): McpServer {
       instructions:
         'Vellum — a provider-agnostic asset-production + provenance layer. Manages a hierarchy (workspace → project → sequence → shot → version → output) with append-only provenance on top of any generation backend (ComfyUI, Replicate, …). ' +
         'Read resource vellum://manual for a full guide, vellum://capabilities for the machine-readable tool/provider surface, and vellum://output-contract for how to register an externally-produced output. ' +
-        'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get (shot also set_status). ' +
-        'Generation tool: generation with action: submit | status | reproduce | iterate | register. ' +
+        'Hierarchy tools: workspace/project/sequence/shot with action: create | list | get (project also set_naming_template; shot also set_status | get_status | list_status_history | pipeline_log). ' +
+        'Generation tool: generation with action: submit | status | reproduce | iterate | register | propose | approve | reject | list_proposals | record_cost. ' +
         'register reports an output produced OUTSIDE this server (any provider or sibling workflow) into a shot as a completed version — see vellum://output-contract. ' +
-        "reproduce re-runs a completed version's prompt verbatim (byte-identical) and returns reproduction_warnings[]. " +
+        "reproduce replays what Vellum submitted — byte-identical resolved-graph replay for comfyui-cloud, parameter replay for other providers — and returns reproduction_warnings[] disclosing the difference. " +
         'iterate applies node-scoped overrides { "<nodeId>": { inputs?, class_type? } } and/or a seed shortcut to a source version, re-validates, and submits. ' +
-        'Version tool: version with action: get | list | diff | provenance. ' +
+        'Approval gate: propose records a full request for human review, approve executes it exactly once, reject discards it, list_proposals pages the queue, and record_cost logs the actual spend of a take — so no credits are spent without sign-off when VELLUM_REQUIRE_APPROVAL is on. ' +
+        'Version tool: version with action: get | list | diff | provenance | export_manifest | verify_manifest | redact_manifest. ' +
         'Asset tool: asset with action: add_tag | remove_tag | set_metadata | remove_metadata | query | list_tags | list_metadata_keys. ' +
         'add_tag/remove_tag/set_metadata/remove_metadata return the refreshed version with inline tags + metadata. ' +
         'query filters AND-only across tags/metadata/scope/date/status with paginated results. ' +
@@ -199,7 +200,7 @@ async function main(): Promise<void> {
 
   // Optional ComfyUI client — built only if COMFYUI_API_KEY is set (D-GEN-10,
   // D-GEN-14). Absent key ⇒ hierarchy tools work; `generation submit` surfaces
-  // COMFYUI_CREDENTIALS_MISSING on first call.
+  // GENERATION_CREDENTIALS_MISSING on first call.
   const apiKey = process.env.COMFYUI_API_KEY;
   const apiBase = envValue(process.env.COMFYUI_API_BASE) ?? DEFAULT_COMFYUI_API_BASE;
   // IS-02: fail-fast on misconfigured base URL. Validates protocol, blocks

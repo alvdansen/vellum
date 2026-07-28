@@ -8,9 +8,11 @@
 
 import type { Breadcrumb, BreadcrumbEntry } from '../types/hierarchy.js';
 
-// Shared tool-input bounds (SEC-01, API-05, RT-01). Every tool's raw ZodRawShape
-// references these so the published JSON schema carries the correct maxima and
-// so handler-side re-validation catches bypasses uniformly.
+// Shared tool-input bounds (SEC-01, API-05, RT-01). The published raw
+// ZodRawShape of each tool is deliberately loose (every field optional, no
+// maxima) so the SDK's pre-handler validation never short-circuits; these
+// constants are enforced by the handler-side discriminated-union re-validation
+// that every tool imports them for, so bypasses are caught uniformly.
 export const MAX_NAME_LENGTH = 200;
 export const MAX_ID_LENGTH = 64;
 export const MAX_NOTES_LENGTH = 4000;

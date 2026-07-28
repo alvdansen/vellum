@@ -1,21 +1,23 @@
-// Phase 5 Plan 04 Task 2: public surface of the src/http/ module.
+// Partial barrel for the src/http/ module.
 //
-// Every downstream consumer (server.ts / Plan 05-06, tests, and future SSE or
-// static-handler plans) imports from this barrel — NOT from individual files.
-// Keeping the public surface in one place makes the HTTP layer's API easy to
-// audit for architecture-purity (zero MCP SDK, zero SQLite).
+// Re-exports a convenience subset of the HTTP layer's public surface; it is
+// NOT the sole entry point — server.ts (and some tests) import individual
+// files under src/http/ directly, and that is allowed. The architecture
+// property that matters (zero MCP SDK, zero SQLite in this layer) is enforced
+// by architecture-purity tests, not by funnelling imports through this file.
 //
-// Currently exports:
-//   - `createDashboardRouter` — Hono sub-router with all 18 REST routes.
+// Currently re-exports:
+//   - `createDashboardRouter` — Hono sub-router with the dashboard REST routes.
 //   - `typedErrorHandler` — the Hono `onError` handler that converts every
 //      TypedError thrown below the route boundary into a `{ error: { code,
 //      message } }` JSON body with the correct HTTP status.
 //   - `statusForCode` — pure code → status mapping (exported for tests and
 //      for cross-cutting wiring that wants to assemble expected responses
 //      without instantiating a Hono app).
+//   - `createWebhookRouter` — bearer-gated inbound ingest routes.
 //
-// Plans 05-05 (SSE) and 05-06 (static + server wiring) will extend this
-// barrel with their own exports (`createSseHandler`, `createStaticHandler`).
+// Other modules in this directory (sse, static, local-guard, …) export
+// directly from their own files.
 
 export { createDashboardRouter } from './dashboard-routes.js';
 export type { EngineForDashboard } from './dashboard-routes.js';

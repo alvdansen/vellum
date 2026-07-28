@@ -18,15 +18,30 @@ import { isApprovalRequired } from '../utils/approval-config.js';
 
 const TOOL_SURFACE: Array<{ name: string; actions: string[]; summary: string }> = [
   { name: 'workspace', actions: ['create', 'list', 'get'], summary: 'Top-level container.' },
-  { name: 'project', actions: ['create', 'list', 'get'], summary: 'Project under a workspace.' },
+  {
+    name: 'project',
+    actions: ['create', 'list', 'get', 'set_naming_template'],
+    summary: 'Project under a workspace; set_naming_template sets the production output-naming template.',
+  },
   { name: 'sequence', actions: ['create', 'list', 'get'], summary: 'Sequence under a project.' },
-  { name: 'shot', actions: ['create', 'list', 'get', 'set_status'], summary: 'Shot under a sequence; production status.' },
+  {
+    name: 'shot',
+    actions: ['create', 'list', 'get', 'set_status', 'get_status', 'list_status_history', 'pipeline_log'],
+    summary:
+      'Shot under a sequence; production status (set_status/get_status/list_status_history) and a markdown pipeline_log projected from provenance.',
+  },
   {
     name: 'generation',
-    actions: ['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals'],
-    summary: 'Submit to / poll any configured provider; reproduce/iterate; register an externally-produced output; approval-gate a spend (propose → approve).',
+    actions: ['submit', 'status', 'reproduce', 'iterate', 'register', 'propose', 'approve', 'reject', 'list_proposals', 'record_cost'],
+    summary:
+      'Submit to / poll any configured provider; reproduce/iterate; register an externally-produced output; approval-gate a spend (propose → approve); record_cost logs the actual spend of a take.',
   },
-  { name: 'version', actions: ['get', 'list', 'diff', 'provenance'], summary: 'Version reads + provenance + diff.' },
+  {
+    name: 'version',
+    actions: ['get', 'list', 'diff', 'provenance', 'export_manifest', 'verify_manifest', 'redact_manifest'],
+    summary:
+      'Version reads + provenance + diff; export/verify a C2PA-signed manifest and redact named manifest fields (presentation-layer, originals retained in the parent chain).',
+  },
   {
     name: 'asset',
     actions: ['add_tag', 'remove_tag', 'set_metadata', 'remove_metadata', 'query', 'list_tags', 'list_metadata_keys'],
