@@ -35,15 +35,19 @@ A generation flows **outbound** (submit and poll any configured provider) or **i
 
 | Tool         | Purpose                                                              | Actions                                                                 |
 | ------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `workspace`  | Top-level container (a show, a client, a project group)             | `create`, `list`, `get`                                                |
-| `project`    | A film, episode, spot, or campaign; carries an output-naming template and a versioned spec | `create`, `list`, `get`, `set_naming_template`, `set_spec`, `get_spec`, `list_spec_revisions` |
-| `sequence`   | A scene or shot group within a project                              | `create`, `list`, `get`                                                |
-| `shot`       | An individual shot — status lifecycle + a generated pipeline log     | `create`, `list`, `get`, `set_status`, `get_status`, `list_status_history`, `pipeline_log` |
+| `workspace`  | Top-level container (a show, a client, a project group)             | `create`, `list`, `get`, `rename`, `archive`, `unarchive`, `history`   |
+| `project`    | A film, episode, spot, or campaign; carries an output-naming template and a versioned spec | `create`, `list`, `get`, `rename`, `archive`, `unarchive`, `history`, `set_naming_template`, `set_spec`, `get_spec`, `list_spec_revisions` |
+| `sequence`   | A scene or shot group within a project                              | `create`, `list`, `get`, `rename`, `archive`, `unarchive`, `history`   |
+| `shot`       | An individual shot — status lifecycle + a generated pipeline log     | `create`, `list`, `get`, `rename`, `archive`, `unarchive`, `history`, `set_status`, `get_status`, `list_status_history`, `pipeline_log` |
 | `generation` | Submit/poll any provider; reproduce/iterate; register an external output; or run the **approval gate** (including for actions Vellum doesn't execute) | `submit`, `status`, `reproduce`, `iterate`, `register`, `propose`, `approve`, `reject`, `list_proposals`, `record_cost` |
 | `version`    | Read versions, full provenance, structured diffs, and C2PA manifests | `get`, `list`, `provenance`, `diff`, `export_manifest`, `verify_manifest`, `redact_manifest` |
 | `asset`      | Tag versions, attach metadata, and query across the hierarchy       | `add_tag`, `remove_tag`, `set_metadata`, `remove_metadata`, `query`, `list_tags`, `list_metadata_keys` |
 
 Every response carries the full hierarchy breadcrumb (`workspace > project > sequence > shot`), every input is Zod-validated, every error is human-readable with an actionable next step, and every list is paginated (default page size 20).
+
+**Naming is yours.** Shot names take whatever your studio uses — `sh010`, `SH014`, `EP101_SH014`, `SC012_SH0030`. The only rules are safety ones, because the name becomes a directory: no spaces, no `..`, no leading dot, not a Windows reserved device name.
+
+**Nothing is create-only, and nothing is deletable.** `rename` fixes a wrong name; `archive`/`unarchive` takes a sequence out of the cut without destroying it. Both are recorded in an append-only history (`history` returns the transitions plus every name the entity has had), so an old filename or pipeline log stays traceable to the current row. Archived entities leave list results *and* their counts, refuse new work, and stay readable — pass `include_archived: true` to see them. There is no delete at any level: provenance points at these ids, and a record whose subject can vanish is not a record. Renaming does **not** move files already on disk; output paths are stored per version, so earlier takes stay resolvable where they were written.
 
 Most lists are offset-paginated and return `{ items, total_count, limit, offset }`.
 `version list` is **cursor**-paginated: it returns `next_cursor` alongside those
@@ -76,6 +80,12 @@ The gate is **off by default** — `submit` / `reproduce` / `iterate` spend dire
 Actual spend is recorded back with `record_cost`, so each shot's log shows estimate-vs-actual and a running total. Nothing hits a paid API without a name on it.
 
 **The same gate covers actions Vellum doesn't run.** Spend is the obvious thing to gate; irreversibility is the one that actually matters. An agent about to overwrite a scene file, relight a shot in a DCC, or publish to a tracker can `propose` with `kind: 'external'` — the verbatim action is recorded, a human approves it exactly once, and *nothing executes*. What you get is the missing artifact: a durable record that a named person authorized that exact action, in the same queue as your spend proposals. A free action can still be unrecoverable.
+
+## Shot approval — what was approved, and is it still current
+
+`shot set_status` accepts an `approved_version_id`, so an approval records *which* take was signed off rather than only that the shot was approved at some point. The pointer is validated against the shot and written both as a materialized field and into the append-only status history.
+
+A new take **never silently un-approves** a shot — quietly reverting someone's sign-off because a file landed is worse than the problem it solves. Instead the staleness becomes visible: `get_status` derives `approvalStale` and `versionsSinceApproval` at read time (a cached flag would go stale the instant the next take arrived, which is the exact bug), and the pipeline log renders `**Approved take:** v001 — ⚠️ 2 newer takes since`. An approval that named no version says `_not recorded_` rather than implying it covers the latest.
 
 ## Project specs — versioned standing context
 
@@ -182,7 +192,7 @@ npm test                              # server suite — 2488 tests
 cd packages/dashboard && npx vitest run   # dashboard suite — 542 tests
 ```
 
-The suite covers hierarchy create/read (there is no update or delete), provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
+The suite covers hierarchy create/read/rename/archive (there is no delete, anywhere), provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
 
 ### 5. Live, with the dashboard
 
