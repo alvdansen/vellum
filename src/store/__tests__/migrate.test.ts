@@ -11,7 +11,7 @@ import { makeInMemoryDb } from '../../test-utils/fixtures.js';
  * Verifies Drizzle migrations apply against real SQLite DBs and
  * that the __drizzle_migrations ledger is idempotent across reboots.
  */
-const EXPECTED_MIGRATIONS = 12; // +0012_submit_fingerprint (duplicate-submit guard — versions.request_fingerprint)
+const EXPECTED_MIGRATIONS = 13; // +0013_project_specs (versioned standing context + provenance.spec_bound_json)
 
 function uniqueDbPath(label: string): string {
   const rand = Math.random().toString(36).slice(2, 10);

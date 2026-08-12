@@ -59,6 +59,17 @@ export type VersionStatus = 'submitted' | 'running' | 'completed' | 'failed';
 export const SHOT_STATUSES = ['wip', 'pending-review', 'approved', 'on-hold', 'omit'] as const;
 export type ShotStatus = typeof SHOT_STATUSES[number];
 
+/**
+ * Ceiling on a single project-spec revision body.
+ *
+ * A spec is standing context an agent loads before it acts, so its real cost is
+ * paid on every call, not once at write time. 256 KiB is generous for a style
+ * bible or look book and small enough that the cap bites before an agent's
+ * context does. Enforced at the engine boundary AND mirrored as the tool-layer
+ * Zod max so an oversize spec is refused before any DB write.
+ */
+export const MAX_SPEC_CONTENT_BYTES = 256 * 1024;
+
 export interface Version {
   id: string;
   shot_id: string;

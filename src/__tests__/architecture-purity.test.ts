@@ -783,6 +783,32 @@ describe('architecture purity', () => {
   it('src/store/shot-status-repo.ts has zero imports from @modelcontextprotocol/sdk', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/store/shot-status-repo.ts')).toBe(0);
   });
+
+  // Project specs are append-only for the same reason provenance is: a version
+  // records the spec revision it was created under, and that citation is
+  // worthless if the revision it points at can be rewritten afterwards. The
+  // whole "fix the spec, not the shot" workflow depends on old revisions
+  // staying exactly as they were when takes were made against them.
+  //
+  // Store-wide scan (not just the repo file) for the same reason as the
+  // provenance guard: every repo shares one db handle, so a mutator in a
+  // sibling file reaches project_specs just as easily.
+  it('project_specs is never UPDATE-d or DELETE-d anywhere in src/store', () => {
+    expect(grepCount('UPDATE project_specs', 'src/store')).toBe(0);
+    expect(grepCount('DELETE FROM project_specs', 'src/store')).toBe(0);
+    // Pattern split so this file's own source doesn't match the scan.
+    expect(grepCount('.update(' + 'projectSpecs', 'src')).toBe(0);
+    expect(grepCount('.delete(' + 'projectSpecs', 'src')).toBe(0);
+  });
+
+  it('src/store/spec-repo.ts uses no mutation builder at all', () => {
+    expect(grepCount('.update(', 'src/store/spec-repo.ts')).toBe(0);
+    expect(grepCount('.delete(', 'src/store/spec-repo.ts')).toBe(0);
+  });
+
+  it('src/store/spec-repo.ts has zero imports from @modelcontextprotocol/sdk', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/store/spec-repo.ts')).toBe(0);
+  });
 });
 
 // ================================================================

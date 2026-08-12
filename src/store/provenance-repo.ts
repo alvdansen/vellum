@@ -7,6 +7,7 @@ import type {
   ManifestSignedPayloadFields,
   ModelRef,
   ProvenanceEvent,
+  SpecBoundPayloadFields,
   SummaryGeneratedPayloadFields,
 } from '../types/provenance.js';
 import { newId } from '../utils/id.js';
@@ -41,6 +42,14 @@ export const SUMMARY_GENERATED_LOOKUP_LIMIT = 50;
  * lookup limits.
  */
 export const COST_RECORDED_LOOKUP_LIMIT = 50;
+
+/**
+ * Spec binding — a version binds to at most ONE spec revision, written once at
+ * creation, so the expected row count here is 0 or 1. The scan is bounded only
+ * to survive a duplicate written by a buggy caller without an unbounded read;
+ * the oldest valid row still wins (see getSpecBound).
+ */
+export const SPEC_BOUND_LOOKUP_LIMIT = 8;
 
 /**
  * Detect SQLite unique-constraint violations. Duplicated verbatim from
@@ -115,6 +124,15 @@ export type ProvenanceCostRecordedRowPayload = {
   cost_recorded_json: string;
 };
 
+/** Spec binding — sibling event carrying the JSON-encoded SpecBoundPayloadFields
+ *  in the nullable spec_bound_json column (migration 0013). Written at most once
+ *  per version, at creation, and only when the project had a spec. Append-only:
+ *  a later spec revision NEVER rewrites an earlier binding — that immutability is
+ *  the whole point (it is what dates a take against the spec it was made under). */
+export type ProvenanceSpecBoundRowPayload = {
+  spec_bound_json: string;
+};
+
 export type ProvenanceEventPayload =
   | ({ event_type: 'submitted' } & ProvenanceSubmittedPayload)
   | ({ event_type: 'completed' } & ProvenanceCompletedPayload)
@@ -122,7 +140,8 @@ export type ProvenanceEventPayload =
   | ({ event_type: 'models_fingerprinted' } & ProvenanceModelsFingerprintedPayload)
   | ({ event_type: 'manifest_signed' } & ProvenanceManifestSignedRowPayload)
   | ({ event_type: 'summary_generated' } & ProvenanceSummaryGeneratedRowPayload)
-  | ({ event_type: 'cost_recorded' } & ProvenanceCostRecordedRowPayload);
+  | ({ event_type: 'cost_recorded' } & ProvenanceCostRecordedRowPayload)
+  | ({ event_type: 'spec_bound' } & ProvenanceSpecBoundRowPayload);
 
 export class ProvenanceRepo {
   constructor(private db: Db) {}
@@ -163,6 +182,8 @@ export class ProvenanceRepo {
       // Cost actuals — populated only on 'cost_recorded' events.
       cost_recorded_json:
         payload.event_type === 'cost_recorded' ? payload.cost_recorded_json : null,
+      // Spec binding — populated only on 'spec_bound' events.
+      spec_bound_json: payload.event_type === 'spec_bound' ? payload.spec_bound_json : null,
       timestamp: Date.now(),
     };
     try {
@@ -432,6 +453,51 @@ export class ProvenanceRepo {
         continue;
       } catch {
         // Malformed payload — keep walking newer-to-older (getLatestFingerprints parity).
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /** Spec binding — record which project spec revision was active when this
+   *  version was created. Written once, at creation. */
+  appendSpecBoundEvent(versionId: string, payload: SpecBoundPayloadFields): ProvenanceEvent {
+    return this.insertEvent(versionId, {
+      event_type: 'spec_bound',
+      spec_bound_json: JSON.stringify(payload),
+    });
+  }
+
+  /** Spec binding — the spec revision a version was created under, or null when
+   *  no spec was active. Unlike the cost lookup there is no "newest wins"
+   *  correction semantics: a version binds at most once, so this reads the
+   *  OLDEST valid row. A duplicate written by a buggy caller must not be able to
+   *  silently re-date a take against a later spec revision. */
+  getSpecBound(versionId: string): SpecBoundPayloadFields | null {
+    const rows = this.db
+      .select()
+      .from(provenance)
+      .where(and(eq(provenance.version_id, versionId), eq(provenance.event_type, 'spec_bound')))
+      .orderBy(provenance.timestamp, sql`rowid asc`)
+      .limit(SPEC_BOUND_LOOKUP_LIMIT)
+      .all() as ProvenanceEvent[];
+    for (const row of rows) {
+      if (!row.spec_bound_json) continue;
+      try {
+        const parsed = JSON.parse(row.spec_bound_json) as SpecBoundPayloadFields;
+        if (
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          typeof parsed.spec_id === 'string' &&
+          typeof parsed.project_id === 'string' &&
+          typeof parsed.revision === 'number' &&
+          Number.isInteger(parsed.revision) &&
+          typeof parsed.content_hash === 'string'
+        ) {
+          return parsed;
+        }
+        continue;
+      } catch {
         continue;
       }
     }

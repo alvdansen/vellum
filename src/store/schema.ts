@@ -169,6 +169,13 @@ export const provenance = sqliteTable('provenance', {
   // (amount + currency + note/recorded_by). Pre-migration rows read NULL.
   // Added by 0011_cost_actuals.sql — NOT in SCHEMA_DDL (additive split).
   cost_recorded_json: text('cost_recorded_json'),
+  // Spec binding — nullable JSON payload of the 'spec_bound' event_type
+  // (spec id + revision + content hash of the project spec that was active
+  // when this version was created). Written at most once per version, and
+  // only when the project HAD a spec — so absence means "no spec was active",
+  // never "we forgot to look". Added by 0013_project_specs.sql — NOT in
+  // SCHEMA_DDL (additive split).
+  spec_bound_json: text('spec_bound_json'),
   timestamp: integer('timestamp').notNull(),
 }, (t) => ({
   // Two-column index supports both "all events for version in order"
@@ -276,6 +283,46 @@ export const proposals = sqliteTable('proposals', {
 }, (t) => ({
   idxShotStatus: index('idx_proposals_shot_status').on(t.shot_id, t.status),
   idxStatusCreated: index('idx_proposals_status_created').on(t.status, t.created_at),
+}));
+
+/**
+ * Append-only project spec revisions — the versioned standing context an agent
+ * reads before it submits.
+ *
+ * Vellum records what a generation WAS (append-only provenance) but had no
+ * place for the spec that shaped it. A spec is a per-project document (a style
+ * bible, a lighting look book, a naming-and-palette contract) that agents load
+ * as context; when it turns out to be ambiguous the fix belongs in the SPEC,
+ * not in the one output that went wrong. That only works if revisions are
+ * durable and every take says which revision it was made under.
+ *
+ * Structural append-only invariant: the repo (src/store/spec-repo.ts) has ZERO
+ * update/delete methods, enforced by architecture-purity greps. `set_spec`
+ * inserts revision N+1; nothing ever rewrites revision N.
+ *
+ * UNIQUE(project_id, revision) is the concurrency guard: two writers racing to
+ * create the same revision number collide on the index instead of silently
+ * forking history.
+ *
+ * Added by drizzle migrator via 0013_project_specs.sql; SCHEMA_DDL below
+ * intentionally does NOT declare this table — matches the additive-migration split.
+ */
+export const projectSpecs = sqliteTable('project_specs', {
+  id: text('id').primaryKey(),
+  project_id: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  revision: integer('revision').notNull(),
+  content: text('content').notNull(),
+  // sha256 hex of `content`. Stamped into provenance at bind time so a take
+  // can be checked against the spec text even if the row is read much later.
+  content_hash: text('content_hash').notNull(),
+  note: text('note'),
+  authored_by: text('authored_by').notNull().default('user'),
+  created_at: integer('created_at').notNull(),
+}, (t) => ({
+  uniqueRevisionPerProject: unique().on(t.project_id, t.revision),
+  idxProjectCreated: index('idx_project_specs_project_created').on(t.project_id, t.created_at),
 }));
 
 /**

@@ -11,6 +11,7 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
+import { MAX_SPEC_CONTENT_BYTES } from '../types/hierarchy.js';
 
 // Zod v4 discriminated-union inputs. Kept for handler-side
 // re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape
@@ -47,11 +48,37 @@ const SetNamingTemplateInput = z.object({
   template: z.string().max(512).nullable().optional(),
 }).strict();
 
+// Project spec — versioned standing context an agent reads BEFORE it submits.
+// set_spec ALWAYS appends a new revision; there is no edit-in-place, so a take
+// stays dated to the revision it was actually made under.
+const SetSpecInput = z.object({
+  action: z.literal('set_spec'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+  content: z.string().min(1).max(MAX_SPEC_CONTENT_BYTES),
+  note: z.string().max(1000).optional(),
+  authored_by: z.string().max(200).optional(),
+}).strict();
+const GetSpecInput = z.object({
+  action: z.literal('get_spec'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+  // Omitted → the latest revision.
+  revision: z.number().int().min(1).optional(),
+}).strict();
+const ListSpecRevisionsInput = z.object({
+  action: z.literal('list_spec_revisions'),
+  id: z.string().min(1).max(MAX_ID_LENGTH),
+  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+  offset: z.number().int().min(0).default(0),
+}).strict();
+
 const ProjectInputSchema = z.discriminatedUnion('action', [
   CreateInput,
   ListInput,
   GetInput,
   SetNamingTemplateInput,
+  SetSpecInput,
+  GetSpecInput,
+  ListSpecRevisionsInput,
 ]);
 
 /**
@@ -70,7 +97,8 @@ export function registerProject(server: McpServer, engine: Engine) {
     {
       title: 'Project',
       description:
-        'Manage projects within a workspace. Actions: create, list, get, set_naming_template. ' +
+        'Manage projects within a workspace. Actions: create, list, get, set_naming_template, set_spec, get_spec, list_spec_revisions. ' +
+        'A project SPEC is versioned standing context you should read before generating into this project — a style bible, look book, or palette/naming contract. Read it with get_spec (or the vellum://project/{id}/spec resource). set_spec ALWAYS appends a new revision (never edits in place), and every version created afterwards records which revision was active, so when an output is wrong because the spec was ambiguous you fix the SPEC and the earlier takes stay dated to the revision they were made under. ' +
         'set_naming_template sets a Hybrid-v1 output-naming template for the project so generations land on disk with production-standard names instead of raw provider filenames. Template tokens: {project} {sequence} {shot} {version} {version_num} {provider} {index} {basename} {ext} {slot:KEY} (element/descriptor/artist/stage/frame — passed at register), with :upper/:lower/:pad3 modifiers; e.g. "{project}_{sequence}_{shot:upper}_{slot:element}_{version}". Pass template:null to clear.',
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
@@ -78,13 +106,25 @@ export function registerProject(server: McpServer, engine: Engine) {
       // short-circuits — the handler's `ProjectInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: z.object({
-        action: z.enum(['create', 'list', 'get', 'set_naming_template']),
+        action: z.enum([
+          'create',
+          'list',
+          'get',
+          'set_naming_template',
+          'set_spec',
+          'get_spec',
+          'list_spec_revisions',
+        ]),
         workspaceId: z.string().optional(),
         name: z.string().optional(),
         id: z.string().optional(),
         limit: z.number().int().optional(),
         offset: z.number().int().optional(),
         template: z.string().nullable().optional(),
+        content: z.string().optional(),
+        note: z.string().optional(),
+        authored_by: z.string().optional(),
+        revision: z.number().int().optional(),
       }).passthrough(),
     },
     async (rawInput) => {
@@ -104,6 +144,21 @@ export function registerProject(server: McpServer, engine: Engine) {
           case 'set_naming_template':
             return toolOk(
               shapeCreateOrGet(engine.setProjectNamingTemplate(input.id, input.template ?? null)),
+            );
+          case 'set_spec':
+            return toolOk(
+              shapeCreateOrGet(
+                engine.setProjectSpec(input.id, input.content, {
+                  note: input.note,
+                  authoredBy: input.authored_by,
+                }),
+              ),
+            );
+          case 'get_spec':
+            return toolOk(shapeCreateOrGet(engine.getProjectSpec(input.id, input.revision)));
+          case 'list_spec_revisions':
+            return toolOk(
+              shapeList(engine.listProjectSpecRevisions(input.id, input.limit, input.offset)),
             );
           default: {
             const _exhaustive: never = input;

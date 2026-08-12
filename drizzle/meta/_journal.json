@@ -85,6 +85,13 @@
       "when": 1779300000000,
       "tag": "0012_submit_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1779400000000,
+      "tag": "0013_project_specs",
+      "breakpoints": true
     }
   ]
 }

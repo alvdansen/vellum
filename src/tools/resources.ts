@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { loadProviderConfig } from '../providers/config.js';
 import { DEFAULT_INGEST_ALLOWED_HOSTS, DEFAULT_INGEST_MAX_BYTES } from '../engine/ingest.js';
 import { isApprovalRequired } from '../utils/approval-config.js';
@@ -20,8 +20,10 @@ const TOOL_SURFACE: Array<{ name: string; actions: string[]; summary: string }> 
   { name: 'workspace', actions: ['create', 'list', 'get'], summary: 'Top-level container.' },
   {
     name: 'project',
-    actions: ['create', 'list', 'get', 'set_naming_template'],
-    summary: 'Project under a workspace; set_naming_template sets the production output-naming template.',
+    actions: ['create', 'list', 'get', 'set_naming_template', 'set_spec', 'get_spec', 'list_spec_revisions'],
+    summary:
+      'Project under a workspace; set_naming_template sets the production output-naming template. ' +
+      'set_spec/get_spec/list_spec_revisions manage the project SPEC — append-only versioned standing context (style bible, look book, naming/palette contract) that every version records at creation.',
   },
   { name: 'sequence', actions: ['create', 'list', 'get'], summary: 'Sequence under a project.' },
   {
@@ -110,6 +112,13 @@ function capabilitiesDoc(version: string): unknown {
       error: '{ isError: true, structuredContent: { code, message, hint } } — typed, human-readable, actionable.',
     },
     inbound: 'See vellum://output-contract for how any generator/agent registers a finished output.',
+    standing_context: {
+      resource: 'vellum://project/{project_id}/spec',
+      note:
+        'Per-project versioned spec, fetched by URI so an agent loads ONLY the project it is working in — not one monolithic context file that grows with the show. Read it before generating. Absent resource = that project has no spec.',
+      binding:
+        "Every version records the spec revision active at its creation as an append-only 'spec_bound' provenance event. Read it back with { tool: 'version', action: 'provenance' }.",
+    },
   };
 }
 
@@ -186,9 +195,17 @@ function manualDoc(version: string): string {
     '1. **Outbound** — `generation submit` to the configured default provider, then `generation status` to poll.',
     '2. **Inbound** — `generation register`: report an asset you produced elsewhere. See `vellum://output-contract`.',
     '',
+    '## Standing context — read the project spec first',
+    'A project may carry a **spec**: versioned text (style bible, look book, naming/palette contract) that tells you what good looks like here. Read it BEFORE you generate into a project — `vellum://project/{project_id}/spec`, or `{ tool: "project", action: "get_spec" }`. Not every project has one; absence is not an error.',
+    'Every version you create records which spec revision was active, automatically. So when an output is wrong *because the spec was ambiguous*, the fix is a new revision via `set_spec` (it appends — it never edits in place), not a one-off correction to the output. Earlier takes stay dated to the revision they were made under.',
+    '',
+    '## Before doing something irreversible',
+    'The approval gate is not only about money. If you are about to take an action Vellum does not execute — overwriting a file, relighting a scene in another tool, publishing to a tracker — record it first with `{ tool: "generation", action: "propose", kind: "external", shot_id, external_action }` and wait for approval. Approval authorizes it exactly once and creates no version; you then perform the action and `register` whatever it produced. A free action can still be unrecoverable.',
+    '',
     '## Discovery',
     '- `vellum://capabilities` — machine-readable tools/actions/limits + which providers are configured and their reproduce support.',
     '- `vellum://output-contract` — the exact schema for registering an external output.',
+    '- `vellum://project/{project_id}/spec` — that project\'s standing context, fetched per project rather than loaded wholesale.',
     '',
     'All list actions paginate (default 20, with a total count). IDs are opaque strings; pass them back verbatim.',
     '',
@@ -196,7 +213,23 @@ function manualDoc(version: string): string {
   ].join('\n');
 }
 
-export function registerResources(server: McpServer, version: string): void {
+/**
+ * Minimal read surface this module needs from the engine. Declared structurally
+ * (not as `Engine`) so the resource layer stays a thin reader and the tool-layer
+ * boundary test keeps seeing a narrow dependency.
+ */
+export interface SpecReader {
+  getProjectSpec(
+    projectId: string,
+    revision?: number,
+  ): { entity: { revision: number; content: string; content_hash: string; created_at: number } };
+}
+
+export function registerResources(
+  server: McpServer,
+  version: string,
+  specReader?: SpecReader,
+): void {
   server.registerResource(
     'manual',
     'vellum://manual',
@@ -235,4 +268,45 @@ export function registerResources(server: McpServer, version: string): void {
       contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(outputContractDoc(), null, 2) }],
     }),
   );
+
+  // Per-project standing context, addressed by URI.
+  //
+  // The alternative — assembling every project's spec into one file the agent
+  // loads on every call — costs context proportional to the whole show and gets
+  // worse as it grows. A templated resource lets the agent pull exactly the
+  // project it is working in. Same reason the manual/capabilities/contract
+  // resources exist instead of a preamble: resources cost zero tool slots and
+  // are fetched on demand.
+  if (specReader) {
+    server.registerResource(
+      'project-spec',
+      new ResourceTemplate('vellum://project/{project_id}/spec', { list: undefined }),
+      {
+        title: 'Project spec',
+        description:
+          'Versioned standing context for a project (style bible, look book, naming/palette contract). Read before generating into the project. Returns the latest revision.',
+        mimeType: 'text/markdown',
+      },
+      async (uri, variables) => {
+        const raw = variables.project_id;
+        const projectId = Array.isArray(raw) ? raw[0] : raw;
+        if (typeof projectId !== 'string' || projectId === '') {
+          throw new Error('project_id is required in vellum://project/{project_id}/spec');
+        }
+        // A missing project or a project with no spec both surface as the
+        // engine's typed error, which the SDK reports as a resource read
+        // failure — the honest answer for "there is no standing context here".
+        const { entity } = specReader.getProjectSpec(projectId);
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: 'text/markdown',
+              text: entity.content,
+            },
+          ],
+        };
+      },
+    );
+  }
 }

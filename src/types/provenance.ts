@@ -8,8 +8,29 @@ export type ProvenanceEventType =
   | 'models_fingerprinted'
   | 'manifest_signed'
   | 'summary_generated'    // LLM summary sibling event
-  | 'cost_recorded';       // Cost actuals — log every call + cost
+  | 'cost_recorded'        // Cost actuals — log every call + cost
+  | 'spec_bound';          // Which project spec revision was active at creation
 export type LineageType = 'reproduce' | 'iterate';
+
+/**
+ * Spec binding payload for a 'spec_bound' sibling event: the project spec
+ * revision that was active when a version was created.
+ *
+ * This is the record that makes "fix the spec, not the shot" auditable. Without
+ * it, a spec revised on Tuesday silently reinterprets every take made on Monday
+ * and nothing says which takes predate the correction.
+ *
+ * `content_hash` is the sha256 of the revision body, carried so a take can be
+ * checked against spec text held elsewhere without trusting the row to be the
+ * same bytes. Written at most once per version, and ONLY when a spec existed —
+ * so no event means "no spec was active", never "nobody looked".
+ */
+export type SpecBoundPayloadFields = {
+  spec_id: string;
+  project_id: string;
+  revision: number;
+  content_hash: string;
+};
 
 /**
  * Cost actuals payload for a 'cost_recorded' sibling event. The approval gate
@@ -182,6 +203,10 @@ export interface ProvenanceEvent {
    *  JSON-encoded CostRecordedPayloadFields. Pre-migration rows read NULL
    *  (0011_cost_actuals.sql added the column as nullable). */
   cost_recorded_json?: string | null;
+  /** Spec binding — populated on 'spec_bound' rows ONLY; carries the
+   *  JSON-encoded SpecBoundPayloadFields. Pre-migration rows read NULL
+   *  (0013_project_specs.sql added the column as nullable). */
+  spec_bound_json?: string | null;
   // Neutral analogs of workflow_json / prompt_json for
   // non-ComfyUI backends. generation_result_json carries a serialized
   // NeutralProvenance (src/providers/provenance.ts). Optional in the TS view

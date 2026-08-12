@@ -8,6 +8,7 @@ import type { Database as SqliteClient } from 'better-sqlite3';
 import type * as schema from '../store/schema.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import { ProposalRepo, type Proposal, type ProposalStatus } from '../store/proposal-repo.js';
+import { SpecRepo, type ProjectSpec } from '../store/spec-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
 // Composite-cursor sort tuple types forwarded
@@ -71,6 +72,7 @@ import {
 import * as Thumbnails from './thumbnails/index.js';
 import {
   SHOT_NAME_REGEX,
+  MAX_SPEC_CONTENT_BYTES,
   type Workspace,
   type Project,
   type Sequence,
@@ -275,6 +277,7 @@ export class Engine {
   public readonly events: EngineEmitter;
   private requireApproval: boolean;
   private proposalRepo: ProposalRepo;
+  private specRepo: SpecRepo;
   /** Dashboard-stable download root. Public-readonly
    * so the HTTP layer can resolve output file paths against it via the
    * EngineForDashboard structural Pick. */
@@ -502,6 +505,7 @@ export class Engine {
     this.events = createEngineEmitter();
     this.requireApproval = options.requireApproval ?? false;
     this.proposalRepo = new ProposalRepo(this.db);
+    this.specRepo = new SpecRepo(this.db);
     this.breadcrumb = new BreadcrumbResolver(repo, versionRepo);
     const provenanceWriter = new ProvenanceWriter(provenanceRepo);
     this.generation = new GenerationEngine(
@@ -671,6 +675,140 @@ export class Engine {
   ): { entity: Project; breadcrumb: Breadcrumb } {
     const entity = this.repo.setProjectNamingTemplate(id, template);
     return { entity, breadcrumb: this.breadcrumb.resolve('project', entity.id) };
+  }
+
+  // ================================================================
+  // PROJECT SPEC — versioned standing context
+  // ================================================================
+
+  /**
+   * Append a new spec revision for a project.
+   *
+   * The spec is whatever an agent must read BEFORE it submits: a style bible, a
+   * lighting look book, a palette-and-naming contract. Vellum does not parse it
+   * — it is opaque text — but it versions it, hashes it, and stamps the active
+   * revision onto every version created afterwards. That binding is what makes
+   * "the spec was ambiguous, so fix the SPEC" an auditable operation instead of
+   * a good intention: takes made before the correction stay dated to the
+   * revision they were actually made under.
+   *
+   * Always an INSERT. There is no edit-in-place path, deliberately.
+   */
+  setProjectSpec(
+    projectId: string,
+    content: string,
+    opts: { note?: string; authoredBy?: string } = {},
+  ): { entity: ProjectSpec; breadcrumb: Breadcrumb } {
+    // Existence check first so an unknown project fails with the hierarchy's
+    // own typed error rather than a raw FK violation.
+    this.getProject(projectId);
+    if (content.length > MAX_SPEC_CONTENT_BYTES) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `Spec content is ${content.length} characters — exceeds the ${MAX_SPEC_CONTENT_BYTES}-character cap`,
+        'Split the spec into narrower per-sequence documents, or trim it. A spec is standing context an agent loads on every call — keeping it small is the point.',
+      );
+    }
+    if (content.trim() === '') {
+      throw new TypedError(
+        'INVALID_INPUT',
+        'Spec content cannot be empty',
+        'Pass the spec text. To retire a spec, append a revision that says so — revisions are append-only and are never deleted.',
+      );
+    }
+    const entity = this.specRepo.insertRevision({
+      projectId,
+      content,
+      note: opts.note ?? null,
+      authoredBy: opts.authoredBy ?? null,
+    });
+    return { entity, breadcrumb: this.breadcrumb.resolve('project', projectId) };
+  }
+
+  /**
+   * Read a project's spec — the latest revision, or a specific one.
+   * Throws SPEC_NOT_FOUND when the project has no spec at all (or the named
+   * revision does not exist), so an agent gets an actionable message instead of
+   * silently proceeding with no standing context.
+   */
+  getProjectSpec(
+    projectId: string,
+    revision?: number,
+  ): { entity: ProjectSpec; breadcrumb: Breadcrumb } {
+    this.getProject(projectId);
+    const entity =
+      revision === undefined
+        ? this.specRepo.getLatestRevision(projectId)
+        : this.specRepo.getRevision(projectId, revision);
+    if (!entity) {
+      throw new TypedError(
+        'SPEC_NOT_FOUND',
+        revision === undefined
+          ? `Project '${projectId}' has no spec`
+          : `Project '${projectId}' has no spec revision ${revision}`,
+        `Set one with { tool: 'project', action: 'set_spec' }, or list revisions with action: 'list_spec_revisions'.`,
+      );
+    }
+    return { entity, breadcrumb: this.breadcrumb.resolve('project', projectId) };
+  }
+
+  /** Paginated spec history, newest revision first. Bodies are omitted —
+   *  read one with getProjectSpec(projectId, revision). */
+  listProjectSpecRevisions(
+    projectId: string,
+    limit = 20,
+    offset = 0,
+  ): ListResult<Omit<ProjectSpec, 'content'>> {
+    this.getProject(projectId);
+    const bounded = Math.max(1, Math.min(100, limit));
+    const from = Math.max(0, offset);
+    const { items, total_count } = this.specRepo.listRevisions({
+      projectId,
+      limit: bounded,
+      offset: from,
+    });
+    // Every revision belongs to the same project, so the breadcrumb is resolved
+    // once and shared rather than re-walked per row (listProjects parity on
+    // shape, without that method's per-item lookup).
+    const breadcrumb = this.breadcrumb.resolve('project', projectId);
+    return {
+      items: items.map((s) => ({ ...s, ...breadcrumb })),
+      total_count,
+      limit: bounded,
+      offset: from,
+    };
+  }
+
+  /**
+   * Stamp the project spec revision that was active when `version` was created.
+   *
+   * Called immediately after every version-creating path. Two deliberate
+   * properties:
+   *
+   *  - **Non-fatal.** A binding failure must never fail a generation that has
+   *    already been paid for and persisted. The record is advisory; the take is
+   *    not. Same fault-isolation contract as the register-path append.
+   *  - **Silent when absent.** A project with no spec writes NO event, so a
+   *    missing binding reads as "no spec was active", never as "the lookup
+   *    failed".
+   */
+  private bindActiveSpec(version: Version): void {
+    try {
+      const shot = this.repo.getShot(version.shot_id);
+      if (!shot) return;
+      const seq = this.repo.getSequence(shot.sequence_id);
+      if (!seq) return;
+      const spec = this.specRepo.getLatestRevision(seq.project_id);
+      if (!spec) return;
+      this.provenanceRepo.appendSpecBoundEvent(version.id, {
+        spec_id: spec.id,
+        project_id: spec.project_id,
+        revision: spec.revision,
+        content_hash: spec.content_hash,
+      });
+    } catch {
+      // Advisory record — never surface over a persisted version.
+    }
   }
 
   listProjects(
@@ -1155,6 +1293,7 @@ export class Engine {
       providerId,
       allowDuplicate,
     );
+    this.bindActiveSpec(result.entity);
     // version.created fires AFTER the row is inserted. The
     // result.breadcrumb.text is the 5-entry breadcrumb_text from the resolver.
     this.events.emitEvent('version.created', {
@@ -1175,6 +1314,7 @@ export class Engine {
     input: RegisterExternalOutputInput,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     const result = await this.generation.registerExternalOutput(input);
+    this.bindActiveSpec(result.entity);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
       shot_id: result.entity.shot_id,
@@ -1578,6 +1718,7 @@ export class Engine {
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
     const result = await this.generation.reproduceVersion(sourceVersionId, notes);
+    this.bindActiveSpec(result.entity);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
       shot_id: result.entity.shot_id,
@@ -1605,6 +1746,7 @@ export class Engine {
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     const result = await this.generation.iterateFromVersion(sourceVersionId, overrides, seed, notes);
+    this.bindActiveSpec(result.entity);
     this.events.emitEvent('version.created', {
       version_id: result.entity.id,
       shot_id: result.entity.shot_id,
@@ -1641,12 +1783,52 @@ export class Engine {
     input:
       | { kind: 'submit'; shotId: string; workflowJson: Record<string, unknown>; provider?: string; notes?: string; costEstimate?: string }
       | { kind: 'reproduce'; versionId: string; notes?: string; costEstimate?: string }
-      | { kind: 'iterate'; versionId: string; overrides?: Record<string, IterateOverride>; seed?: number; notes?: string; costEstimate?: string },
+      | { kind: 'iterate'; versionId: string; overrides?: Record<string, IterateOverride>; seed?: number; notes?: string; costEstimate?: string }
+      | {
+          kind: 'external';
+          shotId: string;
+          /** What the agent is about to do, in words a human can judge. */
+          action: string;
+          /** The verbatim call/command/payload, recorded before it happens. */
+          request?: Record<string, unknown>;
+          /** The actuator this runs against ('unreal-mcp', 'harmony', 'filesystem'…). */
+          tool?: string;
+          notes?: string;
+          costEstimate?: string;
+        },
   ): { proposal: Proposal; breadcrumb: Breadcrumb } {
     let shotId: string;
     let requestJson: string;
     let provider: string | null = null;
-    if (input.kind === 'submit') {
+    if (input.kind === 'external') {
+      // An action Vellum does NOT execute. There is no provider to validate and
+      // nothing to run on approval — the value is the record and the
+      // decide-exactly-once claim, so the only checks are that the shot exists
+      // and the action is described well enough for a human to judge it.
+      const shot = this.repo.getShot(input.shotId);
+      if (!shot) {
+        throw new TypedError(
+          'SHOT_NOT_FOUND',
+          `Shot '${input.shotId}' not found`,
+          `Verify the shot id with { tool: 'shot', action: 'get' }`,
+        );
+      }
+      const action = input.action.trim();
+      if (action === '') {
+        throw new TypedError(
+          'INVALID_INPUT',
+          'An external proposal requires a non-empty action description',
+          'Describe what you are about to do, specifically enough that a human can approve or refuse it — e.g. "relight SH014 key+rim, overwrites Lighting.umap".',
+        );
+      }
+      shotId = input.shotId;
+      provider = input.tool ?? null;
+      requestJson = JSON.stringify({
+        action,
+        tool: input.tool ?? null,
+        request: input.request ?? null,
+      });
+    } else if (input.kind === 'submit') {
       const shot = this.repo.getShot(input.shotId);
       if (!shot) {
         throw new TypedError(
@@ -1722,7 +1904,9 @@ export class Engine {
     note?: string,
   ): Promise<{
     proposal: Proposal;
-    entity: Version;
+    /** Absent for kind='external' — approval authorizes an action Vellum does
+     *  not run, so no version is created. */
+    entity?: Version;
     breadcrumb: Breadcrumb;
     reproduction_warnings?: string[];
   }> {
@@ -1738,6 +1922,16 @@ export class Engine {
         `Proposal '${proposalId}' was already ${now.status}${now.decided_at ? ` at ${new Date(now.decided_at).toISOString()}` : ''}.`,
         'Each proposal executes at most once. Propose again to run another generation.',
       );
+    }
+    // Irreversibility gate: nothing to execute. The claim IS the deliverable —
+    // an immutable, at-most-once record that a human authorized this exact
+    // action. Returned before the try/execute block so an external approval can
+    // never record an execution_error for work Vellum never attempted.
+    if (claimed.kind === 'external') {
+      return {
+        proposal: claimed,
+        breadcrumb: this.breadcrumb.resolve('shot', claimed.shot_id),
+      };
     }
     try {
       const request = JSON.parse(claimed.request_json) as Record<string, unknown>;

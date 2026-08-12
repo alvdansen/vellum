@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'DUPLICATE_NAME'
   | 'INVALID_SHOT_FORMAT'
   | 'INVALID_INPUT'
+  | 'SPEC_NOT_FOUND'                  // project has no spec (or no such revision)
   // Generation lifecycle
   | 'INVALID_WORKFLOW_FORMAT'
   | 'COMFYUI_CREDENTIALS_MISSING'

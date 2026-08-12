@@ -145,7 +145,7 @@ function buildServer(engine: Engine, version: string): McpServer {
   registerAsset(server, engine);
   // Self-describing MCP resources (vellum://manual, /capabilities,
   // /output-contract). Zero tool slots; the idiomatic home for agent onboarding.
-  registerResources(server, version);
+  registerResources(server, version, engine);
   // SDK's registerTool unconditionally merges
   // `capabilities.tools.listChanged: true` into the server's capability set,
   // but we never emit `notifications/tools/list_changed`. Override back to

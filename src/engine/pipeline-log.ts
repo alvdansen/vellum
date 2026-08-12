@@ -4,7 +4,12 @@ import type {
   ShotStatus,
   Version,
 } from '../types/hierarchy.js';
-import type { CostRecordedPayloadFields, ModelRef, ProvenanceEvent } from '../types/provenance.js';
+import type {
+  CostRecordedPayloadFields,
+  ModelRef,
+  ProvenanceEvent,
+  SpecBoundPayloadFields,
+} from '../types/provenance.js';
 import type { ShotStatusEvent } from '../store/shot-status-repo.js';
 import type { ProposalKind, ProposalStatus } from '../store/proposal-repo.js';
 import type { StoredOutput } from '../comfyui/types.js';
@@ -261,6 +266,33 @@ function providerJobRef(take: PipelineLogTake): string | null {
 }
 
 /**
+ * The project spec revision this take was created under, read off its
+ * append-only 'spec_bound' event. OLDEST valid event wins — a take binds once,
+ * and a duplicate must never be able to re-date it to a later revision (repo
+ * parity: ProvenanceRepo.getSpecBound). Renderer-safe: malformed stored payloads
+ * are skipped rather than thrown on.
+ */
+function specForTake(take: PipelineLogTake): SpecBoundPayloadFields | null {
+  for (const e of take.events) {
+    if (e.event_type !== 'spec_bound' || !e.spec_bound_json) continue;
+    try {
+      const parsed = JSON.parse(e.spec_bound_json) as SpecBoundPayloadFields;
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        typeof parsed.revision === 'number' &&
+        typeof parsed.content_hash === 'string'
+      ) {
+        return parsed;
+      }
+    } catch {
+      // Stored data — never throw while rendering a log.
+    }
+  }
+  return null;
+}
+
+/**
  * Render a full per-shot pipeline log as markdown. Deterministic given the same
  * input (timestamps come from `generatedAt` and the row data, never the clock).
  */
@@ -417,6 +449,15 @@ export function renderShotPipelineLog(data: ShotPipelineLogData): string {
 
     const seed = seedForTake(t);
     if (seed != null) lines.push(`- **Seed:** ${seed}`);
+
+    // Which spec revision this take was made under. Absent when the project had
+    // no spec — the log says nothing rather than implying one.
+    const spec = specForTake(t);
+    if (spec) {
+      lines.push(
+        `- **Spec:** revision ${spec.revision} (${codeSpan(spec.content_hash.slice(0, 12))})`,
+      );
+    }
 
     const models = modelsForTake(t);
     if (models.length > 0) {
