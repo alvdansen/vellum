@@ -547,6 +547,11 @@ export const APPROVALS_RETRY_LABEL = 'Retry';
 export const PROPOSAL_KIND_SUBMIT = 'Submit';
 export const PROPOSAL_KIND_REPRODUCE = 'Reproduce';
 export const PROPOSAL_KIND_ITERATE = 'Iterate';
+export const PROPOSAL_KIND_EXTERNAL = 'External action';
+/** Shown on external proposals so a reviewer is not left thinking approval will
+ *  make something happen here. Approval authorizes; the agent then acts. */
+export const PROPOSAL_EXTERNAL_NOTICE =
+  'Vellum does not perform this action. Approving records that you authorized it, exactly once.';
 export const PROPOSAL_COST_LABEL = 'Est. cost';
 export const PROPOSAL_COST_UNKNOWN = 'not estimated';
 export const PROPOSAL_SHOT_LABEL = 'Shot';

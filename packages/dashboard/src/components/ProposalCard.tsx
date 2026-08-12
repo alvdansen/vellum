@@ -39,12 +39,15 @@ import {
   PROPOSAL_CREATED_PREFIX,
   PROPOSAL_DECIDED_PREFIX,
   PROPOSAL_DECIDE_FAIL_PREFIX,
+  PROPOSAL_KIND_EXTERNAL,
+  PROPOSAL_EXTERNAL_NOTICE,
 } from '../lib/copy.js';
 
 const KIND_LABEL: Record<ProposalKind, string> = {
   submit: PROPOSAL_KIND_SUBMIT,
   reproduce: PROPOSAL_KIND_REPRODUCE,
   iterate: PROPOSAL_KIND_ITERATE,
+  external: PROPOSAL_KIND_EXTERNAL,
 };
 
 export interface ProposalCardProps {
@@ -98,6 +101,14 @@ export function ProposalCard({ proposal, nowMs }: ProposalCardProps): JSX.Elemen
           {formatRelativeTime(proposal.created_at, nowMs)}
         </span>
       </div>
+
+      {/* An external proposal is not a spend and Vellum will not run it — say
+          so before the reviewer reaches the approve button. */}
+      {proposal.kind === 'external' ? (
+        <p class="rounded border border-[var(--color-border)] bg-[var(--color-surface-alt)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+          {PROPOSAL_EXTERNAL_NOTICE}
+        </p>
+      ) : null}
 
       {/* Cost estimate — the number a reviewer authorizes */}
       <Field label={PROPOSAL_COST_LABEL}>

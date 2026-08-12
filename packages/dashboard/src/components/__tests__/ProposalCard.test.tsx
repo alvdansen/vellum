@@ -39,6 +39,34 @@ beforeEach(() => {
 });
 
 describe('ProposalCard', () => {
+  it('labels an external proposal and warns that Vellum will not run it', () => {
+    // Without the 'external' entry in KIND_LABEL this rendered the literal
+    // string "undefined" as the card heading — the approvals inbox is the human
+    // review surface, so an unlabelled action is worse than no card.
+    const { getByTestId } = render(
+      <ProposalCard
+        proposal={makeProposal({
+          kind: 'external',
+          provider: 'unreal-mcp',
+          request_json: '{"action":"Relight sh010","tool":"unreal-mcp","request":null}',
+          cost_estimate: null,
+        })}
+        nowMs={NOW}
+      />,
+    );
+    const card = getByTestId('proposal-card');
+    expect(card.textContent).toContain('External action');
+    expect(card.textContent).not.toContain('undefined');
+    // A reviewer must not think approving makes something happen here.
+    expect(card.textContent).toMatch(/does not perform this action/i);
+    expect(card.textContent).toContain('Relight sh010');
+  });
+
+  it('does not show the external notice on a spend proposal', () => {
+    const { getByTestId } = render(<ProposalCard proposal={makeProposal()} nowMs={NOW} />);
+    expect(getByTestId('proposal-card').textContent).not.toMatch(/does not perform this action/i);
+  });
+
   it('renders kind, provider, cost, shot, and the parsed request', () => {
     const { getByTestId, getByText } = render(
       <ProposalCard proposal={makeProposal()} nowMs={NOW} />,

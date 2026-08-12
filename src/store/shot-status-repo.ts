@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { shots, shotStatusEvents } from './schema.js';
@@ -276,11 +276,15 @@ export function listShotsForGrid(
 ): ShotGridQueryResult {
   const { cursor, limit } = opts;
 
-  // total_count — single COUNT(*) over the sequence's shots. Cursor-independent.
+  // total_count — single COUNT(*) over the sequence's LIVE shots.
+  // Cursor-independent. Archived shots are excluded here for the same reason
+  // they are excluded from `shot list`: an archived shot is out of the cut, and
+  // a grid (or a completion percentage) that still counts it is lying about
+  // what is left to do.
   const totalRow = db
     .select({ c: sql<number>`COUNT(*)` })
     .from(shots)
-    .where(eq(shots.sequence_id, sequenceId))
+    .where(and(eq(shots.sequence_id, sequenceId), isNull(shots.archived_at)))
     .get();
 
   const cursorName = cursor?.n ?? null;
@@ -325,6 +329,7 @@ export function listShotsForGrid(
     FROM shots s
     LEFT JOIN ranked r ON r.shot_id = s.id AND r.rn = 1
     WHERE s.sequence_id = ${sequenceId}
+      AND s.archived_at IS NULL
       AND (
         ${cursorName} IS NULL
         OR s.name > ${cursorName}
@@ -385,6 +390,7 @@ export function listShotsForGridSqlText(): string {
     FROM shots s
     LEFT JOIN ranked r ON r.shot_id = s.id AND r.rn = 1
     WHERE s.sequence_id = ?
+      AND s.archived_at IS NULL
       AND (? IS NULL OR s.name > ? OR (s.name = ? AND s.id > ?))
     ORDER BY s.name ASC, s.id ASC
     LIMIT ?
@@ -458,6 +464,7 @@ export function getSequenceStats(db: Db, sequenceId: string): SequenceStatsRaw {
     SELECT status AS status, COUNT(*) AS c
     FROM shots
     WHERE sequence_id = ${sequenceId}
+      AND archived_at IS NULL
     GROUP BY status
   `) as Array<{ status: ShotStatus; c: number }>;
 
@@ -481,6 +488,7 @@ export function getSequenceStats(db: Db, sequenceId: string): SequenceStatsRaw {
     SELECT COUNT(*) AS c
     FROM shots
     WHERE shots.sequence_id = ${sequenceId}
+      AND shots.archived_at IS NULL
       AND shots.status IN ('wip', 'pending-review')
       AND EXISTS (
         SELECT 1 FROM versions v
@@ -513,6 +521,7 @@ export function getSequenceStatsStaleSqlText(): string {
     SELECT COUNT(*) AS c
     FROM shots
     WHERE shots.sequence_id = ?
+      AND shots.archived_at IS NULL
       AND shots.status IN ('wip', 'pending-review')
       AND EXISTS (
         SELECT 1 FROM versions v
@@ -537,6 +546,7 @@ export function getSequenceStatsGroupBySqlText(): string {
     SELECT status AS status, COUNT(*) AS c
     FROM shots
     WHERE sequence_id = ?
+      AND archived_at IS NULL
     GROUP BY status
   `;
 }

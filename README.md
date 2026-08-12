@@ -14,7 +14,7 @@
   <img alt="Node 20.9–25" src="https://img.shields.io/badge/Node-20.9%E2%80%9325-0c2a3a?style=flat-square" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-0c2a3a?style=flat-square" />
   <img alt="MCP SDK 1.29" src="https://img.shields.io/badge/MCP%20SDK-1.29-ff6b5a?style=flat-square" />
-  <img alt="v2.0" src="https://img.shields.io/badge/release-v2.0-ff6b5a?style=flat-square" />
+  <img alt="v2.1" src="https://img.shields.io/badge/release-v2.1-ff6b5a?style=flat-square" />
 </p>
 
 ---
@@ -183,13 +183,13 @@ Hierarchy, provenance, and `generation register` (inbound) work with **no** prov
 npm run smoke
 ```
 
-Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) through **28 wire-level assertions over BOTH transports — stdio and Streamable HTTP — 56 checks in all** — full hierarchy walk, breadcrumbs at every level, error envelopes, shot-format validation, pagination, get-by-id round-trips. Green here means the entire MCP transport + tool registration + engine wiring works end-to-end.
+Drives the live MCP SDK client (`scripts/inspector-smoke.mjs`) through **30 wire-level assertions over BOTH transports — stdio and Streamable HTTP — 60 checks in all** — full hierarchy walk, breadcrumbs at every level, error envelopes, shot-name validation in both directions, pagination, get-by-id round-trips. Green here means the entire MCP transport + tool registration + engine wiring works end-to-end.
 
 ### 4. Full test suite
 
 ```bash
-npm test                              # server suite — 2488 tests
-cd packages/dashboard && npx vitest run   # dashboard suite — 542 tests
+npm test                              # server suite — 2576 tests
+cd packages/dashboard && npx vitest run   # dashboard suite — 544 tests
 ```
 
 The suite covers hierarchy create/read/rename/archive (there is no delete, anywhere), provider SSRF guards, append-only provenance invariants, the approval gate (no double-spend), cross-provider reproduce + diff, asset query composition, the dashboard signal store, and SSE wire-shape. `architecture-purity.test.ts` is a cross-cutting guard: no MCP imports outside `src/tools/`, no engine-layer Zod, no test-only sentinels in production code.
@@ -278,6 +278,9 @@ Hierarchy, async ComfyUI generation, append-only provenance with reproduce/itera
 
 ### v2.0 — Provider-agnostic *(shipped)*
 Decoupled from any single backend and rebranded to **Vellum**. Five adapters behind one seam; multi-provider routing; cross-provider reproduce and cross-family diff over neutral provenance; inbound `register` + bearer-gated webhook ingest; self-describing MCP resources; C2PA signing, verification, ingredient graph, and redaction; the approval gate; per-shot pipeline logs; cost tracking; output-naming templates; palette QC; and training reports.
+
+### v2.1 — Agent context + a mutable hierarchy *(shipped)*
+Versioned **project specs** served as a per-project MCP resource, with the active revision stamped onto every version at creation — so a wrong output traced to an ambiguous spec is fixed at the spec, and earlier takes stay dated to the revision they were made under. The approval gate generalized from spend to **irreversibility** (`propose kind: 'external'` authorizes an action Vellum does not run). Shot names opened up to real studio codes. **Rename and archive** at every level, with an append-only hierarchy history; still no delete anywhere. Shot approval records **which version** was approved and reports staleness when newer takes land.
 
 ### Next
 - **Function-calling adapter** — an OpenAI-compatible REST endpoint for non-MCP agents

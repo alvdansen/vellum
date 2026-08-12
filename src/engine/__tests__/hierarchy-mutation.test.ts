@@ -257,6 +257,29 @@ describe('archive', () => {
     expect(ctx.engine.listShots(ctx.seqId, 20, 0).total_count).toBe(1);
   });
 
+  test('the dashboard grid and its stats exclude archived shots', async () => {
+    const ctx = await setup();
+    const keep = ctx.engine.createShot(ctx.seqId, 'sh020');
+    ctx.engine.setShotStatus(keep.entity.id, 'approved', 'supervisor');
+
+    // Before: 2 shots, 1 of 2 approved.
+    const before = ctx.engine.listShotGrid(ctx.seqId, { cursor: null, limit: 50 });
+    expect(before.total_count).toBe(2);
+    expect(before.stats.total).toBe(2);
+    expect(before.stats.approved_pct).toBe(50);
+
+    // Archiving the unapproved shot takes it out of the cut — the grid, the
+    // counts AND the completion percentage must all agree. A percentage that
+    // still counts cut shots misreports how much work is left.
+    ctx.engine.setEntityArchived('shot', ctx.shotId, true, { note: 'cut' });
+    const after = ctx.engine.listShotGrid(ctx.seqId, { cursor: null, limit: 50 });
+    expect(after.total_count).toBe(1);
+    expect(after.shots.map((s) => s.name)).toEqual(['sh020']);
+    expect(after.stats.total).toBe(1);
+    expect(after.stats.counts.wip).toBe(0);
+    expect(after.stats.approved_pct).toBe(100);
+  });
+
   test('reproduce and iterate are blocked on an archived shot', async () => {
     const ctx = await setup();
     const { entity } = await ctx.engine.submitGeneration(ctx.shotId, GRAPH);

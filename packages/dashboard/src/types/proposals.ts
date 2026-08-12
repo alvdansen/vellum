@@ -17,7 +17,9 @@
 import type { Version } from './entities.js';
 
 /**
- * The three proposal kinds — mirror ProposalKind (proposal-repo.ts:19).
+ * The proposal kinds — mirror ProposalKind (proposal-repo.ts).
+ * 'external' is an action Vellum does NOT execute: approving it authorizes and
+ * records the decision, it does not spend or produce a version.
  *
  * - `submit`    — a fresh generation; request_json is the verbatim provider
  *                 request (a ComfyUI graph, or a URL-provider request body).
@@ -25,8 +27,11 @@ import type { Version } from './entities.js';
  *                 `{ version_id }`.
  * - `iterate`   — re-run with param overrides; request_json is
  *                 `{ version_id, overrides?, seed? }`.
+ * - `external`  — an irreversible action in ANOTHER tool; request_json is
+ *                 `{ action, tool, request }`. Approving authorizes it and
+ *                 creates no version — Vellum never runs it.
  */
-export type ProposalKind = 'submit' | 'reproduce' | 'iterate';
+export type ProposalKind = 'submit' | 'reproduce' | 'iterate' | 'external';
 
 /** Proposal lifecycle states — mirror ProposalStatus (proposal-repo.ts:20). */
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected';
