@@ -1,0 +1,30 @@
+-- IDM: ROLLBACK NOT SUPPORTED.
+--
+-- Shot approval was a bare status value. Setting a shot to 'approved' recorded
+-- THAT it was approved and said nothing about WHAT was approved — and a new take
+-- landing afterwards did not disturb the flag. So a shot could read 'approved'
+-- while the newest version was something nobody had ever looked at, and nothing
+-- in the record could tell the two situations apart.
+--
+-- Two columns, same denorm/truth split as shots.status:
+--
+--   shots.approved_version_id            — materialized current pointer; NULL
+--                                          whenever the shot is not approved.
+--   shot_status_events.approved_version_id — the pointer AS OF that transition.
+--                                          Append-only, so an approval history
+--                                          survives later re-approvals.
+--
+-- Staleness is deliberately NOT a stored column. It is derived at read time by
+-- comparing the approved version against the newest version on the shot, so it
+-- cannot go out of date the way a cached boolean would. Approval is left
+-- standing when a new take arrives rather than auto-reverting: silently
+-- un-approving on someone else's upload destroys a supervisor's decision. The
+-- record says "approved at v003, and v005 now exists" and lets a human choose.
+--
+-- Both nullable; pre-migration rows read NULL, which means "approved without a
+-- recorded pointer" for an already-approved shot — indistinguishable from the
+-- old behaviour, which is the honest representation of what those rows knew.
+--
+-- Not in SCHEMA_DDL (additive split).
+ALTER TABLE `shots` ADD `approved_version_id` text;--> statement-breakpoint
+ALTER TABLE `shot_status_events` ADD `approved_version_id` text;

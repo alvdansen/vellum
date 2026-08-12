@@ -326,6 +326,29 @@ export function renderShotPipelineLog(data: ShotPipelineLogData): string {
   const lastChanged = lastChangedAt ? ` _(last changed ${formatUtc(lastChangedAt)})_` : '';
   lines.push(`- **Status:** ${status}${lastChanged}`);
 
+  // What was approved, and whether it is still the newest thing here. An
+  // approval with no pointer is reported as such rather than left to look
+  // like an approval of whatever happens to be latest.
+  if (status === 'approved') {
+    const approvedId = shot.approved_version_id ?? null;
+    const approvedTake = approvedId ? takes.find((t) => t.version.id === approvedId) : undefined;
+    if (!approvedId) {
+      lines.push('- **Approved take:** _not recorded_ — this approval predates version pointers, or none was given');
+    } else if (approvedTake) {
+      const label = versionLabel(approvedTake.version.version_number);
+      const newer = takes.filter(
+        (t) => t.version.version_number > approvedTake.version.version_number,
+      ).length;
+      lines.push(
+        newer > 0
+          ? `- **Approved take:** ${label} — ⚠️ ${newer} newer take${newer === 1 ? '' : 's'} since, not covered by this approval`
+          : `- **Approved take:** ${label} _(latest)_`,
+      );
+    } else {
+      lines.push(`- **Approved take:** ${codeSpan(approvedId)} _(not among the takes listed here)_`);
+    }
+  }
+
   // Take counts by status.
   const counts: Record<string, number> = {};
   for (const t of takes) counts[t.version.status] = (counts[t.version.status] ?? 0) + 1;

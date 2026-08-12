@@ -72,6 +72,11 @@ export const shots = sqliteTable('shots', {
   // matches the additive-migration split.
   status: text('status').notNull().default('wip'),
   archived_at: integer('archived_at'),
+  // Which version the CURRENT approval refers to. NULL whenever the shot is not
+  // approved (cleared on any transition away from 'approved'), and NULL on rows
+  // approved before 0015 — those genuinely did not record what was approved.
+  // Materialized pointer; shot_status_events.approved_version_id is the history.
+  approved_version_id: text('approved_version_id'),
 }, (t) => ({
   uniqueNamePerSequence: unique().on(t.sequence_id, t.name),
 }));
@@ -257,6 +262,10 @@ export const shotStatusEvents = sqliteTable('shot_status_events', {
   to_status: text('to_status').notNull(),
   changed_by: text('changed_by').notNull(),
   note: text('note'),
+  // The approved version AS OF this transition (0015). Only meaningful on
+  // to_status='approved' rows; append-only, so re-approving a shot at a newer
+  // take leaves the earlier approval intact in the history.
+  approved_version_id: text('approved_version_id'),
   created_at: integer('created_at').notNull(),
 }, (t) => ({
   idxShotTime: index('idx_shot_status_events_shot_time').on(t.shot_id, t.created_at),

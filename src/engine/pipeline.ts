@@ -1122,12 +1122,16 @@ export class Engine {
     toStatus: ShotStatus,
     changedBy: string,
     note?: string,
+    /** Which version is being approved. Only meaningful for
+     *  toStatus='approved'; any other status clears the pointer. */
+    approvedVersionId?: string,
   ): {
     shotId: string;
     name: string;
     previousStatus: ShotStatus;
     newStatus: ShotStatus;
     eventId: string;
+    approvedVersionId: string | null;
   } {
     const shot = this.repo.getShot(shotId);
     if (!shot) {
@@ -1137,6 +1141,32 @@ export class Engine {
         `List shots with { tool: 'shot', action: 'list' }`,
       );
     }
+    if (approvedVersionId !== undefined) {
+      if (toStatus !== 'approved') {
+        throw new TypedError(
+          'INVALID_INPUT',
+          `approved_version_id is only meaningful when setting status to 'approved' (got '${toStatus}')`,
+          "Drop approved_version_id, or set status: 'approved'.",
+        );
+      }
+      // A pointer at another shot's version would be worse than no pointer —
+      // it would read as a real approval of the wrong thing.
+      const target = this.versionRepo.getVersion(approvedVersionId);
+      if (!target) {
+        throw new TypedError(
+          'VERSION_NOT_FOUND',
+          `Version '${approvedVersionId}' not found`,
+          `List this shot's versions with { tool: 'version', action: 'list', shot_id: '${shotId}' }`,
+        );
+      }
+      if (target.shot_id !== shotId) {
+        throw new TypedError(
+          'INVALID_INPUT',
+          `Version '${approvedVersionId}' belongs to a different shot`,
+          'Approve a version that belongs to the shot you are approving.',
+        );
+      }
+    }
     const previousStatus = (shot.status as ShotStatus) ?? 'wip';
     const event = insertStatusEvent(
       this.db,
@@ -1145,6 +1175,7 @@ export class Engine {
       toStatus,
       changedBy,
       note,
+      approvedVersionId,
     );
     this.events.emitEvent('shot.status_changed', {
       shot_id: shotId,
@@ -1161,6 +1192,7 @@ export class Engine {
       previousStatus,
       newStatus: toStatus,
       eventId: event.id,
+      approvedVersionId: event.approved_version_id ?? null,
     };
   }
 
@@ -1175,6 +1207,15 @@ export class Engine {
     name: string;
     status: ShotStatus;
     lastChangedAt: number | null;
+    /** Which version the approval refers to; null when not approved, or when
+     *  the shot was approved without recording one. */
+    approvedVersionId: string | null;
+    /** True when the shot is approved at a specific version and NEWER versions
+     *  exist. Derived at read time, never stored — a cached flag would go
+     *  stale the moment the next take landed, which is the exact bug. */
+    approvalStale: boolean;
+    /** How many versions arrived after the approved one. 0 when not stale. */
+    versionsSinceApproval: number;
   } {
     const shot = this.repo.getShot(shotId);
     if (!shot) {
@@ -1185,11 +1226,30 @@ export class Engine {
       );
     }
     const history = getStatusHistory(this.db, shotId, 1);
+    const status = (shot.status as ShotStatus) ?? 'wip';
+    const approvedVersionId = shot.approved_version_id ?? null;
+
+    // Staleness is a comparison, not a stored fact. A new take deliberately
+    // does NOT revert the approval — silently un-approving on someone else's
+    // upload destroys a supervisor's decision. Instead the record says
+    // "approved at v003, and 2 versions have landed since" and a human decides.
+    let versionsSinceApproval = 0;
+    if (approvedVersionId) {
+      const approved = this.versionRepo.getVersion(approvedVersionId);
+      if (approved) {
+        versionsSinceApproval = this.versionRepo
+          .listAllForShot(shotId)
+          .filter((v) => v.version_number > approved.version_number).length;
+      }
+    }
     return {
       shotId,
       name: shot.name,
-      status: (shot.status as ShotStatus) ?? 'wip',
+      status,
       lastChangedAt: history[0]?.created_at ?? null,
+      approvedVersionId,
+      approvalStale: versionsSinceApproval > 0,
+      versionsSinceApproval,
     };
   }
 

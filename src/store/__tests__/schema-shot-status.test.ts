@@ -34,10 +34,11 @@ describe('STAT-02 — shotStatusEvents Drizzle table', () => {
     expect(cfg.name).toBe('shot_status_events');
   });
 
-  it('shotStatusEvents has exactly the seven Phase 20 columns', () => {
+  it('shotStatusEvents has exactly its expected columns', () => {
     const cfg = getTableConfig(schema.shotStatusEvents);
     const colNames = cfg.columns.map((c) => c.name).sort();
     expect(colNames).toEqual([
+      // The seven original Phase 20 columns…
       'changed_by',
       'created_at',
       'from_status',
@@ -45,7 +46,9 @@ describe('STAT-02 — shotStatusEvents Drizzle table', () => {
       'note',
       'shot_id',
       'to_status',
-    ]);
+      // …plus the approval pointer (0015): WHICH version an approval refers to.
+      'approved_version_id',
+    ].sort());
   });
 
   it('id is primaryKey text not-null', () => {

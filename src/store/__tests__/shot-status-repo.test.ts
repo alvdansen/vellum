@@ -172,12 +172,29 @@ describe('shot-status-repo — append-only event store (STAT-02, STAT-03)', () =
     expect(forbidden).toHaveLength(0);
   });
 
-  test('ShotStatusEvent type carries id/shot_id/from_status/to_status/changed_by/note/created_at', () => {
+  test('ShotStatusEvent carries the transition fields plus the approval pointer', () => {
     const event = insertStatusEvent(db, shotId, 'wip', 'approved', 'user', 'note text');
     const probe: ShotStatusEvent = event;
     expect(Object.keys(probe).sort()).toEqual(
-      ['changed_by', 'created_at', 'from_status', 'id', 'note', 'shot_id', 'to_status'].sort(),
+      [
+        'changed_by',
+        'created_at',
+        'from_status',
+        'id',
+        'note',
+        'shot_id',
+        'to_status',
+        'approved_version_id',
+      ].sort(),
     );
+    // Approved with no version named — the pointer is explicitly null rather
+    // than absent, so a reader can tell "not recorded" from "not approved".
+    expect(probe.approved_version_id).toBeNull();
+  });
+
+  test('a non-approved transition never carries an approval pointer', () => {
+    const event = insertStatusEvent(db, shotId, 'approved', 'wip', 'user', undefined, 'ver_x');
+    expect(event.approved_version_id).toBeNull();
   });
 
   test('insertStatusEvent atomicity: a thrown error inside the transaction rolls back BOTH writes (STAT-02)', () => {

@@ -80,6 +80,10 @@ export interface Shot {
   name: string;
   created_at: number;
   status: ShotStatus; // added by migration 0008; default 'wip'
+  /** Which version the CURRENT approval refers to (0015). NULL whenever the
+   *  shot is not approved, and NULL on shots approved before the pointer
+   *  existed. Optional in the TS view (additive/dual-read). */
+  approved_version_id?: string | null;
   /** Soft archive: epoch-ms when archived, NULL when live. Never deleted —
    *  provenance points at these ids. History lives in hierarchy_events.
    *  Optional in the TS view for the same additive/dual-read reason as

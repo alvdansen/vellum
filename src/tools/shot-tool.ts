@@ -65,6 +65,9 @@ const SetStatusInput = z.object({
   status: ShotStatusEnum,
   changed_by: z.string().max(100).optional(),
   note: z.string().max(500).optional(),
+  // WHICH version is being approved. Only valid with status:'approved'.
+  // Without it an approval records only THAT the shot was approved, never what.
+  approved_version_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
 }).strict();
 
 const GetStatusInput = z.object({
@@ -117,7 +120,7 @@ export function registerShot(server: McpServer, engine: Engine) {
     {
       title: 'Shot',
       description:
-        "Manage shots within a sequence. Use your own shot codes — 'sh010', 'SH014', 'EP101_SH014' are all valid; the only rules are safety ones (no spaces, no '..', no leading dot, not a Windows reserved name) because the name becomes a directory. Actions: create, list, get, rename, archive, unarchive, history, set_status, get_status, list_status_history, pipeline_log. " + mutationHelpText('shot') + " set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
+        "Manage shots within a sequence. Use your own shot codes — 'sh010', 'SH014', 'EP101_SH014' are all valid; the only rules are safety ones (no spaces, no '..', no leading dot, not a Windows reserved name) because the name becomes a directory. Actions: create, list, get, rename, archive, unarchive, history, set_status, get_status, list_status_history, pipeline_log. " + mutationHelpText('shot') + " set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. When approving, pass approved_version_id so the record says WHICH take was approved; get_status then reports approvalStale + versionsSinceApproval if newer takes have landed since (a new take never silently un-approves a shot). pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
       // Raw ZodRawShape: SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
@@ -152,6 +155,7 @@ export function registerShot(server: McpServer, engine: Engine) {
         status: z.string().optional(),
         changed_by: z.string().optional(),
         note: z.string().optional(),
+        approved_version_id: z.string().optional(),
       }).passthrough(),
     },
     async (rawInput) => {
@@ -179,6 +183,7 @@ export function registerShot(server: McpServer, engine: Engine) {
                 input.status,
                 input.changed_by ?? 'user',
                 input.note,
+                input.approved_version_id,
               ),
             );
           case 'get_status':

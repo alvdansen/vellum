@@ -26,7 +26,7 @@ function cleanup(dbPath: string): void {
   }
 }
 
-const EXPECTED_MIGRATIONS = 14; // +0014_hierarchy_mutability (hierarchy_events + archived_at on all four levels)
+const EXPECTED_MIGRATIONS = 15; // +0015_approved_version_pointer (shots + shot_status_events approved_version_id)
 
 describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
   let dbPath: string;

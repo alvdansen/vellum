@@ -43,6 +43,11 @@ export interface ShotStatusEvent {
   to_status: ShotStatus;
   changed_by: string;
   note: string | null;
+  /** The version approved AS OF this transition (0015). Non-null only on
+   *  to_status='approved' rows, and null on approvals recorded before the
+   *  pointer existed — which is the honest representation of what those
+   *  approvals actually knew. Optional in the TS view (additive/dual-read). */
+  approved_version_id?: string | null;
   created_at: number;
 }
 
@@ -74,9 +79,17 @@ export function insertStatusEvent(
   toStatus: ShotStatus,
   changedBy: string,
   note?: string,
+  /** The version this approval refers to. Only meaningful when toStatus is
+   *  'approved'; ignored otherwise. Undefined means "approved without saying
+   *  which take", which is what every pre-0015 approval recorded. */
+  approvedVersionId?: string | null,
 ): ShotStatusEvent {
   const id = newId('sse');
   const now = Date.now();
+  // An approval points at a version; anything else clears the pointer. Keeping
+  // a stale pointer on a shot that has left 'approved' would let a later read
+  // report an approved version for a shot nobody currently considers approved.
+  const pointer = toStatus === 'approved' ? (approvedVersionId ?? null) : null;
   const row: ShotStatusEvent = {
     id,
     shot_id: shotId,
@@ -84,12 +97,18 @@ export function insertStatusEvent(
     to_status: toStatus,
     changed_by: changedBy,
     note: note ?? null,
+    approved_version_id: pointer,
     created_at: now,
   };
   db.transaction(() => {
     db.insert(shotStatusEvents).values(row).run();
-    // Materialize the new status on shots.status for O(1) grid reads.
-    db.update(shots).set({ status: toStatus }).where(eq(shots.id, shotId)).run();
+    // Materialize the new status + approval pointer on the shot row for O(1)
+    // grid reads. Same dual-write contract as status: one transaction, so the
+    // append-only history and the cache cannot diverge.
+    db.update(shots)
+      .set({ status: toStatus, approved_version_id: pointer })
+      .where(eq(shots.id, shotId))
+      .run();
   });
   return row;
 }
