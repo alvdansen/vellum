@@ -36,10 +36,10 @@ A generation flows **outbound** (submit and poll any configured provider) or **i
 | Tool         | Purpose                                                              | Actions                                                                 |
 | ------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `workspace`  | Top-level container (a show, a client, a project group)             | `create`, `list`, `get`                                                |
-| `project`    | A film, episode, spot, or campaign; carries an output-naming template | `create`, `list`, `get`, `set_naming_template`                       |
+| `project`    | A film, episode, spot, or campaign; carries an output-naming template and a versioned spec | `create`, `list`, `get`, `set_naming_template`, `set_spec`, `get_spec`, `list_spec_revisions` |
 | `sequence`   | A scene or shot group within a project                              | `create`, `list`, `get`                                                |
 | `shot`       | An individual shot — status lifecycle + a generated pipeline log     | `create`, `list`, `get`, `set_status`, `get_status`, `list_status_history`, `pipeline_log` |
-| `generation` | Submit/poll any provider; reproduce/iterate; register an external output; or run the **approval gate** | `submit`, `status`, `reproduce`, `iterate`, `register`, `propose`, `approve`, `reject`, `list_proposals`, `record_cost` |
+| `generation` | Submit/poll any provider; reproduce/iterate; register an external output; or run the **approval gate** (including for actions Vellum doesn't execute) | `submit`, `status`, `reproduce`, `iterate`, `register`, `propose`, `approve`, `reject`, `list_proposals`, `record_cost` |
 | `version`    | Read versions, full provenance, structured diffs, and C2PA manifests | `get`, `list`, `provenance`, `diff`, `export_manifest`, `verify_manifest`, `redact_manifest` |
 | `asset`      | Tag versions, attach metadata, and query across the hierarchy       | `add_tag`, `remove_tag`, `set_metadata`, `remove_metadata`, `query`, `list_tags`, `list_metadata_keys` |
 
@@ -74,6 +74,22 @@ The gate is **off by default** — `submit` / `reproduce` / `iterate` spend dire
 3. Approval executes exactly once — a guarded claim on the proposal row makes double-spend structurally impossible.
 
 Actual spend is recorded back with `record_cost`, so each shot's log shows estimate-vs-actual and a running total. Nothing hits a paid API without a name on it.
+
+**The same gate covers actions Vellum doesn't run.** Spend is the obvious thing to gate; irreversibility is the one that actually matters. An agent about to overwrite a scene file, relight a shot in a DCC, or publish to a tracker can `propose` with `kind: 'external'` — the verbatim action is recorded, a human approves it exactly once, and *nothing executes*. What you get is the missing artifact: a durable record that a named person authorized that exact action, in the same queue as your spend proposals. A free action can still be unrecoverable.
+
+## Project specs — versioned standing context
+
+A project carries a **spec**: opaque text (a style bible, a look book, a palette-and-naming contract) that an agent reads *before* it generates. Vellum doesn't parse it. It versions it, hashes it, and stamps the active revision onto every version created afterwards as an append-only `spec_bound` provenance event.
+
+```bash
+project set_spec              # ALWAYS appends a revision — never edits in place
+project get_spec              # latest, or a specific revision
+project list_spec_revisions   # how the rules evolved
+```
+
+Agents fetch it by URI — `vellum://project/{project_id}/spec` — so they load the one project they're working in rather than one monolithic context file that grows with the show.
+
+The point is the binding. When an output is wrong *because the spec was ambiguous*, you fix the **spec**, and earlier takes stay dated to the revision they were actually made under — visible per take in the pipeline log and in `version provenance`. That's what makes a pipeline improve over a hundred shots instead of accumulating a hundred hand-fixes. See **[docs/agent-context-patterns.md](docs/agent-context-patterns.md)**.
 
 ## Provenance — immutable by construction
 
@@ -242,7 +258,7 @@ vellum/
 ├── drizzle/                   # SQLite migrations (12, hand-prefixed)
 ├── scripts/                   # smoke test, scene seed, palette QC, training report
 ├── SECURITY.md                # trust boundaries, outbound controls, known advisories
-└── docs/                      # quickstart, diagrams, ingest guide
+└── docs/                      # quickstart, diagrams, ingest guide, agent context patterns
 ```
 
 ## Roadmap
