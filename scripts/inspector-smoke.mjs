@@ -107,7 +107,10 @@ async function runToolSuite(client, label) {
   check('shot breadcrumb array length === 4',
         Array.isArray(shotStruct?.breadcrumb) && shotStruct.breadcrumb.length === 4);
 
-  // 6. shot create SH010 → isError:true, INVALID_SHOT_FORMAT surfaced.
+  // 6. An UNSAFE shot name → isError:true, INVALID_SHOT_FORMAT surfaced.
+  // 'SH010' used to be the fixture here, back when the rule was ^sh\d{3,}$.
+  // It is a perfectly good shot name now; the rule only rejects names that
+  // cannot safely become a directory segment. '../escape' is the real thing.
   // NOTE: MCP SDK 1.29 intercepts Zod inputSchema validation BEFORE the tool
   // handler runs, so this path returns a -32602 validation error with the
   // raw Zod message embedded in content[0].text. Engine-level TypedErrors
@@ -115,16 +118,26 @@ async function runToolSuite(client, label) {
   // carry structuredContent.code — checked below.
   const shotBad = await client.callTool({
     name: 'shot',
-    arguments: { action: 'create', sequenceId: seqId, name: 'SH010' },
+    arguments: { action: 'create', sequenceId: seqId, name: '../escape' },
   });
-  check('shot SH010 returns isError:true',
+  check('unsafe shot name returns isError:true',
         shotBad.isError === true);
   const badText = shotBad.content?.[0]?.text || '';
-  check('shot SH010 response text contains the INVALID_SHOT_FORMAT sentinel',
+  check('unsafe shot name response contains the INVALID_SHOT_FORMAT sentinel',
         badText.includes('INVALID_SHOT_FORMAT'),
         `got "${badText.slice(0, 80)}..."`);
-  check('shot SH010 response leaks NO SQLite error codes',
+  check('unsafe shot name response leaks NO SQLite error codes',
         !/SQLITE_CONSTRAINT_|SQLITE_BUSY|SQLITE_LOCKED/.test(JSON.stringify(shotBad)));
+
+  // 6a. Real-world shot codes are accepted. This is the half of the naming rule
+  // that matters for anyone importing from a tracker or a spreadsheet.
+  const shotReal = await client.callTool({
+    name: 'shot',
+    arguments: { action: 'create', sequenceId: seqId, name: 'EP101_SH014' },
+  });
+  check('studio-style shot name EP101_SH014 is accepted',
+        shotReal.isError !== true,
+        JSON.stringify(shotReal.structuredContent ?? {}).slice(0, 80));
 
   // 6b. Engine-level TypedError: duplicate workspace name → DUPLICATE_NAME
   //     (bypasses Zod, goes through engine, hits handler's catch → toolError)
@@ -162,15 +175,21 @@ async function runToolSuite(client, label) {
         typeof listStruct?.total_count === 'number' &&
         listStruct?.limit === 20 &&
         listStruct?.offset === 0);
-  check('shot list contains exactly 1 shot (the sh010 we created)',
-        listStruct?.total_count === 1 && listStruct.items.length === 1);
+  check('shot list contains exactly 2 shots (sh010 + EP101_SH014)',
+        listStruct?.total_count === 2 && listStruct.items.length === 2,
+        `total_count=${listStruct?.total_count}`);
+  const sh010Row = listStruct?.items?.find((i) => i.name === 'sh010');
   check('shot list item carries its own breadcrumb_text',
-        listStruct?.items?.[0]?.breadcrumb_text === 'demo > my-proj > sq010 > sh010');
+        sh010Row?.breadcrumb_text === 'demo > my-proj > sq010 > sh010',
+        sh010Row?.breadcrumb_text);
+  check('the studio-style shot round-trips through list with its name intact',
+        listStruct?.items?.some((i) => i.name === 'EP101_SH014'),
+        listStruct?.items?.map((i) => i.name));
 
   // 8. get by id → round-trip
   const getShot = await client.callTool({
     name: 'shot',
-    arguments: { action: 'get', id: listStruct.items[0].id },
+    arguments: { action: 'get', id: sh010Row.id },
   });
   check('shot get returns same id we created',
         getShot.structuredContent?.entity?.id === listStruct.items[0].id);

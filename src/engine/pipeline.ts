@@ -887,8 +887,11 @@ export class Engine {
     if (!SHOT_NAME_REGEX.test(name)) {
       throw new TypedError(
         'INVALID_SHOT_FORMAT',
-        `Shot name '${name}' does not match expected format`,
-        `Shot names must match ^sh\\d{3,}$ — e.g. 'sh010', 'sh020'`,
+        `Shot name '${name}' is not a usable shot name`,
+        "Use your own shot codes — 'sh010', 'SH014', 'EP101_SH014' and 'SC012_SH0030' are all fine. " +
+          'The name must be 1–100 characters of letters, digits, dot, underscore or hyphen, start with a letter or digit, ' +
+          "contain no spaces or '..', not end in a dot, and not be a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9). " +
+          'The name becomes a directory on disk, which is the only reason there are any rules at all.',
       );
     }
     const entity = this.repo.createShot(sequenceId, name);

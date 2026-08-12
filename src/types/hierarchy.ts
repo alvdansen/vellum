@@ -3,12 +3,36 @@
 
 /**
  * Single source of truth for the shot naming convention.
- * Lowercase `sh` prefix + at least 3 digits (e.g. `sh010`, `sh0200`). The engine
- * enforces the regex before any DB work (pipeline.ts); the shot tool's Zod
- * schema enforces it at the tool boundary for early rejection. Keeping both
- * call sites (defence-in-depth) with ONE source avoids drift.
+ *
+ * This used to be `/^sh\d{3,}$/` — lowercase `sh` plus digits. That encoded ONE
+ * studio's convention as a global law, and every other studio's shot codes were
+ * simply unrepresentable: `SH014`, `EP101_SH014`, `SC012_SH0030` all failed at
+ * the tool boundary. A tracker or spreadsheet import died on its first row, and
+ * a name that came in wrong could never be corrected because the hierarchy was
+ * create-only. Vellum has no business dictating what a studio calls a shot.
+ *
+ * What it DOES have business enforcing is safety, because a shot name becomes a
+ * directory segment (buildOutputPath), an entry in the ` > ` breadcrumb, and a
+ * heading in generated markdown. So the rule is now "anything a sane pipeline
+ * would call a shot, nothing that can escape a path or lie about what it is":
+ *
+ *   - 1–100 chars, ASCII letters/digits plus `.`, `_`, `-`
+ *   - must START with a letter or digit (no leading dot → no hidden files,
+ *     no leading dash → no argument injection in a shell that sees the path)
+ *   - no `..` anywhere (path traversal) and no trailing `.` (Windows strips it,
+ *     so `sh010.` and `sh010` would collide on disk while differing in the DB)
+ *   - not a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9),
+ *     bare or with an extension — those are unopenable as files on Windows
+ *   - no spaces, so the breadcrumb separator ` > ` can never appear
+ *
+ * Strictly WIDER than the old pattern: every previously valid name still
+ * validates, so no existing row becomes illegal.
+ *
+ * Path-layer sanitization (sanitizeRelativeSegment) still runs independently —
+ * this is the early, human-readable rejection, not the last line of defence.
  */
-export const SHOT_NAME_REGEX = /^sh\d{3,}$/;
+export const SHOT_NAME_REGEX =
+  /^(?!(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$))(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?<!\.)$/i;
 
 export interface Workspace {
   id: string;
