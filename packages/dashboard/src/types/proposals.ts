@@ -80,7 +80,9 @@ export interface ProposalListResponse {
  */
 export interface ApproveProposalResponse {
   proposal: Proposal;
-  entity: Version;
+  /** Absent for kind='external' proposals — approving an action Vellum does not
+   *  execute authorizes it and records the claim, but creates no version. */
+  entity?: Version;
   breadcrumb: unknown;
   reproduction_warnings?: string[];
 }

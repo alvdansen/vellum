@@ -133,8 +133,8 @@ describe('approveProposal — decide-exactly-once', () => {
     expect(res.proposal.status).toBe('approved');
     expect(res.proposal.decided_note).toBe('looks right, spend ok');
     expect(res.proposal.decided_at).not.toBeNull();
-    expect(res.proposal.version_id).toBe(res.entity.id);
-    expect(res.entity.status).toBe('submitted');
+    expect(res.proposal.version_id).toBe(res.entity!.id);
+    expect(res.entity!.status).toBe('submitted');
     // Exactly one provider submit, carrying the verbatim proposed request.
     const submits = ctx.fake.calls.filter((c) => c.method === 'submit');
     expect(submits).toHaveLength(1);
@@ -208,8 +208,8 @@ describe('approveProposal — decide-exactly-once', () => {
     expect(proposal.kind).toBe('reproduce');
     expect(proposal.shot_id).toBe(ctx.shotId); // derived from the source version
     const res = await ctx.engine.approveProposal(proposal.id);
-    expect(res.entity.lineage_type).toBe('reproduce');
-    expect(res.entity.parent_version_id).toBe(row.id);
+    expect(res.entity!.lineage_type).toBe('reproduce');
+    expect(res.entity!.parent_version_id).toBe(row.id);
     expect(res.reproduction_warnings).toBeDefined();
   });
 
@@ -293,7 +293,7 @@ describe('requireApproval enforcement', () => {
       workflowJson: GRAPH,
     });
     const res = await ctx.engine.approveProposal(proposal.id);
-    expect(res.entity.status).toBe('submitted');
+    expect(res.entity!.status).toBe('submitted');
     expect(ctx.fake.calls.filter((c) => c.method === 'submit')).toHaveLength(1);
   });
 
@@ -306,7 +306,7 @@ describe('requireApproval enforcement', () => {
       workflowJson: GRAPH,
     });
     const approved = await ctx.engine.approveProposal(proposal.id);
-    const status = await ctx.engine.getGenerationStatus(approved.entity.id);
+    const status = await ctx.engine.getGenerationStatus(approved.entity!.id);
     expect(['submitted', 'running', 'completed']).toContain(status.entity.status);
   });
 });

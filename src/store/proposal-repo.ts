@@ -16,7 +16,21 @@ type Db = BetterSQLite3Database<typeof schema>;
  * atomic claim — two concurrent approves cannot both submit (double-spend).
  */
 
-export type ProposalKind = 'submit' | 'reproduce' | 'iterate';
+/**
+ * What a proposal authorizes.
+ *
+ * The first three are generations Vellum itself executes on approval — the
+ * original no-silent-credit-spend gate.
+ *
+ * `external` generalizes the same machinery from SPEND to IRREVERSIBILITY. An
+ * agent about to do something destructive that Vellum does not run — relight a
+ * scene in a DCC, overwrite a working file, publish to a tracker — records the
+ * verbatim action first and waits for a human. Approval costs nothing and
+ * produces no version; what it produces is a durable, single-claim record that
+ * a named human authorized this exact action at this time. Cheap actions can
+ * still be unrecoverable, and that is the property worth gating on.
+ */
+export type ProposalKind = 'submit' | 'reproduce' | 'iterate' | 'external';
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected';
 
 export interface Proposal {

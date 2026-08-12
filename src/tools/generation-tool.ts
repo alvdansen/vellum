@@ -139,7 +139,7 @@ const RecordCostInput = z.object({
  */
 const ProposeInput = z.object({
   action: z.literal('propose'),
-  kind: z.enum(['submit', 'reproduce', 'iterate']),
+  kind: z.enum(['submit', 'reproduce', 'iterate', 'external']),
   shot_id: z.string().min(1).max(MAX_ID_LENGTH).optional(),
   workflow_json: z
     .record(z.string(), z.unknown())
@@ -155,6 +155,10 @@ const ProposeInput = z.object({
   provider: z.string().min(1).max(64).optional(),
   notes: z.string().max(MAX_NOTES_LENGTH).optional(),
   cost_estimate: z.string().max(200).optional(),
+  // kind='external' only — an action Vellum does not execute.
+  external_action: z.string().min(1).max(2000).optional(),
+  external_tool: z.string().min(1).max(64).optional(),
+  external_request: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 const ApproveInput = z.object({
@@ -306,6 +310,7 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         "Submits a generation request to a configured provider. workflow_json carries the request: for comfyui-cloud it must be a ComfyUI API-format workflow (also called 'prompt format' — UI-format exports are rejected; enable 'Dev Mode > Save (API Format)' in ComfyUI); other configured providers interpret it as their own request payload. Actions: submit, status, reproduce, iterate, register, propose, approve, reject, list_proposals, record_cost. " +
         "record_cost logs the ACTUAL spend for a completed/failed take (append-only): { version_id, amount: <number>, currency: '<USD|credits|…>', note? } — the approval gate captures a free-form ESTIMATE pre-spend; this captures the real number post-spend so per-shot cost (incl. rejected takes) is tracked. register also accepts an optional cost_actual: { amount, currency, note? }. " +
         "Approval gate: when the server runs with VELLUM_REQUIRE_APPROVAL, direct submit/reproduce/iterate are refused — record the FULL request with action:'propose' (optionally cost_estimate), have it reviewed, then action:'approve' executes it exactly once (no silent credit spend). " +
+        "The same gate covers actions Vellum does NOT run: propose kind='external' with shot_id + external_action (and optionally external_tool / external_request) before doing anything irreversible in another tool — overwriting a scene file, relighting, publishing to a tracker. Approval creates no version; it records that a human authorized that exact action exactly once. Gate on irreversibility, not just on cost: a free action can still be unrecoverable. " +
         "register (provider-agnostic): report an output produced OUTSIDE this server (ComfyUI, Replicate, FAL, Scenario, Layer, or a sibling workflow) into a shot — pass { shot_id, provider, outputs: [{ url }], provenance? }; each https URL is fetched under an ingest host-allowlist + size cap and stored as a new completed version stamped with `provider`. " +
         "State machine: submitted → running → completed | failed. " +
         "Dual error model: submit/status/reproduce/iterate return a success envelope even when the generation itself failed; inspect `entity.status` and `entity.error_code` to detect domain failures (GENERATION_TIMEOUT, DOWNLOAD_FAILED, and the producing provider's upstream code — COMFYUI_API_ERROR / REPLICATE_API_ERROR / FAL_API_ERROR / BYTEPLUS_API_ERROR / GOOGLE_API_ERROR, or the neutral PROVIDER_API_ERROR). `isError: true` is reserved for tool-surface failures (missing inputs, missing credentials, shot-not-found, version-not-found, version-not-completed, reproduce-blocked, iterate-invalid-patch). " +
@@ -344,7 +349,10 @@ export function registerGeneration(server: McpServer, engine: Engine) {
         provenance: z.record(z.string(), z.unknown()).optional(),
         external_job_ref: z.string().optional(),
         // Approval gate (propose/approve/reject/list_proposals).
-        kind: z.enum(['submit', 'reproduce', 'iterate']).optional(),
+        kind: z.enum(['submit', 'reproduce', 'iterate', 'external']).optional(),
+        external_action: z.string().optional(),
+        external_tool: z.string().optional(),
+        external_request: z.record(z.string(), z.unknown()).optional(),
         proposal_id: z.string().optional(),
         note: z.string().optional(),
         cost_estimate: z.string().optional(),
@@ -406,6 +414,32 @@ export function registerGeneration(server: McpServer, engine: Engine) {
               ),
             );
           case 'propose': {
+            if (input.kind === 'external') {
+              if (!input.shot_id || !input.external_action) {
+                return toolError(
+                  new TypedError(
+                    'INVALID_INPUT',
+                    "propose kind='external' requires shot_id and external_action.",
+                    'external_action describes what you are about to do, specifically enough for a human to approve or refuse it.',
+                  ),
+                );
+              }
+              const res = engine.proposeGeneration({
+                kind: 'external',
+                shotId: input.shot_id,
+                action: input.external_action,
+                tool: input.external_tool,
+                request: input.external_request,
+                notes: input.notes,
+                costEstimate: input.cost_estimate,
+              });
+              return toolOk({
+                proposal: shapeProposal(res.proposal),
+                breadcrumb: res.breadcrumb.entries,
+                breadcrumb_text: res.breadcrumb.text,
+                next: "A human reviews proposal.request, then { action: 'approve', proposal_id } authorizes it exactly once. Vellum does NOT perform this action — do not act until it is approved.",
+              });
+            }
             if (input.kind === 'submit') {
               if (!input.shot_id || !input.workflow_json) {
                 return toolError(
@@ -453,6 +487,18 @@ export function registerGeneration(server: McpServer, engine: Engine) {
           }
           case 'approve': {
             const res = await engine.approveProposal(input.proposal_id, input.note);
+            // kind='external' authorizes an action Vellum does not run, so there
+            // is no version to shape. Return the claim itself and tell the caller
+            // it is now cleared to act — the approval is the deliverable.
+            if (!res.entity) {
+              return toolOk({
+                proposal: shapeProposal(res.proposal),
+                breadcrumb: res.breadcrumb.entries,
+                breadcrumb_text: res.breadcrumb.text,
+                authorized: true,
+                next: 'Authorized exactly once. Perform the action now, then record any resulting asset with { action: \'register\' } so the output is tracked against this shot.',
+              });
+            }
             return toolOk({
               proposal: shapeProposal(res.proposal),
               ...shapeVersionEntity({ entity: res.entity, breadcrumb: res.breadcrumb }),
