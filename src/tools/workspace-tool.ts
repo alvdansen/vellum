@@ -11,6 +11,15 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
+import {
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
+  MUTATION_RAW_FIELDS,
+  mutationHelpText,
+  handleHierarchyMutation,
+} from './hierarchy-mutation.js';
 
 // Zod v4 discriminated-union inputs. Kept for handler-side
 // re-validation so TypeScript narrowing + exhaustiveness + action-specific
@@ -34,6 +43,8 @@ const ListInput = z.object({
   action: z.literal('list'),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Archived rows are hidden by default; opt back in explicitly.
+  include_archived: z.boolean().optional(),
 }).strict();
 const GetInput = z.object({
   action: z.literal('get'),
@@ -44,6 +55,10 @@ const WorkspaceInputSchema = z.discriminatedUnion('action', [
   CreateInput,
   ListInput,
   GetInput,
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
 ]);
 
 /**
@@ -66,14 +81,18 @@ export function registerWorkspace(server: McpServer, engine: Engine) {
     {
       title: 'Workspace',
       description:
-        'Manage workspaces (top-level hierarchy container). Actions: create, list, get.',
+        'Manage workspaces (top-level hierarchy container). Actions: create, list, get, rename, archive, unarchive, history. ' +
+        mutationHelpText('workspace'),
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
       // short-circuits — the handler's `WorkspaceInputSchema.parse()` is the
       // single source of truth for shape enforcement (RT-02).
       inputSchema: z.object({
-        action: z.enum(['create', 'list', 'get']),
+        action: z.enum(['create', 'list', 'get', 'rename', 'archive', 'unarchive', 'history']),
+        // Shared rename/archive/history fields. Spread FIRST so each tool's
+        // own explicit declarations win where they overlap.
+        ...MUTATION_RAW_FIELDS,
         name: z.string().optional(),
         id: z.string().optional(),
         limit: z.number().int().optional(),
@@ -87,9 +106,15 @@ export function registerWorkspace(server: McpServer, engine: Engine) {
           case 'create':
             return toolOk(shapeCreateOrGet(engine.createWorkspace(input.name)));
           case 'list':
-            return toolOk(shapeList(engine.listWorkspaces(input.limit, input.offset)));
+            return toolOk(shapeList(engine.listWorkspaces(input.limit, input.offset, { includeArchived: input.include_archived })));
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getWorkspace(input.id)));
+          case 'rename':
+          case 'archive':
+          case 'unarchive':
+          case 'history':
+            // Shared across all four levels — see tools/hierarchy-mutation.ts.
+            return handleHierarchyMutation(engine, 'workspace', input)!;
           default: {
             const _exhaustive: never = input;
             throw new TypedError(

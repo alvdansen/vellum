@@ -11,6 +11,15 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
+import {
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
+  MUTATION_RAW_FIELDS,
+  mutationHelpText,
+  handleHierarchyMutation,
+} from './hierarchy-mutation.js';
 import { MAX_SPEC_CONTENT_BYTES } from '../types/hierarchy.js';
 
 // Zod v4 discriminated-union inputs. Kept for handler-side
@@ -34,6 +43,8 @@ const ListInput = z.object({
   workspaceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Archived rows are hidden by default; opt back in explicitly.
+  include_archived: z.boolean().optional(),
 }).strict();
 const GetInput = z.object({
   action: z.literal('get'),
@@ -79,6 +90,10 @@ const ProjectInputSchema = z.discriminatedUnion('action', [
   SetSpecInput,
   GetSpecInput,
   ListSpecRevisionsInput,
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
 ]);
 
 /**
@@ -97,7 +112,8 @@ export function registerProject(server: McpServer, engine: Engine) {
     {
       title: 'Project',
       description:
-        'Manage projects within a workspace. Actions: create, list, get, set_naming_template, set_spec, get_spec, list_spec_revisions. ' +
+        'Manage projects within a workspace. Actions: create, list, get, rename, archive, unarchive, history, set_naming_template, set_spec, get_spec, list_spec_revisions. ' +
+        mutationHelpText('project') + ' ' +
         'A project SPEC is versioned standing context you should read before generating into this project — a style bible, look book, or palette/naming contract. Read it with get_spec (or the vellum://project/{id}/spec resource). set_spec ALWAYS appends a new revision (never edits in place), and every version created afterwards records which revision was active, so when an output is wrong because the spec was ambiguous you fix the SPEC and the earlier takes stay dated to the revision they were made under. ' +
         'set_naming_template sets a Hybrid-v1 output-naming template for the project so generations land on disk with production-standard names instead of raw provider filenames. Template tokens: {project} {sequence} {shot} {version} {version_num} {provider} {index} {basename} {ext} {slot:KEY} (element/descriptor/artist/stage/frame — passed at register), with :upper/:lower/:pad3 modifiers; e.g. "{project}_{sequence}_{shot:upper}_{slot:element}_{version}". Pass template:null to clear.',
       // Raw ZodRawShape (RT-01): SDK wraps this into z.object(...) so
@@ -114,7 +130,14 @@ export function registerProject(server: McpServer, engine: Engine) {
           'set_spec',
           'get_spec',
           'list_spec_revisions',
-        ]),
+        
+          'rename',
+          'archive',
+          'unarchive',
+          'history',]),
+        // Shared rename/archive/history fields. Spread FIRST so each tool's
+        // own explicit declarations win where they overlap.
+        ...MUTATION_RAW_FIELDS,
         workspaceId: z.string().optional(),
         name: z.string().optional(),
         id: z.string().optional(),
@@ -137,7 +160,7 @@ export function registerProject(server: McpServer, engine: Engine) {
             );
           case 'list':
             return toolOk(
-              shapeList(engine.listProjects(input.workspaceId, input.limit, input.offset)),
+              shapeList(engine.listProjects(input.workspaceId, input.limit, input.offset, { includeArchived: input.include_archived })),
             );
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getProject(input.id)));
@@ -160,6 +183,12 @@ export function registerProject(server: McpServer, engine: Engine) {
             return toolOk(
               shapeList(engine.listProjectSpecRevisions(input.id, input.limit, input.offset)),
             );
+          case 'rename':
+          case 'archive':
+          case 'unarchive':
+          case 'history':
+            // Shared across all four levels — see tools/hierarchy-mutation.ts.
+            return handleHierarchyMutation(engine, 'project', input)!;
           default: {
             const _exhaustive: never = input;
             throw new TypedError(

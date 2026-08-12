@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'INVALID_SHOT_FORMAT'
   | 'INVALID_INPUT'
   | 'SPEC_NOT_FOUND'                  // project has no spec (or no such revision)
+  | 'ENTITY_ARCHIVED'                 // target (or an ancestor) is archived — unarchive to add new work
   // Generation lifecycle
   | 'INVALID_WORKFLOW_FORMAT'
   | 'COMFYUI_CREDENTIALS_MISSING'

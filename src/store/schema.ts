@@ -20,6 +20,10 @@ export const workspaces = sqliteTable('workspaces', {
   name: text('name').notNull().unique(),
   naming_template: text('naming_template'),
   created_at: integer('created_at').notNull(),
+  // Soft archive (0014). NULL = live. Never a delete: provenance rows point at
+  // these ids, and an append-only record whose subject can vanish is not a
+  // record. Materialized current value; hierarchy_events is the history.
+  archived_at: integer('archived_at'),
 });
 
 // DM-03: `idx_{projects,sequences,shots,versions}_{fk}` indexes were redundant
@@ -36,6 +40,7 @@ export const projects = sqliteTable('projects', {
   name: text('name').notNull(),
   naming_template: text('naming_template'),
   created_at: integer('created_at').notNull(),
+  archived_at: integer('archived_at'),
 }, (t) => ({
   uniqueNamePerWorkspace: unique().on(t.workspace_id, t.name),
 }));
@@ -47,6 +52,7 @@ export const sequences = sqliteTable('sequences', {
     .references(() => projects.id),
   name: text('name').notNull(),
   created_at: integer('created_at').notNull(),
+  archived_at: integer('archived_at'),
 }, (t) => ({
   uniqueNamePerProject: unique().on(t.project_id, t.name),
 }));
@@ -65,6 +71,7 @@ export const shots = sqliteTable('shots', {
   // SCHEMA_DDL below intentionally does NOT declare this column —
   // matches the additive-migration split.
   status: text('status').notNull().default('wip'),
+  archived_at: integer('archived_at'),
 }, (t) => ({
   uniqueNamePerSequence: unique().on(t.sequence_id, t.name),
 }));
@@ -283,6 +290,51 @@ export const proposals = sqliteTable('proposals', {
 }, (t) => ({
   idxShotStatus: index('idx_proposals_shot_status').on(t.shot_id, t.status),
   idxStatusCreated: index('idx_proposals_status_created').on(t.status, t.created_at),
+}));
+
+/**
+ * Append-only audit of hierarchy mutations — renames and archive transitions on
+ * workspaces, projects, sequences and shots.
+ *
+ * Renaming without a record would quietly falsify history. A pipeline log
+ * generated last week names 'sh010'; the shot row now says 'sh015'; nothing
+ * connects the two and the older artifact reads as being about a shot that does
+ * not exist. This table is what makes a rename a recorded event rather than an
+ * erasure.
+ *
+ * Truth model mirrors shot_status_events: this table is canonical history, the
+ * entity row carries the materialized current value. Structural append-only
+ * invariant — src/store/hierarchy-events-repo.ts has ZERO update/delete methods,
+ * enforced by architecture-purity greps.
+ *
+ * Deliberately NOT foreign-keyed to any one parent table: `entity_type` +
+ * `entity_id` span four tables, and SQLite has no polymorphic FK. Rows are
+ * written only by the repo, immediately after the entity mutation succeeds in
+ * the same transaction, so a dangling entity_id is not reachable.
+ *
+ * Added by drizzle migrator via 0014_hierarchy_mutability.sql; SCHEMA_DDL below
+ * intentionally does NOT declare this table — matches the additive-migration split.
+ */
+export const hierarchyEvents = sqliteTable('hierarchy_events', {
+  id: text('id').primaryKey(),
+  /** 'workspace' | 'project' | 'sequence' | 'shot' */
+  entity_type: text('entity_type').notNull(),
+  entity_id: text('entity_id').notNull(),
+  /** 'renamed' | 'archived' | 'unarchived' */
+  event_type: text('event_type').notNull(),
+  /** Previous name on a rename; null on archive transitions. */
+  from_value: text('from_value'),
+  /** New name on a rename; null on archive transitions. */
+  to_value: text('to_value'),
+  changed_by: text('changed_by').notNull().default('user'),
+  note: text('note'),
+  created_at: integer('created_at').notNull(),
+}, (t) => ({
+  idxEntityTime: index('idx_hierarchy_events_entity_time').on(
+    t.entity_type,
+    t.entity_id,
+    t.created_at,
+  ),
 }));
 
 /**

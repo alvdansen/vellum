@@ -1,7 +1,12 @@
-import { eq, sql, asc } from 'drizzle-orm';
+import { eq, sql, asc, and, isNull, type SQL } from 'drizzle-orm';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { workspaces, projects, sequences, shots } from './schema.js';
+import {
+  HierarchyEventsRepo,
+  type HierarchyEntityType,
+} from './hierarchy-events-repo.js';
 import type { Workspace, Project, Sequence, Shot } from '../types/hierarchy.js';
 import { newId } from '../utils/id.js';
 import { TypedError } from '../engine/errors.js';
@@ -37,8 +42,173 @@ function isUniqueViolation(err: unknown): boolean {
  *  - All inserts/selects use Drizzle parameterized queries — no raw string concat with user input.
  *  - Shot regex validation is NOT performed here; it lives in the engine (store stays validation-free).
  */
+/** The four hierarchy tables, keyed by the entity_type strings used in
+ *  hierarchy_events. Lets rename/archive be written once instead of four times. */
+const TABLES = {
+  workspace: workspaces,
+  project: projects,
+  sequence: sequences,
+  shot: shots,
+} as const;
+
+export type HierarchyEntity = Workspace | Project | Sequence | Shot;
+
+/**
+ * Combine a parent-scope filter with the default "live rows only" filter.
+ *
+ * Archived rows are excluded unless explicitly asked for. That default is the
+ * whole point of archiving — a sequence dropped in a re-cut should stop
+ * appearing in the grid AND stop being counted, not merely acquire a flag the
+ * caller has to remember to check.
+ */
+function archiveFilter(
+  table: { archived_at: SQLiteColumn },
+  scope: SQL | undefined,
+  includeArchived: boolean | undefined,
+): SQL | undefined {
+  if (includeArchived) return scope;
+  const live = isNull(table.archived_at);
+  return scope ? and(scope, live) : live;
+}
+
 export class HierarchyRepo {
-  constructor(private db: Db) {}
+  private events: HierarchyEventsRepo;
+
+  constructor(private db: Db) {
+    this.events = new HierarchyEventsRepo(db);
+  }
+
+  // ================================================================
+  // MUTATION — rename + archive, each recorded in hierarchy_events
+  // ================================================================
+
+  /**
+   * Rename an entity and append the mutation to hierarchy_events, atomically.
+   *
+   * Both writes share one transaction so history and the current value cannot
+   * diverge: a rename that committed without its record would leave every
+   * artifact naming the old value unexplainable.
+   *
+   * NOTE on outputs already on disk: renaming does NOT move existing files.
+   * Output paths are resolved at persist time and stored per version, so takes
+   * written before the rename stay resolvable under the old directory while new
+   * ones land under the new name. That is deliberate — silently moving a tree of
+   * finished renders on a metadata edit is the more dangerous behaviour.
+   *
+   * Name VALIDATION lives in the engine (repo stays validation-free, matching
+   * createShot); the repo enforces existence and uniqueness only.
+   */
+  rename(
+    entityType: HierarchyEntityType,
+    id: string,
+    newName: string,
+    opts: { note?: string | null; changedBy?: string | null } = {},
+  ): HierarchyEntity {
+    const table = TABLES[entityType];
+    const existing = this.getEntity(entityType, id);
+    if (!existing) {
+      throw new TypedError(
+        `${entityType.toUpperCase()}_NOT_FOUND` as 'SHOT_NOT_FOUND',
+        `${entityType} '${id}' not found`,
+        `Verify the id with { tool: '${entityType}', action: 'get' }`,
+      );
+    }
+    if (existing.name === newName) {
+      // Not an error, but not an event either — recording a no-op rename would
+      // pad the audit trail with entries that never changed anything.
+      return existing;
+    }
+    try {
+      this.db.transaction((tx) => {
+        tx.update(table).set({ name: newName }).where(eq(table.id, id)).run();
+        new HierarchyEventsRepo(tx as unknown as Db).insertEvent({
+          entityType,
+          entityId: id,
+          eventType: 'renamed',
+          fromValue: existing.name,
+          toValue: newName,
+          note: opts.note,
+          changedBy: opts.changedBy,
+        });
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new TypedError(
+          'DUPLICATE_NAME',
+          `Cannot rename ${entityType} to '${newName}' — that name is already taken by a sibling`,
+          'Pick a different name, or rename the other entity first.',
+        );
+      }
+      throw err;
+    }
+    return this.getEntity(entityType, id)!;
+  }
+
+  /**
+   * Archive or unarchive an entity, recorded in hierarchy_events.
+   *
+   * Soft and reversible by construction — there is no delete anywhere in this
+   * repo, because provenance rows reference these ids and a record whose subject
+   * can disappear is not a record. Archiving means "out of the cut": hidden from
+   * default listings, refuses NEW work, still fully readable.
+   *
+   * Non-cascading. Archiving a sequence does not touch its shots — asking for
+   * that sequence's shots explicitly should still return them. What changes is
+   * that the sequence stops appearing in its project's listing.
+   */
+  setArchived(
+    entityType: HierarchyEntityType,
+    id: string,
+    archived: boolean,
+    opts: { note?: string | null; changedBy?: string | null } = {},
+  ): HierarchyEntity {
+    const table = TABLES[entityType];
+    const existing = this.getEntity(entityType, id);
+    if (!existing) {
+      throw new TypedError(
+        `${entityType.toUpperCase()}_NOT_FOUND` as 'SHOT_NOT_FOUND',
+        `${entityType} '${id}' not found`,
+        `Verify the id with { tool: '${entityType}', action: 'get' }`,
+      );
+    }
+    const isArchived = existing.archived_at != null;
+    if (isArchived === archived) return existing; // no-op, no event
+    const at = archived ? Date.now() : null;
+    this.db.transaction((tx) => {
+      tx.update(table).set({ archived_at: at }).where(eq(table.id, id)).run();
+      new HierarchyEventsRepo(tx as unknown as Db).insertEvent({
+        entityType,
+        entityId: id,
+        eventType: archived ? 'archived' : 'unarchived',
+        note: opts.note,
+        changedBy: opts.changedBy,
+      });
+    });
+    return this.getEntity(entityType, id)!;
+  }
+
+  /** Polymorphic read across the four levels — backs rename/archive and the
+   *  engine's archived-parent guards. */
+  getEntity(entityType: HierarchyEntityType, id: string): HierarchyEntity | null {
+    const table = TABLES[entityType];
+    const r = this.db.select().from(table).where(eq(table.id, id)).get();
+    return (r as HierarchyEntity | undefined) ?? null;
+  }
+
+  /** Mutation history for one entity, newest first. */
+  listHierarchyEvents(query: {
+    entityType: HierarchyEntityType;
+    entityId: string;
+    limit: number;
+    offset: number;
+  }) {
+    return this.events.listForEntity(query);
+  }
+
+  /** Every name an entity has had, oldest first. */
+  nameHistory(entityType: HierarchyEntityType, entityId: string): string[] {
+    return this.events.nameHistory(entityType, entityId);
+  }
 
   // ================================================================
   // WORKSPACE
@@ -74,21 +244,20 @@ export class HierarchyRepo {
   listWorkspaces(
     limit: number,
     offset: number,
+    opts?: { includeArchived?: boolean },
   ): { items: Workspace[]; total_count: number } {
     // Deterministic pagination ordering. created_at as primary sort (so
     // newer rows naturally land on later pages); id as a stable tiebreaker for
-    // rows created in the same millisecond.
-    const items = this.db
-      .select()
-      .from(workspaces)
+    // rows created in the same millisecond. Archived EXCLUDED by default.
+    const where = archiveFilter(workspaces, undefined, opts?.includeArchived);
+    const q = this.db.select().from(workspaces);
+    const items = (where ? q.where(where) : q)
       .orderBy(asc(workspaces.created_at), asc(workspaces.id))
       .limit(limit)
       .offset(offset)
       .all() as Workspace[];
-    const totalRow = this.db
-      .select({ n: sql<number>`count(*)` })
-      .from(workspaces)
-      .get();
+    const countQ = this.db.select({ n: sql<number>`count(*)` }).from(workspaces);
+    const totalRow = (where ? countQ.where(where) : countQ).get();
     return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
@@ -157,40 +326,31 @@ export class HierarchyRepo {
     workspaceId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): { items: Project[]; total_count: number } {
     // Back-compat: when opts.sort is OMITTED, ORDER BY preserves the
     // original `created_at ASC, id ASC` shape so existing MCP tool callers
-    // (src/tools/project-tool.ts:88) continue to receive byte-identical
-    // ordering. When opts.sort is provided, buildHierarchyOrderBy emits
-    // `<col> <dir>, projects.id ASC` (deterministic tiebreaker preserved).
-    const itemsQuery =
-      workspaceId !== undefined
-        ? (() => {
-            const q = this.db
-              .select()
-              .from(projects)
-              .where(eq(projects.workspace_id, workspaceId));
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(projects, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(projects.created_at), asc(projects.id)).limit(limit).offset(offset);
-          })()
-        : (() => {
-            const q = this.db.select().from(projects);
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(projects, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(projects.created_at), asc(projects.id)).limit(limit).offset(offset);
-          })();
-    const items = itemsQuery.all() as Project[];
+    // continue to receive byte-identical ordering. When opts.sort is provided,
+    // buildHierarchyOrderBy emits `<col> <dir>, projects.id ASC`.
+    // Archived rows are EXCLUDED by default.
+    const where = archiveFilter(
+      projects,
+      workspaceId !== undefined ? eq(projects.workspace_id, workspaceId) : undefined,
+      opts?.includeArchived,
+    );
+    const q = this.db.select().from(projects);
+    const scoped = where ? q.where(where) : q;
+    const items = (
+      opts?.sort
+        ? scoped.orderBy(buildHierarchyOrderBy(projects, opts.sort))
+        : scoped.orderBy(asc(projects.created_at), asc(projects.id))
+    )
+      .limit(limit)
+      .offset(offset)
+      .all() as Project[];
 
-    const totalQuery =
-      workspaceId !== undefined
-        ? this.db
-            .select({ n: sql<number>`count(*)` })
-            .from(projects)
-            .where(eq(projects.workspace_id, workspaceId))
-        : this.db.select({ n: sql<number>`count(*)` }).from(projects);
-    const totalRow = totalQuery.get();
+    const countQ = this.db.select({ n: sql<number>`count(*)` }).from(projects);
+    const totalRow = (where ? countQ.where(where) : countQ).get();
     return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
@@ -236,38 +396,28 @@ export class HierarchyRepo {
     projectId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): { items: Sequence[]; total_count: number } {
-    // Back-compat (see listProjects). Original ORDER BY preserved
-    // when opts.sort is omitted; tool callers (src/tools/sequence-tool.ts:88)
-    // unaffected.
-    const itemsQuery =
-      projectId !== undefined
-        ? (() => {
-            const q = this.db
-              .select()
-              .from(sequences)
-              .where(eq(sequences.project_id, projectId));
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(sequences, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(sequences.created_at), asc(sequences.id)).limit(limit).offset(offset);
-          })()
-        : (() => {
-            const q = this.db.select().from(sequences);
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(sequences, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(sequences.created_at), asc(sequences.id)).limit(limit).offset(offset);
-          })();
-    const items = itemsQuery.all() as Sequence[];
+    // Back-compat (see listProjects). Archived rows EXCLUDED by default —
+    // this is the listing a sequence re-cut actually needs to change.
+    const where = archiveFilter(
+      sequences,
+      projectId !== undefined ? eq(sequences.project_id, projectId) : undefined,
+      opts?.includeArchived,
+    );
+    const q = this.db.select().from(sequences);
+    const scoped = where ? q.where(where) : q;
+    const items = (
+      opts?.sort
+        ? scoped.orderBy(buildHierarchyOrderBy(sequences, opts.sort))
+        : scoped.orderBy(asc(sequences.created_at), asc(sequences.id))
+    )
+      .limit(limit)
+      .offset(offset)
+      .all() as Sequence[];
 
-    const totalQuery =
-      projectId !== undefined
-        ? this.db
-            .select({ n: sql<number>`count(*)` })
-            .from(sequences)
-            .where(eq(sequences.project_id, projectId))
-        : this.db.select({ n: sql<number>`count(*)` }).from(sequences);
-    const totalRow = totalQuery.get();
+    const countQ = this.db.select({ n: sql<number>`count(*)` }).from(sequences);
+    const totalRow = (where ? countQ.where(where) : countQ).get();
     return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 
@@ -320,38 +470,30 @@ export class HierarchyRepo {
     sequenceId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): { items: Shot[]; total_count: number } {
-    // Back-compat (see listProjects). Original ORDER BY preserved
-    // when opts.sort is omitted; tool callers (src/tools/shot-tool.ts:94)
-    // unaffected.
-    const itemsQuery =
-      sequenceId !== undefined
-        ? (() => {
-            const q = this.db
-              .select()
-              .from(shots)
-              .where(eq(shots.sequence_id, sequenceId));
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(shots, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(shots.created_at), asc(shots.id)).limit(limit).offset(offset);
-          })()
-        : (() => {
-            const q = this.db.select().from(shots);
-            return opts?.sort
-              ? q.orderBy(buildHierarchyOrderBy(shots, opts.sort)).limit(limit).offset(offset)
-              : q.orderBy(asc(shots.created_at), asc(shots.id)).limit(limit).offset(offset);
-          })();
-    const items = itemsQuery.all() as Shot[];
+    // Back-compat (see listProjects). Original ORDER BY preserved when
+    // opts.sort is omitted; tool callers unaffected. Archived rows are
+    // EXCLUDED by default — an archived shot is out of the cut and should not
+    // pad the grid or the counts.
+    const where = archiveFilter(
+      shots,
+      sequenceId !== undefined ? eq(shots.sequence_id, sequenceId) : undefined,
+      opts?.includeArchived,
+    );
+    const q = this.db.select().from(shots);
+    const scoped = where ? q.where(where) : q;
+    const items = (
+      opts?.sort
+        ? scoped.orderBy(buildHierarchyOrderBy(shots, opts.sort))
+        : scoped.orderBy(asc(shots.created_at), asc(shots.id))
+    )
+      .limit(limit)
+      .offset(offset)
+      .all() as Shot[];
 
-    const totalQuery =
-      sequenceId !== undefined
-        ? this.db
-            .select({ n: sql<number>`count(*)` })
-            .from(shots)
-            .where(eq(shots.sequence_id, sequenceId))
-        : this.db.select({ n: sql<number>`count(*)` }).from(shots);
-    const totalRow = totalQuery.get();
+    const countQ = this.db.select({ n: sql<number>`count(*)` }).from(shots);
+    const totalRow = (where ? countQ.where(where) : countQ).get();
     return { items, total_count: Number(totalRow?.n ?? 0) };
   }
 }

@@ -39,6 +39,8 @@ import type {
   TagChangedPayload,
   MetadataChangedPayload,
   HierarchyCreatedPayload,
+  HierarchyRenamedPayload,
+  HierarchyArchiveChangedPayload,
   ShotStatusChangedPayload,
 } from '../engine/events.js';
 
@@ -56,6 +58,9 @@ const EVENT_TYPES = [
   'tag.changed',
   'metadata.changed',
   'hierarchy.created',
+  'hierarchy.renamed',
+  'hierarchy.archived',
+  'hierarchy.unarchived',
   'shot.status_changed',
 ] as const satisfies ReadonlyArray<keyof EngineEventMap>;
 
@@ -119,6 +124,25 @@ export function toDashboardPayload<T extends keyof EngineEventMap>(
         entityType: p.entity_type,
         entityId: p.entity_id,
         parentId: p.parent_id ?? undefined,
+      };
+    }
+    case 'hierarchy.renamed': {
+      const p = payload as HierarchyRenamedPayload;
+      // Carries the NEW name only — the previous one lives in the append-only
+      // hierarchy_events log, not on a transient wire event.
+      return {
+        entityType: p.entity_type,
+        entityId: p.entity_id,
+        name: p.name,
+      };
+    }
+    case 'hierarchy.archived':
+    case 'hierarchy.unarchived': {
+      const p = payload as HierarchyArchiveChangedPayload;
+      return {
+        entityType: p.entity_type,
+        entityId: p.entity_id,
+        archived: type === 'hierarchy.archived',
       };
     }
     case 'tag.changed': {

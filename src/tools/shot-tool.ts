@@ -12,6 +12,15 @@ import {
   MAX_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
 } from './shape.js';
+import {
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
+  MUTATION_RAW_FIELDS,
+  mutationHelpText,
+  handleHierarchyMutation,
+} from './hierarchy-mutation.js';
 
 // Zod v4 discriminated-union inputs. Kept for handler-side
 // re-validation; tool-layer Zod schema exposed to MCP is a raw ZodRawShape.
@@ -36,6 +45,8 @@ const ListInput = z.object({
   sequenceId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
   limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   offset: z.number().int().min(0).default(0),
+  // Archived rows are hidden by default; opt back in explicitly.
+  include_archived: z.boolean().optional(),
 }).strict();
 const GetInput = z.object({
   action: z.literal('get'),
@@ -82,6 +93,10 @@ const ShotInputSchema = z.discriminatedUnion('action', [
   GetStatusInput,
   ListStatusHistoryInput,
   PipelineLogInput,
+  RenameInput,
+  ArchiveInput,
+  UnarchiveInput,
+  HistoryInput,
 ]);
 
 /**
@@ -102,7 +117,7 @@ export function registerShot(server: McpServer, engine: Engine) {
     {
       title: 'Shot',
       description:
-        "Manage shots within a sequence. Shot names must match ^sh\\d{3,}$ (e.g. sh010, sh020). Actions: create, list, get, set_status, get_status, list_status_history, pipeline_log. set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
+        "Manage shots within a sequence. Use your own shot codes — 'sh010', 'SH014', 'EP101_SH014' are all valid; the only rules are safety ones (no spaces, no '..', no leading dot, not a Windows reserved name) because the name becomes a directory. Actions: create, list, get, rename, archive, unarchive, history, set_status, get_status, list_status_history, pipeline_log. " + mutationHelpText('shot') + " set_status sets the production status — allowed values: wip, pending-review, approved, on-hold, omit. pipeline_log renders a per-shot pipeline log as markdown (status timeline, every take with provider/lineage/cost/outputs, incl. failed & rejected takes) projected from append-only provenance — a regenerable replacement for a hand-maintained shot log.",
       // Raw ZodRawShape: SDK wraps this into z.object(...) so
       // `tools/list` publishes real JSON-schema properties. Every field is
       // `.optional()` at this layer so the SDK's pre-handler validation never
@@ -117,7 +132,14 @@ export function registerShot(server: McpServer, engine: Engine) {
           'get_status',
           'list_status_history',
           'pipeline_log',
-        ]),
+        
+          'rename',
+          'archive',
+          'unarchive',
+          'history',]),
+        // Shared rename/archive/history fields. Spread FIRST so each tool's
+        // own explicit declarations win where they overlap.
+        ...MUTATION_RAW_FIELDS,
         sequenceId: z.string().optional(),
         name: z.string().optional(),
         id: z.string().optional(),
@@ -142,7 +164,7 @@ export function registerShot(server: McpServer, engine: Engine) {
             );
           case 'list':
             return toolOk(
-              shapeList(engine.listShots(input.sequenceId, input.limit, input.offset)),
+              shapeList(engine.listShots(input.sequenceId, input.limit, input.offset, { includeArchived: input.include_archived })),
             );
           case 'get':
             return toolOk(shapeCreateOrGet(engine.getShot(input.id)));
@@ -165,6 +187,12 @@ export function registerShot(server: McpServer, engine: Engine) {
             return toolOk(engine.listShotStatusHistory(input.id, input.limit));
           case 'pipeline_log':
             return toolOk(engine.getShotPipelineLog(input.id));
+          case 'rename':
+          case 'archive':
+          case 'unarchive':
+          case 'history':
+            // Shared across all four levels — see tools/hierarchy-mutation.ts.
+            return handleHierarchyMutation(engine, 'shot', input)!;
           default: {
             const _exhaustive: never = input;
             throw new TypedError(

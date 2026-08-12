@@ -809,6 +809,37 @@ describe('architecture purity', () => {
   it('src/store/spec-repo.ts has zero imports from @modelcontextprotocol/sdk', () => {
     expect(grepCount('@modelcontextprotocol/sdk', 'src/store/spec-repo.ts')).toBe(0);
   });
+
+  // The hierarchy is mutable now (rename, archive) — which is precisely why its
+  // audit log must not be. A rename that can be edited or erased after the fact
+  // makes every artifact naming the old value unexplainable, and that is the
+  // exact failure this table exists to prevent.
+  it('hierarchy_events is never UPDATE-d or DELETE-d anywhere in src/store', () => {
+    expect(grepCount('UPDATE hierarchy_events', 'src/store')).toBe(0);
+    expect(grepCount('DELETE FROM hierarchy_events', 'src/store')).toBe(0);
+    // Pattern split so this file's own source doesn't match the scan.
+    expect(grepCount('.update(' + 'hierarchyEvents', 'src')).toBe(0);
+    expect(grepCount('.delete(' + 'hierarchyEvents', 'src')).toBe(0);
+  });
+
+  it('src/store/hierarchy-events-repo.ts uses no mutation builder at all', () => {
+    expect(grepCount('.update(', 'src/store/hierarchy-events-repo.ts')).toBe(0);
+    expect(grepCount('.delete(', 'src/store/hierarchy-events-repo.ts')).toBe(0);
+  });
+
+  it('src/store/hierarchy-events-repo.ts has zero imports from @modelcontextprotocol/sdk', () => {
+    expect(grepCount('@modelcontextprotocol/sdk', 'src/store/hierarchy-events-repo.ts')).toBe(0);
+  });
+
+  // Nothing anywhere deletes a hierarchy row. Archive is the answer instead,
+  // because provenance rows reference these ids and a record whose subject can
+  // vanish is not a record.
+  it('hierarchy rows are never DELETE-d', () => {
+    for (const table of ['workspaces', 'projects', 'sequences', 'shots']) {
+      expect(grepCount(`DELETE FROM ${table}`, 'src')).toBe(0);
+      expect(grepCount('.delete(' + table, 'src')).toBe(0);
+    }
+  });
 });
 
 // ================================================================

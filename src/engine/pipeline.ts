@@ -9,6 +9,11 @@ import type * as schema from '../store/schema.js';
 import { HierarchyRepo } from '../store/hierarchy-repo.js';
 import { ProposalRepo, type Proposal, type ProposalStatus } from '../store/proposal-repo.js';
 import { SpecRepo, type ProjectSpec } from '../store/spec-repo.js';
+import type { HierarchyEntity } from '../store/hierarchy-repo.js';
+import type {
+  HierarchyEntityType,
+  HierarchyEvent,
+} from '../store/hierarchy-events-repo.js';
 import type { VersionRepo } from '../store/version-repo.js';
 import type { ProvenanceRepo } from '../store/provenance-repo.js';
 // Composite-cursor sort tuple types forwarded
@@ -591,8 +596,12 @@ export class Engine {
     return { entity, breadcrumb: this.breadcrumb.resolve('workspace', entity.id) };
   }
 
-  listWorkspaces(limit: number, offset: number): ListResult<Workspace> {
-    const { items, total_count } = this.repo.listWorkspaces(limit, offset);
+  listWorkspaces(
+    limit: number,
+    offset: number,
+    opts?: { includeArchived?: boolean },
+  ): ListResult<Workspace> {
+    const { items, total_count } = this.repo.listWorkspaces(limit, offset, opts);
     return {
       items: items.map((ws) => ({ ...ws, ...this.breadcrumb.resolve('workspace', ws.id) })),
       total_count,
@@ -641,6 +650,7 @@ export class Engine {
   ): { entity: Project; breadcrumb: Breadcrumb } {
     // Name check FIRST, before any DB work — same contract as createShot.
     this.assertUsableAsFolderName('Project', name);
+    this.assertNotArchived('workspace', workspaceId);
     const entity = this.repo.createProject(workspaceId, name);
     this.events.emitEvent('hierarchy.created', {
       entity_type: 'project',
@@ -675,6 +685,165 @@ export class Engine {
   ): { entity: Project; breadcrumb: Breadcrumb } {
     const entity = this.repo.setProjectNamingTemplate(id, template);
     return { entity, breadcrumb: this.breadcrumb.resolve('project', entity.id) };
+  }
+
+  // ================================================================
+  // HIERARCHY MUTATION — rename + archive
+  // ================================================================
+
+  /**
+   * Name rules for a rename, matching what `create` enforces at each level.
+   *
+   * Shots get the real regex — the engine is the single authority on shot
+   * naming, and a rename is exactly as capable of producing an unsafe directory
+   * segment as a create. The other three levels get the same shape guard the
+   * tool layer applies on create: non-empty, bounded, and free of the ` > `
+   * breadcrumb separator.
+   */
+  private assertRenameableTo(entityType: HierarchyEntityType, name: string): void {
+    if (entityType === 'shot') {
+      if (!SHOT_NAME_REGEX.test(name)) {
+        throw new TypedError(
+          'INVALID_SHOT_FORMAT',
+          `Shot name '${name}' is not a usable shot name`,
+          "Use your own shot codes — 'sh010', 'SH014', 'EP101_SH014' are all fine. Letters, digits, dot, underscore and hyphen; no spaces, no '..', no trailing dot.",
+        );
+      }
+      return;
+    }
+    if (entityType === 'project' || entityType === 'sequence') {
+      // Exactly the guard create uses — a rename can produce an unusable
+      // directory segment just as easily as a create can.
+      this.assertUsableAsFolderName(entityType === 'project' ? 'Project' : 'Sequence', name);
+    }
+    const trimmed = name.trim();
+    if (trimmed === '' || trimmed.length > 200 || trimmed.includes(' > ')) {
+      throw new TypedError(
+        'INVALID_INPUT',
+        `'${name}' is not a usable ${entityType} name`,
+        'Names must be 1–200 characters and cannot contain " > " (the breadcrumb separator).',
+      );
+    }
+  }
+
+  /**
+   * Rename any hierarchy entity, recording the change in the append-only
+   * hierarchy_events log.
+   *
+   * This is the fix for the typo that used to be permanent. Two things a caller
+   * should know, both deliberate:
+   *
+   *  - **Files already written do not move.** Output paths resolve at persist
+   *    time and are stored per version, so earlier takes stay readable under the
+   *    old directory and new ones land under the new name. Silently relocating a
+   *    tree of finished renders on a metadata edit is the more dangerous option.
+   *  - **The old name is not lost.** Every rename appends an event, so an
+   *    artifact naming the previous value can still be traced to this row via
+   *    `history` / nameHistory.
+   */
+  renameEntity(
+    entityType: HierarchyEntityType,
+    id: string,
+    newName: string,
+    opts: { note?: string; changedBy?: string } = {},
+  ): { entity: HierarchyEntity; breadcrumb: Breadcrumb } {
+    this.assertRenameableTo(entityType, newName);
+    const entity = this.repo.rename(entityType, id, newName, {
+      note: opts.note ?? null,
+      changedBy: opts.changedBy ?? null,
+    });
+    this.events.emitEvent('hierarchy.renamed', {
+      entity_type: entityType,
+      entity_id: id,
+      name: newName,
+      at: this.nowIso(),
+    });
+    return { entity, breadcrumb: this.breadcrumb.resolve(entityType, id) };
+  }
+
+  /**
+   * Archive or unarchive an entity — the re-cut case.
+   *
+   * Soft, reversible, never a delete: provenance rows point at these ids.
+   * Archiving hides the entity from default listings and refuses NEW work under
+   * it; reads and registration of already-produced outputs keep working.
+   */
+  setEntityArchived(
+    entityType: HierarchyEntityType,
+    id: string,
+    archived: boolean,
+    opts: { note?: string; changedBy?: string } = {},
+  ): { entity: HierarchyEntity; breadcrumb: Breadcrumb } {
+    const entity = this.repo.setArchived(entityType, id, archived, {
+      note: opts.note ?? null,
+      changedBy: opts.changedBy ?? null,
+    });
+    this.events.emitEvent(archived ? 'hierarchy.archived' : 'hierarchy.unarchived', {
+      entity_type: entityType,
+      entity_id: id,
+      at: this.nowIso(),
+    });
+    return { entity, breadcrumb: this.breadcrumb.resolve(entityType, id) };
+  }
+
+  /** Mutation history (renames + archive transitions) for one entity, newest
+   *  first. This is what makes an old filename or pipeline log traceable. */
+  listEntityHistory(
+    entityType: HierarchyEntityType,
+    id: string,
+    limit = 20,
+    offset = 0,
+  ): ListResult<HierarchyEvent> & { name_history: string[] } {
+    if (!this.repo.getEntity(entityType, id)) {
+      throw new TypedError(
+        `${entityType.toUpperCase()}_NOT_FOUND` as 'SHOT_NOT_FOUND',
+        `${entityType} '${id}' not found`,
+      );
+    }
+    const bounded = Math.max(1, Math.min(100, limit));
+    const from = Math.max(0, offset);
+    const { items, total_count } = this.repo.listHierarchyEvents({
+      entityType,
+      entityId: id,
+      limit: bounded,
+      offset: from,
+    });
+    const breadcrumb = this.breadcrumb.resolve(entityType, id);
+    return {
+      items: items.map((e) => ({ ...e, ...breadcrumb })),
+      total_count,
+      limit: bounded,
+      offset: from,
+      name_history: this.repo.nameHistory(entityType, id),
+    };
+  }
+
+  /**
+   * Refuse NEW work under an archived entity.
+   *
+   * This is what separates an archive from a tag. Vellum already has tags; if
+   * archiving did not stop anything, it would just be a second one. Reads are
+   * never blocked, and neither is `register` — recording an output that already
+   * exists is not new work, and it is exactly what you need when a late webhook
+   * lands for a shot that has since been cut.
+   */
+  private assertNotArchived(entityType: HierarchyEntityType, id: string): void {
+    const entity = this.repo.getEntity(entityType, id);
+    if (entity?.archived_at != null) {
+      throw new TypedError(
+        'ENTITY_ARCHIVED',
+        `${entityType} '${entity.name}' is archived`,
+        `Unarchive it with { tool: '${entityType}', action: 'unarchive', id: '${id}' } to add new work, or pick a live ${entityType}. Reads and output registration still work while archived.`,
+      );
+    }
+  }
+
+  /** Archive guard for the version-sourced paths (reproduce / iterate), which
+   *  take a version id rather than a shot id. A missing version is left to the
+   *  executor's own VERSION_NOT_FOUND so the error stays specific. */
+  private assertShotOfVersionNotArchived(versionId: string): void {
+    const source = this.versionRepo.getVersion(versionId);
+    if (source) this.assertNotArchived('shot', source.shot_id);
   }
 
   // ================================================================
@@ -815,7 +984,7 @@ export class Engine {
     workspaceId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): ListResult<Project> {
     // opts.sort is optional. When provided, the repo
     // applies the whitelisted sort (buildHierarchyOrderBy). When
@@ -840,6 +1009,7 @@ export class Engine {
   ): { entity: Sequence; breadcrumb: Breadcrumb } {
     // Name check FIRST, before any DB work — same contract as createShot.
     this.assertUsableAsFolderName('Sequence', name);
+    this.assertNotArchived('project', projectId);
     const entity = this.repo.createSequence(projectId, name);
     this.events.emitEvent('hierarchy.created', {
       entity_type: 'sequence',
@@ -866,7 +1036,7 @@ export class Engine {
     projectId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): ListResult<Sequence> {
     // See listProjects for the back-compat sort invariant.
     const { items, total_count } = this.repo.listSequences(projectId, limit, offset, opts);
@@ -894,6 +1064,7 @@ export class Engine {
           'The name becomes a directory on disk, which is the only reason there are any rules at all.',
       );
     }
+    this.assertNotArchived('sequence', sequenceId);
     const entity = this.repo.createShot(sequenceId, name);
     this.events.emitEvent('hierarchy.created', {
       entity_type: 'shot',
@@ -920,7 +1091,7 @@ export class Engine {
     sequenceId: string | undefined,
     limit: number,
     offset: number,
-    opts?: { sort?: HierarchySort },
+    opts?: { sort?: HierarchySort; includeArchived?: boolean },
   ): ListResult<Shot> {
     // See listProjects for the back-compat sort invariant.
     const { items, total_count } = this.repo.listShots(sequenceId, limit, offset, opts);
@@ -1277,6 +1448,11 @@ export class Engine {
     allowDuplicate?: boolean,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     this.assertApprovalNotRequired('submit');
+    // An archived shot is out of the cut — do not spend on it. Checked on the
+    // gated entry point, not the executor, so an already-approved proposal for
+    // a shot archived mid-review still completes rather than stranding the
+    // approval. `register` stays allowed by design.
+    this.assertNotArchived('shot', shotId);
     return this.submitGenerationExecute(shotId, workflowJson, notes, providerId, allowDuplicate);
   }
 
@@ -1713,6 +1889,7 @@ export class Engine {
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb; reproduction_warnings: string[] }> {
     this.assertApprovalNotRequired('reproduce');
+    this.assertShotOfVersionNotArchived(sourceVersionId);
     return this.reproduceVersionExecute(sourceVersionId, notes);
   }
 
@@ -1739,6 +1916,7 @@ export class Engine {
     notes?: string,
   ): Promise<{ entity: Version; breadcrumb: Breadcrumb }> {
     this.assertApprovalNotRequired('iterate');
+    this.assertShotOfVersionNotArchived(sourceVersionId);
     return this.iterateFromVersionExecute(sourceVersionId, overrides, seed, notes);
   }
 

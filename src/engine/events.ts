@@ -92,6 +92,24 @@ export interface HierarchyCreatedPayload {
   at: string;
 }
 
+/** hierarchy.renamed — fires from Engine.renameEntity. Carries the NEW name;
+ *  the previous one is in the append-only hierarchy_events log. */
+export interface HierarchyRenamedPayload {
+  entity_type: 'workspace' | 'project' | 'sequence' | 'shot';
+  entity_id: string;
+  name: string;
+  at: string;
+}
+
+/** hierarchy.archived / hierarchy.unarchived — fires from
+ *  Engine.setEntityArchived. The dashboard uses these to drop (or restore) a
+ *  row without a full refetch. */
+export interface HierarchyArchiveChangedPayload {
+  entity_type: 'workspace' | 'project' | 'sequence' | 'shot';
+  entity_id: string;
+  at: string;
+}
+
 /**
  * Typed event map — pairs each event name with its payload type. Extending
  * this map is the single source of truth for new event types (both producers
@@ -103,6 +121,9 @@ export interface EngineEventMap {
   'tag.changed': TagChangedPayload;
   'metadata.changed': MetadataChangedPayload;
   'hierarchy.created': HierarchyCreatedPayload;
+  'hierarchy.renamed': HierarchyRenamedPayload;
+  'hierarchy.archived': HierarchyArchiveChangedPayload;
+  'hierarchy.unarchived': HierarchyArchiveChangedPayload;
   'shot.status_changed': ShotStatusChangedPayload;
 }
 

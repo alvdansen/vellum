@@ -26,7 +26,7 @@ function cleanup(dbPath: string): void {
   }
 }
 
-const EXPECTED_MIGRATIONS = 13; // +0013_project_specs (versioned standing context + provenance.spec_bound_json)
+const EXPECTED_MIGRATIONS = 14; // +0014_hierarchy_mutability (hierarchy_events + archived_at on all four levels)
 
 describe('Phase 10 — clean-DB migration no-op (DEMO-01, ROADMAP #4)', () => {
   let dbPath: string;

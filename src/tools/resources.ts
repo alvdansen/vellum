@@ -17,18 +17,34 @@ import { isApprovalRequired } from '../utils/approval-config.js';
  */
 
 const TOOL_SURFACE: Array<{ name: string; actions: string[]; summary: string }> = [
-  { name: 'workspace', actions: ['create', 'list', 'get'], summary: 'Top-level container.' },
+  {
+    name: 'workspace',
+    actions: ['create', 'list', 'get', 'rename', 'archive', 'unarchive', 'history'],
+    summary:
+      'Top-level container. rename/archive/unarchive are recorded in an append-only hierarchy history (history action); archived rows are hidden from list unless include_archived.',
+  },
   {
     name: 'project',
-    actions: ['create', 'list', 'get', 'set_naming_template', 'set_spec', 'get_spec', 'list_spec_revisions'],
+    actions: [
+      'create', 'list', 'get', 'rename', 'archive', 'unarchive', 'history',
+      'set_naming_template', 'set_spec', 'get_spec', 'list_spec_revisions',
+    ],
     summary:
       'Project under a workspace; set_naming_template sets the production output-naming template. ' +
       'set_spec/get_spec/list_spec_revisions manage the project SPEC — append-only versioned standing context (style bible, look book, naming/palette contract) that every version records at creation.',
   },
-  { name: 'sequence', actions: ['create', 'list', 'get'], summary: 'Sequence under a project.' },
+  {
+    name: 'sequence',
+    actions: ['create', 'list', 'get', 'rename', 'archive', 'unarchive', 'history'],
+    summary:
+      'Sequence under a project. Archive a sequence dropped in a re-cut — it leaves the listings and refuses new work without deleting anything.',
+  },
   {
     name: 'shot',
-    actions: ['create', 'list', 'get', 'set_status', 'get_status', 'list_status_history', 'pipeline_log'],
+    actions: [
+      'create', 'list', 'get', 'rename', 'archive', 'unarchive', 'history',
+      'set_status', 'get_status', 'list_status_history', 'pipeline_log',
+    ],
     summary:
       'Shot under a sequence; production status (set_status/get_status/list_status_history) and a markdown pipeline_log projected from provenance.',
   },

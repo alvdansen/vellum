@@ -39,6 +39,12 @@ export interface Workspace {
   name: string;
   naming_template: string | null;
   created_at: number;
+  /** Soft archive: epoch-ms when archived, NULL when live. Never deleted —
+   *  provenance points at these ids. History lives in hierarchy_events.
+   *  Optional in the TS view for the same additive/dual-read reason as
+   *  `Version.provider`: post-migration rows always carry it (value-or-null),
+   *  hand-built literals predating 0014 may omit it (absent ≡ live). */
+  archived_at?: number | null;
 }
 
 export interface Project {
@@ -47,6 +53,12 @@ export interface Project {
   name: string;
   naming_template: string | null;
   created_at: number;
+  /** Soft archive: epoch-ms when archived, NULL when live. Never deleted —
+   *  provenance points at these ids. History lives in hierarchy_events.
+   *  Optional in the TS view for the same additive/dual-read reason as
+   *  `Version.provider`: post-migration rows always carry it (value-or-null),
+   *  hand-built literals predating 0014 may omit it (absent ≡ live). */
+  archived_at?: number | null;
 }
 
 export interface Sequence {
@@ -54,6 +66,12 @@ export interface Sequence {
   project_id: string;
   name: string;
   created_at: number;
+  /** Soft archive: epoch-ms when archived, NULL when live. Never deleted —
+   *  provenance points at these ids. History lives in hierarchy_events.
+   *  Optional in the TS view for the same additive/dual-read reason as
+   *  `Version.provider`: post-migration rows always carry it (value-or-null),
+   *  hand-built literals predating 0014 may omit it (absent ≡ live). */
+  archived_at?: number | null;
 }
 
 export interface Shot {
@@ -62,6 +80,12 @@ export interface Shot {
   name: string;
   created_at: number;
   status: ShotStatus; // added by migration 0008; default 'wip'
+  /** Soft archive: epoch-ms when archived, NULL when live. Never deleted —
+   *  provenance points at these ids. History lives in hierarchy_events.
+   *  Optional in the TS view for the same additive/dual-read reason as
+   *  `Version.provider`: post-migration rows always carry it (value-or-null),
+   *  hand-built literals predating 0014 may omit it (absent ≡ live). */
+  archived_at?: number | null;
 }
 
 /**
