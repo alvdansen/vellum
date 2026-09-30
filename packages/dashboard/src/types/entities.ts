@@ -41,6 +41,8 @@ export interface Shot {
 /** Version entity — a single generation result under a shot. */
 export interface Version {
   id: string;
+  outputs_json?: string | null;
+  notes?: string | null;
   shot_id: string;
   version_number: number;
   label?: string;

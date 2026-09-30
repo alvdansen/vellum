@@ -51,6 +51,7 @@ import {
 } from '../lib/copy.js';
 import type { Version } from '../types/entities.js';
 import { versionLabel, normalizeStatus } from '../lib/shape.js';
+import { primaryOutput } from '../lib/output-kind.js';
 
 /**
  * Shape of the /api/versions/:id/provenance JSON response (getProvenance
@@ -94,6 +95,8 @@ export interface VersionDrawerProps {
 }
 
 export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerProps) {
+  const output = primaryOutput(version.outputs_json);
+  const isDocument = output.kind === 'file';
   const [provenance, setProvenance] = useState<Array<Record<string, unknown>>>([]);
   const [diff, setDiff] = useState<DiffSummaryShape | null>(null);
   const [showDiff, setShowDiff] = useState(false);
@@ -182,6 +185,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
   // (lib/api collapses errors to { state: 'error' } envelopes), but the
   // .catch is defence-in-depth.
   useEffect(() => {
+    if (isDocument) return;
     let alive = true;
     setSummary({ state: 'loading' });
     fetchSummary(version.id)
@@ -197,7 +201,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
     return () => {
       alive = false;
     };
-  }, [version.id]);
+  }, [version.id, isDocument]);
 
   async function handleRegenerate(): Promise<void> {
     // 500ms client-side debounce — captures the most-recent click timestamp;
@@ -349,6 +353,7 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
             (the previously standalone Provenance <section> is now wrapped in
             a <details> here so provenance is collapsed by default). */}
         <SummarySection
+          recordSummary={isDocument ? (version.notes || `Stored file: ${output.filename ?? 'document'}.`) : undefined}
           summary={summary}
           regenerateAvailableAtMs={regenerateAvailableAtMs}
           showFirstUseDisclosure={showFirstUseDisclosure}
@@ -381,19 +386,24 @@ export function VersionDrawer({ version, priorVersion, onClose }: VersionDrawerP
         {status === 'complete' ? (
           <section>
             <h3 class="label-uppercase mb-2 text-[var(--color-fg-muted)]">Output</h3>
-            <a
+            {output.kind === 'video' ? (
+              <video key={version.id} controls preload="metadata" src={getOutputUrl(version.id)} class="block h-auto w-full" aria-label={`Output for ${label}`} />
+            ) : output.kind === 'audio' ? (
+              <audio key={version.id} controls preload="metadata" src={getOutputUrl(version.id)} aria-label={`Output for ${label}`} />
+            ) : <a
               href={getOutputUrl(version.id)}
               target="_blank"
               rel="noopener noreferrer"
+              download={isDocument ? (output.filename || true) : undefined}
               class="block overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)]"
             >
-              <img
+              {isDocument ? <span class="block p-3 text-sm text-[var(--color-accent)]">Download {output.filename ?? 'document'}</span> : <img
                 src={getOutputUrl(version.id)}
                 alt={`Output for ${label}`}
                 class="block h-auto w-full"
                 loading="lazy"
-              />
-            </a>
+              />}
+            </a>}
             {/* C2PA signing badge. Reads status via
                 HEAD on the output route (X-C2PA-Signing-Status header) so no
                 additional bytes are transferred. Deliberately NO sidecar

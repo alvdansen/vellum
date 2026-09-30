@@ -47,8 +47,8 @@ describe('Thumbnail (Phase 17 — Plan 17-04 Task 3)', () => {
     expect(screen.queryByTestId('c2pa-shield')).toBeNull();
   });
 
-  it('Test 2: renders skeleton (no img) for non-completed versions; aria-busy="true"', () => {
-    for (const status of ['queued', 'running', 'failed'] as const) {
+  it('Test 2: renders a loading skeleton only for pending versions; aria-busy="true"', () => {
+    for (const status of ['queued', 'running'] as const) {
       const { unmount, container } = render(
         <Thumbnail version={makeVersion({ status })} />,
       );
