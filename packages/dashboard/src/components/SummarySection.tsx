@@ -48,6 +48,8 @@ import { WarningPill } from './WarningPill.js';
 import { RegenerateButton } from './RegenerateButton.js';
 
 export interface SummarySectionProps {
+  /** Factual stored-file description; bypasses generation summary controls. */
+  recordSummary?: string;
   /** Discriminated SummaryState read from summarySignal[version.id]. */
   summary: SummaryState;
   /**
@@ -79,6 +81,7 @@ export interface SummarySectionProps {
 }
 
 export function SummarySection({
+  recordSummary,
   summary,
   regenerateAvailableAtMs,
   showFirstUseDisclosure = false,
@@ -92,7 +95,7 @@ export function SummarySection({
   // referents.
   const headingId = `summary-heading-${versionLabel}`;
   const ariaLabel = regenerateButtonAriaLabel(versionLabel);
-  const isLoading = summary.state === 'loading';
+  const isLoading = !recordSummary && summary.state === 'loading';
   const containerClass =
     `bg-[var(--color-surface)] p-3 rounded ${className ?? ''}`.trim();
 
@@ -108,19 +111,19 @@ export function SummarySection({
           id={headingId}
           class="label-uppercase text-[var(--color-fg-muted)]"
         >
-          {SUMMARY_HEADING}
+          {recordSummary ? 'Stored document' : SUMMARY_HEADING}
         </h3>
-        <RegenerateButton
+        {!recordSummary && <RegenerateButton
           regenerateAvailableAtMs={regenerateAvailableAtMs ?? null}
           isFetching={isLoading}
           onClick={onRegenerate}
           ariaLabel={ariaLabel}
-        />
+        />}
       </header>
 
       {/* First-use privacy disclosure — gated by parent (VersionDrawer reads
           localStorage). Renders as a muted note ABOVE the body. */}
-      {showFirstUseDisclosure && (
+      {!recordSummary && showFirstUseDisclosure && (
         <p
           class="text-xs text-[var(--color-fg-muted)] mb-2"
           data-testid="first-use-disclosure"
@@ -130,9 +133,10 @@ export function SummarySection({
       )}
 
       {/* Discriminated render — 4 states. */}
-      {summary.state === 'loading' && <SummarySkeleton />}
+      {recordSummary && <p class="text-sm text-[var(--color-fg)]" data-testid="document-summary">{recordSummary}</p>}
+      {!recordSummary && summary.state === 'loading' && <SummarySkeleton />}
 
-      {summary.state === 'success' && (
+      {!recordSummary && summary.state === 'success' && (
         <p
           class="text-sm text-[var(--color-fg)]"
           data-testid="summary-body"
@@ -141,7 +145,7 @@ export function SummarySection({
         </p>
       )}
 
-      {summary.state === 'fallback' && (
+      {!recordSummary && summary.state === 'fallback' && (
         <>
           <WarningPill
             label={WARNING_PILL_FALLBACK_LABEL}
@@ -156,7 +160,7 @@ export function SummarySection({
         </>
       )}
 
-      {summary.state === 'error' && (
+      {!recordSummary && summary.state === 'error' && (
         <>
           <WarningPill
             label={WARNING_PILL_FALLBACK_LABEL}

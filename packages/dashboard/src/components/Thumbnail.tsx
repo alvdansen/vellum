@@ -10,13 +10,12 @@
  * Render contract:
  *   - version.status !== 'complete' → <SkeletonThumbnail/> at the size
  *     variant's dimensions, aria-busy='true' on the wrapper (unified
- *     skeleton for in-progress / loading / failed)
+ *     skeleton for in-progress / loading; static fallback for failed)
  *   - version.status === 'complete' AND no thumbnail-fetch error →
  *     <img loading="lazy" src={getThumbnailUrl(version.id)} class="object-contain"
  *           alt={ariaLabel ?? defaultAlt} width={W} height={H} /> wrapped
  *     in <div class="relative aspect-video">
- *   - browser onerror fires → swap to <SkeletonThumbnail/> AND set
- *     aria-label='Preview unavailable for ${version.label}' (same shimmer)
+ *   - browser onerror fires → static unavailable message, without a loading animation
  *   - c2paStatus.status === 'signed' AND complete AND no error → append
  *     <C2paShield/> absolute-positioned bottom-right (predicate
  *     is signed-only; unsigned + unknown + undefined render NO overlay)
@@ -116,8 +115,8 @@ export function Thumbnail({
   class: className,
   ariaLabel,
 }: ThumbnailProps) {
-  const [imgError, setImgError] = useState(false);
-  const [, setImgLoaded] = useState(false);
+  const [failedId, setFailedId] = useState<string | null>(null);
+  const imgError = failedId === version.id;
 
   const isComplete = version.status === 'complete';
   const showSkeleton = !isComplete || imgError;
@@ -131,8 +130,7 @@ export function Thumbnail({
       : 'relative block aspect-video w-full overflow-hidden rounded';
   const wrapperStyle = size === 'sm' ? { width: '80px' } : undefined;
 
-  // Skeleton render path — unified treatment for queued/running/failed
-  // AND browser-onerror fallback (no broken image icons; same shimmer).
+  // Only pending work animates. Missing/unsupported previews and failed jobs are terminal.
   // The wrapper dictates the shape (aspect-video, fluid for cards / 80px for
   // sm); the skeleton fills it, so it tracks the same footprint the real
   // <img> will occupy at every viewport width.
@@ -141,12 +139,16 @@ export function Thumbnail({
       <div
         class={`${wrapperClass}${className ? ` ${className}` : ''}`}
         style={wrapperStyle}
-        aria-busy={!isComplete ? 'true' : undefined}
+        aria-busy={!isComplete && version.status !== 'failed' ? 'true' : undefined}
         aria-label={
           imgError ? `${PREVIEW_UNAVAILABLE_PREFIX}${version.label}` : undefined
         }
       >
-        <SkeletonThumbnail fill />
+        {imgError || version.status === 'failed' ? (
+          <div class="flex h-full w-full items-center justify-center rounded bg-[var(--color-surface)] p-2 text-center text-xs text-[var(--color-fg-muted)]" role="presentation">
+            {version.status === 'failed' ? 'Generation failed' : 'Preview unavailable'}
+          </div>
+        ) : <SkeletonThumbnail fill />}
       </div>
     );
   }
@@ -178,8 +180,7 @@ export function Thumbnail({
         decoding="async"
         width={widthAttr}
         height={heightAttr}
-        onLoad={() => setImgLoaded(true)}
-        onError={() => setImgError(true)}
+        onError={() => setFailedId(version.id)}
       />
       {c2paStatus?.status === 'signed' && <C2paShield class={shieldClass} />}
     </div>
